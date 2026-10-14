@@ -10,9 +10,10 @@
 //! - The `[[app]]` tables ([`AppEntry`]), which never shape it. A bad app or entrance doesn't
 //!   fail the file: it is listed with its problem and kept out of the graph.
 //!
-//! [`Settings::hash`] fingerprints everything that can change a compile; languages hash only the
-//! part that affects one file, such as [`Settings::python_hash`], so a settings edit re-extracts
-//! only the files it touches. Apps are outside [`Settings`], so changing them never recompiles.
+//! [`Settings::hash`] fingerprints what linking reads, which evidence patterns are not; languages
+//! hash only the part that affects one file, such as [`Settings::python_hash`], so a settings
+//! edit re-extracts only the files it touches. Apps are outside [`Settings`], so changing them
+//! never recompiles. Pattern lists compare as sets: reordering patterns changes nothing.
 
 mod apps;
 mod diff;
@@ -78,7 +79,7 @@ impl SettingsFile {
 
 /// The settings of one open folder that shape its compile. [`Settings::default`] is what an
 /// absent file means.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Settings {
     /// The languages to graph, sorted and without duplicates. `None` means every supported
     /// language found in the folder.
@@ -163,12 +164,17 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// The hash of everything in the settings, all of which can change a compile. Spans and the
-    /// apps are left out, so editing comments, reordering whitespace, or changing `[[app]]`
-    /// tables doesn't change it.
+    /// The hash of the settings linking reads: the languages, the scope, and the Python
+    /// projects, with pattern lists as sets. Evidence patterns (files that are nothing else to
+    /// Unfold, and that linking never reads), spans, and the apps are left out, so editing
+    /// comments, reordering patterns, or changing `[evidence]` or `[[app]]` tables doesn't change
+    /// it.
     pub fn hash(&self) -> SettingsHash {
         let mut hasher = SettingsHasher::new("settings");
-        hasher.add(self);
+        hasher
+            .add(&self.languages)
+            .add(&self.scope)
+            .add(&self.python_projects);
         hasher.finish()
     }
 

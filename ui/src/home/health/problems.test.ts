@@ -26,7 +26,7 @@ describe("Health rows", () => {
       {
         id: "1",
         title: '[tool.unfold] python = "3.11" isn\'t supported',
-        explanation: "Unfold uses the defaults until the settings file is fixed.",
+        explanation: "Unfold keeps the settings that last parsed.",
         location: "pyproject.toml",
         action: { path: "pyproject.toml", line: null },
       },
@@ -37,6 +37,12 @@ describe("Health rows", () => {
         location: "",
         action: null,
       },
+    ]);
+  });
+
+  it("says a configuration input may keep imports and calls from resolving", () => {
+    expect(healthRows([problem("input", "tsconfig.json", "expected ',' at line 4")])).toEqual([
+      { id: "0", title: "expected ',' at line 4", explanation: "Imports and calls may not resolve.", location: "tsconfig.json", action: { path: "tsconfig.json", line: null } },
     ]);
   });
 

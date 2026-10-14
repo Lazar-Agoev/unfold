@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use unfold_core::testkit::{GraphBuilder, testdata_dir};
-use unfold_core::{Graph, canonical};
+use unfold_core::{FileGraph, Graph, canonical};
 use unfold_store::{DiskStamp, FileChange, Reader, Store, StoreConfig, Update};
 
 use crate::catalog;
@@ -70,7 +70,11 @@ impl Playground {
         let dir = tempfile::tempdir().expect("create a temporary directory");
         let mut store =
             Store::open(&dir.path().join("graph.sqlite"), &StoreConfig::new("test")).expect("open the store");
-        let definitions: Vec<_> = graph.files.iter().map(catalog::definitions).collect();
+        let definitions: Vec<_> = graph
+            .files
+            .iter()
+            .map(|file| catalog::definitions(file))
+            .collect();
         let files = graph
             .files
             .iter()
@@ -119,7 +123,7 @@ impl Playground {
             .iter()
             .find(|file| file.local_id(key).is_some())
             .unwrap_or_else(|| panic!("{key} is in the graph"));
-        let tree = FileTree::new(file.clone());
+        let tree = FileTree::new(FileGraph::clone(file));
         let id = tree.id(key).expect("the key is in its file");
         (tree, id)
     }
@@ -128,7 +132,7 @@ impl Playground {
     pub fn trees(&self) -> Trees {
         let mut trees = Trees::new();
         for file in &self.graph.files {
-            trees.insert(FileTree::new(file.clone()));
+            trees.insert(FileTree::new(FileGraph::clone(file)));
         }
         trees
     }

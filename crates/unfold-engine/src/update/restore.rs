@@ -140,6 +140,7 @@ impl Engine {
             // keeps every file's settings hash when none did.
             inputs,
             built: true,
+            modules: basis.as_ref().map(LinkBasis::modules).unwrap_or_default(),
             restored: basis,
             complete,
             graph: Arc::new(graph),

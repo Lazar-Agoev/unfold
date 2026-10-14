@@ -59,6 +59,16 @@ describe("board events", () => {
     expect(store.getOpenBoard(REF)?.label).toBe("1 missing");
   });
 
+  it("refreshes a board's health after the entrances of its project change, which compiles nothing", async () => {
+    engine.emit({ type: "entrances_changed", project: Q });
+    await vi.advanceTimersByTimeAsync(HEALTH_DELAY_MS * 2);
+    expect(engine.callsOf("board_health")).toEqual([]);
+    engine.emit({ type: "entrances_changed", project: P });
+    await vi.advanceTimersByTimeAsync(HEALTH_DELAY_MS);
+    expect(engine.callsOf("board_health")).toEqual([{ project: P, id: REF.id }]);
+    expect(store.getOpenBoard(REF)?.label).toBe("1 missing");
+  });
+
   it("reloads a board whose file changed outside, and starts its undo history over", async () => {
     store.editBoard(REF, (document) => {
       document.title = "Renamed";

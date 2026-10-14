@@ -391,7 +391,7 @@ describe("app and entrance cards", () => {
     fireEvent.click(within(unfound).getByRole("button", { name: "Fix" }));
     await waitFor(() => {
       expect(engine.callsOf("update_project_config")).toEqual([
-        { project: P, edits: [{ op: "set_entrance", app: "Shop API", entrance: { name: "Place an order", on: "POST /orders/{order_id}", code: [LOAD, MOVED, CHARGE], about: null } }] },
+        { project: P, edits: [{ op: "replace_code", app: "Shop API", entrance: "Place an order", index: 1, old: GONE, code: MOVED }] },
       ]);
     });
   });

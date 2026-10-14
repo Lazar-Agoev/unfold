@@ -251,7 +251,7 @@ pub fn compile_with_inputs(snapshots: BTreeMap<RepoPath, Snapshot>, inputs: &Pro
             file_links
         );
     }
-    let graphs = program
+    let graphs: Vec<FileGraph> = program
         .iter()
         .map(|(id, entry)| {
             let record = records[&entry.path].clone();
@@ -269,7 +269,7 @@ pub fn compile_with_inputs(snapshots: BTreeMap<RepoPath, Snapshot>, inputs: &Pro
         })
         .collect();
     let graph = Graph {
-        files: graphs,
+        files: graphs.into_iter().map(Arc::new).collect(),
         inputs: Vec::new(),
         apps: Vec::new(),
     };

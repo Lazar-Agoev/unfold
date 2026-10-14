@@ -1,5 +1,7 @@
 //! The graph-level validation hook: core invariants plus the language's independent census.
 
+use std::sync::Arc;
+
 use unfold_core::vocab::NodeKind;
 
 use crate::alien::Project;
@@ -11,7 +13,7 @@ fn the_census_catches_a_call_node_off_its_call_site() {
     assert!(project.validate(&graph).is_empty());
     // Move the call's start inside its `call` atom: still inside its parent, but no longer the
     // call the parser found.
-    let call = graph.files[0]
+    let call = Arc::make_mut(&mut graph.files[0])
         .nodes
         .iter_mut()
         .find(|node| node.kind() == NodeKind::Call)
@@ -38,7 +40,7 @@ fn the_census_finds_every_call_without_a_node() {
     let mut graph = project.compile().valid().graph;
     // Drop the call node (the last in preorder) with its links and arguments, as a lowering
     // that forgot a call would.
-    let file = &mut graph.files[0];
+    let file = Arc::make_mut(&mut graph.files[0]);
     let call = file.nodes.len() as u32 - 1;
     assert_eq!(file.nodes[call as usize].kind(), NodeKind::Call);
     file.nodes.pop();

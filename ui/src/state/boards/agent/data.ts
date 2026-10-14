@@ -8,7 +8,7 @@
 
 import type { AgentFollowStop } from "@unfold/desktop/agent-api";
 import { queryClient } from "../../../ipc/client";
-import type { Callers, CardView, Key, OutgoingView, ProjectId, TypeDefinition } from "../../../ipc/generated";
+import type { Callers, CardView, Key, OutgoingView, ProjectId, StartTarget, TargetState, TypeDefinition } from "../../../ipc/generated";
 import { engineQueryOptions } from "../../../ipc/queries";
 import { cardQuery, isMissing } from "../../cards";
 import { call } from "../engine";
@@ -17,11 +17,14 @@ import { cardRefKey } from "../keys";
 /** How many callers one card lists when following callers (the engine's default page). */
 const CALLERS_LIMIT = 20;
 
-/** A definition's outgoing calls as following sees them: where project calls go, and the ones it can't follow. */
+/**
+ * A definition's outgoing calls as following sees them: where project calls go, and the ones it can't
+ * follow. For an app or entrance, the code it starts at, as tracing it by hand opens it.
+ */
 interface FollowableCalls {
   /** One per target, in source order. */
   readonly resolved: readonly { readonly target: Key }[];
-  /** Library and unknown calls (one per written call), where following stops. */
+  /** Library and unknown calls (one per written call), or a start's code that names no start, where following stops. */
   readonly blocked: readonly AgentFollowStop[];
 }
 
@@ -46,6 +49,30 @@ function uniqueBy<T>(items: readonly T[], key: (item: T) => string): T[] {
     seen.add(id);
     return true;
   });
+}
+
+/** Why following can't go through a start's code key, by its state; found and stale code is followed. */
+const UNFOLLOWED: Readonly<Partial<Record<TargetState, string>>> = {
+  missing: "no block has this key",
+  not_analyzed: "its file isn't analyzed",
+  not_a_start: "not a start",
+};
+
+/** Where a start leads: its code that is found or stale (its last good block), each once, and the rest as stops. */
+function startCalls(code: readonly StartTarget[]): FollowableCalls {
+  return {
+    resolved: uniqueBy(
+      code.flatMap((target) => (UNFOLLOWED[target.state] === undefined ? [{ target: target.key }] : [])),
+      (item) => item.target,
+    ),
+    blocked: uniqueBy(
+      code.flatMap((target) => {
+        const note = UNFOLLOWED[target.state];
+        return note === undefined ? [] : [{ reason: "unresolved" as const, call: target.key, note }];
+      }),
+      (stop) => stop.call,
+    ),
+  };
 }
 
 export class AgentData {
@@ -121,7 +148,7 @@ export class AgentData {
     const model = await this.loadModel(project, key);
     let calls: FollowableCalls;
     if (model?.type === "start") {
-      calls = { resolved: uniqueBy(model.code.flatMap((code) => (code.state === "found" ? [{ target: code.key }] : [])), (item) => item.target), blocked: [] };
+      calls = startCalls(model.code);
     } else {
       const { outgoing } = await call("relations", { project, key });
       const followed = outgoing.filter((edge) => edge.kind === "calls").sort((a, b) => a.line - b.line);

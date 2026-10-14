@@ -78,14 +78,17 @@ then the overview.
   Apps are bold rows with their entrances indented under them, in file order; there are no badges at rest. Hover
   shows a chevron, and a copy icon on an app's `run`. A problem is an amber dot; on hover the right column says what
   happened ("Moved to …", "Route edited", "Not found", "Not analyzed", "Not a start", or the entry's own problem) with
-  Fix, Choose code…, or Open `unfold.toml`. Fixes are offered, never applied unasked; Fix rewrites one `code` line.
+  Fix, Choose code…, or Open `unfold.toml`. Fixes are offered, never applied unasked; Fix and Choose code… rewrite one
+  `code` key (`replace_code`, which names the key shown, so a file changed since is refused and the toast says why).
   Search appears above 15 entrances. Empty: "No entrances yet" with Add entrance and Copy agent prompt.
 - **Tracing** (`trace.ts`): clicking an app or entrance makes a new board named after it: the start's card, compact,
   and its code's cards expanded in a column to its right, in run order. A row the graph left out opens its lines in
   `unfold.toml`.
 - **Boards**: one list, most recently edited first, with folders.
 - **Health line**: files that don't parse, boards that need review, and entrances whose code isn't found, in amber;
-  each leads to what needs a look. Health is also a view of Home.
+  each leads to what needs a look. Health is also a view of Home: each problem with a short explanation (a broken
+  `unfold.toml`: Unfold keeps the settings that last parsed; a configuration input: imports and calls may not
+  resolve) and the file to open.
 
 Everything comes from `entrances`, `project_summary`, and `list_boards`; no key is read.
 

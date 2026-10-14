@@ -222,24 +222,17 @@ impl<'e, 'r> Run<'e, 'r> {
         }
         // A graph kept as it was takes the new records of the inputs linking never reads, and
         // the apps resolved again: changing only `[[app]]` tables never relinks.
-        let kept = (!relink).then(|| refresh(engine, &old.graph, &mut state));
+        if !relink {
+            refresh(engine, &old.graph, &mut state);
+        }
         self.stats.relinked = relink;
         self.stats.files_removed = old
             .files
             .keys()
             .filter(|path| !state.files.contains_key(*path))
             .count();
-        let summary = match kept {
-            None => ChangeSummary::between(&old.graph, &state.graph),
-            Some(Refreshed {
-                inputs_changed,
-                apps_changed,
-            }) => ChangeSummary {
-                inputs_changed,
-                apps_changed,
-                ..ChangeSummary::default()
-            },
-        };
+        // Quick for a kept graph: it shares every file graph with the old one.
+        let summary = ChangeSummary::between(&old.graph, &state.graph);
         self.stats.count_graph(&state.graph);
         self.stats.total = started.elapsed();
         let mut problems = standing_problems(&state);
@@ -781,43 +774,26 @@ pub(super) fn resolve_apps(engine: &Engine, state: &mut State, previous: &Graph,
     resolved
 }
 
-/// What [`refresh`] changed.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct Refreshed {
-    pub(super) inputs_changed: bool,
-    pub(super) apps_changed: bool,
-}
-
 /// For a graph kept as it was (not linked again), an update of `previous`: takes the new
-/// records of the inputs linking never reads, and the apps resolved again.
-pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) -> Refreshed {
+/// records of the inputs linking never reads, and the apps resolved again. The new graph shares
+/// every file graph with the kept one, and when nothing changed, it is the kept one.
+pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) {
     let graph = Arc::clone(&state.graph);
     let apps = resolve_apps(engine, state, previous, &graph);
-    let records = unlinked_records(state);
-    let inputs_changed = !graph
+    let mut inputs: Vec<Input> = graph
         .inputs
         .iter()
-        .filter(|input| unlinked(input.role))
-        .eq(&records);
-    let apps_changed = graph.apps != apps;
-    if inputs_changed || apps_changed {
-        let mut inputs: Vec<Input> = graph
-            .inputs
-            .iter()
-            .filter(|input| !unlinked(input.role))
-            .cloned()
-            .chain(records)
-            .collect();
-        inputs.sort_by(|a, b| a.path.cmp(&b.path));
+        .filter(|input| !unlinked(input.role))
+        .cloned()
+        .chain(unlinked_records(state))
+        .collect();
+    inputs.sort_by(|a, b| a.path.cmp(&b.path));
+    if inputs != graph.inputs || apps != graph.apps {
         state.graph = Arc::new(Graph {
             files: graph.files.clone(),
             inputs,
             apps,
         });
-    }
-    Refreshed {
-        inputs_changed,
-        apps_changed,
     }
 }
 
@@ -867,11 +843,12 @@ fn input_entry(role: InputRole, stamp: Option<FileStamp>, read: Read, requested:
 }
 
 /// Whether anything but the files that shapes the graph differs between two states: the
-/// settings, the configuration inputs, or the unindexed or context files (what [`LinkBasis`]
-/// fingerprints). The settings file's bytes, its `[[app]]` tables, and evidence files shape
-/// nothing linking reads.
+/// settings linking reads ([`Settings::hash`](crate::settings::Settings::hash)), the
+/// configuration inputs, or the unindexed or context files (what [`LinkBasis`] fingerprints).
+/// The settings file's bytes, its `[[app]]` tables, `[evidence]` patterns and files, and the
+/// order of patterns shape nothing linking reads.
 fn context_differs(old: &State, new: &State) -> bool {
-    old.settings.settings != new.settings.settings
+    old.settings.settings.hash() != new.settings.settings.hash()
         || old.unindexed != new.unindexed
         || old.context != new.context
         || inputs_differ(&old.inputs, &new.inputs)

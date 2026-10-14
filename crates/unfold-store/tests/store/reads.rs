@@ -2,6 +2,7 @@
 //! definition catalog, and statistics.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use unfold_core::testkit::sample::shop;
 use unfold_core::vocab::{Form, Language, LinkKind, MemberKind, Reason};
@@ -213,6 +214,7 @@ fn type_uses_are_types_and_extends_links() {
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == "shop/payments.py")
+        .map(Arc::make_mut)
         .unwrap();
     let base = payments
         .links
@@ -280,6 +282,7 @@ fn links_into_a_replaced_file_stay_and_the_reverse_indexes_follow_link_changes()
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == "shop/store.py")
+        .map(Arc::make_mut)
         .unwrap();
     let mut node = store_py
         .nodes
@@ -308,6 +311,7 @@ fn links_into_a_replaced_file_stay_and_the_reverse_indexes_follow_link_changes()
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == "shop/service.py")
+        .map(Arc::make_mut)
         .unwrap();
     let call = service
         .links
@@ -445,7 +449,9 @@ fn stats_count_rows() {
     let (_dir, store, prepared) = committed();
     let stats = store.readers.get().unwrap().stats().unwrap();
     let graph: &Graph = &prepared.graph;
-    let count = |f: fn(&unfold_core::FileGraph) -> usize| graph.files.iter().map(f).sum::<usize>() as u64;
+    let count = |f: fn(&unfold_core::FileGraph) -> usize| {
+        graph.files.iter().map(|file| f(file)).sum::<usize>() as u64
+    };
     assert_eq!(stats.files_current, 4);
     assert_eq!(stats.files_failed + stats.files_last_good, 0);
     assert_eq!(stats.nodes, count(|file| file.nodes.len()));

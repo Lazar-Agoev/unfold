@@ -42,8 +42,11 @@ fn changing_only_apps_never_recompiles_or_relinks() {
     assert_eq!(changed.stats.files_read, 0);
     assert_eq!(engine.settings().hash(), hash);
     assert_eq!(changed.graph.files, first.graph.files);
-    assert!(changed.summary.apps_changed && changed.summary.inputs_changed);
-    assert!(changed.summary.changed_files.is_empty() && changed.summary.changed_keys.is_empty());
+    assert!(changed.summary.apps_changed, "{:?}", changed.summary);
+    assert!(
+        !changed.summary.graph_changed(),
+        "the settings file's record isn't reported"
+    );
     assert_eq!(
         states(&changed.graph.apps),
         [
@@ -67,7 +70,11 @@ fn changing_only_apps_never_recompiles_or_relinks() {
     folder.write("unfold.toml", &edited.replace("# Shared settings.", "# Ours."));
     let commented = background(&mut engine, &["unfold.toml"]);
     assert!(!commented.stats.relinked, "a comment shapes nothing");
-    assert!(commented.summary.inputs_changed && !commented.summary.apps_changed);
+    assert!(commented.summary.is_empty(), "{:?}", commented.summary);
+    assert_ne!(
+        commented.graph.inputs, changed.graph.inputs,
+        "the record follows the file"
+    );
 
     folder.write("unfold.toml", &edited.replace("legacy/**", "old/**"));
     let scoped = background(&mut engine, &["unfold.toml"]);

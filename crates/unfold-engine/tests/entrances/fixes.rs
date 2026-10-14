@@ -1,9 +1,12 @@
 //! One-candidate fixes for missing keys: offered when exactly one candidate fits, never applied.
 
+use std::sync::Arc;
+
 use unfold_core::vocab::{NodeKind, TargetState};
-use unfold_core::{Key, RepoPath};
-use unfold_engine::Engine;
+use unfold_core::{Graph, Key, RepoPath};
 use unfold_engine::entrances::{Fix, FixKind};
+use unfold_engine::update::MemoryFactsCache;
+use unfold_engine::{Engine, LinkBasis, UpdateRequest};
 
 use super::{Folder, background, compile, key_of, one_app, states};
 
@@ -75,6 +78,51 @@ fn a_moved_definition_is_fixed_when_one_definition_has_its_name() {
         None,
         "two candidates"
     );
+}
+
+const OBJECT: &str =
+    "export const slack = {\n  post(channel: string): void {\n    console.log(channel);\n  },\n};\n";
+const NAMESPACE: &str = "export namespace Util {\n  export function helper(): void {}\n}\n";
+const PLAIN: &str = "export function plain(): void {}\n";
+const CLASS: &str = "export class Box {\n  open(): void {}\n}\n";
+
+/// TypeScript qualifies an object literal's methods and a namespace's members in their names
+/// (`slack.post`), and a class's members only in their keys (`Box.open`): each is found by its
+/// key's names.
+#[test]
+fn a_moved_typescript_definition_is_fixed_however_its_name_is_qualified() {
+    let codes = [
+        "src/lib/slack.ts#slack.post",
+        "src/lib/slack.ts#Util.helper",
+        "src/lib/slack.ts#plain",
+        "src/lib/slack.ts#Box.open",
+    ];
+    let folder = Folder::new(&[
+        ("src/lib/slack.ts", &format!("{OBJECT}{NAMESPACE}{PLAIN}{CLASS}")),
+        ("unfold.toml", &one_app("", &codes)),
+    ]);
+    let mut engine = folder.engine();
+    let first = compile(&mut engine);
+    assert!(
+        states(&first.graph.apps)
+            .iter()
+            .all(|(_, state)| *state == TargetState::Found),
+        "{:?}",
+        states(&first.graph.apps)
+    );
+
+    folder.write("src/lib/slack.ts", "export const unrelated = 1;\n");
+    folder.write("src/notify.ts", &format!("{OBJECT}{NAMESPACE}{PLAIN}{CLASS}"));
+    background(&mut engine, &["src/lib/slack.ts", "src/notify.ts"]);
+    let fixes: Vec<_> = codes.iter().map(|code| fix_for(&engine, code)).collect();
+    let moved: Vec<_> = codes
+        .iter()
+        .map(|code| {
+            let code = code.replace("src/lib/slack.ts", "src/notify.ts");
+            fix(FixKind::MovedDefinition, "src/notify.ts", &code)
+        })
+        .collect();
+    assert_eq!(fixes, moved);
 }
 
 const ROUTES: &str = "const router = makeRouter();\nrouter.post(\"/orders/:id\", (req, res) => {\n  res.send(\"order\");\n});\nrouter.post(\"/refunds\", (req, res) => {\n  res.send(\"refund\");\n});\n";
@@ -158,6 +206,38 @@ fn a_moved_module_is_fixed_when_one_module_has_its_name_and_definitions() {
     folder.write("other/worker.py", WORKER);
     background(&mut engine, &["other/worker.py"]);
     assert_eq!(fix_for(&engine, "jobs/worker.py#"), None, "two candidates");
+}
+
+/// The old module's definitions are stored with the graph's basis, so a session restored after
+/// its file left the graph still recognizes the module, and its basis keeps them.
+#[test]
+fn a_moved_module_is_still_fixed_after_a_restart() {
+    let folder = Folder::new(&[
+        ("a/cli.py", WORKER),
+        ("unfold.toml", "[[app]]\nname = \"Cli\"\ncode = \"a/cli.py#\"\n"),
+    ]);
+    let cache = Arc::new(MemoryFactsCache::new());
+    let mut engine = folder.engine_with(Arc::clone(&cache));
+    compile(&mut engine);
+    folder.remove("a/cli.py");
+    folder.write("b/cli.py", WORKER);
+    let moved = background(&mut engine, &["a/cli.py", "b/cli.py"]);
+    let fixed = fix(FixKind::MovedModule, "b/cli.py", "b/cli.py#");
+    assert_eq!(fix_for(&engine, "a/cli.py#"), fixed);
+
+    let graph: Graph = (*moved.graph).clone();
+    let disks: Vec<_> = graph
+        .files
+        .iter()
+        .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
+        .collect();
+    // As the store keeps it.
+    let basis = LinkBasis::decode(&moved.basis.encode());
+    let mut reopened = folder.engine_with(cache);
+    reopened.restore(graph, disks, basis).expect("restore");
+    let checked = reopened.update(UpdateRequest::reopen()).expect("reopen check");
+    assert_eq!(fix_for(&reopened, "a/cli.py#"), fixed);
+    assert_eq!(checked.basis, moved.basis);
 }
 
 #[test]

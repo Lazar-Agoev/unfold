@@ -75,9 +75,10 @@ You don't have to edit the file by hand:
 - **Copy agent prompt** copies a request you can paste into Claude Code or Codex to write the tables for you.
 
 When a `code` key stops matching, its row on Home gets an amber dot. Hover it to see what happened: **Moved to …** or
-**Route edited** offers **Fix**, which rewrites that one line; **Not found** and **Not a start** offer **Choose
+**Route edited** offers **Fix**, which rewrites that one key; **Not found** and **Not a start** offer **Choose
 code…**; **Not analyzed** (the file is outside the graph) opens `unfold.toml`, where `[scope]` is. Unfold never applies
-a fix by itself. If `unfold.toml` stops parsing, the last good apps stay and the error is shown.
+a fix by itself, and a fix changes nothing else in the file: if the key changed since you looked, it says so and writes
+nothing. If `unfold.toml` stops parsing, the last good settings and apps stay and the error is shown.
 
 ## Boards and pages
 
@@ -189,7 +190,9 @@ Everything you write is signed with your name, and against the code it describes
 When code under a description, name, or combined step changes, its card shows "Changed since it was described ·
 Review". **Review** offers **Accept** (still true), **Reconnect…** (the code was renamed or moved: pick its new name),
 and **Remove from page**. Unfold never moves your words to other code by itself. A page with something to review has
-a mark in Pages, and Home's Health line counts the boards that need review.
+a mark in Pages, and Home's Health line counts the boards that need review. An entrance's card keeps up
+too: its description goes to review when its code is found or changes, and an entrance renamed or removed in
+`unfold.toml` shows as missing at once, with **Reconnect…** offering the entrance that has the same code.
 
 Unfold updates the graph in the background as files change. A file that stops parsing keeps its last good facts,
 and Health lists it with **Open in editor**.

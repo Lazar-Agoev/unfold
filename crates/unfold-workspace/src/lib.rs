@@ -34,13 +34,15 @@
 //!    stored graph and checks every file by size and modification time in the background.
 //! 3. **First Compile.** Creates `.unfold/local/` (with its `.gitignore` and `cache/`) unless
 //!    remembered state already did; takes the lock; opens the store; compiles; and commits.
-//! 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update
-//!    starts about 300 ms after the last change, and newer changes cancel and restart it.
-//!    Without usable file-system events the folder is scanned periodically.
+//! 4. **Background updates.** The watcher feeds changed paths to the scheduler (not the app's
+//!    own writes, nor the temporary files it writes through); an update starts about 300 ms
+//!    after the last change, and newer changes cancel and restart it. Without usable
+//!    file-system events the folder is scanned periodically.
 //! 5. **Every commit** writes only what changed in one transaction, installs a new
-//!    `ReaderIndex`, and sends `graph_updated`, `problems_changed`, and `project_state`, and
-//!    `entrances_changed` when the apps and entrances changed. An edit of only `unfold.toml`'s
-//!    `[[app]]` tables resolves the entrances again without compiling and sends
+//!    `ReaderIndex`, and sends `graph_updated` when the files or inputs changed,
+//!    `problems_changed`, and `project_state`, and `entrances_changed` when the apps and
+//!    entrances changed. A change to only `unfold.toml`'s `[[app]]` tables, whatever else changed
+//!    with it, resolves the entrances again without compiling: changed apps send
 //!    `entrances_changed` alone.
 //! 6. **Rest.** Once nothing keeps it live and its lease ran out, the project remembers its state
 //!    and closes: no watcher, no engine thread, no lock. Commands that can read from disk serve

@@ -91,8 +91,10 @@ fn a_settings_change_re_extracts_exactly_the_files_it_touches() {
     assert!(changed.stats.full_discovery);
     assert_eq!(language.count(), 4);
     assert_eq!(changed.stats.files_read, 4);
-    assert_eq!(changed.graph.inputs.len(), 1);
-    assert!(changed.summary.inputs_changed);
+    assert_eq!(changed.graph.inputs.len(), 1, "the settings file's record");
+    // The files' facts don't depend on the settings: no file's graph changed, and the settings
+    // file's record isn't reported.
+    assert!(changed.summary.is_empty(), "{:?}", changed.summary);
 
     // Naming the languages changes the settings, but no file's settings hash.
     folder.write(
@@ -102,7 +104,7 @@ fn a_settings_change_re_extracts_exactly_the_files_it_touches() {
     let languages = background(&mut engine, &["unfold.toml"]);
     assert_eq!(language.count(), 0);
     assert!(languages.stats.relinked);
-    assert!(languages.summary.inputs_changed);
+    assert!(languages.summary.is_empty(), "{:?}", languages.summary);
 
     // Removing the settings brings back the first hashes. The cache keeps only each path's
     // current entry, so those four files are extracted again.

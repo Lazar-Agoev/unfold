@@ -27,7 +27,7 @@ pub struct Prepared {
 
 impl Prepared {
     pub fn new(graph: Graph) -> Self {
-        let definitions = graph.files.iter().map(definitions_of).collect();
+        let definitions = graph.files.iter().map(|file| definitions_of(file)).collect();
         Self { graph, definitions }
     }
 

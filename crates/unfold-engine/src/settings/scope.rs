@@ -1,5 +1,7 @@
 //! `[scope] include` and `exclude`: glob patterns relative to the open folder.
 
+use std::collections::BTreeSet;
+
 use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Serialize, Serializer};
 use unfold_core::RepoPath;
@@ -131,6 +133,12 @@ where
     Ok((written, set))
 }
 
+/// Patterns as the set they match by: neither their order nor a repeated one changes what they
+/// match.
+pub(super) fn pattern_set(patterns: &[Box<str>]) -> BTreeSet<&str> {
+    patterns.iter().map(|pattern| &**pattern).collect()
+}
+
 /// The two globs one pattern stands for: the pattern itself and everything beneath it.
 fn globs(pattern: &str) -> Result<[Glob; 2], ScopePatternError> {
     if pattern.is_empty() {
@@ -156,18 +164,21 @@ fn globs(pattern: &str) -> Result<[Glob; 2], ScopePatternError> {
     Ok([build(trimmed)?, build(&format!("{trimmed}/**"))?])
 }
 
+/// Scopes are equal when they match alike: their patterns in any order.
 impl PartialEq for Scope {
     fn eq(&self, other: &Self) -> bool {
-        self.include == other.include && self.exclude == other.exclude
+        pattern_set(&self.include) == pattern_set(&other.include)
+            && pattern_set(&self.exclude) == pattern_set(&other.exclude)
     }
 }
 
+/// Serializes the pattern sets, sorted, so equal scopes serialize alike.
 impl Serialize for Scope {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("Scope", 2)?;
-        state.serialize_field("include", &self.include)?;
-        state.serialize_field("exclude", &self.exclude)?;
+        state.serialize_field("include", &pattern_set(&self.include))?;
+        state.serialize_field("exclude", &pattern_set(&self.exclude))?;
         state.end()
     }
 }

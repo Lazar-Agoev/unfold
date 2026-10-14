@@ -24,7 +24,11 @@ pub fn load(playground: &str) -> Loaded {
     let dir = tempfile::tempdir().expect("create a temporary directory");
     let mut store =
         Store::open(&dir.path().join("graph.sqlite"), &StoreConfig::new("test")).expect("open the store");
-    let definitions: Vec<_> = graph.files.iter().map(catalog::definitions).collect();
+    let definitions: Vec<_> = graph
+        .files
+        .iter()
+        .map(|file| catalog::definitions(file))
+        .collect();
     let files = graph
         .files
         .iter()

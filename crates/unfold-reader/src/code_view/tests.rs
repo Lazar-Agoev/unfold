@@ -955,6 +955,7 @@ fn a_file_that_stopped_parsing_shows_whole() {
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == SERVICE)
+        .map(std::sync::Arc::make_mut)
         .unwrap();
     file.file.state = FileState::LastGood;
     std::fs::write(shop.root.join(SERVICE), "def place_order(:\n").unwrap();

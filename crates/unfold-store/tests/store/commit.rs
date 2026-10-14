@@ -1,6 +1,8 @@
 //! Commits: a first compile round-trips every record, and later updates write exactly their
 //! delta and leave the store equal to a fresh compile of the new graph.
 
+use std::sync::Arc;
+
 use unfold_core::testkit::sample::shop;
 use unfold_core::testkit::target;
 use unfold_core::vocab::{Form, PairingReason, Reason, TargetState};
@@ -15,6 +17,7 @@ fn file_mut<'g>(graph: &'g mut Graph, path: &str) -> &'g mut unfold_core::FileGr
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == path)
+        .map(Arc::make_mut)
         .unwrap_or_else(|| panic!("the sample has {path}"))
 }
 
@@ -24,7 +27,9 @@ fn a_first_compile_round_trips_every_record() {
     let prepared = Prepared::new(shop().build());
     let stats = store.writer.commit(&prepared.first_compile()).unwrap();
     let graph = &prepared.graph;
-    let count = |f: fn(&unfold_core::FileGraph) -> usize| graph.files.iter().map(f).sum::<usize>() as u64;
+    let count = |f: fn(&unfold_core::FileGraph) -> usize| {
+        graph.files.iter().map(|file| f(file)).sum::<usize>() as u64
+    };
     assert_eq!(stats.files_written, graph.files.len() as u64);
     assert_eq!(stats.nodes_written, count(|file| file.nodes.len()));
     assert_eq!(stats.links_written, count(|file| file.links.len()));
@@ -42,7 +47,7 @@ fn a_first_compile_round_trips_every_record() {
     for file in &graph.files {
         assert_eq!(
             reader.file_graph(file.file.path.as_str()).unwrap().as_ref(),
-            Some(file)
+            Some(&**file)
         );
     }
     assert_eq!(reader.inputs().unwrap(), graph.inputs);
@@ -74,7 +79,7 @@ fn the_whole_graph_loads_in_one_read() {
     assert_eq!(reader.graph().unwrap(), prepared.graph);
 
     let mut after = prepared.graph.clone();
-    let removed = after.files.remove(0).file.path;
+    let removed = after.files.remove(0).file.path.clone();
     let next = Prepared::new(after);
     store.writer.commit(&next.since(&prepared)).unwrap();
     let loaded = reader.graph().unwrap();
@@ -300,7 +305,7 @@ fn replace_makes_the_store_exactly_the_update() {
 fn a_cancelled_commit_writes_nothing() {
     let before = Prepared::new(shop().build());
     let mut after = before.graph.clone();
-    let removed = after.files.remove(0).file.path;
+    let removed = after.files.remove(0).file.path.clone();
     let after = Prepared::new(after);
     let (_dir, mut store) = temp_store();
     store.writer.commit(&before.first_compile()).unwrap();

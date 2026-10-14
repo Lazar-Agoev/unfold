@@ -126,7 +126,7 @@ fn project_config_reads_settings_and_apps_without_waking() {
 
 #[test]
 fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
-    let harness = Harness::compiled("ts-orders");
+    let harness = Harness::watched("ts-orders");
     let project = harness.project.clone();
     let edit = |edits: Value| {
         harness.ok(
@@ -135,6 +135,9 @@ fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
             json!({ "project": project, "edits": edits }),
         )
     };
+    let updated_at =
+        || harness.ok(1, "project_summary", json!({ "project": project }))["updatedAtMs"].clone();
+    let before = updated_at();
 
     // An app-only edit: entrances are resolved again before it returns, and nothing compiles.
     let mark = harness.sink.mark();
@@ -179,10 +182,28 @@ fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
             .contains("-name = \"Mailer\"")
     );
     assert_eq!(harness.apps().len(), 7);
-    assert!(
-        harness.sink.events(mark, "graph_updated").is_empty(),
-        "app edits never compile"
-    );
+    // The watcher sees the writes and their temporary files; none is an outside change.
+    harness.drain_watcher();
+    for kind in ["graph_updated", "files_changed", "compile_progress"] {
+        let events = harness.sink.events(mark, kind);
+        assert!(events.is_empty(), "app edits never compile: {events:?}");
+    }
+    let states = harness.sink.events(mark, "project_state");
+    assert!(states.is_empty(), "no update ran: {states:?}");
+    assert_eq!(updated_at(), before, "the graph's commit time is kept");
+
+    // The store holds what the graph and its apps came from: an unrelated change doesn't commit
+    // the graph again.
+    let mark = harness.sink.mark();
+    harness.write("README.md", "# Changed\n");
+    crate::common::eventually("README.md is checked", || {
+        let states = harness.sink.events(mark, "project_state");
+        states.len() >= 2
+            && states
+                .last()
+                .is_some_and(|event| event["state"]["kind"] != "updating")
+    });
+    assert_eq!(updated_at(), before, "nothing to commit");
 
     // A scope edit goes through a background update.
     let mark = harness.sink.mark();

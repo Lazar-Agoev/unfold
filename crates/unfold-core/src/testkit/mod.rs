@@ -6,6 +6,7 @@
 pub mod sample;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::key::{Callee, Child, Key, KeyBuilder};
 use crate::model::{
@@ -427,12 +428,17 @@ impl GraphBuilder {
     /// The graph, normalized (files and inputs sorted, typed records in canonical order).
     pub fn build(&self) -> Graph {
         let mut graph = Graph {
-            files: self.files.iter().map(|draft| draft.graph.clone()).collect(),
+            files: self
+                .files
+                .iter()
+                .map(|draft| Arc::new(draft.graph.clone()))
+                .collect(),
             inputs: self.inputs.iter().map(|(input, _)| input.clone()).collect(),
             apps: self.apps.clone(),
         };
         graph.normalize();
         for file in &mut graph.files {
+            let file = Arc::make_mut(file);
             file.links.sort_by_key(|link| (link.from, link.seq));
             file.types.sort();
         }

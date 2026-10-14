@@ -153,6 +153,33 @@ impl Harness {
         harness
     }
 
+    /// [`Harness::compiled`] with the folder watched. The Compile follows
+    /// [`Harness::drain_watcher`], so it covers whatever the copy's late events queued.
+    pub fn watched(name: &str) -> Self {
+        let harness = Self::new(name, true);
+        harness.ok(1, "select_project", json!({ "project": harness.project }));
+        harness.drain_watcher();
+        harness.ok(1, "compile", json!({ "project": harness.project }));
+        harness
+    }
+
+    /// Waits until the watcher has reported everything that happened in the first project's
+    /// folder so far. Copying a playground can still send events after the watcher starts;
+    /// events arrive in order, so once a board file written now is reported, those are too. (A
+    /// board file outside the app queues no work, only `boards_changed`.)
+    pub fn drain_watcher(&self) {
+        const BARRIER: &str = ".unfold/boards/watcher-barrier.json";
+        let mark = self.sink.mark();
+        self.write(BARRIER, &mark.to_string());
+        eventually("the watcher reports the barrier", || {
+            self.sink.events(mark, "boards_changed").iter().any(|event| {
+                event["boards"]
+                    .as_array()
+                    .is_some_and(|boards| boards.iter().any(|board| board == BARRIER))
+            })
+        });
+    }
+
     /// A host over a copy of `testdata/fixtures/<name>`, selected in window 1 and compiled.
     pub fn compiled_fixture(name: &str) -> Self {
         let mut harness = Self::empty(options(false));

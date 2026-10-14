@@ -36,13 +36,16 @@ An update runs its stages in order: **discover** (settings, then a full discover
 and **validate** (the core validator and each language's census). After a successful update the apps of
 `unfold.toml` are resolved against the new graph ([Resolving `code`](#resolving-code)).
 
-- **Full discovery** runs for a Compile, the first update, a settings change, or a changed path that can't be applied
-  on its own: an ignore file, a folder, or a symlink.
+- **Full discovery** runs for a Compile, the first update, a settings change (pattern lists compare as sets, so
+  reordering patterns isn't one), or a changed path that can't be applied on its own: an ignore file, a folder, or a
+  symlink.
 - **Relinking.** A Compile always relinks the whole program. A background update relinks unless the files' facts
-  and everything else linking reads are unchanged: the effective settings, the configuration inputs, and the
-  unindexed and context files. The bytes of `unfold.toml`, its comments, its `[[app]]` tables, and evidence files
-  are not among them, so editing those never relinks. Per-file extraction is cached; linking, resolution, pairing,
-  and typed links are always recomputed from the whole program, never per dependency.
+  and everything else linking reads are unchanged: the settings linking reads (`Settings::hash`), the configuration
+  inputs, and the unindexed and context files. The bytes of `unfold.toml`, its comments, its `[[app]]` tables, its
+  `[evidence]` patterns, the order of its patterns, and evidence files are not among them, so editing those never
+  relinks. A graph kept without relinking shares every file's records with the graph before it; only its inputs and
+  apps are new. Per-file extraction is cached; linking, resolution, pairing, and typed links are always recomputed
+  from the whole program, never per dependency.
 - **Prepare, commit, adopt.** `Engine::prepare` computes a candidate beside the engine's state; the workspace commits
   it to the store in one transaction, then `Engine::adopt` installs it. Adoption refuses a candidate prepared against
   an older state. A failure or cancellation keeps the previous engine, store, and reader state. Events go out only
@@ -118,10 +121,11 @@ join onto `root`, and one may lie outside `[scope]`: its modules then resolve as
 
 `[evidence] files` names files boards may cite, such as SQL migrations or a Prisma schema. They are hashed as
 `evidence` inputs, never parsed or linked; ignore files and the default exclusions apply to them, `[scope]` doesn't.
-A changed evidence file updates its hash without relinking code.
+A changed evidence file, or an edited `[evidence]` pattern, updates the evidence records without relinking code.
 
-`Settings::hash` covers the compile settings' values, not comments, order, positions, or `[[app]]` tables.
-Extraction hashes only the settings that affect each file.
+`Settings::hash` covers the settings linking reads: `languages`, `[scope]`, and `[[python.project]]`, with pattern
+lists as sets. It leaves out `[evidence]`, comments, the order of patterns, positions, and `[[app]]` tables, and it
+is part of what a stored graph was linked from. Extraction hashes only the settings that affect each file.
 
 ## Entrances
 
@@ -193,22 +197,27 @@ After every update, and when only the `[[app]]` tables change, each `code` key i
 
 | Fix | Candidate |
 | --- | --- |
-| Moved definition | The one definition in another file with the same qualified name |
+| Moved definition | The one definition in another file with the same qualified name: the names of its key |
 | Edited route | For an inline handler of a call, the one other call under the same parent to the same callee, with a handler in the same place, that no entrance names |
 | Moved module | The one module in another file with the same file name and the same top-level definitions the missing module had when last seen |
 
-Otherwise the person chooses the code again. An entrance never silently opens something else.
+Otherwise the person chooses the code again. An entrance never silently opens something else. The top-level
+definitions of each module a `code` names are remembered as last seen and stored with the graph, so a moved module
+is still recognized after the folder rests or Unfold restarts.
 
 When only `[[app]]` tables change, `Engine::resolve_entrances` re-reads `unfold.toml` and resolves the apps against
-the current graph without extracting or linking; the workspace then sends only `entrances_changed`, when anything
-changed. If the compile
-settings changed too, it refuses (`CompileNeeded`) and an update runs instead.
+the current graph without extracting or linking. If the compile settings changed too, it refuses (`CompileNeeded`)
+and an update runs instead. The workspace calls it after an edit made in the app that changed only `[[app]]` tables,
+and whenever the watcher reports `unfold.toml`, whatever else changed with it: the update then covers only the other
+paths. It commits the apps, the settings file's record, and the basis stored with the graph (which keeps the
+settings file's text), so the next update finds nothing more to commit. Changed apps send only `entrances_changed`,
+never `graph_updated`, however they changed.
 
 ## Settings edits
 
 [settings/edit/](../crates/unfold-engine/src/settings/edit/mod.rs) changes `unfold.toml` through `toml_edit`, so
 everything an edit doesn't touch (comments, blank lines, key order, quoting, a BOM) stays byte for byte, and **a
-write changes only its own lines**. The result is parsed with the strict parser; an edit that would make the file
+write changes only its own lines**. The file keeps its line endings: those of its first line, CRLF or LF. The result is parsed with the strict parser; an edit that would make the file
 invalid, or leave the entry it sets with an empty key, is refused with the parser's message and position, and so is
 any edit of a file that doesn't parse. `apply_edits` writes nothing: it returns the new text, what it holds, a
 unified diff, and what each app and entrance edit did (added, changed, or removed).
@@ -222,6 +231,7 @@ unified diff, and what each app and entrance edit did (added, changed, or remove
 | `set_entrance` | Adds one line to an app's `entrances`, creating the app when it is new, or changes the entrance addressed |
 | `add_entrance` | Adds one line, refusing when the app already has an entrance with that key |
 | `remove_entrance` | Removes one entrance's line, or a whole app |
+| `replace_code` | Rewrites one `code` key of an app or entrance, the one at a position, keeping the rest of its line; refused when the file no longer has the key it replaces there. Home's Fix and Choose code… use it |
 
 Apps and entrances are addressed by key, or by a name that makes that key: `"shop api"` addresses the app named
 `"Shop API"`. An edit never renames: a changed entry keeps its name, and a new one takes the name given. A field left
@@ -275,10 +285,13 @@ writer, reader cache, watcher, and update scheduling.
 3. **First Compile** creates `.unfold/local/` (with its `.gitignore`), takes the lock, opens the store, compiles, and
    commits.
 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update starts after a short quiet
-   period, and a newer change cancels and restarts it. Without usable file-system events the folder is scanned
-   periodically. If `local/cache/` disappears, the next piece of work recreates it and compiles everything again.
-5. **Commits** write only what changed, in one transaction, install a new reader index, and send `graph_updated`,
-   `problems_changed`, `project_state`, and `entrances_changed` when the apps changed.
+   period, and a newer change cancels and restarts it. The app's own writes are not changes: `unfold.toml` and board
+   files it wrote, and the temporary siblings (`.<name>.<…>.tmp`) it writes them through. Without usable file-system
+   events the folder is scanned periodically. If `local/cache/` disappears, the next piece of work recreates it and
+   compiles everything again.
+5. **Commits** write only what changed, in one transaction, install a new reader index, and send `graph_updated`
+   when files or inputs changed (the settings file's record doesn't count: its effects show in the files and the
+   apps), `problems_changed`, `project_state`, and `entrances_changed` when the apps changed.
 6. **Rest.** Once nothing keeps the project live (no open board, no Home selection, no running compile) and its
    lease runs out, it remembers its row state and closes: no watcher, engine thread, or lock. Commands that read
    from disk serve it from its stored graph, read-only, without waking it.

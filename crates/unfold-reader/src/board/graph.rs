@@ -7,10 +7,13 @@
 //! | --- | --- | --- |
 //! | A block | its extent: a definition from its first decorator to its end, any other block its range | the same |
 //! | A combined step | from its first block's statement to the end of its last block's statement (its drawn span) | — |
-//! | An app or entrance | each loaded block of its `code`, in order, each followed by `\n` | its `code` keys, each followed by `\n` |
+//! | An app or entrance | each block of its `code` that has one, in order, each followed by `\n` | its `code` keys, each followed by `\n` |
 //!
 //! An app's or entrance's guard records its `code`, not its source, so a reference to an app or
-//! entrance that was renamed can be offered the one that has the same `code`.
+//! entrance that was renamed can be offered the one that has the same `code`. A `code` key that
+//! names no block (missing, or not analyzed) adds nothing to the source, so a heading-only app,
+//! or an entrance none of whose code is found, is signed over nothing; once its code is found,
+//! the signature changes and its description goes to review.
 //!
 //! Build a [`BoardGraph`] with [`BoardGraph::load`] from a store snapshot (only the files and
 //! inputs a page's references touch), with [`BoardGraph::from_graph`] from a whole in-memory
@@ -19,7 +22,7 @@
 use std::path::Path;
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{LinkKind, MemberKind, NodeKind};
+use unfold_core::vocab::{LinkKind, MemberKind, NodeKind, TargetState};
 use unfold_core::{App, ByteRange, FileGraph, Graph, Key, LineIndex, LinkTarget, RepoPath};
 use unfold_store::Reader;
 
@@ -106,7 +109,7 @@ impl BoardGraph {
         let mut loaded = Self::new();
         for file in &graph.files {
             let source = verify_file(root, &file.file.path, file.file.hash);
-            loaded.add_file(file.clone(), source);
+            loaded.add_file(FileGraph::clone(file), source);
         }
         for input in &graph.inputs {
             loaded.add_input(
@@ -262,19 +265,20 @@ impl BoardGraph {
             .filter_map(|target| self.block(target.code.as_str()))
     }
 
-    /// A reference's exact verified source: a block's range, or the range of each loaded block
-    /// of an app's or entrance's `code`, in order. `None` when the reference is missing, when
-    /// none of its code is loaded, or when any of it does not verify.
+    /// A reference's exact verified source: a block's range, or the range of each block of an
+    /// app's or entrance's `code` that has one, in order (none for a heading-only app, or code
+    /// that is missing or not analyzed). `None` when the reference is missing, or when any of
+    /// its source is not loaded or does not verify.
     pub fn sources(&self, key: &str) -> Option<Vec<&[u8]>> {
         if let Some(block) = self.block(key) {
             return self.bytes(&block).map(|bytes| vec![bytes]);
         }
-        let start = self.entrance(key)?;
-        let sources = self
-            .code_blocks(&start)
-            .map(|block| self.bytes(&block))
-            .collect::<Option<Vec<&[u8]>>>()?;
-        (!sources.is_empty()).then_some(sources)
+        self.entrance(key)?
+            .targets()
+            .iter()
+            .filter(|target| !matches!(target.state, TargetState::Missing | TargetState::NotAnalyzed))
+            .map(|target| self.bytes(&self.block(target.code.as_str())?))
+            .collect()
     }
 
     /// The signature of a reference's exact verified source ([`BoardGraph::sources`]): a

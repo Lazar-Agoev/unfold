@@ -252,7 +252,7 @@ format fail to parse like any invalid file.
 
 | Signed | Over |
 | --- | --- |
-| A card's description | Its block's source, or the source of an app's or entrance's `code` |
+| A card's description | Its block's source, or the source of each block an app's or entrance's `code` names (none for a heading-only app or for code that isn't found, so its description goes to review once the code is found) |
 | A name | Its block's source |
 | A combined step and its description | The source from its first block's start (a definition's first decorator) to its last block's end |
 | A resource card | Its table type's range, then each anchor's bytes |
@@ -313,8 +313,10 @@ allows:
 
 Repairs are explicit: Reconnect, Resign, Accept, Remove, and Remove description. A save refuses a new missing
 reference, broken combined step, held reference, or broken link, and anything that breaks the overlay rules. Health
-is cached per board and refreshed after the graph or the entrances change; it feeds Home's Health line and the
-Problems list.
+is cached per board, keyed by the board file's revision, the graph's compile, and a hash of its apps and entrances,
+and refreshed after the graph or the entrances change (an `[[app]]` edit compiles nothing); it feeds Home's Health
+line, the Problems list, the boards list, and open boards, which windows refresh on `graph_updated` and
+`entrances_changed`.
 
 ## Checks
 

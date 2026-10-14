@@ -2,11 +2,12 @@
 //! (docs/engine.md#settings-edits).
 //!
 //! Each [`SettingsEdit`] changes the TOML document through `toml_edit`, so everything the edit
-//! doesn't touch (comments, blank lines, key order, quoting) stays byte for byte. The result is
-//! then parsed with the strict settings parser; an edit that would make the file invalid, or
-//! would leave the app or entrance it sets with an empty key, is refused with the parser's
-//! message and position. [`apply_edits`] writes nothing: it returns the new text, what it holds,
-//! and the diff from the old text.
+//! doesn't touch (comments, blank lines, key order, quoting) stays byte for byte, and the file
+//! keeps its byte order mark and its line endings (those of its first line, CRLF or LF). The
+//! result is then parsed with the strict settings parser; an edit that would make the file
+//! invalid, or would leave the app or entrance it sets with an empty key, is refused with the
+//! parser's message and position. [`apply_edits`] writes nothing: it returns the new text, what
+//! it holds, and the diff from the old text.
 //!
 //! Apps and entrances are addressed by name or key ([`names_app`], [`names_entrance`]). A name
 //! stands for the entry whose key it makes ([`Key::app`], [`Key::entrance`]), so `"shop api"`
@@ -28,6 +29,7 @@
 //! | Set entrance | Adds one line to an app's `entrances`, creating the app when it is new, or sets or removes the given fields of the entrance addressed (its line is rewritten when one changes) |
 //! | Add entrance | Adds one line, as Set entrance does, and refuses when the app has an entrance with that key |
 //! | Remove entrance | Removes one entrance's line (an emptied list's key goes), or a whole app |
+//! | Replace code | Rewrites one `code` key of an app or entrance in place (a fix, or Choose code…), keeping the rest of its line; refused when the file no longer has the key it replaces at that place |
 
 use serde::{Deserialize, Deserializer, Serialize};
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
@@ -112,6 +114,19 @@ pub enum SettingsEdit {
         app: String,
         /// The entrance's name or key; `None` removes the app.
         entrance: Option<String>,
+    },
+    /// Rewrite one `code` key of an app or entrance, the one at `index`, when it is still `old`.
+    ReplaceCode {
+        /// The app's name or key.
+        app: String,
+        /// The entrance's name or key; `None` for the app's own `code`.
+        entrance: Option<String>,
+        /// The key's place in the `code` list; 0 for an app's `code` or a single key.
+        index: u32,
+        /// The key the file has there, as it was shown.
+        old: String,
+        /// The key to write in its place.
+        code: String,
     },
 }
 
@@ -298,6 +313,7 @@ pub fn apply_edits(current: Option<&str>, edits: &[SettingsEdit]) -> Result<Edit
         Some(body) => ("\u{FEFF}", body),
         None => ("", source),
     };
+    let ending = line_ending(body);
     let mut doc: DocumentMut = body
         .parse()
         .map_err(|error: toml_edit::TomlError| conflict(format!("fix unfold.toml first: {error}")))?;
@@ -305,7 +321,7 @@ pub fn apply_edits(current: Option<&str>, edits: &[SettingsEdit]) -> Result<Edit
     for edit in edits {
         entries.extend(apply(&mut doc, edit)?);
     }
-    let text = format!("{bom}{doc}");
+    let text = format!("{bom}{}", with_line_endings(doc.to_string(), ending));
     let file = SettingsFile::parse(&text).map_err(EditError::Invalid)?;
     if let Some(problem) = entries.iter().find_map(|entry| empty_key_written(&file, entry)) {
         return Err(EditError::Invalid(entry_error(&text, problem)));
@@ -317,6 +333,22 @@ pub fn apply_edits(current: Option<&str>, edits: &[SettingsEdit]) -> Result<Edit
         diff,
         entries,
     })
+}
+
+/// The line ending `text` uses: its first line's, and `\n` for a single line.
+fn line_ending(text: &str) -> &'static str {
+    match text.find('\n') {
+        Some(at) if text[..at].ends_with('\r') => "\r\n",
+        _ => "\n",
+    }
+}
+
+/// `text` (which `toml_edit` writes with `\n`) with every line ending written as `ending`.
+fn with_line_endings(text: String, ending: &str) -> String {
+    if ending == "\n" {
+        return text;
+    }
+    text.replace("\r\n", "\n").replace('\n', ending)
 }
 
 /// The empty-key problem of the app or entrance an edit set, as `file` now holds it. Only that
@@ -382,6 +414,15 @@ fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<Option<EntryEdit>
         }
         SettingsEdit::RemoveEntrance { app, entrance } => {
             return remove_entrance(doc, app, entrance.as_deref()).map(Some);
+        }
+        SettingsEdit::ReplaceCode {
+            app,
+            entrance,
+            index,
+            old,
+            code,
+        } => {
+            return replace_code(doc, app, entrance.as_deref(), *index, old, code).map(Some);
         }
     }
     Ok(None)
@@ -892,6 +933,67 @@ fn remove_entrance(doc: &mut DocumentMut, app: &str, entrance: Option<&str>) -> 
         change: EntryChange::Removed,
         app: app_name,
         entrance: Some(name),
+        new_app: false,
+    })
+}
+
+/// Writes `code` in place of the `code` key at `index` of the entrance `entrance` of the app
+/// `app` (or of the app itself when `entrance` is `None`), which must be `old`, keeping its
+/// formatting and everything else in the line; refused when the file has another key there (or
+/// none).
+fn replace_code(
+    doc: &mut DocumentMut,
+    app: &str,
+    entrance: Option<&str>,
+    index: u32,
+    old: &str,
+    code: &str,
+) -> Result<EntryEdit> {
+    let Some(apps) = apps(doc)? else {
+        return Err(no_app(None, app));
+    };
+    let position = app_position(apps, app).ok_or_else(|| no_app(Some(apps), app))?;
+    let table = apps.get_mut(position).ok_or_else(|| no_app(None, app))?;
+    let app_name = name_of(table).unwrap_or(app).to_owned();
+    let (value, entrance) = match entrance {
+        None => (table.get_mut("code").and_then(Item::as_value_mut), None),
+        Some(given) => {
+            let Some(lines) = table.get_mut("entrances").and_then(Item::as_array_mut) else {
+                return Err(no_entrance(None, &app_name, given));
+            };
+            let position = entrance_position(lines, &app_name, given)
+                .ok_or_else(|| no_entrance(Some(lines), &app_name, given))?;
+            let line = lines.get_mut(position).and_then(Value::as_inline_table_mut);
+            let name = line
+                .as_ref()
+                .and_then(|line| line.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or(given)
+                .to_owned();
+            (line.and_then(|line| line.get_mut("code")), Some(name))
+        }
+    };
+    let key = match value {
+        Some(Value::Array(keys)) => usize::try_from(index).ok().and_then(|index| keys.get_mut(index)),
+        Some(key) if index == 0 => Some(key),
+        _ => None,
+    };
+    let Some(key) = key.filter(|key| key.as_str() == Some(old)) else {
+        let whose = match &entrance {
+            Some(name) => format!("“{name}” in {app_name}"),
+            None => app_name,
+        };
+        return Err(conflict(format!(
+            "the code of {whose} no longer has `{old}` in that place: unfold.toml changed since it was shown"
+        )));
+    };
+    let mut fresh = Value::from(code);
+    *fresh.decor_mut() = key.decor().clone();
+    *key = fresh;
+    Ok(EntryEdit {
+        change: EntryChange::Changed,
+        app: app_name,
+        entrance,
         new_app: false,
     })
 }

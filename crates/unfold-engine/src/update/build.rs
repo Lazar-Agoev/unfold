@@ -2,6 +2,7 @@
 //! validated graph, in memory, without parsing or reading anything.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -91,7 +92,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
 
     // File IDs follow path order, as does the state's map, so the two line up.
     let entries: Vec<_> = state.files.values().collect();
-    let files: Vec<FileGraph> = program
+    let files: Vec<Arc<FileGraph>> = program
         .files()
         .par_iter()
         .zip(entries)
@@ -99,7 +100,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
         .map(|((file, entry), links)| {
             cancel.check()?;
             let record = entry.record(&file.path);
-            Ok(match &file.facts {
+            Ok(Arc::new(match &file.facts {
                 Some(facts) => facts.graph.file_graph(record, links),
                 None => FileGraph {
                     file: record,
@@ -107,7 +108,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
                     links: Vec::new(),
                     types: FileTypes::default(),
                 },
-            })
+            }))
         })
         .collect::<Result<_, UpdateError>>()?;
     let linked_refs: Vec<&dyn Linked> = linked.iter().map(|linked| linked.as_ref()).collect();

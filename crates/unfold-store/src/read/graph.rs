@@ -1,5 +1,7 @@
 //! Files, nodes, links, typed records, and the reverse indexes of links: callers and type uses.
 
+use std::sync::Arc;
+
 use rusqlite::{Connection, Row};
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{LinkKind, Outcome};
@@ -398,7 +400,7 @@ impl Reader {
                 files[owner(id)?].types = types;
             }
             Ok(Graph {
-                files,
+                files: files.into_iter().map(Arc::new).collect(),
                 inputs: reader.inputs()?,
                 apps: reader.apps()?,
             })

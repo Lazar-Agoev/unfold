@@ -1212,6 +1212,42 @@ fn health_reaches_problems_and_repairs_fix_it() {
     );
 }
 
+/// An `[[app]]` edit compiles nothing, yet a card whose entrance it removes goes missing
+/// everywhere board health shows: Problems, Home's Health line, the boards list, and the open
+/// board.
+#[test]
+fn an_app_edit_that_removes_a_cards_entrance_reaches_board_health() {
+    let harness = Harness::compiled("ts-orders");
+    let board = harness.new_board(1, "Entrances");
+    let id = id_of(&board);
+    let mut edit = edit_of(&board);
+    edit["pages"][0]["cards"] = json!([entrance_card("start", POST_ORDERS)]);
+    assert!(
+        harness.save(1, &id, edit)["label"].is_null(),
+        "the entrance is there"
+    );
+
+    harness.ok(
+        1,
+        "update_project_config",
+        json!({ "project": harness.project, "edits": [{ "op": "remove_entrance", "app": "Server", "entrance": "Place an order" }] }),
+    );
+    eventually("the missing entrance reaches Problems", || {
+        let problems = harness.ok(1, "problems", json!({ "project": harness.project }));
+        problems
+            .as_array()
+            .expect("problems")
+            .iter()
+            .any(|problem| problem["category"] == "board" && problem["path"] == id.as_str())
+    });
+    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+    assert_eq!(summary["health"]["boardsNeedingReview"], 1);
+    assert_eq!(harness.listed(&id)["label"], "1 missing");
+    let open = harness.on(1, "open_board", &id);
+    assert_eq!(open["label"], "1 missing");
+    assert_eq!(open["health"]["items"][0]["kind"], "missing");
+}
+
 /// A board whose file would be larger than a board file can be is never saved: it could never be
 /// opened again.
 #[test]

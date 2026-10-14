@@ -3454,7 +3454,27 @@ app: string,
 /**
  * The entrance's name or key; `None` removes the app.
  */
-entrance: string | null, };
+entrance: string | null, } | { "op": "replace_code", 
+/**
+ * The app's name or key.
+ */
+app: string, 
+/**
+ * The entrance's name or key; `None` for the app's own `code`.
+ */
+entrance: string | null, 
+/**
+ * The key's place in the `code` list; 0 for an app's `code` or a single key.
+ */
+index: number, 
+/**
+ * The key the file has there, as it was shown.
+ */
+old: string, 
+/**
+ * The key to write in its place.
+ */
+code: string, };
 
 /**
  * A settings problem with its position.
@@ -4002,7 +4022,8 @@ removedFiles: Array<string>,
  */
 changedKeys: Array<string>, 
 /**
- * Whether the configuration inputs changed.
+ * Whether the configuration inputs or the evidence files changed (the settings file's
+ * record doesn't count).
  */
 inputsChanged: boolean, 
 /**

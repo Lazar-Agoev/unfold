@@ -145,10 +145,11 @@ fn evidence_files_are_confined_patterns() {
             .contains(&RepoPath::new("db/migrations/001.sql").unwrap())
     );
     assert!(compile_settings("[evidence]\n").evidence.patterns().is_empty());
-    assert_ne!(
+    assert_ne!(settings, Settings::default(), "evidence patterns are settings");
+    assert_eq!(
         settings.hash(),
         Settings::default().hash(),
-        "evidence patterns are settings"
+        "that linking never reads"
     );
     assert_error("[evidence]\nfiles = [\"../secrets.sql\"]\n", 2, 10, "`..`");
     assert_error("[evidence]\nfiles = [\"/etc/hosts\"]\n", 2, 10, "relative");
@@ -230,6 +231,16 @@ fn the_settings_hash_ignores_formatting_but_not_values() {
     assert_ne!(Settings::default().hash(), base);
     assert_eq!(Settings::default().hash(), compile_settings("[scope]").hash());
     assert_eq!(base.to_string().len(), 64);
+    // Patterns match alike in any order.
+    let written = compile_settings("[scope]\nexclude = [\"b\", \"a\"]\n[evidence]\nfiles = [\"d\", \"c\"]\n");
+    let reordered =
+        compile_settings("[scope]\nexclude = [\"a\", \"b\"]\n[evidence]\nfiles = [\"c\", \"d\"]\n");
+    assert_eq!(written, reordered);
+    assert_eq!(written.hash(), reordered.hash());
+    assert_ne!(
+        written.hash(),
+        compile_settings("[scope]\nexclude = [\"a\"]\n").hash()
+    );
 }
 
 #[test]

@@ -26,10 +26,11 @@
 //!
 //! **Entrances** are resolved again without an update when only `unfold.toml`'s `[[app]]`
 //! tables changed: after a settings edit that changed nothing else (a queued job), and when a
-//! background update's only path is `unfold.toml` (an edit outside the app). If its compile
-//! settings changed too, the update runs instead. After restoring a stored graph, after every
-//! update, and after re-resolving, the thread publishes the entrances ([`Shared::publish_entrances`]),
-//! which sends `entrances_changed` when they changed.
+//! background update's paths include `unfold.toml` (an edit outside the app), whatever else
+//! changed with it: the update then covers only the other paths. If its compile settings changed
+//! too, the update applies them instead. After restoring a stored graph, after every update, and
+//! after re-resolving, the thread publishes the entrances ([`Shared::publish_entrances`]), which
+//! sends `entrances_changed` when they changed. Changed apps never send `graph_updated`.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex};
@@ -355,13 +356,20 @@ impl EngineThread {
         self.run(RunKind::Compile, cancel, progress)
     }
 
-    fn background(&mut self, paths: Vec<RepoPath>, all: bool, cancel: CancelToken) {
+    fn background(&mut self, mut paths: Vec<RepoPath>, all: bool, cancel: CancelToken) {
         if self.engine.is_none() {
             return;
         }
-        let settings_only = !all && paths.len() == 1 && paths[0].as_str() == SETTINGS_PATH;
-        if settings_only && self.resolve_entrances() {
-            return;
+        // Whatever else changed with it, `unfold.toml` whose compile settings didn't change has
+        // its `[[app]]` tables resolved again on their own; the update covers the other paths.
+        let settings = paths.iter().position(|path| path.as_str() == SETTINGS_PATH);
+        if let Some(index) = settings
+            && self.resolve_entrances()
+        {
+            paths.remove(index);
+            if paths.is_empty() && !all {
+                return;
+            }
         }
         let kind = if all {
             RunKind::Rescan

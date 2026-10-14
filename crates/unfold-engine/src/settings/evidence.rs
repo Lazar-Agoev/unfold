@@ -2,10 +2,9 @@
 //! migrations or a Prisma schema.
 
 use globset::GlobSet;
-use serde::{Serialize, Serializer};
 use unfold_core::RepoPath;
 
-use super::scope::{ScopePatternError, compile};
+use super::scope::{ScopePatternError, compile, pattern_set};
 
 /// Which files are evidence: glob patterns relative to the open folder, matched exactly as
 /// [`super::Scope`] matches its patterns (the path itself, a folder that contains it, or a
@@ -38,15 +37,10 @@ impl Evidence {
     }
 }
 
+/// Evidence settings are equal when they match alike: their patterns in any order.
 impl PartialEq for Evidence {
     fn eq(&self, other: &Self) -> bool {
-        self.patterns == other.patterns
-    }
-}
-
-impl Serialize for Evidence {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.patterns.serialize(serializer)
+        pattern_set(&self.patterns) == pattern_set(&other.patterns)
     }
 }
 

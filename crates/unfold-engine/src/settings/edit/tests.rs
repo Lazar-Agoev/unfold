@@ -769,6 +769,18 @@ fn remove_entrance_refuses_what_the_file_does_not_have_listing_what_it_has() {
         conflict_message(error),
         "the app Shop API has no entrance “Refund”. Its entrances: Place an order"
     );
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[replace_code(
+            "Shop API",
+            Some("Place an order"),
+            0,
+            "src/a.ts#placeOrder",
+            "",
+        )],
+    )
+    .expect_err("an empty key");
+    assert!(is_invalid_at_a_line(&error), "{error}");
 }
 
 #[test]
@@ -840,6 +852,154 @@ fn a_byte_order_mark_stays() {
     );
 }
 
+fn replace_code(app: &str, entrance: Option<&str>, index: u32, old: &str, code: &str) -> SettingsEdit {
+    SettingsEdit::ReplaceCode {
+        app: app.into(),
+        entrance: entrance.map(Into::into),
+        index,
+        old: old.into(),
+        code: code.into(),
+    }
+}
+
+#[test]
+fn replace_code_rewrites_one_key_in_place_and_keeps_the_rest() {
+    let fixed = edit(
+        Some(COMMENTED),
+        &[replace_code(
+            "Shop API",
+            Some("Place an order"),
+            0,
+            "src/a.ts#placeOrder",
+            "src/orders.ts#placeOrder",
+        )],
+    );
+    assert_eq!(
+        fixed.text,
+        COMMENTED.replace("src/a.ts#placeOrder", "src/orders.ts#placeOrder")
+    );
+    assert_eq!(
+        entry(&fixed),
+        (EntryChange::Changed, "Shop API", Some("Place an order"), false)
+    );
+
+    // In a list, only the key at that place changes, with its spacing, and the line's other
+    // fields (an `about` added meanwhile) stay.
+    let listed = COMMENTED.replace(
+        "code = \"src/a.ts#placeOrder\" }",
+        "code = [ \"src/auth.ts#user\",  \"src/a.ts#placeOrder\" ], about = \"Takes payment.\" }",
+    );
+    let fixed = edit(
+        Some(&listed),
+        &[replace_code(
+            "entrance:shop-api",
+            Some("entrance:shop-api/place-an-order"),
+            1,
+            "src/a.ts#placeOrder",
+            "src/orders.ts#placeOrder",
+        )],
+    );
+    assert_eq!(
+        fixed.text,
+        listed.replace("\"src/a.ts#placeOrder\"", "\"src/orders.ts#placeOrder\"")
+    );
+
+    // An app's own `code`.
+    let app = COMMENTED.replace(
+        "run  = \"npm start\"\n",
+        "run  = \"npm start\"\ncode = \"src/a.ts#\"  # where it starts\n",
+    );
+    let fixed = edit(
+        Some(&app),
+        &[replace_code("Shop API", None, 0, "src/a.ts#", "src/server.ts#")],
+    );
+    assert_eq!(fixed.text, app.replace("\"src/a.ts#\"", "\"src/server.ts#\""));
+    assert_eq!(entry(&fixed), (EntryChange::Changed, "Shop API", None, false));
+}
+
+#[test]
+fn replace_code_is_refused_once_the_file_holds_another_key_there() {
+    let changed = |whose: &str, old: &str| {
+        format!(
+            "the code of {whose} no longer has `{old}` in that place: unfold.toml changed since it was shown"
+        )
+    };
+    let place_an_order = "“Place an order” in Shop API";
+    for (stale, message) in [
+        (
+            replace_code(
+                "Shop API",
+                Some("Place an order"),
+                0,
+                "src/a.ts#gone",
+                "src/b.ts#x",
+            ),
+            changed(place_an_order, "src/a.ts#gone"),
+        ),
+        (
+            replace_code(
+                "Shop API",
+                Some("Place an order"),
+                1,
+                "src/a.ts#placeOrder",
+                "src/b.ts#x",
+            ),
+            changed(place_an_order, "src/a.ts#placeOrder"),
+        ),
+        (
+            replace_code("Shop API", None, 0, "src/a.ts#", "src/server.ts#"),
+            changed("Shop API", "src/a.ts#"),
+        ),
+        (
+            replace_code(
+                "Shop API",
+                Some("Refund"),
+                0,
+                "src/a.ts#refund",
+                "src/b.ts#refund",
+            ),
+            "the app Shop API has no entrance “Refund”. Its entrances: Place an order".to_owned(),
+        ),
+    ] {
+        let error = apply_edits(Some(COMMENTED), &[stale]).expect_err("refused");
+        assert_eq!(conflict_message(error), message);
+    }
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[replace_code(
+            "Shop API",
+            Some("Place an order"),
+            0,
+            "src/a.ts#placeOrder",
+            "",
+        )],
+    )
+    .expect_err("an empty key");
+    assert!(is_invalid_at_a_line(&error), "{error}");
+}
+
+#[test]
+fn a_crlf_file_keeps_its_line_endings() {
+    let text = "[scope]\r\nexclude = [\"a\"]\r\n\r\n[[app]]\r\nname = \"A\"\r\n";
+    let edited = edit(Some(text), &[set_entrance("A", "Run", None, &["a.py#run"])]);
+    assert_eq!(
+        edited.text,
+        format!("{text}entrances = [\r\n  {{ name = \"Run\", code = \"a.py#run\" }},\r\n]\r\n")
+    );
+    assert_eq!(
+        edited.diff,
+        "--- a/unfold.toml\n+++ b/unfold.toml\n@@ -3,3 +3,6 @@\n \r\n [[app]]\r\n name = \"A\"\r\n+entrances = [\r\n+  { name = \"Run\", code = \"a.py#run\" },\r\n+]\r\n",
+        "only the new lines change"
+    );
+    let changed = edit(
+        Some(&edited.text),
+        &[set_entrance("A", "Run", None, &["a.py#start"])],
+    );
+    assert_eq!(changed.text, edited.text.replace("a.py#run", "a.py#start"));
+    let scoped = edit(Some(text), &[SettingsEdit::ExcludeFromGraph { path: "b".into() }]);
+    assert_eq!(scoped.text, text.replace("[\"a\"]", "[\"a\", \"b\"]"));
+}
+
 #[test]
 fn entrance_edits_deserialize_from_ipc() {
     let edit: SettingsEdit = serde_json::from_str(
@@ -858,6 +1018,20 @@ fn entrance_edits_deserialize_from_ipc() {
     let edit: SettingsEdit =
         serde_json::from_str(r#"{"op": "remove_entrance", "app": "Shop API"}"#).expect("deserialize");
     assert_eq!(edit, remove("Shop API", None));
+    let edit: SettingsEdit = serde_json::from_str(
+        r#"{"op": "replace_code", "app": "Shop API", "entrance": "Place an order", "index": 1, "old": "src/a.ts#placeOrder", "code": "src/b.ts#placeOrder"}"#,
+    )
+    .expect("deserialize");
+    assert_eq!(
+        edit,
+        replace_code(
+            "Shop API",
+            Some("Place an order"),
+            1,
+            "src/a.ts#placeOrder",
+            "src/b.ts#placeOrder"
+        )
+    );
     let edit: SettingsEdit = serde_json::from_str(
         r#"{"op": "set_app", "app": {"name": "Jobs", "run": "make jobs", "about": null}}"#,
     )

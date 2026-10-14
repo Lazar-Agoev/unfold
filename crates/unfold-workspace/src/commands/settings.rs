@@ -202,11 +202,12 @@ pub struct ProjectConfigUpdate {
 pub const MAX_EDITS: usize = 200;
 
 /// `update_project_config`: applies validated edits (scope, Python projects, evidence files,
-/// and apps and entrances: `set_app`, `set_entrance`, `add_entrance`, `remove_entrance`),
-/// keeping comments and formatting, and returns the diff and what each app and entrance edit
-/// did; an edit that would make the file invalid is refused with `invalid_settings`, and one
-/// that doesn't fit it (an app or entrance it doesn't have, a key `add_entrance` finds taken)
-/// with `settings_conflict`, and nothing is written. Sends `config_changed`. An edit of only `[[app]]`
+/// and apps and entrances: `set_app`, `set_entrance`, `add_entrance`, `remove_entrance`,
+/// `replace_code`), keeping comments and formatting and the file's line endings, and returns the
+/// diff and what each app and entrance edit did; an edit that would make the file invalid is
+/// refused with `invalid_settings`, and one that doesn't fit it (an app or entrance it doesn't
+/// have, a key `add_entrance` finds taken, a code key `replace_code` no longer finds in its
+/// place) with `settings_conflict`, and nothing is written. Sends `config_changed`. An edit of only `[[app]]`
 /// tables resolves the entrances again without compiling before it returns
 /// (`entrances_changed` follows when they changed); other edits apply with the next background
 /// update.

@@ -18,9 +18,11 @@
 //! | [`FixKind::EditedRoute`] | for an inline handler of a call, the one other call under the same parent to the same callee with a handler in the same place, which no entrance names; the fix is that handler |
 //! | [`FixKind::MovedModule`] | the one module in another file with the same file name and the same top-level definitions as the missing module had when it was last seen |
 
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{Deserialize, Serialize};
 use unfold_core::key::{ParsedKey, Segment};
 use unfold_core::vocab::{FileState, Inline, NodeKind, TargetState};
 use unfold_core::{App, Entrance, EntranceTarget, FileGraph, Graph, Key, RepoPath, owner};
@@ -66,8 +68,9 @@ impl Fixes {
 }
 
 /// The top-level definitions of the modules some `code` names, as each was last seen, so a
-/// moved module can still be recognized after its old file is gone from the graph.
-#[derive(Debug, Clone, Default)]
+/// moved module can still be recognized after its old file is gone from the graph, also after a
+/// restart: the graph's basis keeps them ([`crate::LinkBasis`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Modules(BTreeMap<Key, Vec<Box<str>>>);
 
 impl Modules {
@@ -138,11 +141,12 @@ pub(crate) fn resolve(
         })
         .collect();
     let named: FxHashSet<&str> = codes(apps).map(Key::as_str).collect();
+    let definitions = OnceCell::new();
     let mut fixes = BTreeMap::new();
     for target in targets(&resolved) {
         if target.state == TargetState::Missing
             && !fixes.contains_key(&target.code)
-            && let Some(fix) = fix(graph, &target.code, &named, modules)
+            && let Some(fix) = fix(graph, &target.code, &named, modules, &definitions)
         {
             fixes.insert(target.code.clone(), fix);
         }
@@ -184,14 +188,20 @@ fn state(graph: &Graph, code: &Key, on_disk: &dyn Fn(&RepoPath) -> bool) -> Targ
     }
 }
 
-fn fix(graph: &Graph, code: &Key, named: &FxHashSet<&str>, modules: &Modules) -> Option<Fix> {
+fn fix(
+    graph: &Graph,
+    code: &Key,
+    named: &FxHashSet<&str>,
+    modules: &Modules,
+    definitions: &OnceCell<Definitions>,
+) -> Option<Fix> {
     let Ok(ParsedKey::Block(block)) = code.parse() else {
         return None;
     };
     let segments = block.segments();
     if segments.is_empty() {
         // A module with no definitions matches every other module with none: nothing to go by.
-        let definitions = modules
+        let remembered = modules
             .0
             .get(code)
             .filter(|definitions| !definitions.is_empty())?;
@@ -200,7 +210,7 @@ fn fix(graph: &Graph, code: &Key, named: &FxHashSet<&str>, modules: &Modules) ->
             .iter()
             .filter(|file| file.file.path != *block.path())
             .filter(|file| file.file.path.file_name() == block.path().file_name())
-            .filter(|file| !file.nodes.is_empty() && top_level(file) == *definitions)
+            .filter(|file| !file.nodes.is_empty() && top_level(file) == *remembered)
             .map(|file| (file.nodes[0].key.clone(), file.file.path.clone())))
         .map(|(code, path)| Fix {
             kind: FixKind::MovedModule,
@@ -209,10 +219,11 @@ fn fix(graph: &Graph, code: &Key, named: &FxHashSet<&str>, modules: &Modules) ->
         });
     }
     if let Some(names) = names(segments) {
-        return one(definitions_named(graph, block.path(), &names)).map(|(code, path)| Fix {
+        let definitions = definitions.get_or_init(|| Definitions::of(graph));
+        return one(definitions.named(&names, block.path())).map(|(code, path)| Fix {
             kind: FixKind::MovedDefinition,
-            code,
-            path,
+            code: code.clone(),
+            path: path.clone(),
         });
     }
     let file = graph.file(block.path().as_str())?;
@@ -230,37 +241,53 @@ fn one<T>(mut items: impl Iterator<Item = T>) -> Option<T> {
 }
 
 /// The names of a named definition's key, without repeat ordinals; `None` for any other key.
-fn names(segments: &[Segment]) -> Option<Vec<&str>> {
+fn names(segments: &[Segment]) -> Option<Vec<Box<str>>> {
     segments
         .iter()
         .map(|segment| match segment {
-            Segment::Name { name, .. } => Some(&**name),
+            Segment::Name { name, .. } => Some(name.clone()),
             _ => None,
         })
         .collect()
 }
 
-/// The keys of the definitions outside `path` whose qualified names are `names`, with their
-/// files.
-fn definitions_named<'g>(
-    graph: &'g Graph,
-    path: &'g RepoPath,
-    qualified: &'g [&str],
-) -> impl Iterator<Item = (Key, RepoPath)> + 'g {
-    let last = qualified.last().copied();
-    graph
-        .files
-        .iter()
-        .filter(move |file| file.file.path != *path)
-        .flat_map(|file| file.nodes.iter().map(move |node| (&file.file.path, node)))
-        .filter(move |(_, node)| {
-            node.kind().is_definition() && node.kind() != NodeKind::Module && node.name.as_deref() == last
-        })
-        .filter(move |(_, node)| match node.key.parse() {
-            Ok(ParsedKey::Block(found)) => names(found.segments()).is_some_and(|found| found == qualified),
-            _ => false,
-        })
-        .map(|(path, node)| (node.key.clone(), path.clone()))
+/// The graph's named definitions by qualified name: the names of their keys. A resolve reads
+/// them once, at the first missing key that names a definition.
+struct Definitions(FxHashMap<Vec<Box<str>>, Vec<(Key, RepoPath)>>);
+
+impl Definitions {
+    fn of(graph: &Graph) -> Self {
+        let mut by_name: FxHashMap<Vec<Box<str>>, Vec<(Key, RepoPath)>> = FxHashMap::default();
+        for file in &graph.files {
+            for node in &file.nodes {
+                if node.kind().is_definition()
+                    && node.kind() != NodeKind::Module
+                    && let Ok(ParsedKey::Block(block)) = node.key.parse()
+                    && let Some(names) = names(block.segments())
+                {
+                    by_name
+                        .entry(names)
+                        .or_default()
+                        .push((node.key.clone(), file.file.path.clone()));
+                }
+            }
+        }
+        Self(by_name)
+    }
+
+    /// The keys of the definitions outside `path` whose qualified names are `names`, with
+    /// their files.
+    fn named<'d>(
+        &'d self,
+        names: &[Box<str>],
+        path: &'d RepoPath,
+    ) -> impl Iterator<Item = &'d (Key, RepoPath)> {
+        self.0
+            .get(names)
+            .into_iter()
+            .flatten()
+            .filter(move |(_, found)| found != path)
+    }
 }
 
 /// For a key that ends with a call and an inline handler in its arguments, the same handler

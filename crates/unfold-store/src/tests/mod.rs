@@ -1,7 +1,7 @@
 //! Unit tests that need the writer's test hooks: faults injected mid-commit, readers during a
 //! commit, and key-ID stability.
 
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
 use tempfile::TempDir;
 use unfold_core::key::Callee;
@@ -44,6 +44,7 @@ fn changed_sample() -> Graph {
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == "shop/store.py")
+        .map(Arc::make_mut)
         .expect("the sample has store.py");
     store.links[0].to = LinkTarget::Unknown(Reason::Dynamic);
     let mut builder = GraphBuilder::new();

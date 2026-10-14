@@ -278,6 +278,9 @@ pub struct EntrancesOutcome {
     /// The settings, discovery, and input problems, including a settings file that doesn't
     /// parse (the last good apps then stay).
     pub problems: Vec<Problem>,
+    /// What the graph was linked from, with the settings file now in effect: store it with the
+    /// graph, as [`UpdateOutcome::basis`].
+    pub basis: LinkBasis,
 }
 
 /// An update [`Engine::prepare`] finished and the engine hasn't adopted yet.
@@ -487,14 +490,15 @@ impl Engine {
         let mut state = self.state.clone();
         state.settings = settings;
         let previous = Arc::clone(&state.graph);
-        let refreshed = run::refresh(self, &previous, &mut state);
+        run::refresh(self, &previous, &mut state);
         state.complete = run::is_complete(&state);
         let outcome = EntrancesOutcome {
+            apps_changed: previous.apps != state.graph.apps,
+            inputs_changed: previous.inputs != state.graph.inputs,
             previous,
             graph: Arc::clone(&state.graph),
-            apps_changed: refreshed.apps_changed,
-            inputs_changed: refreshed.inputs_changed,
             problems: run::standing_problems(&state),
+            basis: LinkBasis::of(self, &state),
         };
         self.set_state(state);
         Ok(outcome)

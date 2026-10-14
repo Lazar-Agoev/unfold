@@ -13,10 +13,11 @@ use crate::shared::{Shared, lock};
 use crate::status::{Activity, GraphCounts, WatchMode};
 use crate::watcher;
 
-/// Installs the new reader index and tells the windows what changed: `graph_updated` (with
-/// everything changed after a full commit), `problems_changed`, `project_state`, and, for a
-/// periodic scan, `files_changed`. (The engine thread publishes the entrances, which sends
-/// `entrances_changed` when they changed.)
+/// Installs the new reader index and tells the windows what changed: `graph_updated` when the
+/// files or inputs did (with everything changed after a full commit), `problems_changed`,
+/// `project_state`, and, for a periodic scan, `files_changed`. (The engine thread publishes the
+/// entrances, which sends `entrances_changed` when they changed: changed apps alone send only
+/// that.)
 pub(crate) fn committed(
     shared: &Shared,
     outcome: &UpdateOutcome,
@@ -51,7 +52,7 @@ pub(crate) fn committed(
         all.compile = None;
     });
     let summary = &outcome.summary;
-    if first || !summary.is_empty() {
+    if first || summary.graph_changed() {
         let strings = |paths: &[RepoPath]| {
             paths
                 .iter()

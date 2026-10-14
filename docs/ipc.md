@@ -83,7 +83,7 @@ tests. Exact arguments, results, defaults, and caps live in code.
 | --- | --- |
 | Workspace | `workspace` (project rows), `add_project` (main only; compiles at once; refuses a folder Unfold can't write `.unfold/` into), `remove_project`, `reorder_projects`, `set_project_expanded`, `select_project` |
 | Project and Home | `project_summary` (state line and Health), `entrances` (the `[[app]]` tables as written, each `code` with its state and fix; one app by name or key), `problems`, `compile` (streams progress), `cancel_compile` |
-| Settings | `project_config`, `update_project_config` (scope, Python projects, evidence, and `[[app]]` edits; returns the diff), `get_settings`, `set_settings`, `app_info` (the username that signs edits) |
+| Settings | `project_config`, `update_project_config` (scope, Python projects, evidence, and `[[app]]` edits; returns the diff; `replace_code` rewrites one `code` key and is refused with `settings_conflict` once the file holds another key there), `get_settings`, `set_settings`, `app_info` (the username that signs edits) |
 | Code and cards | `code_view` ([the code panel's model](reader.md#the-code-panels-model)), `open_in_editor` (the editor command, else TextEdit; creates an empty `unfold.toml` when asked for a missing one), `card` (a definition's [drawn flow](reader.md#the-drawn-flow) with the page's overlay, open paths, and Show all calls; or an app's or entrance's card), `code_text` and `flow_text` ([agent text](reader.md#agent-text)) |
 | Relations and contracts | `relations` (callers, outgoing calls, Reached from), `callers` (Show callers), `board_refs`, `call_contract` (by the call's block key), `type_definition`, `type_uses` |
 | Search | `search`: definitions, apps and entrances, and files by name, across projects, from the store's name index |
@@ -114,8 +114,8 @@ and camelCase fields; every project event names its project.
 | `project_state` | A project's state changed (live and resting included) |
 | `project_reset` | A project was removed: everything cached for it is stale |
 | `compile_progress` | A compile or update advanced (throttled) |
-| `graph_updated` | A commit changed the graph: changed and removed files, changed keys, or `everything` past 2,000 |
-| `entrances_changed` | The apps and entrances changed. An edit of only `[[app]]` tables sends this alone, without a compile |
+| `graph_updated` | A commit changed the graph: changed and removed files, changed keys, or `everything` past 2,000, and whether inputs changed (not the settings file's record). Changed apps alone never send it |
+| `entrances_changed` | The apps and entrances changed. A change to only `[[app]]` tables sends this alone, without a compile |
 | `problems_changed` | The Problems list changed |
 | `files_changed` | The watcher saw files appear, change, or disappear |
 | `boards_changed` | Board files or folders changed |

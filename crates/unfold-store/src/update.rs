@@ -169,6 +169,7 @@ pub struct GraphMeta {
     /// settings).
     pub complete: bool,
     /// What the graph was linked from and what linking found, as text written by the engine, so
-    /// a reopened folder can keep the graph without linking it again.
+    /// a reopened folder can keep the graph without linking it again; it also keeps what the
+    /// engine remembers for the apps' fixes.
     pub link_basis: Box<str>,
 }

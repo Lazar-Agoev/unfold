@@ -1080,6 +1080,71 @@ fn descriptions_names_and_combined_steps_are_signed_from_verified_source() {
     assert_eq!(page.guards.len(), 4);
 }
 
+/// `SOURCE`'s board graph (in `dir`) with one more app, `Ops`: only a heading, with the entrance
+/// `Refund` whose code is `code`.
+fn with_ops(dir: &Path, code: Vec<unfold_core::EntranceTarget>) -> BoardGraph {
+    let mut graph = graph_of(SOURCE);
+    graph.apps.push(unfold_core::App {
+        key: key("entrance:ops"),
+        name: "Ops".into(),
+        run: None,
+        code: None,
+        about: None,
+        entrances: vec![unfold_core::Entrance {
+            key: key("entrance:ops/refund"),
+            name: "Refund".into(),
+            on: None,
+            about: None,
+            code,
+        }],
+    });
+    BoardGraph::from_graph(&graph, dir)
+}
+
+#[test]
+fn a_description_of_an_app_or_entrance_whose_code_is_not_found_is_signed_over_what_there_is() {
+    let (dir, _) = folder(SOURCE);
+    let graph = with_ops(
+        dir.path(),
+        vec![
+            target("main.ts#refund", TargetState::Missing),
+            target("legacy.ts#refund", TargetState::NotAnalyzed),
+        ],
+    );
+    let mut board = Board::new("Ops");
+    for (id, start, text) in [
+        ("ops", "entrance:ops", "Run by hand."),
+        ("refund", "entrance:ops/refund", "Refunds an order."),
+    ] {
+        let mut card = start_card(id, start);
+        card.description = Some(unsigned(text));
+        board.pages[0].cards.push(card);
+    }
+    let (saved, health) = save(board, None, &graph).expect("a heading or missing code never blocks a save");
+    assert!(health.is_healthy(), "{health:#?}");
+    let nothing = Some(Signature::of(b""));
+    for card in &saved.pages[0].cards {
+        assert_eq!(
+            card.description.as_ref().unwrap().signature,
+            nothing,
+            "{}",
+            card.id
+        );
+    }
+
+    // Once the entrance's code is found, its description goes to review; the heading's stays.
+    let found = with_ops(dir.path(), vec![target(RUN, TargetState::Found)]);
+    assert_eq!(
+        items(&board_health(&saved, &found)),
+        [(
+            HealthKind::Outdated,
+            Target::Card("refund".to_owned()),
+            None,
+            &[RepairKind::Resign, RepairKind::RemoveDescription][..]
+        )]
+    );
+}
+
 #[test]
 fn source_that_does_not_verify_is_never_signed() {
     let (dir, graph) = folder(SOURCE);

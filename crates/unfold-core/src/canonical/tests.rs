@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::*;
 use crate::model::Graph;
 use crate::testkit::{assert_golden, sample};
@@ -40,6 +42,7 @@ fn output_does_not_depend_on_file_input_link_or_typed_record_order() {
     graph.files.reverse();
     graph.inputs.reverse();
     for file in &mut graph.files {
+        let file = Arc::make_mut(file);
         file.links.reverse();
         file.types.signatures.reverse();
         file.types.parameters.reverse();
@@ -52,14 +55,14 @@ fn output_does_not_depend_on_file_input_link_or_typed_record_order() {
 #[test]
 fn optional_fields_and_flags_round_trip() {
     let mut graph = sample::shop().build();
-    let file = &mut graph.files[0];
+    let file = Arc::make_mut(&mut graph.files[0]);
     file.file.state = FileState::Failed;
     file.file.hash = None;
     file.file.failure = Some("shop/payments.py:1:1: unexpected token".into());
     file.nodes.clear();
     file.links.clear();
     file.types = FileTypes::default();
-    let orders = graph.files.last_mut().unwrap();
+    let orders = Arc::make_mut(graph.files.last_mut().unwrap());
     orders.links[0].implements = true;
     let member = &mut orders.types.members[0];
     member.optional = true;

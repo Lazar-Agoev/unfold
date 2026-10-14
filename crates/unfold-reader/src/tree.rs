@@ -451,7 +451,7 @@ mod tests {
         let graph = sample::shop().build();
         let mut trees = Trees::new();
         for file in &graph.files {
-            trees.insert(FileTree::new(file.clone()));
+            trees.insert(FileTree::new(FileGraph::clone(file)));
         }
         let block = trees.block("shop/payments.py#charge_card").unwrap();
         assert_eq!(block.tree.path().as_str(), "shop/payments.py");

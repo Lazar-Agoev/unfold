@@ -157,20 +157,35 @@ describe("How it starts", () => {
     expect(rowOf("Legacy export").querySelector(".home-start-why")?.textContent).toBe("Not analyzed");
   });
 
-  it("Fix rewrites the entrance's one code line to the one candidate", async () => {
+  it("Fix rewrites the entrance's one code key to the one candidate, and nothing else", async () => {
     const fake = start(ordersApps());
     show();
     await screen.findByText("Admin stats");
     fireEvent.click(within(rowOf("Admin stats")).getByRole("button", { name: "Fix" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toEqual([
-        { project: P, edits: [{ op: "set_entrance", app: "Server", entrance: { name: "Admin stats", on: "GET /admin/stats", code: [MOVED], about: null } }] },
+        { project: P, edits: [{ op: "replace_code", app: "Server", entrance: "Admin stats", index: 0, old: "src/server.ts#adminStats", code: MOVED }] },
       ]);
     });
     expect(fake.callsOf("new_board")).toEqual([]);
   });
 
-  it("Fix rewrites an app's code with set_app", async () => {
+  it("says why when unfold.toml changed since the list was shown", async () => {
+    const message = "the code of “Admin stats” in Server no longer has `src/server.ts#adminStats` in that place: unfold.toml changed since it was shown";
+    start(ordersApps(), {
+      update_project_config: () => {
+        // Rejections are plain {code, message} data, as from the real preload.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw { code: "settings_conflict", message };
+      },
+    });
+    show();
+    await screen.findByText("Admin stats");
+    fireEvent.click(within(rowOf("Admin stats")).getByRole("button", { name: "Fix" }));
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it("Fix rewrites an app's code key", async () => {
     const view: EntrancesView = {
       resolved: true,
       apps: [app("Shop", "uvicorn shop.api:app", [], { key: "shop/api.py#", state: "missing", fix: { kind: "moved_module", code: "shop/web/api.py#", path: "shop/web/api.py" } })],
@@ -181,7 +196,7 @@ describe("How it starts", () => {
     expect(rowOf("Shop").querySelector(".home-start-why")?.textContent).toBe("Moved to shop/web/api.py");
     fireEvent.click(within(rowOf("Shop")).getByRole("button", { name: "Fix" }));
     await waitFor(() => {
-      expect(fake.callsOf("update_project_config")).toEqual([{ project: P, edits: [{ op: "set_app", app: { name: "Shop", run: "uvicorn shop.api:app", code: "shop/web/api.py#", about: null } }] }]);
+      expect(fake.callsOf("update_project_config")).toEqual([{ project: P, edits: [{ op: "replace_code", app: "Shop", entrance: null, index: 0, old: "shop/api.py#", code: "shop/web/api.py#" }] }]);
     });
   });
 
@@ -229,7 +244,7 @@ describe("How it starts", () => {
     fireEvent.click(await within(popover).findByRole("option", { name: "function refund_order, shop/refunds.py" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toEqual([
-        { project: P, edits: [{ op: "set_entrance", app: "Shop", entrance: { name: "Refund", on: "POST /refunds", code: ["shop/refunds.py#refund_order"], about: null } }] },
+        { project: P, edits: [{ op: "replace_code", app: "Shop", entrance: "Refund", index: 0, old: "shop/api.py#refund", code: "shop/refunds.py#refund_order" }] },
       ]);
     });
     expect(fake.callsOf("search")).toEqual([{ query: "refund", kinds: ["definitions"], definitionKinds: ["module", "class", "function"], limit: 20, projects: [P] }]);

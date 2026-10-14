@@ -1,7 +1,8 @@
 //! What a graph was linked from (docs/engine.md#project-lifecycle): kept with the stored graph so that the
 //! reopen check can trust a restored graph without linking it again when nothing it was linked
-//! from changed while the folder was closed, and so that a settings file that stopped parsing
-//! while it was closed leaves the last good settings and apps in effect.
+//! from changed while the folder was closed, so that a settings file that stopped parsing
+//! while it was closed leaves the last good settings and apps in effect, and so that a module
+//! some `code` names is still recognized after it moved (docs/engine.md#resolving-code).
 
 use serde::{Deserialize, Serialize};
 use unfold_core::ContentHash;
@@ -11,11 +12,12 @@ use super::scan::parse_settings;
 use super::state::{SettingsState, State};
 use super::{Engine, Problem, ProblemKind};
 use crate::ENGINE_VERSION;
+use crate::entrances::Modules;
 use crate::settings::SettingsHasher;
 
-/// What a graph was linked from besides its files' facts, what linking found, and the settings
-/// file in effect. Save it with the graph ([`LinkBasis::encode`]) and hand it back to
-/// [`Engine::restore`].
+/// What a graph was linked from besides its files' facts, what linking found, the settings
+/// file in effect, and the modules the apps name as last seen. Save it with the graph
+/// ([`LinkBasis::encode`]) and hand it back to [`Engine::restore`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LinkBasis {
     /// A fingerprint of everything but the files' facts that linking reads: the engine and
@@ -28,6 +30,9 @@ pub struct LinkBasis {
     /// The text of `unfold.toml` the settings and apps came from: the last that parsed, or
     /// `None` for the defaults.
     settings: Option<Box<str>>,
+    /// The top-level definitions of the modules some `code` names, as each was last seen, for
+    /// the moved-module fix.
+    modules: Modules,
 }
 
 /// One problem linking found ([`crate::Linked::problems`]).
@@ -54,6 +59,7 @@ impl LinkBasis {
                 })
                 .collect(),
             settings: state.settings.source.as_ref().map(|source| source.text().into()),
+            modules: state.modules.clone(),
         }
     }
 
@@ -86,9 +92,14 @@ impl LinkBasis {
             .unwrap_or_default()
     }
 
+    /// The modules the apps named, as last seen.
+    pub(super) fn modules(&self) -> Modules {
+        self.modules.clone()
+    }
+
     /// The text the store keeps.
     pub fn encode(&self) -> String {
-        // Plain strings, booleans, and a hash: serializing can't fail.
+        // Plain strings, booleans, a hash, and maps with string keys: serializing can't fail.
         serde_json::to_string(self).unwrap_or_default()
     }
 

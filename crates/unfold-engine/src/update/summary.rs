@@ -7,7 +7,8 @@
 
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use unfold_core::{FileGraph, Graph, Key, Link, Node, RepoPath};
+use unfold_core::vocab::InputRole;
+use unfold_core::{FileGraph, Graph, Input, Key, Link, Node, RepoPath};
 
 /// What differs between two graphs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -18,7 +19,9 @@ pub struct ChangeSummary {
     pub removed_files: Vec<RepoPath>,
     /// Node keys added, removed, or whose node or outgoing links changed, sorted.
     pub changed_keys: Vec<Key>,
-    /// Whether the input set or any input's fingerprint changed.
+    /// Whether the set of configuration inputs and evidence files, or any one's fingerprint,
+    /// changed. The settings file's record doesn't count: what its compile settings change
+    /// shows in the files, and its apps in `apps_changed`.
     pub inputs_changed: bool,
     /// Whether the apps, their entrances, or the states of their code changed.
     pub apps_changed: bool,
@@ -28,15 +31,15 @@ impl ChangeSummary {
     /// The differences from `previous` to `current`. Both must be normalized.
     ///
     /// Files are compared in parallel (on the current rayon pool); the result doesn't depend on
-    /// the thread count.
+    /// the thread count. A file graph both graphs share is the same at once.
     pub fn between(previous: &Graph, current: &Graph) -> Self {
         let mut summary = Self {
-            inputs_changed: previous.inputs != current.inputs,
+            inputs_changed: !reported(&previous.inputs).eq(reported(&current.inputs)),
             apps_changed: previous.apps != current.apps,
             ..Self::default()
         };
         // Pair the files by path (both lists are in path order), then compare each pair.
-        let mut pairs: Vec<(Option<&FileGraph>, Option<&FileGraph>)> = Vec::new();
+        let mut pairs = Vec::new();
         let mut old = previous.files.iter().peekable();
         for file in &current.files {
             while let Some(gone) = old.next_if(|old| old.file.path < file.file.path) {
@@ -74,13 +77,23 @@ impl ChangeSummary {
         summary
     }
 
+    /// Whether the files or the inputs changed: what `graph_updated` reports. Apps that changed
+    /// alone aren't reported there: windows refresh entrances on `entrances_changed`.
+    pub fn graph_changed(&self) -> bool {
+        !self.changed_files.is_empty() || !self.removed_files.is_empty() || self.inputs_changed
+    }
+
     /// Whether nothing changed.
     pub fn is_empty(&self) -> bool {
-        self.changed_files.is_empty()
-            && self.removed_files.is_empty()
-            && !self.inputs_changed
-            && !self.apps_changed
+        !self.graph_changed() && !self.apps_changed
     }
+}
+
+/// The inputs a summary reports: all but the settings file.
+fn reported(inputs: &[Input]) -> impl Iterator<Item = &Input> {
+    inputs
+        .iter()
+        .filter(|input| input.role != InputRole::UnfoldConfig)
 }
 
 /// A node as cards see it: everything but its file-local numbering, whose references become
@@ -174,6 +187,8 @@ fn changed_keys(before: &FileGraph, after: &FileGraph, out: &mut Vec<Key>) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use unfold_core::testkit::sample;
 
     use super::*;
@@ -188,16 +203,39 @@ mod tests {
     fn names_changed_files_and_keys() {
         let before = sample::shop().build();
         let mut after = before.clone();
-        let file = &mut after.files[0];
+        let file = Arc::make_mut(&mut after.files[0]);
         let path = file.file.path.clone();
         let renamed = file.nodes.len() - 1;
         file.nodes[renamed].binds = Some("renamed".into());
         let key = file.nodes[renamed].key.clone();
-        let removed = after.files.pop().map(|file| file.file.path);
+        let removed = after.files.pop().map(|file| file.file.path.clone());
         let summary = ChangeSummary::between(&before, &after);
         assert_eq!(summary.changed_files, [path]);
         assert!(summary.changed_keys.contains(&key));
         assert_eq!(summary.removed_files.first().cloned(), removed);
         assert!(!summary.inputs_changed);
+    }
+
+    #[test]
+    fn the_settings_file_and_the_apps_alone_change_no_file_or_input() {
+        let before = sample::shop().build();
+        let mut after = before.clone();
+        after.inputs.push(Input {
+            path: RepoPath::new("unfold.toml").unwrap(),
+            role: InputRole::UnfoldConfig,
+            hash: unfold_core::ContentHash::of(b"[[app]]\n"),
+        });
+        after.normalize();
+        after.apps[0].name = "Shop!".into();
+        let summary = ChangeSummary::between(&before, &after);
+        assert!(summary.apps_changed && !summary.graph_changed(), "{summary:?}");
+
+        after.inputs.push(Input {
+            path: RepoPath::new("schema.sql").unwrap(),
+            role: InputRole::Evidence,
+            hash: unfold_core::ContentHash::of(b"create table orders ();\n"),
+        });
+        after.normalize();
+        assert!(ChangeSummary::between(&before, &after).graph_changed());
     }
 }

@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use tempfile::TempDir;
 use unfold_core::testkit::{assert_golden, testdata_dir};
-use unfold_core::{App, EntranceTarget, Graph, canonical};
+use unfold_core::{App, EntranceTarget, FileGraph, Graph, canonical};
 use unfold_engine::discovery::DiscoverOptions;
 use unfold_engine::entrances::{FixKind, Fixes};
 use unfold_engine::update::MemoryFactsCache;
@@ -161,7 +161,7 @@ fn entrance_states(apps: &[App], fixes: &Fixes) -> String {
 fn flows(compiled: &Compiled) -> String {
     let mut trees = Trees::new();
     for file in &compiled.graph.files {
-        trees.insert(FileTree::new(file.clone()));
+        trees.insert(FileTree::new(FileGraph::clone(file)));
     }
     let overlay = Overlay::default();
     let mut out = String::new();

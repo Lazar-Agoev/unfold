@@ -66,6 +66,12 @@ impl Folder {
 
     /// An engine for the folder with both front ends.
     pub fn engine(&self) -> Engine {
+        self.engine_with(Arc::new(MemoryFactsCache::new()))
+    }
+
+    /// An engine for the folder with both front ends, over `cache`, which a later session can
+    /// restore from.
+    pub fn engine_with(&self, cache: Arc<MemoryFactsCache>) -> Engine {
         let options = EngineOptions {
             discover: DiscoverOptions {
                 threads: 1,
@@ -78,7 +84,7 @@ impl Folder {
         Engine::new(
             self.path(),
             vec![Arc::new(Python), Arc::new(TypeScript::default())],
-            Arc::new(MemoryFactsCache::new()),
+            cache,
             options,
         )
         .expect("an engine for the folder")

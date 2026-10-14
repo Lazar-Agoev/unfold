@@ -11,7 +11,8 @@
 //!
 //! The **health cache** holds the health of every board of the project (Home's Health line and
 //! the Problems list), each under the [`HealthKey`] it was computed for: a cached health is
-//! current while the board's file and the project's graph are the ones it was computed from.
+//! current while the board's file, the project's graph, and its apps and entrances are the ones
+//! it was computed from.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, MutexGuard};

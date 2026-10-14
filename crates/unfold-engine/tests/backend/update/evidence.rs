@@ -130,3 +130,55 @@ fn a_restored_graph_takes_new_evidence_without_linking_again() {
     let mut fresh = engine_with(&folder, Counting::new(), Arc::new(MemoryFactsCache::new()), 2);
     assert_eq!(canonical(&outcome), canonical(&compile(&mut fresh)));
 }
+
+/// Linking reads no `[evidence]` pattern, and patterns match alike in any order: editing
+/// evidence patterns, or reordering any pattern list, never relinks. A real scope change does.
+#[test]
+fn only_a_scope_change_relinks() {
+    let folder = Folder::new();
+    project(&folder);
+    folder.write("docs/api.md", "# API\n");
+    folder.write("vendor/lib.ts", &template(2, 0));
+    let settings = |exclude: &str, evidence: &str| {
+        format!("[scope]\nexclude = [{exclude}]\n\n[evidence]\nfiles = [{evidence}]\n")
+    };
+    folder.write("unfold.toml", &settings("\"vendor\", \"gen\"", "\"db\""));
+    let mut engine = engine(&folder);
+    let first = compile(&mut engine);
+    let settings_hash = engine.settings().hash();
+
+    folder.write(
+        "unfold.toml",
+        &settings("\"vendor\", \"gen\"", "\"db\", \"docs\""),
+    );
+    let evidence_edit = background(&mut engine, &["unfold.toml"]);
+    assert!(!relinked(&evidence_edit), "an evidence pattern edit");
+    assert_eq!(
+        evidence(&evidence_edit.graph),
+        [
+            (
+                "db/schema.sql",
+                hash("create table orders (id text primary key);\n")
+            ),
+            ("docs/api.md", hash("# API\n"))
+        ],
+        "the new pattern's files are found"
+    );
+    assert_eq!(engine.settings().hash(), settings_hash);
+
+    folder.write(
+        "unfold.toml",
+        &settings("\"gen\", \"vendor\"", "\"docs\", \"db\""),
+    );
+    let reordered = background(&mut engine, &["unfold.toml"]);
+    assert!(!relinked(&reordered), "reordered patterns");
+    assert!(!reordered.stats.full_discovery, "the settings are the same");
+    assert_eq!(engine.settings().hash(), settings_hash);
+    assert_eq!(reordered.graph.files, first.graph.files);
+
+    folder.write("unfold.toml", &settings("\"gen\"", "\"docs\", \"db\""));
+    let scoped = background(&mut engine, &["unfold.toml"]);
+    assert!(relinked(&scoped), "a scope change");
+    assert_ne!(engine.settings().hash(), settings_hash);
+    assert!(scoped.graph.file("vendor/lib.ts").is_some());
+}

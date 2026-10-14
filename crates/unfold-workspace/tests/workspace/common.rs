@@ -16,7 +16,8 @@ use unfold_engine::{
     ProjectInputs, SourceFailure,
 };
 use unfold_workspace::{
-    EventSink, OpenContext, ProjectId, Workspace, WorkspaceEvent, WorkspaceOptions, default_languages,
+    EventSink, OpenContext, ProjectId, ProjectState, Workspace, WorkspaceEvent, WorkspaceOptions,
+    default_languages,
 };
 
 /// The longest any test waits for something asynchronous. Generous on purpose: waits end as
@@ -231,6 +232,22 @@ impl RecordingSink {
         }
     }
 
+    /// Every event after `after` that `matches`.
+    pub fn events_after(
+        &self,
+        after: usize,
+        matches: impl Fn(&WorkspaceEvent) -> bool,
+    ) -> Vec<WorkspaceEvent> {
+        self.events
+            .lock()
+            .expect("events")
+            .iter()
+            .skip(after)
+            .filter(|event| matches(event))
+            .cloned()
+            .collect()
+    }
+
     /// Every event of `kind` after `after`.
     pub fn of_kind(&self, after: usize, kind: &str) -> Vec<WorkspaceEvent> {
         self.events
@@ -257,6 +274,38 @@ pub fn compile(workspace: &Workspace) -> unfold_workspace::CompileOutcome {
 /// Waits for the workspace to go idle, failing the test if it doesn't.
 pub fn settle(workspace: &Workspace) {
     assert!(workspace.wait_idle(PATIENCE), "the workspace never went idle");
+}
+
+/// Waits until the watcher has reported everything that happened in the folder so far, and the
+/// work it queued is done. Copying a playground can still send events after the watcher starts;
+/// events arrive in order, so once a board file written now is reported, those are too. (A board
+/// file outside the app queues no work, only `boards_changed`.)
+pub fn drain_watcher(playground: &Playground, workspace: &Workspace, sink: &RecordingSink) {
+    const BARRIER: &str = ".unfold/boards/watcher-barrier.json";
+    let mark = sink.mark();
+    playground.write(BARRIER, &mark.to_string());
+    let reported = sink.wait_for(mark, |event| {
+        matches!(event, WorkspaceEvent::BoardsChanged { boards, .. } if boards.iter().any(|board| board == BARRIER))
+    });
+    assert!(reported.is_some(), "the watcher never reported {BARRIER}");
+    settle(workspace);
+}
+
+/// Whether `event` says a background update or a Compile started.
+pub fn starts_work(event: &WorkspaceEvent) -> bool {
+    matches!(
+        event,
+        WorkspaceEvent::ProjectState {
+            state: ProjectState::Updating { .. } | ProjectState::Compiling { .. },
+            ..
+        } | WorkspaceEvent::CompileProgress { .. }
+    )
+}
+
+/// When the stored graph was last committed.
+pub fn committed_at(workspace: &Workspace) -> i64 {
+    let reader = workspace.readers().expect("readers").get().expect("reader");
+    reader.meta().expect("meta").graph.expect("graph").compiled_at_ms
 }
 
 /// Whether the stored graph has a block named `name` in `path`.

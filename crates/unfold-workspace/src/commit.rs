@@ -20,7 +20,7 @@
 //!
 //! An edit of only the `[[app]]` tables re-resolves entrances without an update
 //! (`Engine::resolve_entrances`); [`commit_entrances`] writes what that changed: the apps, the
-//! settings file's input, and the metadata's completeness.
+//! settings file's input, and the metadata's completeness and link basis.
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -262,7 +262,8 @@ fn build<'a>(
 
 /// Commits what re-resolving the entrances changed (`outcome`, which the engine has adopted):
 /// the apps and the settings file's input when they changed, and the metadata when the graph's
-/// completeness did (`complete`). Returns what the store holds afterwards.
+/// completeness (`complete`) or its basis did (the basis keeps the settings file's text). The
+/// graph keeps its commit time. Returns what the store holds afterwards.
 pub(crate) fn commit_entrances(
     writer: &mut Writer,
     outcome: &EntrancesOutcome,
@@ -270,12 +271,14 @@ pub(crate) fn commit_entrances(
     committed: &Committed,
 ) -> Result<Committed> {
     let graph = &outcome.graph;
+    let link_basis: Box<str> = outcome.basis.encode().into();
     let meta = committed
         .meta
         .as_ref()
-        .filter(|meta| meta.complete != complete)
+        .filter(|meta| meta.complete != complete || meta.link_basis != link_basis)
         .map(|meta| GraphMeta {
             complete,
+            link_basis,
             ..meta.clone()
         });
     let update = Update {

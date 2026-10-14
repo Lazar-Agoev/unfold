@@ -1,5 +1,7 @@
 //! The canonical export reader.
 
+use std::sync::Arc;
+
 use rustc_hash::FxHashMap;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
@@ -447,7 +449,7 @@ impl Reader {
 
     fn file(&mut self, file: FileIn) {
         self.local_ids.clear();
-        self.graph.files.push(FileGraph {
+        self.graph.files.push(Arc::new(FileGraph {
             file: File {
                 path: file.path,
                 language: file.language,
@@ -458,14 +460,14 @@ impl Reader {
             nodes: Vec::new(),
             links: Vec::new(),
             types: FileTypes::default(),
-        });
+        }));
     }
 
     /// Resolves the current file's pending `for` and `target` fields.
     fn finish_file(&mut self) -> Result<(), CanonicalError> {
         let pending = std::mem::take(&mut self.pending);
         // Nothing is pending before the first file.
-        let Some(file) = self.graph.files.last_mut() else {
+        let Some(file) = self.graph.files.last_mut().map(Arc::make_mut) else {
             return Ok(());
         };
         for pending in pending {
@@ -491,6 +493,7 @@ impl Reader {
         self.graph
             .files
             .last_mut()
+            .map(Arc::make_mut)
             .ok_or_else(|| "records of a file must follow a `file` record".into())
     }
 

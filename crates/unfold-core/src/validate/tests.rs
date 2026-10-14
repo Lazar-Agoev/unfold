@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use super::*;
 use crate::model::{Link, LinkTarget};
@@ -45,6 +46,7 @@ fn file_mut<'g>(graph: &'g mut Graph, path: &str) -> &'g mut FileGraph {
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == path)
+        .map(Arc::make_mut)
         .expect("the sample has this file")
 }
 
@@ -60,13 +62,13 @@ fn locate(graph: &Graph, key: &str) -> (usize, u32) {
 
 fn node_mut<'g>(graph: &'g mut Graph, key: &str) -> &'g mut Node {
     let (file, id) = locate(graph, key);
-    &mut graph.files[file].nodes[id as usize]
+    &mut Arc::make_mut(&mut graph.files[file]).nodes[id as usize]
 }
 
 /// The links of node `key`'s file that start at it.
 fn links_mut<'g>(graph: &'g mut Graph, key: &str) -> impl Iterator<Item = &'g mut Link> {
     let (file, id) = locate(graph, key);
-    graph.files[file]
+    Arc::make_mut(&mut graph.files[file])
         .links
         .iter_mut()
         .filter(move |link| link.from == id)
@@ -377,7 +379,7 @@ fn ranges_lie_in_their_parents() {
     let mut graph = sample();
     let (file, id) = locate(&graph, "src/orders.ts#Order");
     let node = graph.files[file].nodes[id as usize].range;
-    let member = &mut graph.files[file].types.members[0];
+    let member = &mut Arc::make_mut(&mut graph.files[file]).types.members[0];
     member.range.end = node.end + 1;
     let range = member.range;
     assert_violation(
@@ -389,7 +391,7 @@ fn ranges_lie_in_their_parents() {
 
     let mut graph = sample();
     let (file, _) = locate(&graph, "src/orders.ts#Order");
-    let member = &mut graph.files[file].types.members[1];
+    let member = &mut Arc::make_mut(&mut graph.files[file]).types.members[1];
     member.range.end = member.range.start + 1;
     let ty = member.ty.as_ref().expect("a written type").range;
     assert_violation(
@@ -517,7 +519,9 @@ fn links_are_ordered_and_every_call_has_one_calls_link() {
 
     let mut graph = sample();
     let (file, id) = locate(&graph, "shop/service.py#place_order/call:save_order");
-    graph.files[file].links.retain(|link| link.from != id);
+    Arc::make_mut(&mut graph.files[file])
+        .links
+        .retain(|link| link.from != id);
     assert_violation(
         &graph,
         "node shop/service.py#place_order/call:save_order: a call has exactly one `calls` link, found 0",
@@ -529,7 +533,7 @@ fn a_link_from_a_definition_is_not_written_in_a_nearer_one() {
     let mut graph = sample();
     let handler = "src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]";
     let (file, id) = locate(&graph, handler);
-    let link = graph.files[file]
+    let link = Arc::make_mut(&mut graph.files[file])
         .links
         .iter_mut()
         .find(|link| link.from == id && link.kind == LinkKind::Types)
@@ -537,7 +541,7 @@ fn a_link_from_a_definition_is_not_written_in_a_nearer_one() {
     link.from = 0;
     link.seq = u32::MAX;
     let range = link.range;
-    renumber(&mut graph.files[file]);
+    renumber(Arc::make_mut(&mut graph.files[file]));
     assert_violation(
         &graph,
         &format!("link 1 of src/orders.ts#: range {range} lies in {handler}, a nearer definition"),
@@ -548,7 +552,7 @@ fn a_link_from_a_definition_is_not_written_in_a_nearer_one() {
 fn typed_records_have_their_cardinalities() {
     let mut graph = sample();
     let (file, id) = locate(&graph, "shop/payments.py#charge_card");
-    graph.files[file]
+    Arc::make_mut(&mut graph.files[file])
         .types
         .parameters
         .retain(|parameter| !(parameter.node == id && parameter.index == 0));
@@ -559,11 +563,14 @@ fn typed_records_have_their_cardinalities() {
 
     let mut graph = sample();
     let (file, id) = locate(&graph, "shop/service.py#place_order/call:sum");
-    graph.files[file].types.signatures.push(Signature {
-        node: id,
-        returns: None,
-    });
-    graph.files[file].types.sort();
+    Arc::make_mut(&mut graph.files[file])
+        .types
+        .signatures
+        .push(Signature {
+            node: id,
+            returns: None,
+        });
+    Arc::make_mut(&mut graph.files[file]).types.sort();
     assert_violation(
         &graph,
         "signature of shop/service.py#place_order/call:sum: call nodes have no signature",
@@ -572,7 +579,7 @@ fn typed_records_have_their_cardinalities() {
     // An argument of a call that reaches a project function is paired.
     let mut graph = sample();
     let (file, id) = locate(&graph, "shop/service.py#place_order/call:load_order");
-    for argument in &mut graph.files[file].types.arguments {
+    for argument in &mut Arc::make_mut(&mut graph.files[file]).types.arguments {
         if argument.call == id {
             argument.pairing = None;
         }

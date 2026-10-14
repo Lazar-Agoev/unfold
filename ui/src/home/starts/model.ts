@@ -152,29 +152,16 @@ export function filterRows(rows: readonly AppRows[], query: string): readonly Ap
 }
 
 /**
- * The edit that writes `code` in place of one code key: the entrance's `set_entrance`, or the app's
- * `set_app`, with every field as the list shows it (null for one it doesn't have).
+ * The edit that writes `code` in place of one code key, and nothing else: `replace_code`, which names
+ * the key the list shows there, so the engine refuses it once `unfold.toml` holds another.
  */
 export function rewriteCode({ app, entrance, index }: CodeSlot, code: Key): SettingsEdit | null {
-  if (app.name === undefined) {
+  const old = entrance ? entrance.code[index]?.key : app.code?.key;
+  const name = entrance ? entrance.name : null;
+  if (app.name === undefined || old === undefined || name === undefined) {
     return null;
   }
-  if (entrance === null) {
-    return { op: "set_app", app: { name: app.name, run: app.run ?? null, code, about: app.about ?? null } };
-  }
-  if (entrance.name === undefined) {
-    return null;
-  }
-  return {
-    op: "set_entrance",
-    app: app.name,
-    entrance: {
-      name: entrance.name,
-      on: entrance.on ?? null,
-      code: entrance.code.map((item, at) => (at === index ? code : item.key)),
-      about: entrance.about ?? null,
-    },
-  };
+  return { op: "replace_code", app: app.name, entrance: name, index, old, code };
 }
 
 /** What Copy agent prompt copies: a short request for Claude Code or Codex. */

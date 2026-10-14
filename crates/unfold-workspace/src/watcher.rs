@@ -8,10 +8,12 @@
 //!   set (the background update) and a `files_changed` event (cards, the code panel, and file
 //!   search show a changed file at once);
 //! - **`unfold.toml`**: `config_changed`, and a pending path so the next update reloads
-//!   the settings (or, when only its `[[app]]` tables changed, resolves the entrances again);
+//!   the settings (or, when its compile settings didn't change, resolves the entrances again);
 //!   the app's own edits queue their own work;
 //! - **`.unfold/boards/`**: `boards_changed` with the board ids, for edits made outside the app
 //!   (writes the app noted itself are not reported);
+//! - **the app's temporary files**: dropped. The app writes `unfold.toml` and board files through
+//!   a temporary sibling (`.<name>.<…>.tmp`) renamed over them;
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
 //!
 //! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
@@ -174,13 +176,7 @@ impl Filter {
     }
 
     fn classify(&mut self, shared: &Shared, path: &Path, layout: &Layout, batch: &mut Batch) {
-        // Board files are written through a temporary sibling (`.<name>.<…>.tmp`) renamed over
-        // them; the temporary file is never a board.
-        let temporary = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with('.') && name.ends_with(".tmp"));
-        let own = || temporary || shared.own_writes.contains(path);
+        let own = || shared.own_writes.contains(path);
         let local = layout.local();
         if path.starts_with(&local) {
             if (path == local || path.starts_with(layout.cache())) && !layout.database().exists() {
@@ -207,10 +203,14 @@ impl Filter {
             }
             return;
         }
+        if temporary_settings(&text) {
+            return;
+        }
         if let Some(name) = text
             .strip_prefix(BOARDS_PATH)
             .and_then(|rest| rest.strip_prefix('/'))
         {
+            // Board files are written through a temporary sibling too, which is never a board.
             if !own()
                 && let Some(board) = board_id(name)
             {
@@ -240,6 +240,16 @@ impl Filter {
     }
 }
 
+/// Whether the folder-relative `text` is a temporary sibling of `unfold.toml`: the app writes the
+/// file through one (`.unfold.toml.<…>.tmp`) and renames it over the file, so it is the app's own
+/// write, never a source.
+fn temporary_settings(text: &str) -> bool {
+    text.strip_prefix('.')
+        .and_then(|rest| rest.strip_prefix(CONFIG_PATH))
+        .and_then(|rest| rest.strip_prefix('.'))
+        .is_some_and(|rest| rest.ends_with(".tmp") && !rest.contains('/'))
+}
+
 /// The id `list_boards` lists the file `name` (a file name in `.unfold/boards/`) under, a name
 /// a board file can't have included; `None` for anything it doesn't list.
 fn board_id(name: &str) -> Option<String> {
@@ -249,6 +259,21 @@ fn board_id(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_settings_files_temporary_siblings_are_the_apps_own() {
+        assert!(temporary_settings(".unfold.toml.82903-2-6818000.tmp"));
+        for other in [
+            "unfold.toml",
+            ".unfold.toml",
+            ".unfold.toml.tmp.ts",
+            "src/.unfold.toml.1-2-3.tmp",
+            ".unfold.toml.1/2.tmp",
+            ".other.toml.1-2-3.tmp",
+        ] {
+            assert!(!temporary_settings(other), "{other}");
+        }
+    }
 
     #[test]
     fn board_files_map_to_board_ids() {

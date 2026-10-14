@@ -7,7 +7,7 @@
 //! renaming an export (its callers elsewhere change), a new subclass that overrides a method in a
 //! new file, deleting and recreating files (imports elsewhere go `not_found` and back), breaking
 //! and fixing syntax, case-only renames, and moving an entrance's `code` in `unfold.toml` (which
-//! resolves the entrances again without compiling when it is the only change). Steps either
+//! resolves the entrances again without compiling, whatever changes with it). Steps either
 //! settle before the next one or land while the previous update is queued or running, so changes
 //! merge and updates restart.
 //!

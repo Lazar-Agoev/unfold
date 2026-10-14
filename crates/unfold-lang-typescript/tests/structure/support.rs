@@ -97,7 +97,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
     let linked = language.link(&program, inputs);
     let resolver = Resolver::new(&program, linked.as_ref());
     let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
-    let files = program
+    let files: Vec<FileGraph> = program
         .iter()
         .map(|(id, entry)| {
             let record = records[&entry.path].clone();
@@ -115,7 +115,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
         })
         .collect();
     let graph = Graph {
-        files,
+        files: files.into_iter().map(Arc::new).collect(),
         inputs: Vec::new(),
         apps: Vec::new(),
     };

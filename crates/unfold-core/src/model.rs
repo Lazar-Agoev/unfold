@@ -9,6 +9,7 @@
 //! are boxed strings, and keys share their text through reference counts.
 
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -232,10 +233,14 @@ pub struct App {
 
 /// The whole graph: files in path order, the inputs that shaped it, and the apps of
 /// `unfold.toml` in file order.
+///
+/// Each file graph is shared: a graph that keeps a file as it was, such as one whose apps were
+/// resolved again, holds the same file graph as the graph before it rather than a copy
+/// (`Arc::make_mut` changes one). Equal file graphs that are shared compare equal at once.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Graph {
     /// Files sorted by path.
-    pub files: Vec<FileGraph>,
+    pub files: Vec<Arc<FileGraph>>,
     /// Inputs sorted by path.
     pub inputs: Vec<Input>,
     /// Apps in file order, each with its entrances in file order.
@@ -254,7 +259,7 @@ impl Graph {
         self.files
             .binary_search_by(|file| file.file.path.as_str().cmp(path))
             .ok()
-            .map(|index| &self.files[index])
+            .map(|index| &*self.files[index])
     }
 }
 

@@ -3,7 +3,7 @@
 use unfold_core::key::Callee;
 use unfold_core::testkit::{GraphBuilder, NodeRef, project};
 use unfold_core::vocab::{CallRole, Form, Inline, Language, LinkKind};
-use unfold_core::{Argument, Key};
+use unfold_core::{Argument, FileGraph, Key};
 
 use super::*;
 use crate::testing::Playground;
@@ -120,7 +120,7 @@ fn tree() -> FileTree {
     project_call(&mut g, def_g, "k", "k()", "m.py#k");
     let def_k = g.def(file, Form::Function, "k", g.find(file, "def k():\n    f([])"));
     project_call(&mut g, def_k, "f", "f([])", "m.py#f");
-    FileTree::new(g.build().files.remove(0))
+    FileTree::new(FileGraph::clone(&g.build().files[0]))
 }
 
 fn id(tree: &FileTree, text: &str) -> u32 {

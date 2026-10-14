@@ -33,7 +33,7 @@ fn every_node_belongs_to_the_nearest_definition_above_it() {
         let index = playground.index();
         let mut checked = 0;
         for file in &playground.graph.files {
-            let tree = FileTree::new(file.clone());
+            let tree = FileTree::new(FileGraph::clone(file));
             for (id, node) in file.nodes.iter().enumerate() {
                 let id = u32::try_from(id).unwrap();
                 let expected = nearest_definition(file, id);
@@ -119,7 +119,12 @@ fn a_callback_written_as_an_object_property_is_labeled_by_its_property() {
 #[test]
 fn the_catalog_lists_every_definition_with_its_label() {
     let ts = Playground::load("ts-orders");
-    let entries: Vec<_> = ts.graph.files.iter().flat_map(catalog::definitions).collect();
+    let entries: Vec<_> = ts
+        .graph
+        .files
+        .iter()
+        .flat_map(|file| catalog::definitions(file))
+        .collect();
     let definitions = ts
         .graph
         .files

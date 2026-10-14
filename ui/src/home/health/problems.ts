@@ -48,11 +48,11 @@ function explanation(item: ProblemItem): string {
     case "compile_failed":
       return "The previous graph stays. Compile again once it's fixed.";
     case "settings":
-      return "Unfold uses the defaults until the settings file is fixed.";
+      return "Unfold keeps the settings that last parsed.";
     case "discovery":
       return "Files there aren't on the graph.";
     case "input":
-      return "Entrances that depend on it may be missing.";
+      return "Imports and calls may not resolve.";
     case "cache":
     case "board":
       return "";

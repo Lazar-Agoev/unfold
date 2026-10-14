@@ -14,7 +14,7 @@
 //! | `project_state` | A project's row state changed (live ↔ resting included; not on every progress tick) |
 //! | `project_reset` | A project was removed: everything cached for it is stale |
 //! | `compile_progress` | A compile or update advanced (throttled) |
-//! | `graph_updated` | A commit changed the graph |
+//! | `graph_updated` | A commit changed the graph's files or inputs. Changed apps alone send only `entrances_changed` |
 //! | `entrances_changed` | The apps and entrances changed: their tables, the states of their code, or their fixes. An edit of only the `[[app]]` tables sends this alone: it resolves the entrances again without compiling |
 //! | `problems_changed` | The Problems list changed |
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
@@ -87,7 +87,8 @@ pub enum WorkspaceEvent {
         removed_files: Vec<String>,
         /// Block keys added, removed, or changed, sorted.
         changed_keys: Vec<String>,
-        /// Whether the configuration inputs changed.
+        /// Whether the configuration inputs or the evidence files changed (the settings file's
+        /// record doesn't count).
         inputs_changed: bool,
         /// The lists were too long to send (more than [`MAX_LISTED`]) and are empty: treat
         /// everything as changed.

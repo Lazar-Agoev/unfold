@@ -228,7 +228,7 @@ impl Project {
             })
             .collect();
         let graph = Graph {
-            files: graphs,
+            files: graphs.into_iter().map(Arc::new).collect(),
             inputs: Vec::new(),
             apps: Vec::new(),
         };
