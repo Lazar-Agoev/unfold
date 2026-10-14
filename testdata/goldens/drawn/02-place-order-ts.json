@@ -69,6 +69,11 @@
             "id": 3,
             "key": "src/service.ts#placeOrder/switch[0]/case[0]",
             "form": "case",
+            "label": "case \"paid\"",
+            "lines": [
+              6,
+              7
+            ],
             "state": "reached",
             "test": {
               "text": "\"paid\"",
@@ -113,6 +118,11 @@
             "id": 5,
             "key": "src/service.ts#placeOrder/switch[0]/case[1]",
             "form": "case",
+            "label": "case \"cancelled\"",
+            "lines": [
+              8,
+              9
+            ],
             "state": "reached",
             "test": {
               "text": "\"cancelled\"",

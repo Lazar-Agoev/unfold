@@ -166,10 +166,10 @@ group("add_notes and describe", () => {
   });
 
   it("describe items by id or link, replacing people's words only when asked", async () => {
-    const test = app({ items: [{ kind: "card", id: "create-order", status: "updated", key: CREATE_ORDER, name: "createOrder" }] });
-    const { text } = await test.call(describe, { items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-1&item=create-order`, text: "Places the order now." }], replacePeopleText: true });
-    expect(sentOps(test)).toEqual([{ op: "describe", items: [{ id: "create-order", text: "Places the order now." }], replacePeopleText: true }]);
-    expect(text.split("\n").slice(1, 3)).toEqual(["Described (1 updated):", "- createOrder (card id create-order, updated)"]);
+    const test = app({ items: [{ kind: "frame", id: "server", status: "updated", name: "server", look: "box", members: [] }] });
+    const { text } = await test.call(describe, { items: [{ id: `unfold://ts-orders/${BOARD.id}?page=page-1&item=server`, text: "Takes orders over HTTP." }], replacePeopleText: true });
+    expect(sentOps(test)).toEqual([{ op: "describe", items: [{ id: "server", text: "Takes orders over HTTP." }], replacePeopleText: true }]);
+    expect(text.split("\n").slice(1, 3)).toEqual(["Described (1 updated):", "- server (frame id server; box; updated)"]);
   });
 });
 

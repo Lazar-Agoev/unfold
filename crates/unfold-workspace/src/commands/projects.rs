@@ -1,11 +1,12 @@
 //! Home's project summary: the state line ("Graph current · 214 files · Python · updated just
-//! now") and the Health line ("1 board needs review · All files parse · 1 entrance's code
-//! not found").
+//! now") and the Health line ("1 board needs review · All files parse · 1 entrance needs a
+//! look").
 
 use serde::Serialize;
 use ts_rs::TS;
 use unfold_core::vocab::{Language, TargetState};
 
+use super::entrances::{AppView, EntranceCode, States, app_views};
 use super::{ProjectArgs, board_hooks, count};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
@@ -38,9 +39,10 @@ pub struct ProjectHealth {
     pub boards_needing_review: u32,
     /// The boards with health items, most items first (at most 20).
     pub boards: Vec<BoardHealthCount>,
-    /// The `code` keys of apps and entrances whose code isn't there: `missing`, `not_analyzed`,
-    /// or `not_a_start`.
-    pub entrances_not_found: u32,
+    /// The apps and entrances that need a look, one each: an entry with its own problem (it
+    /// stays out of the graph), or one with a `code` key that isn't there (`missing`,
+    /// `not_analyzed`, or `not_a_start`).
+    pub entrances_to_check: u32,
 }
 
 /// Home's header, state line, and Health line for one project.
@@ -67,35 +69,48 @@ pub struct ProjectSummary {
     pub health: ProjectHealth,
 }
 
+/// How many of `apps` and their entrances need a look: an entry with its own problem, or one
+/// whose code isn't there. A stale key still shows its last good block, and its file is counted
+/// as one that doesn't parse.
+fn needing_a_look(apps: &[AppView]) -> usize {
+    let not_there = |code: &EntranceCode| {
+        matches!(
+            code.state,
+            Some(TargetState::Missing | TargetState::NotAnalyzed | TargetState::NotAStart)
+        )
+    };
+    apps.iter()
+        .map(|app| {
+            let own = usize::from(app.problem.is_some() || app.code.as_ref().is_some_and(not_there));
+            own + app
+                .entrances
+                .iter()
+                .filter(|entrance| entrance.problem.is_some() || entrance.code.iter().any(not_there))
+                .count()
+        })
+        .sum()
+}
+
 /// `project_summary`: Home's header, state line, and Health line.
 pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<ProjectSummary> {
     let project = ctx.project(&args.project)?;
     let workspace = project.wake()?;
     let (files, _, languages) = workspace.graph_counts();
-    let (updated_at_ms, entrances_not_found) = match workspace.readers() {
-        Ok(pool) => pool.get()?.snapshot(|reader| {
-            let updated = reader.meta()?.graph.map(|graph| graph.compiled_at_ms);
-            let apps = reader.apps()?;
-            let not_found = apps
-                .iter()
-                .flat_map(|app| {
-                    app.code
-                        .iter()
-                        .chain(app.entrances.iter().flat_map(|entrance| &entrance.code))
-                })
-                // A stale target still shows its last good block, and its file is counted
-                // as one that doesn't parse.
-                .filter(|target| {
-                    matches!(
-                        target.state,
-                        TargetState::Missing | TargetState::NotAnalyzed | TargetState::NotAStart
-                    )
-                })
-                .count();
-            Ok((updated, not_found))
-        })?,
-        Err(_) => (None, 0),
+    let updated_at_ms = match workspace.readers() {
+        Ok(pool) => pool
+            .get()?
+            .snapshot(|reader| Ok(reader.meta()?.graph.map(|graph| graph.compiled_at_ms)))?,
+        Err(_) => None,
     };
+    // What the engine last resolved (nothing yet just after the project wakes;
+    // `entrances_changed` follows once it has).
+    let entrances_to_check = workspace.entrances().map_or(0, |resolved| {
+        let states = States {
+            apps: &resolved.graph.apps,
+            fixes: &resolved.fixes,
+        };
+        needing_a_look(&app_views(&resolved.entries, None, Some(&states)))
+    });
     let doesnt_parse = workspace
         .problems()
         .iter()
@@ -122,7 +137,7 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
             doesnt_parse: count(doesnt_parse),
             boards_needing_review,
             boards,
-            entrances_not_found: count(entrances_not_found),
+            entrances_to_check: count(entrances_to_check),
         },
     })
 }

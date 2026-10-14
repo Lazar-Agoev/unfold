@@ -5,6 +5,10 @@
  *
  * While it is open, the panel follows the page's selection. A selection the panel makes itself (a click
  * on a line, `⊕`) is made `quietly`, so the panel stays where it is.
+ *
+ * Lines opened from a drawn flow (a combined step, a row of other calls, a gap tick) keep what they were
+ * opened from (`CodeOpen.from`), and the panel rebuilds their lines from the flow as it is drawn now
+ * (`retargetCode`): line numbers taken at the click would go stale after a compile.
  */
 
 import { create } from "zustand";
@@ -20,6 +24,19 @@ interface CodeLineRef {
   readonly line: number;
 }
 
+/**
+ * Where a gap tick sits in a card's flow: on the route into a step (by its block's key, a row's first
+ * call's, or a combined or proposed step's id), or at the end of a body (by its definition's or part's
+ * key, or its open combined step's id).
+ */
+export type GapPlace = { readonly before: string } | { readonly end: string };
+
+/** Lines opened from a drawn flow, by what draws them in the card: a combined step, a row of other calls (by its first call), or a gap tick. */
+export type CodeSource =
+  | { readonly kind: "combined"; readonly item: string }
+  | { readonly kind: "row"; readonly key: Key }
+  | { readonly kind: "gap"; readonly place: GapPlace };
+
 /** What the panel shows. */
 export interface CodeOpen {
   readonly project: ProjectId;
@@ -27,15 +44,19 @@ export interface CodeOpen {
   readonly target: CodeTarget;
   /** What the path widened the view to; null shows the selection's own lines. */
   readonly show: CodeTarget | null;
-  /** The card the selection is in: its repair actions show when its code isn't found. */
+  /** The card the selection is in (or that draws `from`): its repair actions show when its code isn't found. */
   readonly cardId: string | null;
-  /** The gap tick it was opened from, outlined on the canvas. */
-  readonly gap: CodeLineRef | null;
+  /** What in card `cardId` drew the lines it was opened on, which rebuilds them as the card is drawn now. */
+  readonly from?: CodeSource;
 }
 
-/** The line the pointer is on in the panel: its block (a call's, when on the call's name), or none. */
+/**
+ * The line the pointer is on in the panel: its block (a call's, when on the call's name), or none; and
+ * the line's own block, which lights when that call isn't drawn on its own.
+ */
 export interface CodeHover extends CodeLineRef {
   readonly key: Key | null;
+  readonly block: Key | null;
 }
 
 interface CodePanelState {
@@ -58,13 +79,26 @@ export function widenCode(show: CodeTarget | null): void {
   }
 }
 
+/** Points the panel at its `from` as the flow draws it now. */
+export function retargetCode(target: CodeTarget): void {
+  const { open } = useCodePanelStore.getState();
+  if (open && JSON.stringify(open.target) !== JSON.stringify(target)) {
+    useCodePanelStore.setState({ open: { ...open, target } });
+  }
+}
+
+/** The gap tick `open` shows the lines of, by its first line: outlined on the canvas while nothing is selected. */
+export function openGap(open: CodeOpen): CodeLineRef | null {
+  return open.from?.kind === "gap" && open.target.kind === "lines" ? { path: open.target.path, line: open.target.lines[0] } : null;
+}
+
 export function closeCode(): void {
   useCodePanelStore.setState({ open: null, hover: null });
 }
 
 export function setCodeHover(hover: CodeHover | null): void {
   const current = useCodePanelStore.getState().hover;
-  if (current?.key !== hover?.key || current?.line !== hover?.line || current?.path !== hover?.path) {
+  if (current?.key !== hover?.key || current?.block !== hover?.block || current?.line !== hover?.line || current?.path !== hover?.path) {
     useCodePanelStore.setState({ hover });
   }
 }

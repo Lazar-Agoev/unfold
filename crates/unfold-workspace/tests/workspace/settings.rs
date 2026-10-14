@@ -73,9 +73,8 @@ fn an_app_only_edit_resolves_entrances_without_compiling() {
             app: "Server".into(),
             entrance: EntranceSpec {
                 name: "Admin stats".into(),
-                on: Some("GET /admin/stats".into()),
-                code: vec!["src/routes/admin.ts#adminStats".into()],
-                about: None,
+                code: Some(vec!["src/routes/admin.ts#adminStats".into()]),
+                ..EntranceSpec::default()
             },
         }])
         .expect("set entrance");

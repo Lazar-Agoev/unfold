@@ -8,6 +8,7 @@ import { Toaster } from "../components";
 import { queryClient } from "../ipc/client";
 import type { Card, CardView, CodeView, CodeViewArgs, Health } from "../ipc/generated";
 import { engineKey, installEngineInvalidation } from "../ipc/queries";
+import { startLink } from "../state/boards/linking";
 import * as store from "../state/boards/store";
 import { closeCode, getCodeOpen } from "../state/codePanel";
 import { showBoard } from "../state/shownBoard";
@@ -90,9 +91,25 @@ function renamed(view: CardView, key: string, label: string): CardView {
   return view.type === "definition" ? { ...view, flow: { ...view.flow, header: { ...view.flow.header, key, label } } } : view;
 }
 
+/** `view` as drawn after its file gained `by` lines above it: every line number moves down. */
+function moved(view: CardView, by: number): CardView {
+  const shift = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(shift);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([field, item]) => [field, field === "lines" && Array.isArray(item) ? item.map((number: number) => number + by) : shift(item)]));
+    }
+    return value;
+  };
+  return shift(view) as CardView;
+}
+
 let engine: FakeEngine;
 let stopInvalidation: () => void;
-let answer: (args: CodeViewArgs) => CodeView;
+let answer: (args: CodeViewArgs) => CodeView | Promise<CodeView>;
+/** What the engine draws for `createOrder` now. */
+let drawnCreate: CardView;
 
 function state(cards: Card[], health?: Health) {
   return boardState(P, ID, boardDocument([page("page-1", cards)]), health ? { health } : {});
@@ -187,6 +204,7 @@ beforeEach(() => {
   store.resetBoards();
   queryClient.clear();
   closeCode();
+  drawnCreate = createOrder;
   answer = (args) => {
     if (args.show?.kind === "block") {
       return PLACE_WIDENED;
@@ -206,7 +224,7 @@ beforeEach(() => {
     handlers: {
       card: ({ key }) => {
         if (key === KEY) {
-          return createOrder;
+          return drawnCreate;
         }
         if (key === ENTRANCE) {
           return fixture("card", "card_place_an_order");
@@ -487,6 +505,86 @@ describe("the panel and the canvas", () => {
     });
     expect(codeViews().at(-1)).toEqual({ project: P, target: { kind: "lines", path: FILE, lines: [26, 26] } });
     expect(place(container.querySelector(".flow-outline:not(.lit)"))).toBe(place(container.querySelector(".flow-gap")));
+  });
+
+  it("keeps a gap tick's lines as the card draws them after a compile, never the numbers from the click", async () => {
+    const { container } = renderBoard();
+    await loadedCard(container);
+    fireEvent.click(need(container.querySelector(".flow-gap"), "gap tick"));
+    await waitFor(() => {
+      expect(numbers()).toEqual(["26"]);
+    });
+    drawnCreate = moved(createOrder, 2);
+    act(() => {
+      engine.emit({ type: "graph_updated", project: P, changedFiles: [FILE], removedFiles: [], changedKeys: [], everything: false });
+    });
+    await waitFor(() => {
+      expect(getCodeOpen()?.target).toEqual({ kind: "lines", path: FILE, lines: [28, 28] });
+    });
+    expect(codeViews().at(-1)).toEqual({ project: P, target: { kind: "lines", path: FILE, lines: [28, 28] } });
+    expect(place(container.querySelector(".flow-outline:not(.lit)"))).toBe(place(container.querySelector(".flow-gap")));
+  });
+
+  it("outlines a row of other calls opened from its `</>`, until something is selected", async () => {
+    const { container } = renderBoard();
+    await loadedCard(container);
+    const row = need(container.querySelector('.flow-thin:has([data-key="src/routes/orders.ts#createOrder/call:res.status().json"])'), "row");
+    fireEvent.click(need(row.querySelector(".flow-code"), "</>"));
+    await waitFor(() => {
+      expect(getCodeOpen()?.from).toEqual({ kind: "row", key: "src/routes/orders.ts#createOrder/call:res.status().json" });
+    });
+    await waitFor(() => {
+      expect(place(container.querySelector(".flow-outline:not(.lit)"))).toBe(place(row));
+    });
+    act(() => {
+      store.select(PAGE, { kind: "card", cardId: "create", key: null });
+    });
+    await waitFor(() => {
+      expect(container.querySelector(".flow-outline:not(.lit)")).toBeNull();
+    });
+  });
+
+  it("drops a gap tick's outline once a click on a line selects something", async () => {
+    answer = (args) => (args.target.kind === "lines" ? { ...DEFINITION, lines: [{ ...line(26), block: KEY }], path: [{ label: FILE, showing: false }, { label: "line 26", showing: true }], definitions: [] } : DEFINITION);
+    const { container } = renderBoard();
+    await loadedCard(container);
+    fireEvent.click(need(container.querySelector(".flow-gap"), "gap tick"));
+    await waitFor(() => {
+      expect(numbers()).toEqual(["26"]);
+    });
+    expect(container.querySelector(".flow-outline:not(.lit)")).not.toBeNull();
+    fireEvent.click(need(rowOf(26).querySelector(".code-number"), "number"));
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "create", key: null });
+    await waitFor(() => {
+      expect(container.querySelector(".flow-outline:not(.lit)")).toBeNull();
+    });
+    expect(numbers()).toEqual(["26"]);
+  });
+
+  it("shows the selection's full key over its path, and can't widen through the previous view's path while the next one loads", async () => {
+    const { container } = renderBoard();
+    await openBlock(container, PLACE);
+    expect(panel().querySelector(".code-path")?.getAttribute("title")).toBe(PLACE);
+    answer = () => new Promise<CodeView>(() => undefined);
+    act(() => {
+      store.select(PAGE, { kind: "card", cardId: "create", key: IF });
+    });
+    await waitFor(() => {
+      expect(getCodeOpen()?.target).toEqual({ kind: "block", key: IF });
+    });
+    const crumbs = within(panel()).getAllByRole("button", { name: "createOrder" });
+    expect(crumbs.every((crumb) => crumb.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("opens a block's menu on a right-click without ending a link being picked", async () => {
+    const { container } = renderBoard();
+    await loadedCard(container);
+    act(() => {
+      startLink(PAGE, "elsewhere");
+    });
+    fireEvent.contextMenu(need(container.querySelector(`.flow-call[data-key="${PLACE}"]`), "call"));
+    expect(await screen.findByRole("menu", { name: "Block actions" })).not.toBeNull();
+    expect(store.getPageView(PAGE).linking).toEqual({ from: "elsewhere", to: null });
   });
 
   it("opens View code from a block's menu", async () => {

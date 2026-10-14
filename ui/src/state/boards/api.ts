@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from "react";
-import type { CardRef, ConnectionKind, Key, Page } from "../../ipc/generated";
+import type { CardRef, Key, Page } from "../../ipc/generated";
 import { fallbackItemSize, pageGeometry } from "../../canvas/frames/geometry";
 import { newCardPlacement, type Rect } from "../../canvas/layout";
 import { showBoard } from "../shownBoard";
@@ -25,7 +25,7 @@ import {
   updateCombined,
   type CombinedChange,
 } from "./document";
-import { setConnectionKind, setLinkDescription, setLinkLabel as setLinkLabelOf } from "./connections";
+import { setLinkDescription, setLinkLabel as setLinkLabelOf } from "./connections";
 import { findFrame, frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
 import { findNote, setNoteText } from "./notes";
 import { findResource, setResourceDescription } from "./resources";
@@ -222,13 +222,6 @@ export function setLinkLabel(target: PageTarget, linkId: string, text: string, a
 export function removeLink(target: PageTarget, linkId: string): void {
   editPage(target, (page) => {
     removeLinkFrom(page, linkId);
-  });
-}
-
-/** Gives a connection another kind, which makes you the one who drew it. */
-export function setLinkKind(target: PageTarget, linkId: string, kind: ConnectionKind, author: string): void {
-  editPage(target, (page) => {
-    setConnectionKind(page, linkId, kind, author);
   });
 }
 

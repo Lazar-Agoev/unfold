@@ -12,7 +12,7 @@
 import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { queryClient } from "../ipc/client";
-import type { Actions, CallBox, Callback, Card, CardArgs, CardView, DrawnFlow, Form, Key, Lane, LinkEnd, OtherCall, OverlayArgs, Page, ProjectId, Sequence } from "../ipc/generated";
+import type { Actions, CallBox, Callback, Card, CardArgs, CardView, DrawnFlow, Form, Key, Lane, LinkEnd, OtherCall, OverlayArgs, Page, ProjectId, RepoPath, Sequence } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { UnfoldError } from "../ipc/unfold";
 import { cardKey, findCard, findPage } from "./boards/document";
@@ -198,8 +198,9 @@ export function cardsDrawing(target: PageTarget, itemId: string): string[] {
 }
 
 /**
- * A block drawn in a card: its key, its form, its words from the code, the page's name for it, what the
- * overlay may do to it, and, for a call, where it goes.
+ * A block drawn in a card: its key, its form, its words from the code (a part's: the text that opens
+ * it), the page's name for it, what the overlay may do to it, for a call, where it goes, and for a
+ * part, the lines it marks in the code panel (first and last).
  */
 export interface DrawnBlock {
   readonly key: Key;
@@ -208,10 +209,15 @@ export interface DrawnBlock {
   readonly name?: string;
   readonly actions?: Actions;
   readonly to?: LinkEnd;
+  readonly lines?: readonly [number, number];
 }
 
 function block(key: Key, form: Form, label: string, name: string | undefined, actions: Actions | undefined, to?: LinkEnd): DrawnBlock {
   return { key, form, label, ...(name !== undefined ? { name } : {}), ...(actions ? { actions } : {}), ...(to ? { to } : {}) };
+}
+
+function laneBlock(lane: Lane): DrawnBlock {
+  return { ...block(lane.key, lane.form, lane.label, lane.name, lane.actions), lines: lane.lines };
 }
 
 function otherCalls(calls: readonly OtherCall[]): DrawnBlock[] {
@@ -250,7 +256,7 @@ function sequenceBlocks(sequence: Sequence): DrawnBlock[] {
             block(step.key, step.form, step.header ?? step.form, step.name, step.actions),
             ...step.headerCalls.flatMap(callBlocks),
             ...step.lanes.flatMap((lane) => [
-              block(lane.key, lane.form, lane.clause ?? lane.test?.text ?? lane.form, lane.name, lane.actions),
+              laneBlock(lane),
               ...(lane.test?.calls ?? []).flatMap(callBlocks),
               ...sequenceBlocks(lane.steps),
             ]),
@@ -282,12 +288,17 @@ export function findBlock(flow: DrawnFlow, key: Key): DrawnBlock | undefined {
   return flowBlocks(flow).find((item) => item.key === key);
 }
 
-/** What `visitFlow` hands each part to, with the calls opened in place around it (outermost first). */
+/**
+ * What `visitFlow` hands each part to, with the calls opened in place around it (outermost first). A
+ * sequence comes with the body it is (a definition's or a part's key, or an open combined step's id)
+ * and the file of the flow drawing it.
+ */
 interface FlowVisitor {
   readonly flow?: (flow: DrawnFlow, around: readonly Key[]) => void;
   readonly box?: (box: CallBox, around: readonly Key[]) => void;
   readonly callback?: (callback: Callback, around: readonly Key[]) => void;
   readonly lane?: (lane: Lane) => void;
+  readonly sequence?: (sequence: Sequence, body: string, path: RepoPath) => void;
 }
 
 /** Walks a drawn flow's parts in the order they run, into the calls and callbacks it opens in place. */
@@ -304,7 +315,8 @@ function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[]
       }
     }
   };
-  const sequence = (steps: Sequence) => {
+  const sequence = (steps: Sequence, body: string) => {
+    visitor.sequence?.(steps, body, flow.header.path);
     for (const step of steps.steps) {
       switch (step.kind) {
         case "call":
@@ -318,7 +330,7 @@ function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[]
           for (const lane of step.lanes) {
             visitor.lane?.(lane);
             (lane.test?.calls ?? []).forEach(box);
-            sequence(lane.steps);
+            sequence(lane.steps, lane.key);
           }
           break;
         case "exit":
@@ -328,7 +340,7 @@ function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[]
           break;
         case "combined":
           if (step.steps) {
-            sequence(step.steps);
+            sequence(step.steps, step.item);
           }
           break;
         case "thin":
@@ -338,7 +350,29 @@ function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[]
     }
   };
   visitor.flow?.(flow, around);
-  sequence(flow.steps);
+  sequence(flow.steps, flow.header.key);
+}
+
+/**
+ * Calls `visit` with every sequence a drawn flow draws (its body, its parts', its open combined
+ * steps', and those of the calls it opens in place), the body it is (a definition's or a part's key,
+ * or an open combined step's id), and the file of the flow drawing it.
+ */
+export function eachSequence(flow: DrawnFlow, visit: (sequence: Sequence, body: string, path: RepoPath) => void): void {
+  visitFlow(flow, { sequence: visit });
+}
+
+/** Every block a drawn flow's collapsed combined steps hold, which each outlines. */
+export function heldBlocks(flow: DrawnFlow): Key[] {
+  const held: Key[] = [];
+  eachSequence(flow, (sequence) => {
+    for (const step of sequence.steps) {
+      if (step.kind === "combined") {
+        held.push(...(step.holds ?? []));
+      }
+    }
+  });
+  return held;
 }
 
 /**

@@ -37,8 +37,9 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
   const overlay = useMemo(() => pageOverlay({ names, combined, proposals }), [names, combined, proposals]);
   const loaded = useQueries({
     queries: cards.map((card) => cardQuery(cardArgs(project, card, overlay, showAllCalls))),
-    // Structurally shared: `data` keeps its identity while no card changed.
-    combine: (results) => ({ data: results.map((result) => result.data), settled: results.every((result) => !result.isPending) }),
+    // Structurally shared: `data` keeps its identity while no card changed. A card whose refetch failed
+    // (its definition is gone) draws nothing, though the query keeps what it drew before.
+    combine: (results) => ({ data: results.map((result) => (result.isError ? undefined : result.data)), settled: results.every((result) => !result.isPending) }),
   });
   const views = useMemo(
     () => new Map(cards.flatMap((card, index) => (loaded.data[index] ? [[card.id, loaded.data[index]] as const] : []))),
@@ -49,7 +50,7 @@ export function useBoardArrows(target: PageTarget, cards: readonly Card[]): Boar
   const typeKeys = useMemo(() => [...new Set(cards.filter((card) => shapes.get(card.id) === "fields").map(cardKey))], [cards, shapes]);
   const loadedTypes = useQueries({
     queries: typeKeys.map((key) => engineQueryOptions("type_definition", { project, key })),
-    combine: (results) => results.map((result) => result.data),
+    combine: (results) => results.map((result) => (result.isError ? undefined : result.data)),
   });
   const arrows = useMemo(() => {
     const arrowCards = cards.map((card): ArrowCard => ({ id: card.id, key: cardKey(card), project, view: cardView(card, defaultView) }));

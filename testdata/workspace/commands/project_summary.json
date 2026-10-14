@@ -25,6 +25,6 @@
     "doesntParse": 0,
     "boardsNeedingReview": 0,
     "boards": [],
-    "entrancesNotFound": 3
+    "entrancesToCheck": 3
   }
 }

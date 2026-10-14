@@ -1,7 +1,7 @@
 /**
  * The Add box: one box over the board. Typing searches names in the board's project, as one ranked
  * list, and its files after them. Focus stays in its input: ↑ ↓ move the selection, Enter adds a name
- * to the page or opens a file in the code panel, Escape closes.
+ * to the page or opens a file in the code panel (once the list answers what is typed), Escape closes.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -63,6 +63,8 @@ export function AddLayer({ page }: { readonly page: PageTarget }) {
   const search = useQuery({ ...engineQueryOptions("search", searchArgs(settled, page.board.project)), enabled: searching, placeholderData: keepPreviousData });
   const data = searching ? search.data : undefined;
   const items = useMemo(() => (data ? resultItems(data) : NO_RESULTS), [data]);
+  // Whether the list answers what is typed now, not a query typed before (still shown while the new one runs).
+  const current = data !== undefined && settled === typed && !search.isPlaceholderData;
 
   // The selection: the chosen row while it is listed, else the first.
   const selectedIndex = Math.max(0, selectedId === null ? 0 : items.findIndex((item) => item.id === selectedId));
@@ -109,7 +111,7 @@ export function AddLayer({ page }: { readonly page: PageTarget }) {
         moveSelection(event.key === "PageDown" ? 10 : -10);
         break;
       case "Enter":
-        if (selected) {
+        if (selected && current) {
           choose(selected);
         }
         break;

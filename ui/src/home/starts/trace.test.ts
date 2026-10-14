@@ -111,6 +111,18 @@ describe("tracing", () => {
     expect(cards().map((card) => card.ref)).toEqual([{ entrance: "entrance:worker" }, { block: "src/worker.ts#" }]);
   });
 
+  it("traces once when clicked again while it is tracing, and again once it is done", async () => {
+    const start = fixture("card", "card_place_an_order");
+    if (start.type !== "start") {
+      throw new Error("card_place_an_order draws a start");
+    }
+    install({ [start.key]: start });
+    await Promise.all([traceStart(P, start.key, "Place an order"), traceStart(P, start.key, "Place an order")]);
+    expect(engine.callsOf("new_board")).toEqual([{ project: P, title: "Place an order" }]);
+    await traceStart(P, start.key, "Place an order");
+    expect(engine.callsOf("new_board")).toHaveLength(2);
+  });
+
   it("says why it couldn't trace, and makes no board", async () => {
     engine = installFakeEngine({
       handlers: {

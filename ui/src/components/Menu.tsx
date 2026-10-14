@@ -63,7 +63,7 @@ interface MenuProps {
   readonly onClose: () => void;
   /** Which item takes focus first. */
   readonly initialFocus?: "first" | "last";
-  /** Fixed width in px (board 220, project 264, peek 208); otherwise it fits its items. */
+  /** Fixed width in px (board 220, project 264); otherwise it fits its items. */
   readonly width?: number;
   readonly className?: string;
 }

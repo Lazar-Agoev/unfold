@@ -9,7 +9,7 @@ import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { adoptBoardState, editPage, getOpenBoard, resetBoards } from "./boards/store";
 import { toggleOpen } from "./boards/document";
-import { cardArgs, cardArgsOf, cardName, combinableSteps, fetchCard, findBlock, flowBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
+import { cardArgs, cardArgsOf, cardName, combinableSteps, eachSequence, fetchCard, findBlock, flowBlocks, heldBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
 import { setShowAllCalls } from "./showAllCalls";
 
 const P = "p-orders0000";
@@ -178,5 +178,26 @@ describe("where a block opens and combines", () => {
     expect(combinableSteps(cli, "shop/service.py#place_order")?.slice(0, 2)).toEqual([LOAD_CALL, "shop/service.py#place_order/if[0]"]);
     expect(combinableSteps(cli, "shop/service.py#place_order/try[0]/body")).toEqual(["shop/service.py#place_order/try[0]/body/call:charge_card"]);
     expect(combinableSteps(cli, "nowhere")).toBeUndefined();
+  });
+
+  it("names a part by the text that opens it, with the lines it marks, as the reader labels it", () => {
+    expect(findBlock(cli, "shop/service.py#place_order/try[0]/except[0]")).toMatchObject({ form: "except", label: "except PaymentDeclined as error", lines: [20, 22] });
+    expect(findBlock(cli, "shop/service.py#place_order/if[0]/elif[0]")).toMatchObject({ form: "elif", label: 'elif order["paid"]', lines: [14, 15] });
+    expect(findBlock(cli, LOAD_CALL)?.lines).toBeUndefined();
+  });
+
+  it("walks every sequence it draws, with its body and its file, and lists what collapsed combined steps hold", () => {
+    const bodies: string[] = [];
+    eachSequence(cli, (_sequence, body, path) => {
+      bodies.push(`${path} ${body}`);
+    });
+    expect(bodies.slice(0, 3)).toEqual(["shop/cli.py shop/cli.py#", "shop/cli.py shop/cli.py#/if[0]/then", "shop/cli.py shop/cli.py#main"]);
+    expect(bodies).toContain("shop/service.py shop/service.py#place_order/try[0]/except[0]");
+    const shaped = GOLDENS["../../../testdata/goldens/drawn/place-order-shaped.json"];
+    if (!shaped) {
+      throw new Error("no golden place-order-shaped");
+    }
+    expect(heldBlocks(shaped)).toContain("shop/service.py#place_order/if[0]/then/raise[0]/call:ValueError");
+    expect(heldBlocks(cli)).toEqual([]);
   });
 });

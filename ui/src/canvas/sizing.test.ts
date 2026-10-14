@@ -120,14 +120,23 @@ describe("app and entrance cards", () => {
     expect(startCardWidth(start, "expanded", measure)).toBeGreaterThanOrEqual(startCardWidth(start, "compact", measure));
   });
 
-  it("grow by a row per code when expanded, and by each code that isn't found when compact", () => {
+  it("grow by a row per code when expanded; an app's card has no small caps", () => {
     const compact = startCardSize(start, "compact", measure);
     // Border, padding, the app's small caps, the name, and what starts it.
     expect(compact.height).toBe(3 + 27 + 14 + 3 + 20 + 3 + 16);
     expect(startCardSize(start, "expanded", measure).height).toBe(compact.height + 8 + 3 * 20 + 2 * 4);
-    const missing = { ...start, code: [...start.code, { key: "gone", state: "missing" as const }] };
-    expect(startCardSize(missing, "compact", measure).height).toBe(compact.height + 8 + 20);
+    expect(startCardSize({ ...start, kind: "app" }, "compact", measure).height).toBe(compact.height - 14 - 3);
     expect(estimatedCardSize({ model: start, view: "compact" }, measure)).toEqual(compact);
+  });
+
+  it("take in the dashed card of each code that isn't found, beside the card, and list only code that has a block", () => {
+    const compact = startCardSize(start, "compact", measure);
+    const missing = { ...start, code: [...start.code, { key: "gone", state: "missing" as const }, { key: "out", state: "not_analyzed" as const }] };
+    const withMissing = startCardSize(missing, "compact", measure);
+    // The arrow, then a card 250 wide: border, header and rule, padding, the key, and two lines under it; 16 between cards.
+    expect(withMissing.width).toBe(compact.width + 56 + 250);
+    expect(withMissing.height).toBe(2 * (2 + 43 + 34 + 16 + 48) + 16);
+    expect(startCardSize(missing, "expanded", measure).height).toBe(Math.max(startCardSize(start, "expanded", measure).height, withMissing.height));
   });
 });
 

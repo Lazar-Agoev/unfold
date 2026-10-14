@@ -1,14 +1,14 @@
 /**
  * What people make by hand on a page, under the rules agents follow (mcp-capabilities.md, "What people
- * do by hand"): combined steps, proposed steps, resource cards, drawn links, and a relationship's
- * columns and cardinality. Each is saved at once as one undo step (`saveStep`), so the board's own
+ * do by hand"): combined steps, proposed steps, resource cards, drawn links, a connection's kind, and
+ * a relationship's columns and cardinality. Each is saved at once as one undo step (`saveStep`), so the board's own
  * checks decide: what they refuse leaves the page as it was and comes back as a message. Nothing here
  * re-checks a rule the board checks; what each block allows comes from the drawn flow's actions.
  */
 
 import { produce, type Draft } from "immer";
-import type { Cardinality, Page } from "../../ipc/generated";
-import { addConnection, claimOf, setConnectionClaim } from "./connections";
+import type { Cardinality, ConnectionKind, Page } from "../../ipc/generated";
+import { addConnection, claimOf, setConnectionClaim, setConnectionKind } from "./connections";
 import { addCombined, type NewCombined } from "./document";
 import { addProposal, type NewProposal } from "./proposals";
 import { addResource, type NewResource } from "./resources";
@@ -58,6 +58,14 @@ export function drawLink(target: PageTarget, link: { readonly from: string; read
       drawn.label = { text: link.label, author: link.author, signature: "" };
     }
     return id;
+  });
+}
+
+/** Gives a connection another kind, which makes `author` the one who drew it. */
+export function setLinkKind(target: PageTarget, linkId: string, kind: ConnectionKind, author: string): Promise<HandOutcome<null>> {
+  return handStep(target, "Change kind", (page) => {
+    setConnectionKind(page, linkId, kind, author);
+    return null;
   });
 }
 

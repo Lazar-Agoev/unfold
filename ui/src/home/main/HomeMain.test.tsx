@@ -162,7 +162,7 @@ describe("Home's header and state line", () => {
 describe("the overview", () => {
   it("shows How it starts, Boards, and the Health line, in that order", async () => {
     const row = projectRow(P, "shop");
-    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), project_summary: () => summaryOf(row, { health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 } }) });
+    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), project_summary: () => summaryOf(row, { health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesToCheck: 0 } }) });
     renderWithClient(<HomeMain />);
     expect(await screen.findByText("Order placement")).toBeTruthy();
     const starts = await screen.findByRole("region", { name: "How it starts" });
@@ -233,7 +233,7 @@ describe("the Health line", () => {
 
   it("leads to the one board that needs review", async () => {
     const row = projectRow(P, "shop");
-    const fake = start(workspaceView([row]), { ...health(row, { doesntParse: 0, boardsNeedingReview: 1, boards: [board], entrancesNotFound: 0 }), open_board: ({ project, id }) => boardState(project, id) });
+    const fake = start(workspaceView([row]), { ...health(row, { doesntParse: 0, boardsNeedingReview: 1, boards: [board], entrancesToCheck: 0 }), open_board: ({ project, id }) => boardState(project, id) });
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("Health1 board needs reviewAll files parse");
@@ -245,15 +245,15 @@ describe("the Health line", () => {
 
   it("says nothing about entrances when the project has no apps", async () => {
     const row = projectRow(P, "shop");
-    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 }));
+    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesToCheck: 0 }));
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("HealthAll files parse");
   });
 
-  it("counts entrances whose code isn't found, and shows How it starts' problems", async () => {
+  it("counts the entrances whose code isn't found, and shows How it starts' problems", async () => {
     const row = projectRow(P, "shop");
-    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), ...health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 3 }) });
+    start(workspaceView([row]), { entrances: () => fixture("entrances", "entrances"), ...health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesToCheck: 3 }) });
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("HealthAll files parse3 entrances' code isn't found");
@@ -266,9 +266,9 @@ describe("the Health line", () => {
     expect(useLayout.getState().home.view).toBe("overview");
   });
 
-  it("says one entrance's code in the singular", async () => {
+  it("says one entrance in the singular", async () => {
     const row = projectRow(P, "shop");
-    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 1 }));
+    start(workspaceView([row]), health(row, { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesToCheck: 1 }));
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("HealthAll files parse1 entrance's code isn't found");
@@ -276,7 +276,7 @@ describe("the Health line", () => {
 
   it("counts boards and files that need a look, and leads to Health", async () => {
     const row = projectRow(P, "shop", { state: { kind: "problems", count: 2 } });
-    start(workspaceView([row]), { ...health(row, { doesntParse: 2, boardsNeedingReview: 3, boards: [board], entrancesNotFound: 0 }), problems: () => [] });
+    start(workspaceView([row]), { ...health(row, { doesntParse: 2, boardsNeedingReview: 3, boards: [board], entrancesToCheck: 0 }), problems: () => [] });
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("Health3 boards need review2 files don't parse");

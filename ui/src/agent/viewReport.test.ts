@@ -2,13 +2,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { codeViewArgs } from "../code/view";
 import { engineKey, queryClient } from "../ipc";
-import type { Card, CardView, Page } from "../ipc/generated";
+import type { Card, CardView, DrawnFlow, Page } from "../ipc/generated";
 import * as store from "../state/boards/store";
+import { cardArgsOf, cardQuery } from "../state/cards";
 import { closeCode, openCode, widenCode, type CodeOpen } from "../state/codePanel";
 import { showBoard, useShownBoardStore } from "../state/shownBoard";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { REPORT_DELAY_MS, codeReport, currentView, installViewReports, visibleItems } from "./viewReport";
+
+/** A CLI's flow with two calls opened in place, one inside the other: `main`, and in it `place_order`. */
+const [CLI] = Object.values(import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/07-cli.json", { eager: true, import: "default" }));
 
 const P = "p-orders0000";
 const ID = ".unfold/boards/orders.json";
@@ -132,9 +136,32 @@ describe("currentView", () => {
   });
 });
 
+describe("a step in a call opened in place", () => {
+  it("names the definition that owns it, from the card as the window draws it", () => {
+    const cli: Card = { id: "cli", ref: { block: "shop/cli.py#" }, at: [0, 0], view: "expanded", open: [["shop/cli.py#/if[0]/then/call:main", "shop/cli.py#main/call:place_order"]] };
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [cli])])));
+    showBoard(REF);
+    const args = cardArgsOf(TARGET, "cli");
+    if (!args || !CLI) {
+      throw new Error("The CLI card isn't on the page");
+    }
+    const selected = (key: string) => {
+      store.select(TARGET, { kind: "card", cardId: "cli", key });
+      return currentView(null).selection;
+    };
+    // Before the card is drawn, the window can't tell which definition holds the step.
+    expect(selected("shop/service.py#place_order/call:load_order")).toEqual({ kind: "step", card: "cli", key: "shop/service.py#place_order/call:load_order" });
+    queryClient.setQueryData(cardQuery(args).queryKey, { type: "definition", flow: CLI });
+    expect(selected("shop/service.py#place_order/call:load_order")).toEqual({ kind: "step", card: "cli", key: "shop/service.py#place_order/call:load_order", owner: "shop/service.py#place_order" });
+    expect(selected("shop/cli.py#main/call:place_order")).toEqual({ kind: "step", card: "cli", key: "shop/cli.py#main/call:place_order", owner: "shop/cli.py#main" });
+    // The card's own step has no owner to name.
+    expect(selected("shop/cli.py#/if[0]")).toEqual({ kind: "step", card: "cli", key: "shop/cli.py#/if[0]" });
+  });
+});
+
 describe("the code panel in the report", () => {
   const CREATE = "src/routes/orders.ts#createOrder";
-  const block: CodeOpen = { project: P, target: { kind: "block", key: CREATE }, show: null, cardId: "a", gap: null };
+  const block: CodeOpen = { project: P, target: { kind: "block", key: CREATE }, show: null, cardId: "a" };
 
   it("says what the panel opened on, and the file and lines it shows once they load", () => {
     expect(codeReport(block, undefined)).toEqual({ key: CREATE, widened: false });
@@ -149,7 +176,7 @@ describe("the code panel in the report", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
     showBoard(REF);
     expect(currentView(null).code).toBeUndefined();
-    openCode({ project: P, target: block.target, cardId: "a", gap: null });
+    openCode({ project: P, target: block.target, cardId: "a" });
     expect(currentView(null).code).toEqual({ key: CREATE, widened: false });
     queryClient.setQueryData(engineKey("code_view", codeViewArgs(block)), fixture("code_view", "code_view_create_order"));
     expect(currentView(null).code).toEqual({ key: CREATE, file: "src/routes/orders.ts", lines: [25, 35], widened: false, state: "current" });
@@ -191,10 +218,10 @@ describe("installViewReports", () => {
     const stop = installViewReports();
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
     const target = { kind: "block", key: "src/routes/orders.ts#createOrder" } as const;
-    openCode({ project: P, target, cardId: "a", gap: null });
+    openCode({ project: P, target, cardId: "a" });
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
     expect(engine.windowCalls.at(-1)?.args).toMatchObject({ code: { key: target.key, widened: false } });
-    queryClient.setQueryData(engineKey("code_view", codeViewArgs({ project: P, target, show: null, cardId: "a", gap: null })), fixture("code_view", "code_view_create_order"));
+    queryClient.setQueryData(engineKey("code_view", codeViewArgs({ project: P, target, show: null, cardId: "a" })), fixture("code_view", "code_view_create_order"));
     await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
     expect(engine.windowCalls.at(-1)?.args).toMatchObject({ code: { key: target.key, file: "src/routes/orders.ts", lines: [25, 35], state: "current" } });
     closeCode();

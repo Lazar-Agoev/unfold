@@ -58,7 +58,7 @@ const SUMMARY: ProjectSummary = {
   updatedAtMs: 0,
   files: 12,
   languages: ["typescript"],
-  health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 },
+  health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesToCheck: 0 },
 };
 
 const BOARDS: BoardList = {
@@ -168,6 +168,7 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
   update_project_config: () => ({
     config: { exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null },
     diff: '--- a/unfold.toml\n+++ b/unfold.toml\n@@ -0,0 +1,2 @@\n+[scope]\n+exclude = ["scripts"]\n',
+    entries: [],
   }),
   search: () => searchPlace,
   code_view: () => codeViewCreateOrder,
@@ -409,7 +410,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["add_resources", { ...at, resources: [{ kind: "table", name: "orders", anchors: [{ key: "src/db/repository.ts#OrderRepository" }] }] }],
       ["connect", { ...at, connections: [{ kind: "writes", from: "create-order", to: "orders", description: "It inserts the order." }] }],
       ["add_notes", { ...at, notes: [{ text: "The client gets a job id, not the order." }] }],
-      ["describe", { ...at, items: [{ id: "create-order", text: "Places the order." }] }],
+      ["describe", { ...at, items: [{ id: "server", text: "Takes orders over HTTP." }] }],
       ["propose", { ...at, proposals: [{ after: `${CREATE_ORDER}/call:orderService.place`, title: "Email a confirmation" }] }],
       ["repair", { ...at, item: "create-order", repair: "remove" }],
       ["finish_work", { summary: "Built the order flow" }],

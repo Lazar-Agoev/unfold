@@ -17,7 +17,7 @@ use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
-use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome};
+use unfold_core::vocab::{CallRole, Flag, Form, Language, LinkKind, NodeKind, Outcome};
 use unfold_core::{ByteRange, Key, LinkTarget};
 
 use super::lines::{FileText, candidates, doc_text};
@@ -395,9 +395,10 @@ impl<'f> Printer<'f> {
                     indent
                 };
                 for (index, lane) in frame.lanes.iter().enumerate() {
-                    let words = match lane.form {
-                        Form::Then => "IF",
-                        Form::Elif => "ELIF",
+                    let words = match (lane.form, self.flow.header.language) {
+                        (Form::Then, _) => "IF",
+                        (Form::Elif, Language::Python) => "ELIF",
+                        (Form::Elif, Language::TypeScript) => "ELSE IF",
                         _ => "ELSE",
                     };
                     // The first lane's line is the frame's too, so it carries the frame's name.

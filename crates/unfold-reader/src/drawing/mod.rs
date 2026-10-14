@@ -39,7 +39,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Serialize;
-use unfold_core::vocab::{CallRole, Form, NodeKind};
+use unfold_core::vocab::{CallRole, Form, Language, NodeKind};
 use unfold_core::{Key, LineSpan, RepoPath};
 
 pub use text::{CodeLabel, CodeText, code_text, flow_text};
@@ -103,8 +103,8 @@ pub fn draw(trees: &Trees, root: &Path, overlay: &Overlay, card: &Card) -> Optio
         return None;
     }
     let paths: Vec<&[Key]> = card.open.iter().map(Vec::as_slice).collect();
-    let mut drawer = build::Drawer::new(trees, root, overlay, card.show_all_calls);
-    Some(drawer.flow(block.tree, block.id, &paths))
+    let mut drawer = build::Drawer::new(trees, root, overlay, card.show_all_calls, paths.len());
+    Some(drawer.flow(block.tree, block.id, 0, &paths))
 }
 
 /// A definition's drawn flow.
@@ -164,6 +164,10 @@ pub struct Header {
     pub imports: Vec<Import>,
     /// What the overlay may do to it.
     pub actions: Actions,
+    /// Its file's language, for agent text.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub language: Language,
 }
 
 /// One import of a definition.
@@ -400,6 +404,13 @@ pub struct Lane {
     /// Its form: `then`, `elif`, `else`, `case`, `default`, `body`, `except`, `catch`,
     /// `finally`.
     pub form: Form,
+    /// The text that opens it, as the code panel's path labels it: `order is None`,
+    /// `elif order["paid"]`, `case "refund"`, `except PaymentDeclined as error`, `else`.
+    pub label: String,
+    /// The lines it marks in the code panel: the line that opens it and its body (a `body`
+    /// part starts on its control block's header).
+    #[cfg_attr(feature = "ts", ts(type = "[number, number]"))]
+    pub lines: LineSpan,
     /// Whether a route reaches it.
     pub state: RouteState,
     /// The overlay's name: for a branch, a yes-or-no question.
@@ -503,6 +514,11 @@ pub struct CombinedStep {
     pub members: Vec<Key>,
     /// Drawn as one step.
     pub collapsed: bool,
+    /// Every block it holds while collapsed (its blocks and everything written in them, drawn
+    /// or not, outside the definitions inside), which it outlines; empty when open.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub holds: Vec<Key>,
     /// The lines it covers: its blocks' statements and the code between them.
     #[cfg_attr(feature = "ts", ts(type = "[number, number]"))]
     pub lines: LineSpan,

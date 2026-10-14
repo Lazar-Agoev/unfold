@@ -79,7 +79,7 @@ fn the_summary_counts_the_graph_and_its_health() {
     let health = &summary["health"];
     assert_eq!(
         *health,
-        json!({ "doesntParse": 0, "boardsNeedingReview": 0, "boards": [], "entrancesNotFound": 3 })
+        json!({ "doesntParse": 0, "boardsNeedingReview": 0, "boards": [], "entrancesToCheck": 3 })
     );
 
     // A file that stops parsing shows in the row's state and the Health line.
@@ -109,7 +109,7 @@ fn the_summary_counts_the_graph_and_its_health() {
     assert_eq!(stale, 1);
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["doesntParse"], 2);
-    assert_eq!(summary["health"]["entrancesNotFound"], 3);
+    assert_eq!(summary["health"]["entrancesToCheck"], 3);
 }
 
 #[test]
@@ -190,6 +190,58 @@ fn entrances_list_the_apps_as_written_with_states_and_fixes() {
     assert!(problem["line"].as_u64().is_some(), "{problem}");
     assert!(duplicate.get("code").is_none());
     assert_eq!(apps[0]["code"]["state"], "found", "the first app still works");
+}
+
+#[test]
+fn the_health_line_counts_each_entry_that_needs_a_look_once() {
+    let harness = Harness::compiled("ts-orders");
+    let config = std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read");
+    // Three keys of one entrance aren't there, and another entrance has a field entrances
+    // don't have: each counts once, beside the three the playground has.
+    let config = config
+        .replace(
+            "[\"src/routes/middleware.ts#requireUser\", \"src/routes/middleware.ts#validateBody\", \"src/routes/orders.ts#createOrder\"]",
+            "[\"src/gone.ts#a\", \"src/gone.ts#b\", \"src/gone.ts#c\"]",
+        )
+        .replace(
+            "code = \"src/server.ts#healthCheck\" }",
+            "code = \"src/server.ts#healthCheck\", kind = \"http\" }",
+        );
+    harness.write("unfold.toml", &config);
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+    assert_eq!(summary["health"]["entrancesToCheck"], 5);
+}
+
+#[test]
+fn entrances_list_one_app_by_its_name_or_key() {
+    let harness = Harness::compiled("ts-orders");
+    for given in ["Worker", "worker!", "entrance:worker"] {
+        let view = harness.ok(
+            1,
+            "entrances",
+            json!({ "project": harness.project, "app": given }),
+        );
+        let names: Vec<&str> = view["apps"]
+            .as_array()
+            .expect("apps")
+            .iter()
+            .filter_map(|app| app["name"].as_str())
+            .collect();
+        assert_eq!(names, ["Worker"], "{given}");
+    }
+    let error = harness
+        .call(
+            1,
+            "entrances",
+            json!({ "project": harness.project, "app": "web" }),
+        )
+        .expect_err("no such app");
+    assert_eq!(error.code, "not_found");
+    assert_eq!(
+        error.message,
+        "no app “web” is in unfold.toml. Its apps: Server, Dev server, Worker, Scheduler, Orders CLI, Dev CLI, Legacy export"
+    );
 }
 
 #[test]

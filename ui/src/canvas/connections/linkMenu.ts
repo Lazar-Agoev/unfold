@@ -1,12 +1,12 @@
 /**
- * The menu of a connection (design §4.7): Kind ▸ (any of the seven; `relates` only joins two tables;
- * `other` asks for a label), Edit label, Describe… (its evidence in words), Copy link, and Remove
+ * The menu of a connection (design §4.7): Kind ▸ (the seven, as `kindEntries` offers them; `relates`
+ * only joins two tables), Edit label, Describe… (its evidence in words), Copy link, and Remove
  * connection. Changing the kind makes you the one who drew it. Each choice that changes the page is
- * one board edit.
+ * one undo step.
  */
 
 import { copyLink } from "../../agent";
-import type { MenuEntry } from "../../components";
+import { showToast, type MenuEntry } from "../../components";
 import { CONNECTION_KINDS, CONNECTION_WORDS, findPage, findResource, getOpenBoard, removeLink, select, setLinkKind, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 
@@ -28,7 +28,12 @@ function linkOf(target: PageTarget, linkId: string) {
   return page && link ? { page, link } : undefined;
 }
 
-/** The kinds a connection can take, as menu entries (Kind ▸, Selected's Kind); `author` (null until known) signs the change. */
+/**
+ * The kinds a connection can take, as menu entries (Kind ▸, Selected's Kind); `author` (null until known)
+ * signs the change. `calls` is offered only on a connection that leaves from a call (its step), and
+ * `other` only once it has a label, since it says what it is there. A change is saved at once as one
+ * undo step; what the board refuses comes back as a message and leaves the connection as it was.
+ */
 export function kindEntries(target: PageTarget, linkId: string, author: string | null): MenuEntry[] {
   const found = linkOf(target, linkId);
   if (!found) {
@@ -36,19 +41,20 @@ export function kindEntries(target: PageTarget, linkId: string, author: string |
   }
   const { page, link } = found;
   const tables = [link.from, link.to].every((id) => findResource(page, id)?.kind === "table");
-  return CONNECTION_KINDS.map((kind) => ({
+  return CONNECTION_KINDS.filter((kind) => kind !== "calls" || link.step !== undefined).map((kind) => ({
     id: `kind-${kind}`,
     label: CONNECTION_WORDS[kind],
     checked: link.kind === kind,
-    disabled: author === null || (kind === "relates" && !tables),
+    disabled: author === null || (kind === "relates" && !tables) || (kind === "other" && !link.label),
     onSelect: () => {
-      if (author !== null) {
-        setLinkKind(target, linkId, kind, author);
+      if (author === null) {
+        return;
       }
-      // An `other` connection says what it is in its label.
-      if (kind === "other" && !link.label) {
-        showField(target, linkId, LINK_LABEL_FIELD);
-      }
+      void setLinkKind(target, linkId, kind, author).then((outcome) => {
+        if (!outcome.ok) {
+          showToast({ title: "Couldn't change the kind", body: outcome.message, tone: "danger" });
+        }
+      });
     },
   }));
 }

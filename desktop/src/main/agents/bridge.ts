@@ -42,8 +42,8 @@ export type AgentEditInput = Omit<AgentEditRequest, "requestId"> & { readonly ex
 /** An applied edit with the page's new revision, or a refusal. */
 export type AgentEditOutcome = (AgentEditSuccess & { readonly revision: string }) | AgentFailure;
 
-/** A held page with its revision, or a refusal (`board_not_open` when the window doesn't hold the board). */
-export type AgentReadOutcome = (AgentReadSuccess & { readonly revision: string }) | AgentFailure;
+/** A held page with its revision and the window that holds it, or a refusal (`board_not_open` when the window doesn't hold the board). */
+export type AgentReadOutcome = (AgentReadSuccess & { readonly revision: string; readonly windowId: number }) | AgentFailure;
 
 /** The window that holds the board now, or a refusal. */
 export type AgentOpenOutcome = { readonly ok: true; readonly windowId: number } | AgentFailure;
@@ -194,7 +194,7 @@ export class AgentBridge {
       // Its report still listed a board it no longer holds.
       this.views.release(target.board);
     }
-    return result.ok ? { ...result, revision: pageRevision(result.page) } : result;
+    return result.ok ? { ...result, revision: pageRevision(result.page), windowId: entry.id } : result;
   }
 
   /**

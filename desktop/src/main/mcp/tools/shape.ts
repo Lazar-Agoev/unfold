@@ -163,7 +163,7 @@ export const addNotes = defineTool({
   name: "add_notes",
   title: "Add notes",
   description:
-    'Adds notes: short plain text on a page for what a reader would otherwise miss, such as a caveat, a reading order, or an open question ("Queued orders are placed by the worker. The client gets a job id, not the order."). Two sentences at most, 400 characters. attach names a card, frame, resource card, or connection the note moves with; without it the note is free, placed beside near or right of everything. Notes aren\'t checked against code and have no health, so never use one to claim what code does: describe a card, or connect with anchors. Add notes sparingly; get_guide("writing") says what makes a good one. Passing an existing id updates that note. One undo step for the whole call.',
+    'Adds notes: short plain text on a page for what a reader would otherwise miss, such as a caveat, a reading order, or an open question ("Queued orders are placed by the worker. The client gets a job id, not the order."). Two sentences at most, 400 characters. attach names a card, frame, resource card, or connection the note moves with; without it the note is free, placed beside near or right of everything. Notes aren\'t checked against code and have no health, so never use one to claim what code does: give the card a description with shape_card, or connect with anchors. Add notes sparingly; get_guide("writing") says what makes a good one. Passing an existing id updates that note. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     notes: z
@@ -198,13 +198,13 @@ export const describe = defineTool({
   name: "describe",
   title: "Describe",
   description:
-    'Writes descriptions: one sentence on what an item does and why, not how ("Places the order now, or queues it when the client asks for an async reply."), never a paragraph that restates the code. items name cards, combined steps, frames, resource cards, and connections by id (or a link). A note\'s text is what it says: change it with add_notes. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. Read get_guide("writing") first. One undo step for the whole call.',
+    'Writes descriptions of what isn\'t a card: one sentence on what an item does and why, not how ("Checks the order before anything is saved."), never a paragraph that restates the code. items name combined steps, frames, resource cards, and connections by id (or a link). A card\'s description is shape_card\'s. A note\'s text is what it says: change it with add_notes. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     items: z
       .array(
         z.object({
-          id: z.string().min(1).describe("The item's id, or a link to it"),
+          id: z.string().min(1).describe("The id of a combined step, frame, resource card, or connection, or a link to it"),
           text: z.string().trim().min(1).max(400),
         }),
       )

@@ -8,7 +8,7 @@ import "./Monogram.css";
 
 export interface MonogramProps {
   readonly name: string;
-  /** 14 in the board's header and Selected's rows, 20 in project rows and the peek sheet's header. */
+  /** 14 in the board's header, 20 in Home's sidebar (the workspace and project rows). */
   readonly size: 14 | 20;
   /** `workspace` for the workspace row. */
   readonly tone?: "default" | "workspace";

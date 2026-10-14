@@ -167,7 +167,7 @@ export interface FrameCardsOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** Writes descriptions of cards, combined steps, frames, resource cards, and connections. */
+/** Writes descriptions of what isn't a card: combined steps, frames, resource cards, and connections (a card's is `shape_card`'s). */
 export interface DescribeOp {
   readonly op: "describe";
   readonly items: readonly { readonly id: string; readonly text: string }[];
@@ -337,7 +337,8 @@ export interface AgentCombineSpec {
 
 /**
  * Shapes one card of the page, as one undo step: its title (the page's name for its definition), its
- * description, names on blocks, combined steps, and the calls it opens in place. Names and combined
+ * description, names on blocks, combined steps, and the calls it opens in place. An app's or
+ * entrance's card, or a type card, draws no flow: it takes only a description. Names and combined
  * steps apply page-wide, by key. The save checks every key and the overlay rules. Changing or removing
  * a person's words is refused unless `replacePeopleText`.
  */

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::Language;
 use unfold_engine::settings::SettingsFile;
-use unfold_engine::settings::edit::SettingsEdit;
+use unfold_engine::settings::edit::{EntryEdit, SettingsEdit};
 
 use super::entrances::{AppView, app_views};
 use super::{NoArgs, ProjectArgs};
@@ -193,15 +193,20 @@ pub struct ProjectConfigUpdate {
     pub config: ProjectConfig,
     /// The unified diff from the old text to the new; empty when the edits changed nothing.
     pub diff: String,
+    /// What each app and entrance edit did, in order: added, changed, or removed, with the
+    /// names the file writes; empty when the edits had none.
+    pub entries: Vec<EntryEdit>,
 }
 
 /// The most edits one `update_project_config` applies.
 pub const MAX_EDITS: usize = 200;
 
 /// `update_project_config`: applies validated edits (scope, Python projects, evidence files,
-/// and apps and entrances: `set_app`, `set_entrance`, `remove_entrance`), keeping comments and
-/// formatting, and returns the diff; an edit that would make the file invalid is refused with
-/// `invalid_settings` and nothing is written. Sends `config_changed`. An edit of only `[[app]]`
+/// and apps and entrances: `set_app`, `set_entrance`, `add_entrance`, `remove_entrance`),
+/// keeping comments and formatting, and returns the diff and what each app and entrance edit
+/// did; an edit that would make the file invalid is refused with `invalid_settings`, and one
+/// that doesn't fit it (an app or entrance it doesn't have, a key `add_entrance` finds taken)
+/// with `settings_conflict`, and nothing is written. Sends `config_changed`. An edit of only `[[app]]`
 /// tables resolves the entrances again without compiling before it returns
 /// (`entrances_changed` follows when they changed); other edits apply with the next background
 /// update.
@@ -226,6 +231,7 @@ pub fn update_project_config(
     Ok(ProjectConfigUpdate {
         config,
         diff: outcome.diff,
+        entries: outcome.entries,
     })
 }
 

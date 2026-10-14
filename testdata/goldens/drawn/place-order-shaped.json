@@ -70,6 +70,14 @@
           "shop/service.py#place_order/if[0]"
         ],
         "collapsed": true,
+        "holds": [
+          "shop/service.py#place_order/if[0]",
+          "shop/service.py#place_order/if[0]/then",
+          "shop/service.py#place_order/if[0]/then/raise[0]",
+          "shop/service.py#place_order/if[0]/then/raise[0]/call:ValueError",
+          "shop/service.py#place_order/if[0]/elif[0]",
+          "shop/service.py#place_order/if[0]/elif[0]/return[0]"
+        ],
         "lines": [
           12,
           15
@@ -100,6 +108,11 @@
             "id": 9,
             "key": "shop/service.py#place_order/try[0]/body",
             "form": "body",
+            "label": "body",
+            "lines": [
+              18,
+              19
+            ],
             "state": "reached",
             "types": [],
             "fallsThrough": false,
@@ -146,6 +159,11 @@
             "id": 11,
             "key": "shop/service.py#place_order/try[0]/except[0]",
             "form": "except",
+            "label": "except PaymentDeclined as error",
+            "lines": [
+              20,
+              22
+            ],
             "state": "reached",
             "name": "Card declined",
             "clause": "except PaymentDeclined as error",
@@ -173,6 +191,11 @@
                     "shop/service.py#place_order/try[0]/except[0]/return[0]"
                   ],
                   "collapsed": true,
+                  "holds": [
+                    "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
+                    "shop/service.py#place_order/try[0]/except[0]/return[0]",
+                    "shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed"
+                  ],
                   "lines": [
                     21,
                     22
@@ -227,6 +250,12 @@
           "shop/service.py#place_order/for[0]"
         ],
         "collapsed": true,
+        "holds": [
+          "shop/service.py#place_order/call:save_order",
+          "shop/service.py#place_order/for[0]",
+          "shop/service.py#place_order/for[0]/body",
+          "shop/service.py#place_order/for[0]/body/call:reserve_stock"
+        ],
         "lines": [
           25,
           27

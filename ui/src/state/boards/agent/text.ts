@@ -1,18 +1,18 @@
 /**
- * What agents write with `describe`: descriptions of cards, combined steps, frames, resource cards, and
- * connections. Every text is signed with the agent's identity and signed against the code at the next
+ * What agents write with `describe`: descriptions of what isn't a card (combined steps, frames, resource
+ * cards, and connections; a card's description is `shape_card`'s). Every text is signed with the agent's identity and signed against the code at the next
  * save. Replacing a person's text is refused unless the call says the person asked for it; text that
  * doesn't change is kept as it is, whoever wrote it.
  */
 
 import type { AgentItemResult, AgentItemStatus, DescribeOp } from "@unfold/desktop/agent-api";
 import type { Page } from "../../../ipc/generated";
-import { findCard, findCombined, setCardDescription, updateCombined } from "../document";
+import { findCard, findCombined, updateCombined } from "../document";
 import { setLinkDescription } from "../connections";
 import { findFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource, setResourceDescription } from "../resources";
-import { cardName, cardResult, combinedResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
+import { combinedResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
 import { linkResult } from "./connections";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
@@ -35,14 +35,8 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
   const author = ctx.agent.author;
   return op.items.map((item): AgentItemResult => {
     const text = textOf(item.text, `“${item.id}”`);
-    const card = findCard(page, item.id);
-    if (card) {
-      const before = card.description;
-      if (before && before.text !== text) {
-        guardPeopleText(`the description of ${cardName(ctx, card)}`, before.author, op.replacePeopleText);
-      }
-      setCardDescription(page, card.id, text, author);
-      return cardResult(ctx, card, statusOf(before?.text, text));
+    if (findCard(page, item.id)) {
+      throw invalid(`“${item.id}” is a card: shape_card with its description describes it.`);
     }
     const combined = findCombined(page, item.id);
     if (combined) {
@@ -84,6 +78,6 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
     if (findNote(page, item.id)) {
       throw invalid(`“${item.id}” is a note: its text is what it says. add_notes with its id rewrites it.`);
     }
-    throw invalid(`There is no card, combined step, frame, resource card, or connection with id “${item.id}” on this page. read_page lists the page's ids.`);
+    throw invalid(`There is no combined step, frame, resource card, or connection with id “${item.id}” on this page. read_page lists the page's ids.`);
   });
 }

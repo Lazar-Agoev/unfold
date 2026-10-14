@@ -29,7 +29,7 @@ use notify_debouncer_full::{Debouncer, NoCache};
 use unfold_core::{ContentHash, Graph, RepoPath};
 use unfold_engine::entrances::Fixes;
 use unfold_engine::settings::AppEntry;
-use unfold_engine::{CancelToken, Engine};
+use unfold_engine::{CancelToken, Engine, ProblemKind};
 use unfold_reader::ReaderCache;
 use unfold_store::ReadPool;
 
@@ -65,13 +65,15 @@ pub(crate) enum Job {
 
 /// What the engine last resolved of `unfold.toml`'s apps: the tables as written, the graph
 /// their code was resolved against (its apps hold the valid entries, its inputs the settings
-/// file's hash), and the fixes of the code that is missing. The engine thread publishes it
+/// file's hash), the fixes of the code that is missing, and whether the file parses (one that
+/// doesn't leaves the last valid tables in effect). The engine thread publishes it
 /// after it restores a stored graph, after every update, and after re-resolving entrances.
 #[derive(Debug, Clone)]
 pub(crate) struct Resolved {
     pub(crate) entries: Vec<AppEntry>,
     pub(crate) graph: Arc<Graph>,
     pub(crate) fixes: Fixes,
+    pub(crate) settings_parse: bool,
 }
 
 impl Resolved {
@@ -81,12 +83,20 @@ impl Resolved {
             entries: engine.app_entries().to_vec(),
             graph: Arc::clone(engine.graph()),
             fixes: engine.fixes().clone(),
+            settings_parse: !engine
+                .problems()
+                .iter()
+                .any(|problem| problem.kind == ProblemKind::Settings),
         }
     }
 
-    /// Whether `other` lists the same entrances: the same tables, states, and fixes.
+    /// Whether `other` lists the same entrances: the same tables, states, and fixes, from a file
+    /// that parses or doesn't alike (the code panel shows which).
     fn same(&self, other: &Self) -> bool {
-        self.entries == other.entries && self.graph.apps == other.graph.apps && self.fixes == other.fixes
+        self.entries == other.entries
+            && self.graph.apps == other.graph.apps
+            && self.fixes == other.fixes
+            && self.settings_parse == other.settings_parse
     }
 }
 

@@ -305,6 +305,14 @@ describe("loops", () => {
     expect(geometry.blocks.get("shop/service.py#place_order/for[0]/body")).toBeDefined();
   });
 
+  it("says done on the wire into End when the loop is the last step", () => {
+    const flow = drawn("01-place-order");
+    flow.steps.steps = flow.steps.steps.filter((step) => step.id !== 17);
+    flow.routes = flow.routes.filter((route) => route.from !== 17).map((route) => (route.kind === "done" ? { ...route, to: "end" as const } : route));
+    const geometry = lay(flow);
+    expect(wireOf(geometry, 14, "done", "end")?.label?.text).toBe("done");
+  });
+
   it("draws continue and break with where they go, a header call in the title, and the loop's else", () => {
     const geometry = lay(drawn("04-reserve-first-free"));
     expect(exitOf(geometry, "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then/continue[0]").destination).toBe("next item");
@@ -461,6 +469,9 @@ describe("combined steps", () => {
     ]);
     expect(geometry.items.get("stop")).toBe(stop?.rect);
     expect(geometry.blocks.get("shop/service.py#place_order/if[0]")).toBe(stop?.rect);
+    // What it holds and doesn't draw outlines it: a builtin in its raise, a call in its loop's body.
+    expect(geometry.blocks.get("shop/service.py#place_order/if[0]/then/raise[0]/call:ValueError")).toBe(stop?.rect);
+    expect(geometry.blocks.get("shop/service.py#place_order/for[0]/body/call:reserve_stock")).toBe(save?.rect);
     // Arrows from the calls it holds leave from it.
     expect(geometry.anchors.filter((anchor) => anchor.rect === save?.rect).map((anchor) => [anchor.call, anchor.to])).toEqual(save?.step.calls.map((item) => [item.key, item.to]));
     expect(pieces(geometry, "start")[0]).toMatchObject({ label: "Place an order", named: true });

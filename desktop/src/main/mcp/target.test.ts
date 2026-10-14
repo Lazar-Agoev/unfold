@@ -119,7 +119,7 @@ describe("a page link the person copied and pasted", () => {
   it("names the page an edit works on, over the page in view, passed as page or as board", async () => {
     const tools = app();
     for (const args of [{ page: link }, { board: link }]) {
-      expect((await tools.call(describeTool, { ...args, items: [{ id: "send-email", text: "Sends one email." }] })).isError).toBe(false);
+      expect((await tools.call(describeTool, { ...args, items: [{ id: "mailer", text: "Sends the emails." }] })).isError).toBe(false);
     }
     const edits = tools.requests.filter((request): request is AgentShellEvent & AgentEditRequest => request.type === "agent_edit");
     expect(edits.map((request) => [request.board, request.page])).toEqual([

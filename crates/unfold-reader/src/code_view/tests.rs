@@ -50,11 +50,21 @@ fn shop() -> Playground {
 }
 
 fn view_of(playground: &Playground, selected: Target, show: Option<Target>) -> CodeView {
+    view_with(playground, selected, show, true)
+}
+
+fn view_with(
+    playground: &Playground,
+    selected: Target,
+    show: Option<Target>,
+    settings_parse: bool,
+) -> CodeView {
     let sources = CodeSources {
         facts: &playground.graph,
         root: &playground.root,
         inputs: &playground.graph.inputs,
         apps: &playground.graph.apps,
+        settings_parse,
         highlighters: &[&Keywords],
     };
     code_view(&sources, &CodeRequest { selected, show }).unwrap()
@@ -263,6 +273,9 @@ fn parts_in_a_switch_a_match_and_a_loop_else() {
         steps(&case),
         ["src/cli.ts", "main", "*switch (command)*", "case \"report\""]
     );
+    let otherwise = view(&ts, block("src/lib/validate.ts#validateOrder/if[1]/elif[0]"));
+    let label = &otherwise.path.last().unwrap().label;
+    assert!(label.starts_with("else if typeof email"), "{label}");
     let default = view(&ts, block("src/cli.ts#main/switch[0]/default"));
     assert_eq!(marked_lines(&default), Some([25, 26]));
     assert_eq!(steps(&default)[3], "default");
@@ -950,6 +963,25 @@ fn a_file_that_stopped_parsing_shows_whole() {
     assert_eq!(shown(&broken), ["1 def place_order(:"]);
     assert_eq!(broken.mark, None);
     assert_eq!(steps(&broken), ["*shop/service.py*", "place_order", "sum"]);
+}
+
+#[test]
+fn an_unfold_toml_that_does_not_parse_shows_whole() {
+    let shop = shop();
+    std::fs::write(shop.root.join("unfold.toml"), "[[app]\nname = \"Shop\"\n").unwrap();
+    let app = Target::Start {
+        key: Key::from_text("entrance:shop"),
+        span: toml_span("[[app]]"),
+    };
+    let broken = view_with(&shop, app.clone(), None, false);
+    assert_eq!(broken.state, CodeState::DoesNotParse);
+    assert_eq!(shown(&broken), ["1 [[app]", "2 name = \"Shop\""]);
+    assert_eq!(broken.mark, None);
+    let file = view_with(&shop, Target::File(path("unfold.toml")), None, false);
+    assert_eq!(file.state, CodeState::DoesNotParse);
+
+    // Whether it parses is the settings' state alone: the same text that parses reads changed.
+    assert_eq!(view(&shop, app).state, CodeState::Changed);
 }
 
 #[test]

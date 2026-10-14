@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CardView, DrawnFlow, Page } from "../ipc/generated";
 import { page } from "../test/workspace";
-import { blockSelection, rowTarget, selectionCode } from "./targets";
+import { blockSelection, gapPlace, rowTarget, selectionCode, sourceLines } from "./targets";
 
 const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
 
@@ -60,6 +60,7 @@ describe("what the code panel opens for a selection", () => {
     expect(selectionCode({ kind: "combined", combinedId: "save" }, PAGE, VIEWS)).toEqual({
       target: { kind: "lines", path: "shop/service.py", lines: [25, 27], title: "Save it and reserve stock" },
       cardId: "place",
+      from: { kind: "combined", item: "save" },
     });
     expect(selectionCode({ kind: "combined", combinedId: "save" }, PAGE, new Map())).toBeNull();
   });
@@ -105,20 +106,83 @@ describe("what the code panel opens for a selection", () => {
   });
 });
 
-describe("what a click on a line selects", () => {
-  it("selects the block in the card that draws it, the card itself for its own key", () => {
-    expect(blockSelection(PAGE, VIEWS, LOAD, null)).toEqual({ kind: "card", cardId: "place", key: LOAD });
-    expect(blockSelection(PAGE, VIEWS, PLACE, "place")).toEqual({ kind: "card", cardId: "place", key: null });
+/** `place_order` as drawn after its code moved down `by` lines. */
+function moved(name: string, by: number): CardView {
+  const shift = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(shift);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([field, item]) => [field, field === "lines" && Array.isArray(item) ? item.map((line: number) => line + by) : shift(item)]));
+    }
+    return value;
+  };
+  return shift(drawn(name)) as CardView;
+}
+
+describe("lines opened from a card's flow", () => {
+  it("rebuilds a combined step's, a row's, and a gap tick's lines from the flow as it is drawn now", () => {
+    const flow = drawn("01-place-order");
+    if (flow.type !== "definition") {
+      throw new Error("a definition");
+    }
+    const place = gapPlace(flow.flow, "shop/service.py", [24, 24]);
+    expect(place).toEqual({ before: SAVE });
+    const now = moved("01-place-order", 3);
+    expect(sourceLines({ kind: "gap", place: { before: SAVE } }, now)).toEqual({ kind: "lines", path: "shop/service.py", lines: [27, 27] });
+    expect(sourceLines({ kind: "row", key: "shop/service.py#place_order/try[0]/except[0]/call:logger.warning" }, now)).toEqual({
+      kind: "lines",
+      path: "shop/service.py",
+      lines: [24, 24],
+    });
+    expect(sourceLines({ kind: "combined", item: "save" }, moved("place-order-shaped", 2))).toEqual({
+      kind: "lines",
+      path: "shop/service.py",
+      lines: [27, 29],
+      title: "Save it and reserve stock",
+    });
   });
 
-  it("selects the collapsed combined step holding a block, and nothing for a block no card draws", () => {
-    expect(blockSelection(PAGE, VIEWS, SAVE, null)).toEqual({ kind: "combined", combinedId: "save" });
-    expect(blockSelection(PAGE, VIEWS, "shop/service.py#place_order/call:len", null)).toBeNull();
+  it("finds a gap tick at the end of a body by that body, and nothing for what the card no longer draws", () => {
+    const view = drawn("01-place-order");
+    if (view.type !== "definition") {
+      throw new Error("a definition");
+    }
+    const handler = "shop/service.py#place_order/try[0]/except[0]";
+    const ended = structuredClone(view);
+    const attempt = ended.flow.steps.steps.find((step) => step.kind === "try");
+    const lane = attempt?.kind === "try" ? attempt.lanes.find((item) => item.key === handler) : undefined;
+    if (!lane) {
+      throw new Error("01-place-order draws its handler");
+    }
+    lane.steps.endGap = { count: 1, lines: [23, 23], hidden: [] };
+    expect(gapPlace(ended.flow, "shop/service.py", [23, 23])).toEqual({ end: handler });
+    expect(gapPlace(ended.flow, "shop/other.py", [23, 23])).toBeUndefined();
+    expect(sourceLines({ kind: "gap", place: { end: handler } }, ended)).toEqual({ kind: "lines", path: "shop/service.py", lines: [23, 23] });
+    expect(sourceLines({ kind: "gap", place: { end: handler } }, view)).toBeNull();
+    expect(sourceLines({ kind: "combined", item: "save" }, view)).toBeNull();
+  });
+});
+
+describe("what a click on a line selects", () => {
+  it("selects the block in the card that draws it, the card itself for its own key", () => {
+    expect(blockSelection(PAGE, VIEWS, [LOAD], null)).toEqual({ kind: "card", cardId: "place", key: LOAD });
+    expect(blockSelection(PAGE, VIEWS, [PLACE], "place")).toEqual({ kind: "card", cardId: "place", key: null });
+  });
+
+  it("selects the collapsed combined step holding a block, written inside it too, and nothing for a block no card draws", () => {
+    expect(blockSelection(PAGE, VIEWS, [SAVE], null)).toEqual({ kind: "combined", combinedId: "save" });
+    expect(blockSelection(PAGE, VIEWS, ["shop/service.py#place_order/for[0]/body/call:reserve_stock"], null)).toEqual({ kind: "combined", combinedId: "save" });
+    expect(blockSelection(PAGE, VIEWS, ["shop/service.py#place_order/call:len"], null)).toBeNull();
+  });
+
+  it("falls back to the line's block when the call on it isn't drawn on its own", () => {
+    expect(blockSelection(PAGE, VIEWS, ["shop/service.py#place_order/call:sum", LOAD], null)).toEqual({ kind: "card", cardId: "place", key: LOAD });
   });
 
   it("prefers the card the panel's selection is in", () => {
     const page = { ...PAGE, cards: [...PAGE.cards, { id: "again", ref: { block: PLACE }, at: [0, 900] as [number, number] }] };
     const views = new Map([...VIEWS, ["again", drawn("place-order-shaped")]]);
-    expect(blockSelection(page, views, LOAD, "again")).toEqual({ kind: "card", cardId: "again", key: LOAD });
+    expect(blockSelection(page, views, [LOAD], "again")).toEqual({ kind: "card", cardId: "again", key: LOAD });
   });
 });

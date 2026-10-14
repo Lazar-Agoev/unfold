@@ -4,25 +4,20 @@
  * only names the target, from the page and what its cards draw, never from keys.
  */
 
-import type { Anchor, CardView, CodeTarget, DrawnFlow, Key, Page, RepoPath, Sequence, ThinRow } from "../ipc/generated";
+import type { Anchor, CardView, CodeTarget, DrawnFlow, GapTick, Key, Page, RepoPath, Sequence, Step, ThinRow } from "../ipc/generated";
 import { cardKey, findCard, findResource, type Selection } from "../state/boards";
-import { findBlock } from "../state/cards";
+import { eachSequence, findBlock } from "../state/cards";
+import type { CodeSource, GapPlace } from "../state/codePanel";
 
-/** A target for the panel, and the card the selection is in. */
+/** A target for the panel, the card the selection is in, and for lines a card draws, what draws them. */
 export interface CodeChoice {
   readonly target: CodeTarget;
   readonly cardId: string | null;
-}
-
-/** A combined step's lines in its file. */
-interface CombinedLines {
-  readonly path: RepoPath;
-  readonly lines: [number, number];
-  readonly title: string;
+  readonly from?: CodeSource;
 }
 
 /** The first of `items` for which `find` finds something. */
-function firstOf<T, R>(items: readonly T[], find: (item: T) => R | undefined): R | undefined {
+function firstOf<T, R>(items: Iterable<T>, find: (item: T) => R | undefined): R | undefined {
   for (const item of items) {
     const found = find(item);
     if (found !== undefined) {
@@ -32,40 +27,93 @@ function firstOf<T, R>(items: readonly T[], find: (item: T) => R | undefined): R
   return undefined;
 }
 
-/** Combined step `item` among a sequence's steps (in `path`), or in what they hold or open in place. */
-function inSequence(sequence: Sequence, path: RepoPath, item: string): CombinedLines | undefined {
-  return firstOf(sequence.steps, (step) => {
-    switch (step.kind) {
-      case "combined":
-        return step.item === item ? { path, lines: [...step.lines], title: step.title } : step.steps ? inSequence(step.steps, path, item) : undefined;
-      case "call":
-        return firstOf([step.inset, ...step.callbacks.map((callback) => callback.inset)], (inset) => (inset ? inFlow(inset, item) : undefined));
-      case "decision":
-      case "loop":
-      case "try":
-      case "with":
-        return firstOf(step.lanes, (lane) => inSequence(lane.steps, path, item));
-      case "thin":
-      case "exit":
-      case "proposed":
-        return undefined;
-    }
+/** What `find` finds first among the steps of a drawn flow's sequences, given the file of the flow drawing each and the body it is. */
+function findStep<R>(flow: DrawnFlow, find: (sequence: Sequence, path: RepoPath, body: string) => R | undefined): R | undefined {
+  let found: R | undefined;
+  eachSequence(flow, (sequence, body, path) => {
+    found ??= find(sequence, path, body);
   });
+  return found;
 }
 
-function inFlow(flow: DrawnFlow, item: string): CombinedLines | undefined {
-  return inSequence(flow.steps, flow.header.path, item);
+/** What a step is known by in its flow: its block's key, a row's first call's, or a combined or proposed step's id. */
+function stepId(step: Step): string | undefined {
+  switch (step.kind) {
+    case "call":
+    case "decision":
+    case "loop":
+    case "try":
+    case "with":
+    case "exit":
+      return step.key;
+    case "thin":
+      return step.calls[0]?.key;
+    case "combined":
+    case "proposed":
+      return step.item;
+  }
+}
+
+/** Combined step `item` drawn in `flow`: its lines, titled. */
+function combinedIn(flow: DrawnFlow, item: string): CodeTarget | undefined {
+  return findStep(flow, (sequence, path) =>
+    firstOf(sequence.steps, (step) => (step.kind === "combined" && step.item === item ? { kind: "lines" as const, path, lines: [...step.lines], title: step.title } : undefined)),
+  );
+}
+
+/** The row of other calls drawn in `flow` whose first call is `key`. */
+function rowIn(flow: DrawnFlow, key: Key): CodeTarget | undefined {
+  return findStep(flow, (sequence, path) => firstOf(sequence.steps, (step) => (step.kind === "thin" && step.calls[0]?.key === key ? rowTarget(path, step) : undefined)));
+}
+
+/** The gaps of a sequence: before each step that has one, then at its end. */
+function gapsOf(sequence: Sequence, body: string): { readonly place: GapPlace; readonly gap: GapTick }[] {
+  const before = sequence.steps.flatMap((step) => {
+    const id = stepId(step);
+    return step.gap && id !== undefined ? [{ place: { before: id }, gap: step.gap }] : [];
+  });
+  return sequence.endGap ? [...before, { place: { end: body }, gap: sequence.endGap }] : before;
+}
+
+function samePlace(a: GapPlace, b: GapPlace): boolean {
+  return "before" in a ? "before" in b && a.before === b.before : "end" in b && a.end === b.end;
+}
+
+/** The lines of the gap tick at `place` in `flow`. */
+function gapIn(flow: DrawnFlow, place: GapPlace): CodeTarget | undefined {
+  return findStep(flow, (sequence, path, body) =>
+    firstOf(gapsOf(sequence, body), (found) => (samePlace(found.place, place) ? { kind: "lines" as const, path, lines: [...found.gap.lines] } : undefined)),
+  );
+}
+
+/** Where the gap tick counting `lines` of `path` sits in `flow`. */
+export function gapPlace(flow: DrawnFlow, path: RepoPath, lines: readonly [number, number]): GapPlace | undefined {
+  return findStep(flow, (sequence, file, body) =>
+    file === path ? firstOf(gapsOf(sequence, body), (found) => (found.gap.lines[0] === lines[0] && found.gap.lines[1] === lines[1] ? found.place : undefined)) : undefined,
+  );
+}
+
+/** What `from` draws in `view` now, as the panel opens it; null when the card no longer draws it. */
+export function sourceLines(from: CodeSource, view: CardView): CodeTarget | null {
+  if (view.type !== "definition") {
+    return null;
+  }
+  switch (from.kind) {
+    case "combined":
+      return combinedIn(view.flow, from.item) ?? null;
+    case "row":
+      return rowIn(view.flow, from.key) ?? null;
+    case "gap":
+      return gapIn(view.flow, from.place) ?? null;
+  }
 }
 
 /** The first card of `views` that draws combined step `item`, and its lines. */
-function combinedLines(views: ReadonlyMap<string, CardView>, item: string): { readonly cardId: string; readonly lines: CombinedLines } | undefined {
-  for (const [cardId, view] of views) {
-    const lines = view.type === "definition" ? inFlow(view.flow, item) : undefined;
-    if (lines) {
-      return { cardId, lines };
-    }
-  }
-  return undefined;
+function combinedLines(views: ReadonlyMap<string, CardView>, item: string): CodeChoice | undefined {
+  return firstOf(views, ([cardId, view]) => {
+    const target = view.type === "definition" ? combinedIn(view.flow, item) : undefined;
+    return target ? { target, cardId, from: { kind: "combined" as const, item } } : undefined;
+  });
 }
 
 /**
@@ -109,10 +157,8 @@ export function selectionCode(selection: Selection, page: Page, views: ReadonlyM
     }
     case "field":
       return findCard(page, selection.cardId) ? { target: { kind: "field", key: selection.key, index: selection.index }, cardId: selection.cardId } : null;
-    case "combined": {
-      const found = combinedLines(views, selection.combinedId);
-      return found ? { target: { kind: "lines", ...found.lines }, cardId: found.cardId } : null;
-    }
+    case "combined":
+      return combinedLines(views, selection.combinedId) ?? null;
     case "line":
       return { target: { kind: "block", key: selection.call }, cardId: selection.from };
     case "resource": {
@@ -143,19 +189,33 @@ function cardSelection(page: Page, cardId: string, key: Key): Selection | null {
   return card ? { kind: "card", cardId, key: cardKey(card) === key ? null : key } : null;
 }
 
+/** The collapsed combined step of `views` that holds block `key`. */
+function holder(views: ReadonlyMap<string, CardView>, key: Key): string | undefined {
+  return firstOf(views.values(), (view) =>
+    view.type === "definition"
+      ? findStep(view.flow, (sequence) => firstOf(sequence.steps, (step) => (step.kind === "combined" && step.holds?.includes(key) ? step.item : undefined)))
+      : undefined,
+  );
+}
+
 /**
- * What a click on a line selects for block `key`: the block in the card the panel's selection is in
- * (`preferred`) or else the first card that draws it (the card itself for its own key), or the combined
- * step that holds it. Null when nothing on the page draws it.
+ * What a click on a line selects for the first of `keys` (a call on it, then its own block) that
+ * something on the page draws: the block in the card the panel's selection is in (`preferred`) or
+ * else the first card that draws it (the card itself for its own key), or the collapsed combined step
+ * that holds it. Null when nothing on the page draws any of them.
  */
-export function blockSelection(page: Page, views: ReadonlyMap<string, CardView>, key: Key, preferred: string | null): Selection | null {
+export function blockSelection(page: Page, views: ReadonlyMap<string, CardView>, keys: readonly Key[], preferred: string | null): Selection | null {
   const first = preferred !== null && views.get(preferred) ? [preferred] : [];
-  for (const cardId of [...first, ...views.keys()]) {
-    const view = views.get(cardId);
-    if (view && draws(view, key)) {
-      return cardSelection(page, cardId, key);
-    }
-  }
-  const combined = page.combined.find((step) => step.members.includes(key));
-  return combined ? { kind: "combined", combinedId: combined.id } : null;
+  return (
+    firstOf(keys, (key): Selection | undefined => {
+      for (const cardId of [...first, ...views.keys()]) {
+        const view = views.get(cardId);
+        if (view && draws(view, key)) {
+          return cardSelection(page, cardId, key) ?? undefined;
+        }
+      }
+      const combined = holder(views, key);
+      return combined !== undefined ? { kind: "combined", combinedId: combined } : undefined;
+    }) ?? null
+  );
 }

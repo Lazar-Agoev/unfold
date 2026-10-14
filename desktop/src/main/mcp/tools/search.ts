@@ -9,7 +9,7 @@
 import { z } from "zod";
 import type { AppView, EntranceCode, EntranceView, NodeKind, ProjectRow, SearchHit } from "../engine-types";
 import { count, place } from "../format";
-import { cant, cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
+import { cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
@@ -177,11 +177,8 @@ export const listEntrances = defineTool({
   async run({ project, app, filter, limit, cursor }, context) {
     const row = await projectOrView(context, project);
     const offset = cursorOffset(cursor);
-    const view = await context.engine("entrances", { project: row.id });
-    const apps = app === undefined ? view.apps : view.apps.filter((item) => item.name === app || item.key === app);
-    if (app !== undefined && apps.length === 0) {
-      throw cant("list the entrances", `${row.name} has no app “${app}”`, `Its apps: ${view.apps.map((item) => item.name ?? item.key ?? "(no name)").join(", ") || "none"}.`);
-    }
+    // The engine finds the app by its name or key, as edits do, and refuses one the file doesn't have.
+    const { resolved, apps } = await context.engine("entrances", app === undefined ? { project: row.id } : { project: row.id, app });
     const matching = filter === undefined ? "" : ` matching “${filter}”`;
     const page = fitting(limit, 0, (size) =>
       apps.map((item) => {
@@ -193,7 +190,7 @@ export const listEntrances = defineTool({
     const lines = page.sections.flatMap((item) => item.lines);
     return textResult(
       context.header({ project: row.name }),
-      view.resolved ? null : "The code keys aren't looked up yet: compile_project, then list again.",
+      resolved ? null : "The code keys aren't looked up yet: compile_project, then list again.",
       lines.length > 0 ? lines.join("\n") : `${row.name} declares no apps in unfold.toml.`,
       moreLine(page.sections, "list_entrances", offset + page.limit),
       lines.length > 0 ? "Next: read_code with an app's or entrance's key shows its code; create_board with trace makes a board from it." : null,

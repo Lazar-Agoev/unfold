@@ -1,6 +1,7 @@
 //! The code panel (`code_view`): one model per selection, for every target kind (a block, lines
 //! with a mark, a type card's field, a file, an evidence file, an app or entrance), widened with
-//! `show`, never trusting changed bytes, with its paths confined to the project.
+//! `show`, never trusting changed bytes, saying when `unfold.toml` doesn't parse, with its paths
+//! confined to the project.
 
 use serde_json::{Value, json};
 
@@ -247,4 +248,21 @@ fn apps_and_entrances_show_their_lines_in_unfold_toml() {
     assert!(numbers(&app).len() > numbers(&entrance).len());
     let unknown = view(&harness, json!({ "kind": "start", "key": "entrance:nope" }));
     assert_eq!(unknown["state"], "notFound");
+}
+
+#[test]
+fn an_unfold_toml_that_does_not_parse_says_so() {
+    let harness = Harness::compiled("ts-orders");
+    let entrance = json!({ "kind": "start", "key": "entrance:server/place-an-order" });
+    let config = std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read");
+    harness.write("unfold.toml", &format!("{config}\n[[app]\n"));
+    // Until the engine reads it, the file only changed.
+    assert_eq!(view(&harness, entrance.clone())["state"], "changed");
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let broken = view(&harness, entrance);
+    assert_eq!(broken["state"], "doesNotParse");
+    assert!(text(&broken).ends_with("[[app]"), "the whole file: {broken}");
+    assert!(broken.get("mark").is_none(), "{broken}");
+    let file = view(&harness, json!({ "kind": "file", "path": "unfold.toml" }));
+    assert_eq!(file["state"], "doesNotParse");
 }

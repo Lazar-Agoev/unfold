@@ -6,7 +6,7 @@
 
 import { shortPath } from "../code/text";
 import { isTypeKind, typeKindWord } from "../code/typeKinds";
-import type { CardView, Header, StartCard, StartTarget, TargetState, View } from "../ipc/generated";
+import type { CardView, Header, StartCard, StartTarget, View } from "../ipc/generated";
 
 /**
  * How a card is drawn: compact (its header; arrows leave its edge), expanded (its drawn flow, or an
@@ -51,24 +51,25 @@ export function headerLocation(header: Pick<Header, "path" | "line">): string {
   return `${shortPath(header.path)}:${header.line}`;
 }
 
-/** Each state of a start's code in words. */
-export const TARGET_STATE_WORDS: Readonly<Record<TargetState, string>> = {
-  found: "found",
-  missing: "missing",
-  not_analyzed: "not analyzed",
-  not_a_start: "not a start",
-  stale: "stale",
-};
-
 /** One code row of a start card: the code, and its place among the start's code (its port). */
 export interface StartRow {
   readonly code: StartTarget;
   readonly index: number;
 }
 
-/** The code rows a start card lists: all of its code when expanded, only the code that isn't found when compact. */
+/** Whether a start's code has a block to draw: found, or stale (its last good block). */
+function drawsBlock(code: StartTarget): boolean {
+  return code.state === "found" || code.state === "stale";
+}
+
+/** The code rows a start card lists when expanded: the code that has a block, in order. */
 export function startRows(start: StartCard, shape: CardShape): StartRow[] {
-  return start.code.flatMap((code, index) => (shape === "expanded" || code.state !== "found" ? [{ code, index }] : []));
+  return shape === "expanded" ? start.code.flatMap((code, index) => (drawsBlock(code) ? [{ code, index }] : [])) : [];
+}
+
+/** A start's code that isn't found (missing, not analyzed, or not a start), each drawn as its own dashed card beside the start's. */
+export function unfoundCode(start: StartCard): StartRow[] {
+  return start.code.flatMap((code, index) => (drawsBlock(code) ? [] : [{ code, index }]));
 }
 
 /** What a code row is called: the definition's label, else its key as written in `unfold.toml`. */

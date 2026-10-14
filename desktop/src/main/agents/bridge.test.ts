@@ -218,7 +218,7 @@ describe("reading a held page", () => {
     const sent = await request(holder, 1);
     const read = { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: true } };
     bridge.settle(holder.id, "read", sent.requestId, read);
-    expect(await outcome).toEqual({ ...read, revision: pageRevision(PAGE) });
+    expect(await outcome).toEqual({ ...read, revision: pageRevision(PAGE), windowId: holder.id });
   });
 
   it("forgets a board the window's report still listed after it stopped holding it", async () => {

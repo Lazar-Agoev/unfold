@@ -145,6 +145,40 @@ describe("the Add box", () => {
     expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
   });
 
+  it("adds nothing on Enter while the list still answers what was typed before", async () => {
+    let answer: (results: SearchResults) => void = () => undefined;
+    openBox();
+    type("order");
+    await screen.findByRole("listbox", { name: "Results" });
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        search: () =>
+          new Promise<SearchResults>((resolve) => {
+            answer = resolve;
+          }),
+      },
+    });
+    type("orders");
+    press("Enter");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    press("Enter");
+    expect(adds.addRef).not.toHaveBeenCalled();
+    await act(async () => {
+      answer({ ...RESULTS, query: "orders", entrances: { hits: [], total: 0, truncated: false } });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByRole("option")[0]?.querySelector(".add-row-name")?.textContent).toBe("place_order");
+    });
+    press("Enter");
+    await waitFor(() => {
+      expect(adds.addRef).toHaveBeenCalledWith(PAGE, { block: "place-order-key" }, "place_order");
+    });
+  });
+
   it("opens a file in the code panel on Enter, whole", async () => {
     openBox();
     type("order");
@@ -154,7 +188,7 @@ describe("the Add box", () => {
     }
     press("Enter");
     await waitFor(() => {
-      expect(getCodeOpen()).toEqual({ project: ORDERS, target: { kind: "file", path: "tests/test_orders.py" }, show: null, cardId: null, gap: null });
+      expect(getCodeOpen()).toEqual({ project: ORDERS, target: { kind: "file", path: "tests/test_orders.py" }, show: null, cardId: null });
     });
     expect(adds.addRef).not.toHaveBeenCalled();
   });

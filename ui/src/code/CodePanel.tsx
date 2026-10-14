@@ -6,10 +6,11 @@
  * numbers: the selection's lines tinted with an accent edge, and a call's expression filled. Lines render
  * in pages of 200 as they scroll into view.
  *
- * While it is open it follows the page's selection (something with no source leaves it where it is).
- * Hovering a line lights its block on the canvas (`setCodeHover`); clicking one selects that block and
- * leaves the panel where it is. `⊕` beside a definition with no card on the page adds its card. × or
- * Escape closes it.
+ * While it is open it follows the page's selection (something with no source leaves it where it is),
+ * and lines opened from a card's flow follow the card as it is drawn now. Hovering a line lights its
+ * block on the canvas (`setCodeHover`): a call's when on its name, falling back to the line's block when
+ * the call isn't drawn on its own. Clicking one selects that block and leaves the panel where it is.
+ * `⊕` beside a definition with no card on the page adds its card. × or Escape closes it.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type UIEvent } from "react";
@@ -20,10 +21,10 @@ import { openInEditor } from "../lib/files";
 import { isTyping } from "../lib/typing";
 import { addBlock, cardRefKey, findPage, itemsFor, select, useOpenBoard, usePageKeys, usePageView, type PageTarget } from "../state/boards";
 import { cardName, usePageCards } from "../state/cards";
-import { closeCode, openCode, quietly, setCodeHover, takeQuiet, widenCode, type CodeOpen } from "../state/codePanel";
+import { closeCode, openCode, quietly, retargetCode, setCodeHover, takeQuiet, widenCode, type CodeOpen } from "../state/codePanel";
 import { ReviewButton } from "../canvas/cards/ReviewBanner";
 import { PAGE_LINES, pageRange } from "./paging";
-import { blockSelection, selectionCode } from "./targets";
+import { blockSelection, selectionCode, sourceLines } from "./targets";
 import { TokenText } from "./TokenText";
 import { markedLine, useCodeView } from "./view";
 import "./panel.css";
@@ -53,8 +54,12 @@ function stepShow(open: CodeOpen, view: CodeView, step: PathStep, index: number)
   return open.target.kind === "start" ? { kind: "start", key: step.key } : { kind: "block", key: step.key };
 }
 
-/** The path, shortened in the middle (never past the step showing) while it doesn't fit. */
-function Path({ steps, onWiden }: { readonly steps: readonly PathStep[]; readonly onWiden: (step: PathStep, index: number) => void }) {
+/**
+ * The path, shortened in the middle (never past the step showing) while it doesn't fit; hovering it
+ * shows the selection's full key (its labels, when the selection is lines). Its steps can't be clicked
+ * while it is the previous view's, kept while the next one loads.
+ */
+function Path({ steps, stale, onWiden }: { readonly steps: readonly PathStep[]; readonly stale: boolean; readonly onWiden: (step: PathStep, index: number) => void }) {
   const row = useRef<HTMLDivElement>(null);
   const [drop, setDrop] = useState(0);
   useLayoutEffect(() => {
@@ -70,7 +75,7 @@ function Path({ steps, onWiden }: { readonly steps: readonly PathStep[]; readonl
   }, [drop, steps]);
   const shown = steps.map((step, index) => ({ step, index })).filter(({ index }) => index === 0 || index > drop);
   return (
-    <div ref={row} className="code-path" title={steps.map((step) => step.label).join(" › ")}>
+    <div ref={row} className="code-path" title={steps.at(-1)?.key ?? steps.map((step) => step.label).join(" › ")}>
       {shown.map(({ step, index }, position) => (
         <span key={index} className="code-path-step">
           {position > 0 ? (
@@ -90,6 +95,7 @@ function Path({ steps, onWiden }: { readonly steps: readonly PathStep[]; readonl
             type="button"
             className={`code-crumb${index === 0 ? " file" : ""}${step.showing ? " showing" : ""}`}
             aria-current={step.showing ? "true" : undefined}
+            disabled={stale}
             onClick={() => {
               onWiden(step, index);
             }}
@@ -267,9 +273,23 @@ function useFollowSelection(target: PageTarget, page: Page | undefined, views: R
     }
     const choice = selectionCode(selection, page, views);
     if (choice) {
-      openCode({ project, target: choice.target, cardId: choice.cardId, gap: null });
+      openCode({ project, target: choice.target, cardId: choice.cardId, ...(choice.from ? { from: choice.from } : {}) });
     }
   }, [selection, page, views, project]);
+}
+
+/**
+ * Keeps lines opened from a card's flow (`CodeOpen.from`) as the card draws them now; once it no longer
+ * draws them, the panel shows their whole file.
+ */
+function useCurrentLines(open: CodeOpen, views: ReadonlyMap<string, CardView>): void {
+  useEffect(() => {
+    const view = open.cardId !== null ? views.get(open.cardId) : undefined;
+    if (!open.from || !view || (open.target.kind !== "lines" && open.target.kind !== "file")) {
+      return;
+    }
+    retargetCode(sourceLines(open.from, view) ?? { kind: "file", path: open.target.path });
+  }, [open, views]);
 }
 
 /** × and Escape close the panel (unless a field, a menu, or a dialog took the Escape first). */
@@ -296,6 +316,7 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const views = usePageCards(target);
   useFollowSelection(target, page, views);
+  useCurrentLines(open, views);
   useEscapeCloses();
 
   const adds = useMemo(
@@ -312,6 +333,7 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
           <Path
             key={view.path.map((step) => step.label).join("\u0000")}
             steps={view.path}
+            stale={query.isPlaceholderData}
             onWiden={(step, index) => {
               widenCode(stepShow(open, view, step, index));
             }}
@@ -340,11 +362,11 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
           adds={adds}
           onAdd={(key) => void addDefinition(target, key)}
           onHover={(line, callKey) => {
-            setCodeHover(line && file !== undefined ? { key: callKey ?? line.block ?? null, path: file, line: line.number } : null);
+            setCodeHover(line && file !== undefined ? { key: callKey ?? line.block ?? null, block: line.block ?? null, path: file, line: line.number } : null);
           }}
           onPick={(line, callKey) => {
-            const key = callKey ?? line.block;
-            const selection = key !== undefined && page ? blockSelection(page, views, key, open.cardId) : null;
+            const keys = [callKey, line.block].filter((key): key is Key => key !== null && key !== undefined);
+            const selection = page ? blockSelection(page, views, keys, open.cardId) : null;
             if (selection) {
               quietly(target, () => {
                 select(target, selection);

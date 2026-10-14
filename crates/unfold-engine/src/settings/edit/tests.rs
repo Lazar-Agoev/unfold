@@ -14,15 +14,48 @@ fn is_invalid_at_a_line(error: &EditError) -> bool {
     matches!(error, EditError::Invalid(SettingsError::Invalid { .. }))
 }
 
+/// An entrance with `on` (left out when `None`) and `code`.
+fn entrance(name: &str, on: Option<&str>, code: &[&str]) -> EntranceSpec {
+    EntranceSpec {
+        name: name.into(),
+        on: on.map(|on| Some(on.into())),
+        code: Some(code.iter().map(|&key| key.into()).collect()),
+        about: None,
+    }
+}
+
 fn set_entrance(app: &str, name: &str, on: Option<&str>, code: &[&str]) -> SettingsEdit {
     SettingsEdit::SetEntrance {
         app: app.into(),
-        entrance: EntranceSpec {
-            name: name.into(),
-            on: on.map(Into::into),
-            code: code.iter().map(|&key| key.into()).collect(),
-            about: None,
-        },
+        entrance: entrance(name, on, code),
+    }
+}
+
+fn add_entrance(app: &str, name: &str, on: Option<&str>, code: &[&str]) -> SettingsEdit {
+    SettingsEdit::AddEntrance {
+        app: app.into(),
+        entrance: entrance(name, on, code),
+    }
+}
+
+/// What the one app or entrance edit did, as `(change, app, entrance, new app)`.
+fn entry(edited: &EditedSettings) -> (EntryChange, &str, Option<&str>, bool) {
+    let [entry] = edited.entries.as_slice() else {
+        panic!("one entry edit: {:?}", edited.entries);
+    };
+    (
+        entry.change,
+        entry.app.as_str(),
+        entry.entrance.as_deref(),
+        entry.new_app,
+    )
+}
+
+/// The conflict's message.
+fn conflict_message(error: EditError) -> String {
+    match error {
+        EditError::Conflict(message) => message.into(),
+        other => panic!("not a conflict: {other}"),
     }
 }
 
@@ -251,12 +284,13 @@ fn set_app_adds_an_app_and_changes_only_its_fields() {
         &[SettingsEdit::SetApp {
             app: AppSpec {
                 name: "Background jobs".into(),
-                run: Some("celery -A shop.tasks worker".into()),
-                code: Some("shop/tasks.py#".into()),
+                run: Some(Some("celery -A shop.tasks worker".into())),
+                code: Some(Some("shop/tasks.py#".into())),
                 about: None,
             },
         }],
     );
+    assert_eq!(entry(&added), (EntryChange::Added, "Background jobs", None, true));
     assert_eq!(
         added.text,
         format!(
@@ -270,40 +304,58 @@ fn set_app_adds_an_app_and_changes_only_its_fields() {
         &[SettingsEdit::SetApp {
             app: AppSpec {
                 name: "shop api".into(),
-                run: Some("npm run serve".into()),
-                code: Some("src/server.ts#".into()),
-                about: Some("The storefront's API.".into()),
+                run: Some(Some("npm run serve".into())),
+                code: Some(Some("src/server.ts#".into())),
+                about: Some(Some("The storefront's API.".into())),
             },
         }],
     );
     assert_eq!(
         changed.text,
-        COMMENTED
-            .replace("name = \"Shop API\"  #", "name = \"shop api\"  #")
-            .replace(
-                "run  = \"npm start\"\n",
-                "run  = \"npm run serve\"\ncode = \"src/server.ts#\"\nabout = \"The storefront's API.\"\n"
-            ),
-        "the name addresses the app by its key; new fields go before `entrances`"
+        COMMENTED.replace(
+            "run  = \"npm start\"\n",
+            "run  = \"npm run serve\"\ncode = \"src/server.ts#\"\nabout = \"The storefront's API.\"\n"
+        ),
+        "the name addresses the app by its key, and the app keeps its own; new fields go before `entrances`"
     );
+    assert_eq!(entry(&changed), (EntryChange::Changed, "Shop API", None, false));
     let app = &changed.file.apps[0];
     assert_eq!(app.key.as_ref().map(Key::as_str), Some("entrance:shop-api"));
     assert_eq!(app.entrances.len(), 1, "entrances stay");
+
+    let kept = edit(
+        Some(&changed.text),
+        &[SettingsEdit::SetApp {
+            app: AppSpec {
+                name: "entrance:shop-api".into(),
+                ..AppSpec::default()
+            },
+        }],
+    );
+    assert_eq!(
+        kept.text, changed.text,
+        "fields left out keep what the table says"
+    );
+    assert_eq!(entry(&kept), (EntryChange::Changed, "Shop API", None, false));
 
     let cleared = edit(
         Some(&changed.text),
         &[SettingsEdit::SetApp {
             app: AppSpec {
-                name: "shop api".into(),
-                ..AppSpec::default()
+                name: "Shop API!".into(),
+                run: Some(None),
+                code: Some(None),
+                about: Some(None),
             },
         }],
     );
     let app = &cleared.file.apps[0];
     assert_eq!(
         (app.run.as_ref(), app.code.as_ref(), app.about.as_ref()),
-        (None, None, None)
+        (None, None, None),
+        "null removes a field"
     );
+    assert_eq!(app.name.as_deref(), Some("Shop API"));
 
     let nameless = apply_edits(
         Some(COMMENTED),
@@ -325,7 +377,7 @@ fn empty_code_keys_are_refused() {
         &[SettingsEdit::SetApp {
             app: AppSpec {
                 name: "Shop API".into(),
-                code: Some(String::new()),
+                code: Some(Some(String::new())),
                 ..AppSpec::default()
             },
         }],
@@ -335,7 +387,7 @@ fn empty_code_keys_are_refused() {
     assert!(
         matches!(
             blank_app,
-            EditError::Invalid(SettingsError::Invalid { line: 11, .. })
+            EditError::Invalid(SettingsError::Invalid { line: 12, .. })
         ),
         "{blank_app}"
     );
@@ -463,6 +515,263 @@ fn set_entrance_creates_the_app_when_it_is_new() {
 }
 
 #[test]
+fn set_entrance_keeps_what_it_leaves_out_and_removes_what_it_nulls() {
+    let about = edit(
+        Some(COMMENTED),
+        &[SettingsEdit::SetEntrance {
+            app: "shop-api!".into(),
+            entrance: EntranceSpec {
+                name: "place an order".into(),
+                about: Some(Some("Takes the money.".into())),
+                ..EntranceSpec::default()
+            },
+        }],
+    );
+    assert_eq!(
+        about.text,
+        COMMENTED.replace(
+            "code = \"src/a.ts#placeOrder\" }",
+            "code = \"src/a.ts#placeOrder\", about = \"Takes the money.\" }"
+        ),
+        "the app and the entrance keep their names, `on`, and `code`"
+    );
+    assert_eq!(
+        entry(&about),
+        (EntryChange::Changed, "Shop API", Some("Place an order"), false)
+    );
+
+    let no_on = edit(
+        Some(&about.text),
+        &[SettingsEdit::SetEntrance {
+            app: "entrance:shop-api".into(),
+            entrance: EntranceSpec {
+                name: "entrance:shop-api/place-an-order".into(),
+                on: Some(None),
+                ..EntranceSpec::default()
+            },
+        }],
+    );
+    let line = &no_on.file.apps[0].entrances[0];
+    assert_eq!(
+        (line.name.as_deref(), line.on.as_deref(), line.about.as_deref()),
+        (Some("Place an order"), None, Some("Takes the money."))
+    );
+    assert_eq!(line.code[0].as_str(), "src/a.ts#placeOrder");
+
+    let same = edit(
+        Some(COMMENTED),
+        &[set_entrance(
+            "Shop API",
+            "Place an order",
+            Some("POST /orders"),
+            &["src/a.ts#placeOrder"],
+        )],
+    );
+    assert_eq!(
+        same.text, COMMENTED,
+        "an edit that changes no field leaves the line alone"
+    );
+    assert_eq!(same.diff, "");
+}
+
+#[test]
+fn set_entrance_keeps_fields_an_entrance_does_not_have() {
+    let odd = COMMENTED.replace(
+        "code = \"src/a.ts#placeOrder\" }",
+        "code = \"src/a.ts#placeOrder\", kind = \"http\" }",
+    );
+    let edited = edit(
+        Some(&odd),
+        &[set_entrance(
+            "Shop API",
+            "Place an order",
+            None,
+            &["src/b.ts#placeOrder"],
+        )],
+    );
+    assert!(
+        edited
+            .text
+            .contains("{ name = \"Place an order\", on = \"POST /orders\", code = \"src/b.ts#placeOrder\", kind = \"http\" }"),
+        "{}",
+        edited.text
+    );
+}
+
+#[test]
+fn entries_are_addressed_by_key_and_a_key_never_adds_one() {
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[SettingsEdit::SetApp {
+            app: AppSpec {
+                name: "entrance:jobs".into(),
+                run: Some(Some("make jobs".into())),
+                ..AppSpec::default()
+            },
+        }],
+    )
+    .expect_err("no app has that key");
+    assert_eq!(
+        conflict_message(error),
+        "no app “entrance:jobs” is in unfold.toml. Its apps: Shop API"
+    );
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[set_entrance(
+            "Shop API",
+            "entrance:shop-api/refund",
+            None,
+            &["src/a.ts#refund"],
+        )],
+    )
+    .expect_err("no entrance has that key");
+    assert_eq!(
+        conflict_message(error),
+        "the app Shop API has no entrance “entrance:shop-api/refund”. Its entrances: Place an order"
+    );
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[set_entrance(
+            "Shop API",
+            "entrance:jobs/place-an-order",
+            None,
+            &["src/a.ts#x"],
+        )],
+    )
+    .expect_err("another app's key");
+    assert!(is_conflict(&error), "{error}");
+}
+
+#[test]
+fn a_new_entrance_needs_code() {
+    let error = apply_edits(
+        Some(COMMENTED),
+        &[SettingsEdit::SetEntrance {
+            app: "Shop API".into(),
+            entrance: EntranceSpec {
+                name: "Refund an order".into(),
+                on: Some(Some("POST /refunds".into())),
+                ..EntranceSpec::default()
+            },
+        }],
+    )
+    .expect_err("no code");
+    assert_eq!(
+        conflict_message(error),
+        "“Refund an order” is a new entrance of Shop API, and a new entrance needs code: the block it starts at"
+    );
+}
+
+#[test]
+fn edits_say_what_they_added_changed_or_removed() {
+    let edited = edit(
+        Some(COMMENTED),
+        &[
+            set_entrance("Shop API", "Refund", None, &["src/a.ts#refund"]),
+            set_entrance("Jobs", "Nightly", None, &["jobs.py#nightly"]),
+            set_entrance("shop api", "refund", Some("POST /refunds"), &["src/a.ts#refund"]),
+            remove("SHOP API", Some("place an order")),
+            remove("jobs", None),
+        ],
+    );
+    let entries: Vec<_> = edited
+        .entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.change,
+                entry.app.as_str(),
+                entry.entrance.as_deref(),
+                entry.new_app,
+            )
+        })
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            (EntryChange::Added, "Shop API", Some("Refund"), false),
+            (EntryChange::Added, "Jobs", Some("Nightly"), true),
+            (EntryChange::Changed, "Shop API", Some("Refund"), false),
+            (EntryChange::Removed, "Shop API", Some("Place an order"), false),
+            (EntryChange::Removed, "Jobs", None, false),
+        ]
+    );
+    let scope = edit(
+        Some(COMMENTED),
+        &[SettingsEdit::AddEvidencePattern { pattern: "db".into() }],
+    );
+    assert!(scope.entries.is_empty());
+}
+
+#[test]
+fn add_entrance_adds_one_line_and_refuses_a_key_the_app_has() {
+    let added = edit(
+        Some(COMMENTED),
+        &[add_entrance(
+            "Shop API",
+            "Refund",
+            Some("POST /refunds"),
+            &["src/a.ts#refund"],
+        )],
+    );
+    assert_eq!(
+        added.text,
+        COMMENTED.replace(
+            "placeOrder\" },\n]",
+            "placeOrder\" },\n  { name = \"Refund\", on = \"POST /refunds\", code = \"src/a.ts#refund\" },\n]"
+        )
+    );
+    assert_eq!(
+        entry(&added),
+        (EntryChange::Added, "Shop API", Some("Refund"), false)
+    );
+    let created = edit(
+        Some(COMMENTED),
+        &[add_entrance("Jobs", "Nightly", None, &["jobs.py#nightly"])],
+    );
+    assert_eq!(
+        entry(&created),
+        (EntryChange::Added, "Jobs", Some("Nightly"), true)
+    );
+
+    for name in [
+        "Place an order",
+        "place-an-order!",
+        "entrance:shop-api/place-an-order",
+    ] {
+        let error = apply_edits(
+            Some(COMMENTED),
+            &[add_entrance("Shop API", name, None, &["src/b.ts#other"])],
+        )
+        .expect_err("the key is taken");
+        assert_eq!(
+            conflict_message(error),
+            "Shop API already has the entrance “Place an order”; give this one another name",
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn remove_entrance_refuses_what_the_file_does_not_have_listing_what_it_has() {
+    let error = apply_edits(Some(COMMENTED), &[remove("Jobs", None)]).expect_err("no app");
+    assert_eq!(
+        conflict_message(error),
+        "no app “Jobs” is in unfold.toml. Its apps: Shop API"
+    );
+    let error = apply_edits(None, &[remove("Jobs", None)]).expect_err("no apps at all");
+    assert_eq!(
+        conflict_message(error),
+        "no app “Jobs” is in unfold.toml. Its apps: none"
+    );
+    let error = apply_edits(Some(COMMENTED), &[remove("Shop API", Some("Refund"))]).expect_err("no entrance");
+    assert_eq!(
+        conflict_message(error),
+        "the app Shop API has no entrance “Refund”. Its entrances: Place an order"
+    );
+}
+
+#[test]
 fn keys_with_double_quotes_are_written_in_single_quotes() {
     let key = "src/routes/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]";
     let edited = edit(
@@ -482,7 +791,7 @@ fn keys_with_double_quotes_are_written_in_single_quotes() {
         &[SettingsEdit::SetApp {
             app: AppSpec {
                 name: "Orders API".into(),
-                code: Some(escaped.into()),
+                code: Some(Some(escaped.into())),
                 ..AppSpec::default()
             },
         }],
@@ -549,16 +858,35 @@ fn entrance_edits_deserialize_from_ipc() {
     let edit: SettingsEdit =
         serde_json::from_str(r#"{"op": "remove_entrance", "app": "Shop API"}"#).expect("deserialize");
     assert_eq!(edit, remove("Shop API", None));
-    let edit: SettingsEdit =
-        serde_json::from_str(r#"{"op": "set_app", "app": {"name": "Jobs", "run": "make jobs"}}"#)
-            .expect("deserialize");
+    let edit: SettingsEdit = serde_json::from_str(
+        r#"{"op": "set_app", "app": {"name": "Jobs", "run": "make jobs", "about": null}}"#,
+    )
+    .expect("deserialize");
     assert_eq!(
         edit,
         SettingsEdit::SetApp {
             app: AppSpec {
                 name: "Jobs".into(),
-                run: Some("make jobs".into()),
-                ..AppSpec::default()
+                run: Some(Some("make jobs".into())),
+                code: None,
+                about: Some(None),
+            }
+        },
+        "a field left out is None (keep it), and null is Some(None) (remove it)"
+    );
+    let edit: SettingsEdit = serde_json::from_str(
+        r#"{"op": "add_entrance", "app": "Jobs", "entrance": {"name": "Nightly", "on": null, "code": ["jobs.py#nightly"]}}"#,
+    )
+    .expect("deserialize");
+    assert_eq!(
+        edit,
+        SettingsEdit::AddEntrance {
+            app: "Jobs".into(),
+            entrance: EntranceSpec {
+                name: "Nightly".into(),
+                on: Some(None),
+                code: Some(vec!["jobs.py#nightly".into()]),
+                about: None,
             }
         }
     );

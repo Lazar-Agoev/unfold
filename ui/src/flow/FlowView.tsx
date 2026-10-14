@@ -5,10 +5,11 @@
  * listing thin rows, gap ticks' lines, a block's or a thin row's `</>`, and a block's menu all go to
  * the callbacks.
  *
- * The selection is outlined on the drawn thing that holds it (`FlowGeometry.blocks`: a call in a
- * collapsed combined step outlines the step, a hidden control block its gap tick), and so is `outline`'s
- * gap tick when the selection isn't drawn here. A line hovered in the code panel lights its block, or
- * the gap tick that counts it.
+ * The selection is outlined on the drawn thing that holds it (`FlowGeometry.blocks`: a block in a
+ * collapsed combined step outlines the step, a hidden control block its gap tick), and so is `outline`
+ * (a gap tick or a row of other calls the code panel was opened from) when the selection isn't drawn
+ * here. A line hovered in the code panel lights its block (a call's, else the line's own block), or the
+ * gap tick that counts it.
  */
 
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
@@ -26,22 +27,26 @@ export type FlowSelection =
   | { readonly kind: "proposed"; readonly item: string };
 
 /** A line of a file. */
-export interface FlowLine {
+interface FlowLine {
   readonly path: RepoPath;
   readonly line: number;
 }
 
-/** A line hovered in the code panel: its block (null for a line no block covers), and the line. */
+/** What is outlined when nothing selected is drawn here: a gap tick, by a line it counts, or a drawn block (a row of other calls, by its first call). */
+export type FlowOutline = { readonly line: FlowLine } | { readonly block: Key };
+
+/** A line hovered in the code panel: its block (a call's, when on its name), the line's own block (null for a line no block covers), and the line. */
 interface FlowHover extends FlowLine {
   readonly key: Key | null;
+  readonly block: Key | null;
 }
 
 export interface FlowViewProps {
   readonly geometry: FlowGeometry;
   /** What shows selected. */
   readonly selected?: FlowSelection | null;
-  /** A line whose gap tick is outlined when nothing selected is drawn here. */
-  readonly outline?: FlowLine | null;
+  /** What is outlined when nothing selected is drawn here. */
+  readonly outline?: FlowOutline | null;
   /** A line hovered in the code panel. */
   readonly hover?: FlowHover | null;
   readonly onSelect?: (selection: FlowSelection) => void;
@@ -607,6 +612,21 @@ function gapRect(geometry: FlowGeometry, at: FlowLine): Rect | undefined {
   return undefined;
 }
 
+/** The box of the first of `keys` the flow draws. */
+function drawnRect(geometry: FlowGeometry, keys: readonly (Key | null)[]): Rect | undefined {
+  for (const key of keys) {
+    const rect = key !== null ? geometry.blocks.get(key) : undefined;
+    if (rect) {
+      return rect;
+    }
+  }
+  return undefined;
+}
+
+function outlineRect(geometry: FlowGeometry, outline: FlowOutline): Rect | undefined {
+  return "line" in outline ? gapRect(geometry, outline.line) : geometry.blocks.get(outline.block);
+}
+
 /** The drawn box that holds a selection: its own, or the one holding it. */
 function selectedRect(geometry: FlowGeometry, selected: FlowSelection | null): Rect | undefined {
   if (!selected) {
@@ -646,8 +666,8 @@ export function FlowView(props: FlowViewProps) {
     viewCode: onViewCode,
     menu: onBlockMenu,
   };
-  const outlined = selectedRect(geometry, selected) ?? (outline ? gapRect(geometry, outline) : undefined);
-  const lit = hover ? ((hover.key !== null ? geometry.blocks.get(hover.key) : undefined) ?? gapRect(geometry, hover)) : undefined;
+  const outlined = selectedRect(geometry, selected) ?? (outline ? outlineRect(geometry, outline) : undefined);
+  const lit = hover ? (drawnRect(geometry, [hover.key, hover.block]) ?? gapRect(geometry, hover)) : undefined;
   return (
     <div className="flow" style={{ width: geometry.width, height: geometry.height }}>
       {/* A geometry's pieces and wires are a list in paint order: their place in it is their identity. */}

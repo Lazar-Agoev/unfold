@@ -105,9 +105,9 @@ command_table! {
     // Project, Home, settings.
     /// Home's header, state line, and Health line.
     "project_summary" => ProjectSummary(ProjectArgs) -> projects::ProjectSummary = projects::project_summary;
-    /// The apps and entrances of `unfold.toml` as written, each `code` with its state and its
-    /// fix when one exists.
-    "entrances" => Entrances(ProjectArgs) -> entrances::EntrancesView = entrances::entrances;
+    /// The apps and entrances of `unfold.toml` as written (or one app, by its name or key),
+    /// each `code` with its state and its fix when one exists.
+    "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntrancesView = entrances::entrances;
     /// The Problems list, with the health of every board.
     "problems" => Problems(ProjectArgs) -> Vec<ProblemItem> = compiling::problems;
     /// Compiles the project; streams progress.

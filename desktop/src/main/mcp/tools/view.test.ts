@@ -76,6 +76,7 @@ describe("get_current_view", () => {
   it("names an arrow's calls and a step shown in a call opened in place", async () => {
     const arrow = await lines({ ...REPORT, selection: { kind: "arrow", from: "create-order", to: "place", calls: [`${CREATE_ORDER}/call:orderService.place`] } });
     expect(arrow).toContain(`Selected: the arrow from card create-order to card place, which draws the call ${CREATE_ORDER}/call:orderService.place. read_call with a call's key says what it sends.`);
+    // create-order opens orderService.place in place; the window names the definition that holds the step from the card as drawn.
     const inset = await lines({ ...REPORT, selection: { kind: "step", card: "create-order", key: "src/services/order-service.ts#OrderService.place/call:validateOrder", owner: "src/services/order-service.ts#OrderService.place" } });
     expect(inset).toContain(
       "Selected: the step src/services/order-service.ts#OrderService.place/call:validateOrder of src/services/order-service.ts#OrderService.place, shown in a call card create-order opens in place; read_code without key reads that definition.",

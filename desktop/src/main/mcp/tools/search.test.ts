@@ -4,7 +4,7 @@ import searchPlace from "../../../../../testdata/workspace/commands/search_place
 import searchWorker from "../../../../../testdata/workspace/commands/search_worker.json";
 import type { EntrancesView, SearchResults } from "../engine-types";
 import { listEntrances, search } from "./search";
-import { harness, PROJECT, projectRow, recorded } from "./testing";
+import { harness, PROJECT, projectRow, recorded, refusal } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
@@ -137,16 +137,26 @@ describe("list_entrances", () => {
     expect(filtered.text).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances matching “POST” (1):");
   });
 
-  it("narrows to one app, pages it, and names the apps when one isn't there", async () => {
-    const app = harness({ engine: { entrances: declared(9) } });
-    const server = await app.call(listEntrances, { project: "ts-orders", app: "Server", limit: 3 });
+  it("asks the engine for one app by the name or key given, pages it, and passes on the engine's refusal", async () => {
+    const all = declared(9);
+    const app = harness({
+      engine: {
+        entrances: ({ app: given }) => {
+          if (given === "web") {
+            throw refusal("not_found", "no app “web” is in unfold.toml. Its apps: Server, Worker");
+          }
+          const view = all();
+          return given === undefined ? view : { ...view, apps: view.apps.filter((item) => item.key === "entrance:server") };
+        },
+      },
+    });
+    const server = await app.call(listEntrances, { project: "ts-orders", app: "server!", limit: 3 });
+    expect(app.engineCalls.filter(([command]) => command === "entrances")).toEqual([["entrances", { project: PROJECT, app: "server!" }]]);
     expect(server.text).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances (1–3 of 18):");
     expect(server.text).toContain('More: list_entrances with cursor "3" for the next page.');
     expect(server.text).not.toContain("Worker (");
-    const byKey = await app.call(listEntrances, { project: "ts-orders", app: "entrance:server", limit: 3 });
-    expect(byKey.text).toContain("Server (key entrance:server;");
     const missing = await app.call(listEntrances, { project: "ts-orders", app: "web" });
-    expect(missing.text).toMatch(/^Can't list the entrances: ts-orders has no app “web”\. Its apps: Server, /);
+    expect(missing).toMatchObject({ isError: true, text: "No app “web” is in unfold.toml. Its apps: Server, Worker." });
   });
 
   it("defaults to the project of the board in view", async () => {

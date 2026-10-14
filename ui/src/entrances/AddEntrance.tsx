@@ -1,8 +1,10 @@
 /**
  * Add as entrance (entrance-definitions.md, "Add as entrance"): a small popover that asks for the app
  * (one of the file's, or a new name), the entrance's name, and `on`, then writes one line into that app
- * with `set_entrance`, which creates the app when it is new. From a card, the card's key is the `code`,
- * shown in the footer. From Home there is no card, so a Code field finds it by name (`CodeSearch`).
+ * with `add_entrance`, which creates the app when it is new and refuses a name whose key the app has
+ * (the refusal shows in the popover). From a card, the card's key is the `code`, shown in the footer.
+ * From Home there is no card, so a Code field finds it by name (`CodeSearch`); typing there again
+ * drops the pick.
  */
 
 import { useRef, useState, type ComponentProps, type SyntheticEvent } from "react";
@@ -56,9 +58,9 @@ export function AddEntrance({ project, anchor, code: cardCode, align = "start", 
     }
     setBusy(true);
     setError(null);
-    const entrance = { name: name.trim(), on: on.trim() === "" ? null : on.trim(), code: [code], about: null };
+    const entrance = { name: name.trim(), code: [code], ...(on.trim() === "" ? {} : { on: on.trim() }) };
     try {
-      await call("update_project_config", { project, edits: [{ op: "set_entrance", app, entrance }] });
+      await call("update_project_config", { project, edits: [{ op: "add_entrance", app, entrance }] });
       onClose();
       onAdded?.(app, entrance.name);
     } catch (cause) {
@@ -120,6 +122,7 @@ export function AddEntrance({ project, anchor, code: cardCode, align = "start", 
               autoComplete="off"
               onChange={(event) => {
                 setName(event.target.value);
+                setError(null);
               }}
             />
           </label>
@@ -142,6 +145,9 @@ export function AddEntrance({ project, anchor, code: cardCode, align = "start", 
                 project={project}
                 onPick={(hit) => {
                   setFound(hit.key);
+                }}
+                onEdit={() => {
+                  setFound(null);
                 }}
               />
             </div>

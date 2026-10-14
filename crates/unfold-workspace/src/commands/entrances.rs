@@ -7,19 +7,33 @@
 //! the graph and is listed anyway). Each `code` key carries its state (`found`, `missing`,
 //! `not_analyzed`, `not_a_start`, `stale`) and, for a missing key with exactly one candidate,
 //! its fix. Everything comes from what the project's engine last resolved, so the command wakes
-//! the project. The same views, without states, describe the apps of `project_config`.
+//! the project. Given an app's name or key, it lists that app alone, addressed as edits address
+//! it (`names_app`). The same views, without states, describe the apps of `project_config`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::{InputRole, TargetState};
 use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineIndex, RepoPath};
 use unfold_engine::entrances::{FixKind, Fixes};
+use unfold_engine::settings::edit::names_app;
 use unfold_engine::settings::{AppEntry, EntranceEntry, EntryProblem, EntryProblemKind};
 
-use super::ProjectArgs;
 use crate::ipc::context::Ctx;
-use crate::ipc::error::CommandResult;
+use crate::ipc::error::{CommandError, CommandResult};
+use crate::projects::ProjectId;
 use crate::workspace::settings_text;
+
+/// The arguments of `entrances`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct EntrancesArgs {
+    /// The project.
+    pub project: ProjectId,
+    /// An app's name or key: only that app is listed. Absent lists them all.
+    #[serde(default)]
+    #[ts(optional)]
+    pub app: Option<String>,
+}
 
 /// The apps and entrances of a project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -200,15 +214,38 @@ impl From<EntryProblemKind> for EntryProblemReason {
     }
 }
 
-/// `entrances`: the apps and entrances as written, each `code` with its state and its fix.
-/// Wakes the project: what it lists is what the project's engine last resolved.
-pub fn entrances(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<EntrancesView> {
+/// `entrances`: the apps and entrances as written, each `code` with its state and its fix, or
+/// the one app `app` addresses (`not_found`, listing the apps, when none does). Wakes the
+/// project: what it lists is what the project's engine last resolved.
+pub fn entrances(ctx: &Ctx<'_>, args: EntrancesArgs) -> CommandResult<EntrancesView> {
     let workspace = ctx.live(&args.project)?;
     let Some(resolved) = workspace.entrances() else {
         return Ok(EntrancesView {
             resolved: false,
             apps: Vec::new(),
         });
+    };
+    let entries = match &args.app {
+        None => resolved.entries.as_slice(),
+        Some(given) => {
+            let named = |entry: &&AppEntry| entry.key.as_ref().is_some_and(|key| names_app(key, given));
+            let Some(found) = resolved.entries.iter().find(named) else {
+                let names: Vec<&str> = resolved
+                    .entries
+                    .iter()
+                    .filter_map(|entry| entry.name.as_deref())
+                    .collect();
+                let names = if names.is_empty() {
+                    "none".to_owned()
+                } else {
+                    names.join(", ")
+                };
+                return Err(CommandError::not_found(format!(
+                    "no app “{given}” is in unfold.toml. Its apps: {names}"
+                )));
+            };
+            std::slice::from_ref(found)
+        }
     };
     // Lines come from the file as it is now, only while it is the one the entries were read
     // from.
@@ -219,7 +256,7 @@ pub fn entrances(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<EntrancesVie
     };
     Ok(EntrancesView {
         resolved: true,
-        apps: app_views(&resolved.entries, text.as_deref(), Some(&states)),
+        apps: app_views(entries, text.as_deref(), Some(&states)),
     })
 }
 

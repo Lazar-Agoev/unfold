@@ -360,35 +360,37 @@ export class PageRenderer {
   }
 
   /**
-   * The page to draw: from the window that holds the board (`open`: loading its session there when it
-   * doesn't), with its health; or, when the window doesn't hold it, from the board's file.
+   * The page to draw: from the window that holds the board, with its health (`open`: loading its
+   * session there when it doesn't); without `open`, from the board's file when the window doesn't hold
+   * it or closes, never opening a closed window.
    */
   private async source(board: AgentBoardRef, page: string, open: boolean): Promise<PageSource | AgentFailure> {
-    for (let attempt = 0; ; attempt += 1) {
-      if (!open && !this.options.bridge.views.holds(board)) {
-        return this.fromFile(board, page);
+    if (!open) {
+      const read = await this.options.bridge.read({ board, page });
+      if (!read.ok) {
+        return read.code === "board_not_open" || read.code === "window_closed" ? this.fromFile(board, page) : read;
       }
-      // The window holds it, or loads it now.
+      const health = await this.health(read.windowId, board);
+      return { ok: true, page: read.page, title: read.board.title, health: health.ok ? health.view : null };
+    }
+    for (let attempt = 0; ; attempt += 1) {
       const opened = await this.options.bridge.open({ board, page });
       if (!opened.ok) {
         return opened;
       }
       const read = await this.options.bridge.read({ board, page });
-      // A report that still listed a board the window no longer holds (the bridge forgets it): read the file, or load it again, once.
-      if (!read.ok && read.code === "board_not_open" && (!open || attempt === 0)) {
-        if (!open) {
-          return this.fromFile(board, page);
-        }
+      // A report that still listed a board the window no longer holds (the bridge forgets it): load it again, once.
+      if (!read.ok && read.code === "board_not_open" && attempt === 0) {
         continue;
       }
       if (!read.ok) {
         return read;
       }
-      const health = await this.health(opened.windowId, board);
-      if (!health.ok && open) {
+      const health = await this.health(read.windowId, board);
+      if (!health.ok) {
         return health;
       }
-      return { ok: true, page: read.page, title: read.board.title, health: health.ok ? health.view : null };
+      return { ok: true, page: read.page, title: read.board.title, health: health.view };
     }
   }
 

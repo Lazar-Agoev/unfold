@@ -43,8 +43,9 @@ Call get_guide with the topic, once a session, for each topic the job needs:
    add_cards with follow; set_view expands the one or two cards the page is about.
 5. Shape. shape_card each expanded card, one call per card.
 6. Compose. frame_cards; add_resources and connect for what the graph can't show;
-   describe what still needs a description; add_notes only for what a reader would
-   miss. propose only when the person asks for an intended change.
+   describe the combined steps and connections that still need a description;
+   add_notes only for what a reader would miss. propose only when the person asks for
+   an intended change.
 7. Lay out. arrange_page, then small moves.
 8. Review. Mandatory (below).
 9. Finish. finish_work, then say in chat what you made and which parts go beyond the

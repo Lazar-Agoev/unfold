@@ -13,7 +13,9 @@
 //! - **Gap ticks** count the code lines of a body that no drawn step covers.
 //! - **The overlay:** names; combined steps (one step when collapsed, their steps under a title
 //!   when open); proposed steps after a step or at the start of a body; calls and callbacks
-//!   opened in place, drawn as insets; and what each block allows ([`overlay::allows`]).
+//!   opened in place, drawn as insets; and what each block allows ([`overlay::allows`]): a
+//!   block a combined step holds can't be combined again, and a call opens in place only within
+//!   [`MAX_OPEN_DEPTH`] levels and [`MAX_OPEN_PATHS`] paths (closing an open one always can).
 
 use std::path::Path;
 use std::rc::Rc;
@@ -28,8 +30,9 @@ use super::{
     ExitValue, Frame, GapTick, Header, HeldCall, HiddenBlock, Import, Lane, OtherCall, Overlay, ProposedStep,
     RouteState, Sequence, Shape, Step, Test, ThinRow, routes,
 };
+use crate::code_view;
 use crate::notes::LinkEnd;
-use crate::overlay::{self, Combinable, Openable, ProposalSpot};
+use crate::overlay::{self, Combinable, MAX_OPEN_DEPTH, MAX_OPEN_PATHS, Openable, ProposalSpot};
 use crate::source::verify_file;
 use crate::tree::{Blocks, FileTree, Trees};
 
@@ -39,13 +42,21 @@ pub(super) struct Drawer<'a> {
     root: &'a Path,
     overlay: &'a Overlay,
     show_all: bool,
+    /// How many paths the card opens.
+    paths: usize,
     texts: FxHashMap<RepoPath, Option<Rc<FileText>>>,
     /// The overlay's combined steps, by their first block.
     groups: FxHashMap<&'a Key, &'a Combine>,
 }
 
 impl<'a> Drawer<'a> {
-    pub(super) fn new(trees: &'a Trees, root: &'a Path, overlay: &'a Overlay, show_all: bool) -> Self {
+    pub(super) fn new(
+        trees: &'a Trees,
+        root: &'a Path,
+        overlay: &'a Overlay,
+        show_all: bool,
+        paths: usize,
+    ) -> Self {
         let groups = overlay
             .combined
             .iter()
@@ -56,6 +67,7 @@ impl<'a> Drawer<'a> {
             root,
             overlay,
             show_all,
+            paths,
             texts: FxHashMap::default(),
             groups,
         }
@@ -74,17 +86,26 @@ impl<'a> Drawer<'a> {
             .clone()
     }
 
-    /// The flow of definition `definition`, opening `open` (paths below this flow) in place.
-    pub(super) fn flow(&mut self, tree: &'a FileTree, definition: u32, open: &[&'a [Key]]) -> DrawnFlow {
+    /// The flow of definition `definition`, `depth` insets deep (the card's own is `0`),
+    /// opening `open` (paths below this flow) in place.
+    pub(super) fn flow(
+        &mut self,
+        tree: &'a FileTree,
+        definition: u32,
+        depth: usize,
+        open: &[&'a [Key]],
+    ) -> DrawnFlow {
         let text = self.text(tree);
         let mut builder = Builder {
             drawer: self,
             tree,
             definition,
+            depth,
             text,
             open,
             next: 1,
             deferred: None,
+            combining: false,
         };
         let header = builder.header();
         // A type has no body: its members are typed records, shown by its card.
@@ -121,12 +142,16 @@ struct Builder<'d, 'a> {
     drawer: &'d mut Drawer<'a>,
     tree: &'a FileTree,
     definition: u32,
+    /// How many insets deep the flow is: the card's own is `0`.
+    depth: usize,
     text: Option<Rc<FileText>>,
     open: &'d [&'a [Key]],
     /// The next step or lane id; `0` is the start.
     next: u32,
     /// While a collapsed combined step is built: the proposals inside it, drawn after it.
     deferred: Option<Vec<Item>>,
+    /// While a combined step's blocks are built: they can't be combined again.
+    combining: bool,
 }
 
 impl<'a> Builder<'_, 'a> {
@@ -190,16 +215,20 @@ impl<'a> Builder<'_, 'a> {
 
     fn actions(&self, id: u32) -> Actions {
         let allows = overlay::allows(self.tree, id);
+        let room = self.depth < MAX_OPEN_DEPTH && self.drawer.paths < MAX_OPEN_PATHS;
         Actions {
-            combine: allows.combine.map(|combine| match combine {
-                Combinable::Steps { container } => CombineWith::Steps {
-                    body: self.key(container),
-                },
-                Combinable::Alone => CombineWith::Alone,
-            }),
+            combine: allows
+                .combine
+                .filter(|_| !self.combining)
+                .map(|combine| match combine {
+                    Combinable::Steps { container } => CombineWith::Steps {
+                        body: self.key(container),
+                    },
+                    Combinable::Alone => CombineWith::Alone,
+                }),
             after: allows.after,
             start: allows.start,
-            open: allows.open.is_some(),
+            open: allows.open.is_some() && (room || self.opened(self.tree.key(id)).is_some()),
         }
     }
 
@@ -332,6 +361,7 @@ impl<'a> Builder<'_, 'a> {
             defined_with,
             imports,
             actions: self.actions(id),
+            language: self.tree.language(),
         }
     }
 
@@ -435,7 +465,9 @@ impl<'a> Builder<'_, 'a> {
             .filter(|line| (span.start..=span.end).contains(line))
             .collect();
         let outer = group.collapsed.then(|| self.deferred.replace(Vec::new()));
+        let combining = std::mem::replace(&mut self.combining, true);
         let steps = self.sequence(None, members, &inside, false);
+        self.combining = combining;
         let after = match outer {
             Some(outer) => std::mem::replace(&mut self.deferred, outer).unwrap_or_default(),
             None => Vec::new(),
@@ -443,6 +475,11 @@ impl<'a> Builder<'_, 'a> {
         let mut summary = Summary::default();
         summary.sequence(&steps);
         let (library, unknown) = self.uncertain(members);
+        let holds = if group.collapsed {
+            self.held(members)
+        } else {
+            Vec::new()
+        };
         let step = Step {
             id,
             state: RouteState::Reached,
@@ -452,6 +489,7 @@ impl<'a> Builder<'_, 'a> {
                 title: group.title.clone(),
                 members: group.members.clone(),
                 collapsed: group.collapsed,
+                holds,
                 lines: span,
                 conditions: summary.conditions,
                 loops: summary.loops,
@@ -468,6 +506,16 @@ impl<'a> Builder<'_, 'a> {
             },
             after,
         )
+    }
+
+    /// Every block `members` are or hold, outside the definitions written in them.
+    fn held(&self, members: &[u32]) -> Vec<Key> {
+        members
+            .iter()
+            .flat_map(|&member| self.tree.subtree(member))
+            .filter(|&id| self.tree.owner(id) == Some(self.definition))
+            .map(|id| self.key(id))
+            .collect()
     }
 
     /// How many library and unknown calls `members` hold (not counting callbacks' own).
@@ -664,10 +712,20 @@ impl<'a> Builder<'_, 'a> {
             .filter(|link| link.kind == LinkKind::Types)
             .map(|link| LinkEnd::of(&link.to))
             .collect();
+        let text = self.text.as_ref().map(|text| text.text());
+        let lines = match node.parent.filter(|_| node.form == Form::Body) {
+            Some(control) => LineSpan {
+                start: self.node(control).lines.start,
+                end: node.lines.end,
+            },
+            None => node.lines,
+        };
         Lane {
             id,
             key: self.key(part),
             form: node.form,
+            label: code_view::label(self.tree, part, text),
+            lines,
             state: RouteState::Reached,
             name: self.name(part),
             test,
@@ -805,12 +863,17 @@ impl<'a> Builder<'_, 'a> {
         block
             .kind()
             .is_definition()
-            .then(|| Box::new(self.drawer.flow(block.tree, block.id, &below)))
+            .then(|| Box::new(self.drawer.flow(block.tree, block.id, self.depth + 1, &below)))
     }
 
     fn callback_inset(&mut self, callback: u32) -> Option<Box<DrawnFlow>> {
         let below = self.opened(self.tree.key(callback))?;
-        Some(Box::new(self.drawer.flow(self.tree, callback, &below)))
+        Some(Box::new(self.drawer.flow(
+            self.tree,
+            callback,
+            self.depth + 1,
+            &below,
+        )))
     }
 }
 

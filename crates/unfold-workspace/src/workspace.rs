@@ -12,7 +12,7 @@ use std::time::Duration;
 use unfold_core::RepoPath;
 use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{FileState, Language as LanguageId};
-use unfold_engine::settings::edit::{SettingsEdit, apply_edits};
+use unfold_engine::settings::edit::{EntryEdit, SettingsEdit, apply_edits};
 use unfold_engine::settings::{SETTINGS_PATH, SettingsError, SettingsFile};
 use unfold_engine::{CancelToken, Language};
 use unfold_reader::ReaderIndex;
@@ -58,6 +58,8 @@ pub struct SettingsEditOutcome {
     pub file: SettingsFile,
     /// The unified diff from the old text to the new; empty when nothing changed.
     pub diff: String,
+    /// What each app and entrance edit did, in order.
+    pub entries: Vec<EntryEdit>,
 }
 
 /// One live project's folder. See the [module documentation](self) and the crate documentation
@@ -338,6 +340,7 @@ impl Workspace {
             text: edited.text,
             file: edited.file,
             diff: edited.diff,
+            entries: edited.entries,
         })
     }
 

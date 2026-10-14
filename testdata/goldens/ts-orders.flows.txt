@@ -349,9 +349,9 @@
   ⋯ 1 line
   IF typeof customerId !== "string" || customerId.trim() === ""   key=src/lib/validate.ts#validateOrder/if[1] src/lib/validate.ts#validateOrder/if[1]/then
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/then/throw[0]
-  ELIF typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]
+  ELSE IF typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]/throw[0]
-  ELIF !Array.isArray(items) || items.length === 0   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]
+  ELSE IF !Array.isArray(items) || items.length === 0   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]/throw[0]
   □ items.map ? → validatedItems   key=src/lib/validate.ts#validateOrder/call:items.map
       ↳ callback (item: unknown): OrderItem =>   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]
@@ -366,9 +366,9 @@
   ⋯ 1 line
   IF typeof sku !== "string" || sku.trim() === ""   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/throw[0]
-  ELIF typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]
+  ELSE IF typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]/throw[0]
-  ELIF typeof price !== "number" || !Number.isFinite(price) || price <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]
+  ELSE IF typeof price !== "number" || !Number.isFinite(price) || price <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]
       THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]/throw[0]
   · sku.trim ?   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]/call:sku.trim
   RETURN { sku: sku.trim(), quantity, price } → End   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]

@@ -9,17 +9,57 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { CodePanelReport, ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
 import type { Rect, Size } from "../canvas/layout";
 import { codeViewArgs } from "../code/view";
-import { engineKey, queryClient, windowCommand, type CardView, type CodeView, type Page } from "../ipc";
+import { engineKey, queryClient, windowCommand, type CallBox, type CardView, type CodeView, type DrawnFlow, type Key, type Page, type Sequence } from "../ipc";
 import { getCodeOpen, onCodePanelChange, type CodeOpen } from "../state/codePanel";
 import { displayedRects, findPage, getOpenBoard, getPageView, useBoards, type Camera, type PageTarget, type Selection } from "../state/boards";
-import { cardArgsOf, cardQuery, overlayIds } from "../state/cards";
+import { cardArgsOf, cardQuery, flowBlocks, overlayIds } from "../state/cards";
 import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
 
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-/** The selection as agents read it: a card selected at its own block (a click on its header), or at a field of it, is the card. */
-function viewSelection(page: Page, selection: Selection): ViewSelection {
+/** The flows a drawn flow opens in place itself (not those they open in turn). */
+function openedFlows(flow: DrawnFlow): DrawnFlow[] {
+  const box = (call: CallBox): DrawnFlow[] => [call.inset, ...call.callbacks.map((callback) => callback.inset)].filter((inset) => inset !== undefined);
+  const sequence = (steps: Sequence): DrawnFlow[] =>
+    steps.steps.flatMap((step): DrawnFlow[] => {
+      switch (step.kind) {
+        case "call":
+          return box(step);
+        case "decision":
+        case "loop":
+        case "try":
+        case "with":
+          return [...step.headerCalls.flatMap(box), ...step.lanes.flatMap((lane) => [...(lane.test?.calls ?? []).flatMap(box), ...sequence(lane.steps)])];
+        case "exit":
+          return step.value?.kind === "call" ? box(step.value) : [];
+        case "combined":
+          return step.steps ? sequence(step.steps) : [];
+        case "thin":
+        case "proposed":
+          return [];
+      }
+    });
+  return sequence(flow.steps);
+}
+
+/** The definition whose drawn flow holds block `key` as its own: the flow's, or that of a call it opens in place. */
+function stepOwner(flow: DrawnFlow, key: Key): Key | undefined {
+  for (const inset of openedFlows(flow)) {
+    const owner = stepOwner(inset, key);
+    if (owner !== undefined) {
+      return owner;
+    }
+  }
+  return flowBlocks(flow).some((item) => item.key === key) ? flow.header.key : undefined;
+}
+
+/**
+ * The selection as agents read it: a card selected at its own block (a click on its header), or at a
+ * field of it, is the card; a step shown in a call the card opens in place names the definition that
+ * owns it, from the card as `drawn` draws it.
+ */
+function viewSelection(page: Page, selection: Selection, drawn: (cardId: string) => CardView | undefined): ViewSelection {
   switch (selection.kind) {
     case "none":
       return { kind: "none" };
@@ -29,7 +69,10 @@ function viewSelection(page: Page, selection: Selection): ViewSelection {
       if (selection.key === null || own) {
         return { kind: "card", id: selection.cardId };
       }
-      return { kind: "step", card: selection.cardId, key: selection.key };
+      const view = drawn(selection.cardId);
+      const flow = view?.type === "definition" ? view.flow : undefined;
+      const owner = flow ? stepOwner(flow, selection.key) : undefined;
+      return { kind: "step", card: selection.cardId, key: selection.key, ...(owner !== undefined && owner !== flow?.header.key ? { owner } : {}) };
     }
     case "field":
       return { kind: "card", id: selection.cardId };
@@ -133,12 +176,13 @@ export function currentView(canvas: Size | null): ViewReport {
   const target: PageTarget = { board: ref, page: page.id };
   const view = getPageView(target);
   const code = loadedCode();
+  const drawn = (cardId: string) => loadedCard(target, cardId);
   return {
     board: { project: ref.project, id: ref.id },
     page: page.id,
-    selection: viewSelection(page, view.selection),
+    selection: viewSelection(page, view.selection, drawn),
     ...(code ? { code } : {}),
-    visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas, (cardId) => loadedCard(target, cardId)),
+    visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas, drawn),
     held,
   };
 }

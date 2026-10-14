@@ -55,7 +55,7 @@ function start(view: EntrancesView, handlers: EngineHandlers = {}): FakeEngine {
   engine = installFakeEngine({
     handlers: {
       entrances: () => view,
-      update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "" }),
+      update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "", entries: [] }),
       open_in_editor: () => null,
       ...handlers,
     },
@@ -326,7 +326,7 @@ describe("How it starts", () => {
     fireEvent.click(add);
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toEqual([
-        { project: P, edits: [{ op: "set_entrance", app: "Worker", entrance: { name: "Retry failed charges", on: "every hour", code: ["src/jobs/retry.ts#retryCharges"], about: null } }] },
+        { project: P, edits: [{ op: "add_entrance", app: "Worker", entrance: { name: "Retry failed charges", code: ["src/jobs/retry.ts#retryCharges"], on: "every hour" } }] },
       ]);
     });
     expect(screen.queryByRole("dialog", { name: "Add as entrance" })).toBeNull();

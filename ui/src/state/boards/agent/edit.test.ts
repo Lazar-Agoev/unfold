@@ -167,14 +167,14 @@ afterEach(() => {
 describe("an agent's edit", () => {
   it("is one undo step named for the agent and the tool, saved at once, answering with the page as saved", async () => {
     open({}, []);
-    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE } }] }, { op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE } }] }, { op: "shape_card", card: "create-order", description: "Takes an order." }]);
     expect(saved).toHaveLength(1);
     expect(result.page.id).toBe("page-1");
     expect((result.page as unknown as Page).cards[0]?.description).toEqual({ text: "Takes an order.", author: "agent:claude", signature: "sha256:signed" });
     expect(result.board).toEqual({ title: "Order placement", revision: "r2" });
     expect(result.items).toEqual([
       { kind: "card", id: "create-order", status: "created", key: CREATE, name: "createOrder", at: [0, 0] },
-      { kind: "card", id: "create-order", status: "created", key: CREATE, name: "createOrder" },
+      { kind: "card", id: "create-order", status: "updated", key: CREATE, name: "createOrder", view: "compact", open: [] },
     ]);
     const board = store.getOpenBoard(REF);
     expect(board?.history.past.map((entry) => entry.name)).toEqual(["Claude · Add cards"]);
@@ -186,7 +186,7 @@ describe("an agent's edit", () => {
   it("leaves the board as it was and answers with the engine's code and message when the save is refused", async () => {
     open();
     refuseSave = { code: "board_problem", message: "The key src/x.ts#function:x is not in the graph." };
-    expect(await refusal([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }])).toEqual({ ok: false, ...refuseSave });
+    expect(await refusal([{ op: "shape_card", card: "create-order", description: "Takes an order." }])).toEqual({ ok: false, ...refuseSave });
     expect(store.getOpenBoard(REF)?.history).toMatchObject({ past: [], future: [] });
   });
 
@@ -225,7 +225,7 @@ describe("an agent's edit", () => {
 
   it("changes nothing, and saves nothing, when everything is already as asked", async () => {
     open({}, [{ ...createCard, description: { text: "Takes an order.", author: "person:maya", signature: "s" } }]);
-    const result = await edit([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    const result = await edit([{ op: "shape_card", card: "create-order", description: "Takes an order." }]);
     expect(result.items).toMatchObject([{ id: "create-order", status: "kept" }]);
     expect(saved).toEqual([]);
     expect(store.getOpenBoard(REF)?.history.past).toEqual([]);
@@ -236,7 +236,7 @@ describe("an agent's edit", () => {
 describe("working marks", () => {
   it("mark what the agent changed until it finishes, then show its summary", async () => {
     open();
-    await edit([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    await edit([{ op: "shape_card", card: "create-order", description: "Takes an order." }]);
     expect(readWorking()).toEqual({ agents: ["Claude"], items: ["create-order"] });
     finishAgentWork({ board: REF, agent: CLAUDE, summary: "Described createOrder" });
     expect(readWorking()).toEqual({ agents: [], items: [] });
@@ -245,7 +245,7 @@ describe("working marks", () => {
 
   it("aren't saved and aren't undo steps", async () => {
     open();
-    await edit([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    await edit([{ op: "shape_card", card: "create-order", description: "Takes an order." }]);
     expect(JSON.stringify(saved)).not.toContain("working");
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(1);
   });
@@ -384,18 +384,18 @@ describe("arrange", () => {
 describe("people's words are safe", () => {
   const described = { ...createCard, description: { text: "Places the order.", author: "person:maya", signature: "s" } };
 
-  it("describe won't replace a person's description unless asked, and signs what it writes as the agent", async () => {
+  it("shape_card won't replace a person's description unless asked, and signs what it writes as the agent", async () => {
     open({}, [described]);
-    const refused = await refusal([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    const refused = await refusal([{ op: "shape_card", card: "create-order", description: "Takes an order." }]);
     expect(refused).toMatchObject({ code: "people_text" });
     expect(refused.message).toContain("Maya wrote it");
-    await edit([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }], replacePeopleText: true }]);
+    await edit([{ op: "shape_card", card: "create-order", description: "Takes an order.", replacePeopleText: true }]);
     expect(onPage().cards[0]?.description).toMatchObject({ text: "Takes an order.", author: "agent:claude" });
   });
 
   it("an agent replaces an agent's words, and a person editing them makes them theirs", async () => {
     open({}, [{ ...createCard, description: { text: "Old.", author: "agent:codex", signature: "s" } }]);
-    const result = await edit([{ op: "describe", items: [{ id: "create-order", text: "New." }] }]);
+    const result = await edit([{ op: "shape_card", card: "create-order", description: "New." }]);
     expect(result.items).toMatchObject([{ status: "updated" }]);
     store.editPage(TARGET, (draft) => {
       const card = draft.cards[0];
@@ -404,7 +404,15 @@ describe("people's words are safe", () => {
       }
     });
     await store.flushBoard(REF);
-    expect((await refusal([{ op: "describe", items: [{ id: "create-order", text: "Again." }] }])).code).toBe("people_text");
+    expect((await refusal([{ op: "shape_card", card: "create-order", description: "Again." }])).code).toBe("people_text");
+  });
+
+  it("describe takes what isn't a card: a card's description is shape_card's", async () => {
+    open();
+    expect(await refusal([{ op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }])).toMatchObject({
+      code: "invalid_op",
+      message: "“create-order” is a card: shape_card with its description describes it.",
+    });
   });
 
   it("remove_items won't remove a person's description, combined step, or label unless asked", async () => {

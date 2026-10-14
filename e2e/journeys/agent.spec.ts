@@ -3,9 +3,10 @@
  * `ts-orders`: an MCP client connects to the app's server as Claude Code, reads the guide, the
  * entrances, and the compiled tree; traces "Place an order" onto a new board, which the person opens
  * while "Claude is working…" and what it changed is outlined; shapes createOrder in one call (a name, a
- * combined step, a call opened in place); frames the service, adds the customer, connects it over HTTP
- * citing the entrance, and adds a note; checks and finishes, which clears the marks and shows its
- * summary; and, because the person asks, declares an entrance in `unfold.toml`, one line.
+ * combined step, a call opened in place), which Edit › Undo takes off in one step and Redo puts back;
+ * frames the service, adds the customer, connects it over HTTP citing the entrance, and adds a note;
+ * checks and finishes, which clears the marks and shows its summary; and, because the person asks,
+ * declares an entrance in `unfold.toml`, one line.
  */
 
 import { join } from "node:path";
@@ -159,6 +160,38 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
     expect(saved.names?.map(({ text, author }) => ({ text, author }))).toEqual([{ text: BRANCH, author: "agent:claude" }]);
     expect(saved.combined?.map(({ title, collapsed }) => ({ title, collapsed }))).toEqual([{ title: COMBINED, collapsed: true }]);
     expect(saved.cards.find((item) => item.id === createOrderId)?.description).toMatchObject({ text: DESCRIPTION, author: "agent:claude" });
+  });
+
+  await test.step("Edit › Undo takes the whole shaping off in one step, and Redo puts it back", async () => {
+    /** The shaping as the board file holds it. */
+    const savedShaping = () => {
+      const saved = savedPage(boardFile);
+      return {
+        names: saved.names?.map(({ text }) => text) ?? [],
+        combined: saved.combined?.map(({ title }) => title) ?? [],
+        description: saved.cards.find((item) => item.id === createOrderId)?.description?.text ?? null,
+      };
+    };
+    const inset = createOrder.locator(".flow-inset-name");
+    const combined = createOrder.locator(".flow-combined", { hasText: COMBINED });
+
+    await app.clickMenu(page, ["Edit", "Undo"]);
+    await expect(createOrder.getByText(BRANCH, { exact: true })).toHaveCount(0);
+    await expect(combined).toHaveCount(0);
+    await expect(createOrder.locator(".flow-call-name", { hasText: /^slack\.post$/ })).toBeVisible();
+    await expect(inset).toHaveCount(0);
+    await expect(createOrder.getByText(DESCRIPTION)).toHaveCount(0);
+    // set_view, the step before, stays: the card is still expanded.
+    await expect(createOrder.locator(".flow-call-name", { hasText: /^orderService\.place$/ })).toBeVisible();
+    await expect.poll(savedShaping).toEqual({ names: [], combined: [], description: null });
+
+    await app.clickMenu(page, ["Edit", "Redo"]);
+    await expect(createOrder.locator(".flow-head .flow-name")).toHaveText(BRANCH);
+    await expect(combined).toHaveClass(/\bcollapsed\b/);
+    await expect(inset).toHaveText("place");
+    await expect(createOrder.locator(".card-description")).toContainText(DESCRIPTION);
+    await expect.poll(savedShaping).toEqual({ names: [BRANCH], combined: [COMBINED], description: DESCRIPTION });
+    revision = revisionOf(await agent.ok("read_page", { board: boardId, page: pageId }));
   });
 
   const customer = boardView(page).getByRole("article", { name: "actor Customer", exact: true });

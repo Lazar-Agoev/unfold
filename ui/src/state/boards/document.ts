@@ -249,10 +249,6 @@ export function setCardView(page: Page, cardId: string, view: View): void {
   }
 }
 
-/** The most calls one card opens in place, and how deep (the board format's limits). */
-const MAX_OPEN_PATHS = 64;
-export const MAX_OPEN_DEPTH = 3;
-
 /**
  * The calls a card opens in place: paths of 1 to 3 call or callback keys, outermost first, each a block
  * of the flow drawn at that level.
@@ -271,24 +267,19 @@ export function isOpen(card: Pick<Card, "open">, path: readonly Key[]): boolean 
 }
 
 /**
- * Opens the call at `path` in place, or closes it (with every call opened inside it). A path deeper
- * than three levels, or one more than the card holds, changes nothing. An empty list is deleted, as the
- * file omits it.
+ * Opens the call at `path` in place, or closes it (with every call opened inside it). How deep and how
+ * many are the board's to check: the reader offers to open a call only within its limits. An empty list
+ * is deleted, as the file omits it.
  */
 export function toggleOpen(page: Page, cardId: string, path: readonly Key[]): void {
   const card = findCard(page, cardId);
-  if (!card || path.length === 0 || path.length > MAX_OPEN_DEPTH) {
+  if (!card || path.length === 0) {
     return;
   }
   const paths = openPaths(card);
-  let next: Key[][];
-  if (paths.some((item) => samePath(item, path))) {
-    next = paths.filter((item) => !samePath(item.slice(0, path.length), path)).map((item) => [...item]);
-  } else if (paths.length < MAX_OPEN_PATHS) {
-    next = [...paths.map((item) => [...item]), [...path]];
-  } else {
-    return;
-  }
+  const next = paths.some((item) => samePath(item, path))
+    ? paths.filter((item) => !samePath(item.slice(0, path.length), path)).map((item) => [...item])
+    : [...paths.map((item) => [...item]), [...path]];
   if (next.length > 0) {
     card.open = next;
   } else {

@@ -25,6 +25,11 @@ export class Labels {
     return this.keys.get(block) ?? block;
   }
 
+  /** Whether text is one of the definition's short labels. */
+  has(block: string): boolean {
+    return this.keys.has(block);
+  }
+
   /** A block's short label, when it is one of the definition's. */
   label(key: string): string | undefined {
     return this.labels.get(key);
@@ -98,6 +103,11 @@ export function openedFlow(flow: DrawnFlow, key: string): DrawnFlow | undefined 
     }
   }
   return undefined;
+}
+
+/** The definitions a drawn flow opens in place, at any depth, by key. */
+export function openedDefinitions(flow: DrawnFlow): string[] {
+  return drawnParts(flow).flatMap((part) => (part.inset ? [part.inset.header.key, ...openedDefinitions(part.inset)] : []));
 }
 
 /** The most blocks one list of a refusal names. */

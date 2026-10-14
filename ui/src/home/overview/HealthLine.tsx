@@ -1,7 +1,8 @@
 /**
  * The Health line at the bottom of the overview: what needs a look in amber, what is fine with a check.
- * An amber item leads to it: the one board that needs review, else the Health view; entrances whose code
- * isn't found, to How it starts' problems. A project with no apps says nothing about entrances.
+ * An amber item leads to it: the one board that needs review, else the Health view; the apps and entrances
+ * that need a look (their code isn't found, or the entry has its own problem), one each, to How it
+ * starts' problems. A project with no apps says nothing about entrances.
  */
 
 import { Icon } from "../../icons";
@@ -35,9 +36,9 @@ function healthItems(project: ProjectId, { health }: ProjectSummary, entrances: 
       ? { id: "parse", text: "All files parse" }
       : { id: "parse", text: `${plural(health.doesntParse, "file")} ${health.doesntParse === 1 ? "doesn't" : "don't"} parse`, open: showHealth },
   );
-  const notFound = health.entrancesNotFound;
-  if (notFound > 0) {
-    items.push({ id: "entrances", text: `${notFound} ${notFound === 1 ? "entrance's" : "entrances'"} code isn't found`, open: showEntrances });
+  const toCheck = health.entrancesToCheck;
+  if (toCheck > 0) {
+    items.push({ id: "entrances", text: `${toCheck} ${toCheck === 1 ? "entrance's" : "entrances'"} code isn't found`, open: showEntrances });
   } else if (entrances) {
     items.push({ id: "entrances", text: "Every entrance finds its code" });
   }

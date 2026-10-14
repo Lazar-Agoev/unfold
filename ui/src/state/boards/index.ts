@@ -22,13 +22,12 @@ export {
   removeFrame,
   removeItem,
   removeLink,
-  setLinkKind,
   setLinkLabel,
   uncombine,
   usePageKeys,
 } from "./api";
 export { CONNECTION_KINDS, CONNECTION_WORDS } from "./connections";
-export { addResourceCard, combineSteps, drawLink, proposeStep, setRelationship, type RelationshipChange } from "./explain";
+export { addResourceCard, combineSteps, drawLink, proposeStep, setLinkKind, setRelationship, type RelationshipChange } from "./explain";
 export { cancelLink, clickItem, startLink } from "./linking";
 export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
 export {
@@ -46,7 +45,6 @@ export {
 } from "./proposals";
 export { findResource } from "./resources";
 export {
-  MAX_OPEN_DEPTH,
   addCard,
   cardKey,
   cardView,

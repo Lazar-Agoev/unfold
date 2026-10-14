@@ -35,7 +35,6 @@ const STAGE_WORDS: Readonly<Record<string, string>> = {
   discover: "finding files",
   link: "linking",
   resolve: "resolving calls",
-  detect: "finding entrances",
   validate: "checking the graph",
 };
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CardView, DrawnFlow } from "../ipc/generated";
+import type { CardView, DrawnFlow, OtherCall, ThinRow } from "../ipc/generated";
 import { boardDocument, boardState, page } from "../test/workspace";
 
 const engine = vi.hoisted(() => ({
@@ -11,7 +11,8 @@ vi.mock("../state/boards/engine", () => engine);
 
 const store = await import("../state/boards/store");
 const codePanel = await import("../state/codePanel");
-const { flowActions, flowSelection } = await import("./actions");
+const { startLink } = await import("../state/boards/linking");
+const { flowActions, flowSelection, selectForMenu } = await import("./actions");
 
 const REF = { project: "p-orders0000", id: ".unfold/boards/b.json" };
 const PAGE = { board: REF, page: "page-1" };
@@ -66,18 +67,25 @@ describe("flowActions", () => {
   it("selects a block and opens its code from its `</>`", () => {
     flowActions(PAGE, "place-order", VIEW).onViewCode({ kind: "block", key: CALL });
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "place-order", key: CALL });
-    expect(codePanel.getCodeOpen()).toEqual({ project: REF.project, target: { kind: "block", key: CALL }, show: null, cardId: "place-order", gap: null });
+    expect(codePanel.getCodeOpen()).toEqual({ project: REF.project, target: { kind: "block", key: CALL }, show: null, cardId: "place-order" });
   });
 
-  it("opens a thin row's lines from its `</>`, with nothing selected", () => {
+  it("opens a thin row's lines from its `</>`, with nothing selected, keeping which row it is", () => {
     store.select(PAGE, { kind: "card", cardId: "place-order", key: CALL });
-    const row = { calls: [], lines: [21, 23] as [number, number], unknown: 0 };
+    const warning: OtherCall = { key: "shop/service.py#place_order/try[0]/except[0]/call:logger.warning", callee: "logger.warning", form: "call", to: { outcome: "unknown" }, awaited: false, sometimes: false, inside: [], actions: { after: true, start: false, open: false } };
+    const row: ThinRow = { calls: [warning], lines: [21, 21], unknown: 1 };
     flowActions(PAGE, "place-order", VIEW).onViewRow("shop/service.py", row);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
-    expect(codePanel.getCodeOpen()).toEqual({ project: REF.project, target: { kind: "lines", path: "shop/service.py", lines: [21, 23] }, show: null, cardId: "place-order", gap: null });
+    expect(codePanel.getCodeOpen()).toEqual({
+      project: REF.project,
+      target: { kind: "lines", path: "shop/service.py", lines: [21, 21] },
+      show: null,
+      cardId: "place-order",
+      from: { kind: "row", key: warning.key },
+    });
   });
 
-  it("opens a gap tick's lines, outlining the tick", () => {
+  it("opens a gap tick's lines, outlining the tick and keeping where it sits", () => {
     store.select(PAGE, { kind: "card", cardId: "place-order", key: CALL });
     flowActions(PAGE, "place-order", VIEW).onOpenLines("shop/service.py", [17, 17]);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
@@ -85,9 +93,16 @@ describe("flowActions", () => {
       project: REF.project,
       target: { kind: "lines", path: "shop/service.py", lines: [17, 17] },
       show: null,
-      cardId: null,
-      gap: { path: "shop/service.py", line: 17 },
+      cardId: "place-order",
+      from: { kind: "gap", place: { before: "shop/service.py#place_order/try[0]" } },
     });
+  });
+
+  it("selects a block for its menu without ending a link being picked there", () => {
+    startLink(PAGE, "other");
+    selectForMenu(PAGE, "place-order", { kind: "block", key: CALL });
+    expect(store.getPageView(PAGE).linking).toEqual({ from: "other", to: null });
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "place-order", key: CALL });
   });
 });
 

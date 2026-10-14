@@ -50,6 +50,11 @@
             "id": 2,
             "key": "shop/cli.py#/if[0]/then",
             "form": "then",
+            "label": "__name__ == \"__main__\"",
+            "lines": [
+              10,
+              11
+            ],
             "state": "reached",
             "test": {
               "text": "__name__ == \"__main__\"",
@@ -193,6 +198,11 @@
                                       "id": 3,
                                       "key": "shop/service.py#place_order/if[0]/then",
                                       "form": "then",
+                                      "label": "order is None",
+                                      "lines": [
+                                        12,
+                                        13
+                                      ],
                                       "state": "reached",
                                       "test": {
                                         "text": "order is None",
@@ -253,6 +263,11 @@
                                       "id": 5,
                                       "key": "shop/service.py#place_order/if[0]/elif[0]",
                                       "form": "elif",
+                                      "label": "elif order[\"paid\"]",
+                                      "lines": [
+                                        14,
+                                        15
+                                      ],
                                       "state": "reached",
                                       "test": {
                                         "text": "order[\"paid\"]",
@@ -324,6 +339,11 @@
                                       "id": 8,
                                       "key": "shop/service.py#place_order/try[0]/body",
                                       "form": "body",
+                                      "label": "body",
+                                      "lines": [
+                                        18,
+                                        19
+                                      ],
                                       "state": "reached",
                                       "types": [],
                                       "fallsThrough": false,
@@ -370,6 +390,11 @@
                                       "id": 10,
                                       "key": "shop/service.py#place_order/try[0]/except[0]",
                                       "form": "except",
+                                      "label": "except PaymentDeclined as error",
+                                      "lines": [
+                                        20,
+                                        22
+                                      ],
                                       "state": "reached",
                                       "clause": "except PaymentDeclined as error",
                                       "types": [
@@ -519,6 +544,11 @@
                                       "id": 15,
                                       "key": "shop/service.py#place_order/for[0]/body",
                                       "form": "body",
+                                      "label": "body",
+                                      "lines": [
+                                        26,
+                                        27
+                                      ],
                                       "state": "reached",
                                       "types": [],
                                       "fallsThrough": false,

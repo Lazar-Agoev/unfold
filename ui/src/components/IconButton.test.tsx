@@ -6,8 +6,8 @@ import { IconButton } from "./IconButton";
 
 describe("IconButton", () => {
   it("is named by its label, sized, and shows a pressed toggle", () => {
-    render(<IconButton icon="pin" label="Pin" size={24} pressed />);
-    const button = screen.getByRole("button", { name: "Pin" });
+    render(<IconButton icon="link" label="Link" size={24} pressed />);
+    const button = screen.getByRole("button", { name: "Link" });
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.classList.contains("icon-button-24")).toBe(true);
     expect(button.querySelector("svg")?.getAttribute("width")).toBe("16");

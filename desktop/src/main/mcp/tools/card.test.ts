@@ -17,14 +17,16 @@ const PLACE_CALL = `${CREATE_ORDER}/call:orderService.place`;
 const SLACK_CALL = `${CREATE_ORDER}/call:slack.post`;
 const PLACE = "src/services/order-service.ts#OrderService.place";
 const VALIDATE_CALL = `${PLACE}/call:validateOrder`;
+const ORDER = "src/types.ts#Order";
 const BOARD = { project: PROJECT, id: ".unfold/boards/order-placement.json" };
 const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 const ENTRANCE_CARD = { id: "post-orders", ref: { entrance: "entrance:server/place-an-order" }, at: [-400, 0] };
+const TYPE_CARD = { id: "order", ref: { block: ORDER }, at: [0, 600] };
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
   defaultView: "expanded",
-  cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] }, ENTRANCE_CARD],
+  cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] }, ENTRANCE_CARD, TYPE_CARD],
   names: [],
   combined: [],
   guards: [],
@@ -33,7 +35,7 @@ const PAGE: AgentPage = {
 /** The page as the window saved it, shaped. */
 const SHAPED: AgentPage = {
   ...PAGE,
-  cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0], open: [[PLACE_CALL]] }, ENTRANCE_CARD],
+  cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0], open: [[PLACE_CALL]] }, ENTRANCE_CARD, TYPE_CARD],
   names: [{ key: IF, text: "Asked to queue it?", author: "agent:claude", signature: "s" }],
   combined: [{ id: "tell-the-team", title: "Tell the team", members: [SLACK_CALL], collapsed: true, author: "agent:claude", signature: "s" }],
 };
@@ -53,20 +55,29 @@ function openedCard(): CardView {
   return { type: "definition", flow: { ...card.flow, steps: { ...card.flow.steps, steps } } };
 }
 
+/** The type Order's card: it shows fields, not a flow. */
+function typeCard(): CardView {
+  const card = recorded<CardView>(cardCreateOrder);
+  if (card.type !== "definition") {
+    throw new Error("the recorded card isn't a definition's");
+  }
+  return { type: "definition", flow: { ...card.flow, header: { ...card.flow.header, key: ORDER, kind: "type", label: "Order" }, steps: { steps: [] }, routes: [] } };
+}
+
 const PLACE_LABELS: CodeText = { text: "", labels: [{ label: "call:validateOrder", key: VALIDATE_CALL }] };
 
-/** A window that holds the board and answers an edit with `answer` (the shaped page, by default). */
-function app(answer: AgentFailure | null = null) {
+/** A window that holds the board with `page` and answers an edit with `answer` (the shaped page, by default). */
+function app(answer: AgentFailure | null = null, page: AgentPage = PAGE) {
   const test = harness({
     engine: {
       code_text: ({ key }) => (key === CREATE_ORDER ? recorded<CodeText>(codeTextCreateOrder) : key === PLACE ? PLACE_LABELS : undefined),
-      card: ({ open }) => (Array.isArray(open) && open.length > 0 ? openedCard() : recorded<CardView>(cardCreateOrder)),
+      card: ({ key, open }) => (key === ORDER ? typeCard() : Array.isArray(open) && open.length > 0 ? openedCard() : recorded<CardView>(cardCreateOrder)),
       flow_text: () => recorded<FlowText>(flowTextCreateOrder),
     },
     window: (request: AgentShellEvent) => {
       switch (request.type) {
         case "agent_read":
-          return { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } };
+          return { ok: true, page, board: { ...BOARD_INFO, unsaved: false } };
         case "agent_edit":
           return answer ?? { ok: true, page: SHAPED, board: BOARD_INFO, items: ITEMS, warnings: [] };
         default:
@@ -170,17 +181,52 @@ describe("shape_card", () => {
     ]);
   });
 
-  it("refuses before editing when there is nothing to do, no such card, or a card with no flow", async () => {
+  it("passes a refusal that isn't about a key or a rule as it is, without the blocks", async () => {
+    const message = "The name for “src/routes/orders.ts#createOrder/if[0]” is blank. Write it in a few words, or leave it out.";
+    const refused = await app({ ok: false, code: "invalid_op", message }).call(shapeCard, { card: "create-order", names: { "if[0]": "Asked to queue it?" } });
+    expect(refused).toMatchObject({ isError: true, text: message });
+  });
+
+  it("refuses before editing when there is nothing to do, no such card, or more than a description on a card with no flow", async () => {
     const test = app();
     expect((await test.call(shapeCard, { card: "create-order" })).text).toBe("Can't shape the card: nothing to change was given. Pass title, description, names, combine, or open.");
     expect((await test.call(shapeCard, { card: "nope", title: "X" })).text).toBe(
       "Can't shape the card: there is no card with id “nope” on the page “Placing an order”. read_page lists the page's cards with their ids.",
     );
     expect((await test.call(shapeCard, { card: "post-orders", title: "X" })).text).toBe(
-      "Can't shape the card: post-orders is an app's or entrance's card, which draws no flow of its own. Shape the cards of its code; read_page lists them.",
+      "Can't shape the card: post-orders is an app's or entrance's card, which draws no flow of its own. On it, shape_card writes only description; shape the cards of its code for the rest.",
+    );
+    expect((await test.call(shapeCard, { card: "order", description: "An order.", names: { x: "Y" } })).text).toBe(
+      "Can't shape the card: order is a type card, which shows fields, not a flow. On it, shape_card writes only description; shape a function's, a class's, or a module's card for the rest.",
     );
     expect((await test.call(shapeCard, { card: "create-order", open: [["a", "b", "c", "d"]] })).isError).toBe(true);
     expect(edits(test)).toEqual([]);
+  });
+
+  it("writes the description of an app's, entrance's, or type card", async () => {
+    const test = app();
+    for (const card of ["post-orders", "order"]) {
+      expect((await test.call(shapeCard, { card, description: "Takes an order from the client." })).isError).toBe(false);
+    }
+    expect(edits(test).map((edit) => edit.ops)).toEqual([
+      [{ op: "shape_card", card: "post-orders", description: "Takes an order from the client." }],
+      [{ op: "shape_card", card: "order", description: "Takes an order from the client." }],
+    ]);
+  });
+
+  it("refuses a short label of a call the card opens in place, naming the block's full key", async () => {
+    const advice = `Can't shape the card: “call:validateOrder” is a short label of ${PLACE}, a call the card opens in place, not of the card's own code. Short labels name the card's own blocks; name a block of an opened call by its full key: ${VALIDATE_CALL}.`;
+    // Opened in this call.
+    const test = app();
+    expect((await test.call(shapeCard, { card: "create-order", names: { "call:validateOrder": "Check the order" }, open: [["call:orderService.place"]] })).text).toBe(advice);
+    // Opened already, combined.
+    expect((await test.call(shapeCard, { card: "create-order", combine: [{ steps: ["call:validateOrder"], title: "Check the order" }] })).text).not.toBe(advice);
+    const opened = app(null, SHAPED);
+    expect((await opened.call(shapeCard, { card: "create-order", combine: [{ steps: ["call:validateOrder"], title: "Check the order" }] })).text).toBe(advice);
+    expect(edits(opened)).toEqual([]);
+    // By its full key, it goes to the window.
+    await opened.call(shapeCard, { card: "create-order", names: { [VALIDATE_CALL]: "Check the order" } });
+    expect(edits(opened)[0]?.ops).toEqual([{ op: "shape_card", card: "create-order", names: [{ key: VALIDATE_CALL, text: "Check the order" }] }]);
   });
 
   it("passes an open path's later blocks as written when what the one before opens can't be read", async () => {

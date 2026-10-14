@@ -6,7 +6,7 @@
 
 import { viewCode, viewLines, viewRow } from "../code/open";
 import type { CardView, Key, RepoPath, ThinRow } from "../ipc/generated";
-import { clickItem, editCombined, editPage, toggleOpen, type PageTarget, type Selection } from "../state/boards";
+import { clickItem, editCombined, editPage, select, toggleOpen, type PageTarget, type Selection } from "../state/boards";
 import type { FlowSelection, FlowViewProps } from "./FlowView";
 
 /** The page's selection for what `FlowView` selects in card `cardId`. */
@@ -49,9 +49,16 @@ export function flowActions(
       viewRow(target, cardId, path, row);
     },
     onOpenLines: (path: RepoPath, lines: readonly [number, number]) => {
-      viewLines(target, path, lines);
+      if (view.type === "definition") {
+        viewLines(target, cardId, view.flow, path, lines);
+      }
     },
   };
+}
+
+/** Selects what a block's menu opens on in card `cardId`, even while a link's end is being picked: a right-click doesn't end the link there. */
+export function selectForMenu(target: PageTarget, cardId: string, selection: FlowSelection): void {
+  select(target, pageSelection(cardId, selection));
 }
 
 /** What a page's selection shows selected in card `cardId`'s flow. */

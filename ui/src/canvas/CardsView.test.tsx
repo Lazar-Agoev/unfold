@@ -4,8 +4,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
-import type { Card, CardView, DrawnFlow, Key, StartCard, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
+import type { Card, CardView, DrawnFlow, EntrancesView, Key, StartCard, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
+import { startLink } from "../state/boards";
 import * as store from "../state/boards/store";
 import { closeCode, getCodeOpen } from "../state/codePanel";
 import { setShowAllCalls } from "../state/showAllCalls";
@@ -33,6 +34,9 @@ const CURRENCY = "src/cart.ts#Currency";
 const WIDE = "src/cart.ts#Wide";
 const PRICE = "src/cart.ts#Price";
 const START = "entrance:shop-api/place-an-order";
+const APP = "entrance:shop-api";
+const GONE = "shop/gone.py#gone";
+const MOVED = "shop/refunds.py#gone";
 const LOAD_CALL = `${PLACE}/call:load_order`;
 const CHARGE_CALL = `${PLACE}/try[0]/body/call:charge_card`;
 
@@ -136,12 +140,38 @@ function model(key: Key): CardView | undefined {
     [PRICE]: { type: "definition", flow: { ...drawn("01-place-order"), header: { ...drawn("01-place-order").header, key: PRICE, kind: "class", form: "class", label: "Price", path: "src/cart.ts", line: 50 } } },
     [START]: start([
       { key: LOAD, state: "found", label: "load_order", path: "shop/store.py", line: 12 },
-      { key: "shop/gone.py#gone", state: "missing" },
+      { key: GONE, state: "missing" },
       { key: CHARGE, state: "found", label: "charge_card", path: "shop/payments.py", line: 12 },
     ]),
+    [APP]: { type: "start", key: APP, kind: "app", app: "Shop API", name: "Shop API", on: "uvicorn shop.api:app", code: [{ key: API, state: "found", label: "shop/api.py", path: "shop/api.py", line: 1 }] },
   };
   return models[key];
 }
+
+/** The project's entrances: the missing code key of Place an order has one candidate. */
+const ENTRANCES: EntrancesView = {
+  resolved: true,
+  apps: [
+    {
+      key: APP,
+      name: "Shop API",
+      run: "uvicorn shop.api:app",
+      code: { key: API, state: "found" },
+      entrances: [
+        {
+          key: START,
+          name: "Place an order",
+          on: "POST /orders/{order_id}",
+          code: [
+            { key: LOAD, state: "found" },
+            { key: GONE, state: "missing", fix: { kind: "moved_definition", code: MOVED, path: "shop/refunds.py" } },
+            { key: CHARGE, state: "found" },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 let engine: FakeEngine;
 
@@ -180,6 +210,8 @@ beforeEach(() => {
   setShowAllCalls(false);
   engine = installFakeEngine({
     handlers: {
+      entrances: () => ENTRANCES,
+      update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "", entries: [] }),
       card: ({ key }) => {
         const found = model(key);
         if (!found) {
@@ -319,7 +351,7 @@ describe("Show all calls", () => {
 });
 
 describe("app and entrance cards", () => {
-  it("show the app in small caps, the name, and what starts it; code that isn't found is dashed with its state", async () => {
+  it("show an entrance's app in small caps, its name, and what starts it; compact, its arrows leave from its edge", async () => {
     open([
       { id: "start", ref: { entrance: START }, at: [0, 0] },
       { id: "load", ref: { block: LOAD }, at: [600, 0] },
@@ -331,15 +363,40 @@ describe("app and entrance cards", () => {
     expect(card.querySelector(".start-name")?.textContent).toBe("Place an order");
     // What starts it is plain mono, as the page draws the card.
     expect(card.querySelector(".start-on")?.innerHTML).toBe("POST /orders/{order_id}");
-    // Compact: only the code that isn't found is listed; the arrows to its code leave from the edge, in order.
-    expect([...card.querySelectorAll(".start-code.unfound")].map((row) => row.textContent)).toEqual(["shop/gone.py#gonemissing"]);
-    expect(card.querySelectorAll(".start-code")).toHaveLength(1);
+    expect(card.querySelectorAll(".start-code")).toHaveLength(0);
     await waitFor(() => {
       expect(portsOf(card)).toEqual([NODE_PORT]);
     });
   });
 
-  it("list their code in order when expanded, each arrow leaving from its row", async () => {
+  it("show an app's name once, with its run command and no small caps", async () => {
+    open([{ id: "app", ref: { entrance: APP }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    const card = await waitFor(() => present(container.querySelector<HTMLElement>('.start-card[data-card-id="app"]')));
+    expect(card.querySelector("small")).toBeNull();
+    expect(card.querySelector(".start-name")?.textContent).toBe("Shop API");
+    expect(card.querySelector(".start-on")?.textContent).toBe("uvicorn shop.api:app");
+    expect(card.getAttribute("aria-label")).toBe("Shop API");
+  });
+
+  it("draw code that isn't found as its own dashed card beside theirs, with the fix the engine offers, which rewrites that one key", async () => {
+    open([{ id: "start", ref: { entrance: START }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    const card = await waitFor(() => present(container.querySelector<HTMLElement>('.start-card[data-card-id="start"]')));
+    expect(card.querySelector(".start-unfound-card")).toBeNull();
+    const unfound = present(container.querySelector<HTMLElement>(`.start-unfound-card[data-key="${GONE}"]`));
+    expect(unfound.querySelector(".start-unfound-head")?.textContent).toBe("?Code not found");
+    expect(unfound.querySelector(".start-unfound-key")?.textContent).toBe(GONE);
+    expect((await within(unfound).findByText("Moved to shop/refunds.py")).className).toBe("start-unfound-what");
+    fireEvent.click(within(unfound).getByRole("button", { name: "Fix" }));
+    await waitFor(() => {
+      expect(engine.callsOf("update_project_config")).toEqual([
+        { project: P, edits: [{ op: "set_entrance", app: "Shop API", entrance: { name: "Place an order", on: "POST /orders/{order_id}", code: [LOAD, MOVED, CHARGE], about: null } }] },
+      ]);
+    });
+  });
+
+  it("list the code that has a block in order when expanded, each arrow leaving from its row", async () => {
     open([
       { id: "start", ref: { entrance: START }, at: [0, 0], view: "expanded" },
       { id: "load", ref: { block: LOAD }, at: [600, 0] },
@@ -348,7 +405,7 @@ describe("app and entrance cards", () => {
     const { container } = renderBoard();
     const card = await waitFor(() => present(container.querySelector<HTMLElement>('.start-card[data-card-id="start"]')));
     expect(card.querySelector(".start-about")?.textContent).toBe("Charges and saves an order.");
-    expect([...card.querySelectorAll(".start-code-name")].map((row) => row.textContent)).toEqual(["load_order", "shop/gone.py#gone", "charge_card"]);
+    expect([...card.querySelectorAll(".start-code-name")].map((row) => row.textContent)).toEqual(["load_order", "charge_card"]);
     await waitFor(() => {
       expect(portsOf(card).sort()).toEqual([codePort(0), codePort(2)]);
     });
@@ -374,7 +431,7 @@ describe("adding entrances", () => {
       handlers: {
         card: ({ key }) => present(model(key)),
         entrances: () => ({ resolved: true, apps: [{ key: "entrance:shop-api", name: "Shop API", entrances: [] }, { key: "entrance:jobs", name: "Background jobs", entrances: [] }] }),
-        update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "" }),
+        update_project_config: () => ({ config: { exists: true, text: "", settings: null, error: null }, diff: "", entries: [] }),
         list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
         save_board: () => boardState(P, ID),
       },
@@ -398,7 +455,7 @@ describe("adding entrances", () => {
     fireEvent.click(within(popover).getByRole("button", { name: "Add" }));
     await waitFor(() => {
       expect(fake.callsOf("update_project_config")).toEqual([
-        { project: P, edits: [{ op: "set_entrance", app: "Shop API", entrance: { name: "Load an order", on: "GET /orders/{id}", code: [LOAD], about: null } }] },
+        { project: P, edits: [{ op: "add_entrance", app: "Shop API", entrance: { name: "Load an order", code: [LOAD], on: "GET /orders/{id}" } }] },
       ]);
     });
     expect(screen.queryByRole("dialog", { name: "Add as entrance" })).toBeNull();
@@ -481,8 +538,27 @@ describe("type cards", () => {
     });
     fireEvent.click(present(rows[4]?.querySelector<HTMLElement>(".tcard-code")));
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "field", cardId: "cart", key: DRAFT, index: 0 });
-    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "field", key: DRAFT, index: 0 }, show: null, cardId: "cart", gap: null });
+    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "field", key: DRAFT, index: 0 }, show: null, cardId: "cart" });
     closeCode();
+  });
+
+  it("end a link being drawn on a click on a field, selecting nothing", async () => {
+    open([
+      { id: "cart", ref: { block: CART }, at: [0, 0] },
+      { id: "load", ref: { block: LOAD }, at: [800, 0] },
+    ]);
+    const { container } = renderBoard();
+    const rows = await waitFor(() => {
+      const found = [...(cardElement(container, "cart")?.querySelectorAll<HTMLElement>(".tcard-field") ?? [])];
+      expect(found).toHaveLength(5);
+      return found;
+    });
+    act(() => {
+      startLink(PAGE, "load");
+    });
+    fireEvent.click(present(rows[1]));
+    expect(store.getPageView(PAGE).linking).toEqual({ from: "load", to: "cart" });
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "none" });
   });
 
   it("anchor a type arrow at its field's row", async () => {

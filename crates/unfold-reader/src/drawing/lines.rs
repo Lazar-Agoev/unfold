@@ -56,6 +56,11 @@ impl FileText {
         Self { source, code }
     }
 
+    /// The whole text.
+    pub(super) fn text(&self) -> &str {
+        self.source.text()
+    }
+
     /// The text of `range`, on one line (whitespace runs become one space).
     pub(super) fn one_line(&self, range: ByteRange) -> Option<String> {
         self.source.slice(range).ok().map(one_line)

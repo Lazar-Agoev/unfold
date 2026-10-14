@@ -93,6 +93,11 @@
             "id": 4,
             "key": "mail/route.py#route_message/ternary[0]/then",
             "form": "then",
+            "label": "override",
+            "lines": [
+              10,
+              10
+            ],
             "state": "reached",
             "test": {
               "text": "override",
@@ -142,6 +147,11 @@
             "id": 6,
             "key": "mail/route.py#route_message/ternary[0]/else",
             "form": "else",
+            "label": "else",
+            "lines": [
+              10,
+              10
+            ],
             "state": "reached",
             "types": [],
             "fallsThrough": false,
@@ -208,6 +218,11 @@
             "id": 9,
             "key": "mail/route.py#route_message/comprehension[0]/body",
             "form": "body",
+            "label": "body",
+            "lines": [
+              11,
+              11
+            ],
             "state": "reached",
             "test": {
               "text": "is_relevant(part)",

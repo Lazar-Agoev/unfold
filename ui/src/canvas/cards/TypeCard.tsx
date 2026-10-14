@@ -23,7 +23,7 @@ import { TypeText } from "../../code/TypeText";
 import { memberName, memberValue } from "../../code/typeKinds";
 import type { Card, CardView, InheritedGroup, TypeDefinition } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
-import { cardKey, clickItem, select, usePageView, type PageTarget, type Selection } from "../../state/boards";
+import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { isMissing } from "../../state/cards";
 import { useCodeHover } from "../../state/codePanel";
 import { NODE_PORT, fieldPort, fieldRows, type FieldRef, type FieldRow } from "../arrows";
@@ -206,7 +206,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
         }}
         selected={selectedField}
         onSelect={(field) => {
-          select(target, fieldSelection(field));
+          clickItem(target, card.id, fieldSelection(field));
         }}
         onView={(field) => {
           viewCode(target, fieldSelection(field), new Map([[card.id, drawn]]));

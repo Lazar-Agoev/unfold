@@ -14,8 +14,9 @@
  * Its header's `</>` opens its code in the code panel, and so does a block's, or View code in a block's
  * menu (right-click), which also opens calls in place, names, describes, combines, and proposes steps as
  * the block's overlay actions allow (`blockMenuEntries`). While the panel is open, a line hovered in it lights its block here (a compact
- * card lights whole when it holds the block), and a selected block that isn't drawn on its own outlines
- * the gap tick that counts its line.
+ * card lights whole when it holds the block), a selected block that isn't drawn on its own outlines
+ * the gap tick that counts its line, and while nothing is selected, the gap tick or row of other calls
+ * the panel was opened from is outlined.
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
@@ -27,14 +28,14 @@ import { viewCode } from "../../code/open";
 import { linkNote } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { CombineSteps, ProposeStep } from "../../explain";
-import { flowActions, flowSelection } from "../../flow/actions";
-import { FlowView, type FlowLine, type FlowSelection } from "../../flow/FlowView";
+import { flowActions, flowSelection, selectForMenu } from "../../flow/actions";
+import { FlowView, type FlowOutline } from "../../flow/FlowView";
 import { layoutFlow, type FlowGeometry } from "../../flow/layout";
 import type { Card, CardView, DrawnFlow, Header, Key, LinkEnd } from "../../ipc/generated";
 import type { UnfoldError } from "../../ipc/unfold";
-import { cardKey, clickItem, usePageView, type PageTarget } from "../../state/boards";
-import { flowBlocks, isMissing } from "../../state/cards";
-import { useCodeHover, useCodePanel } from "../../state/codePanel";
+import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
+import { flowBlocks, heldBlocks, isMissing } from "../../state/cards";
+import { openGap, useCodeHover, useCodePanel } from "../../state/codePanel";
 import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";
 import { compactCardWidth, expandedCardWidth, headerText } from "../sizing";
@@ -139,22 +140,28 @@ function placePorts(geometry: FlowGeometry, ports: readonly string[]): { readonl
 }
 
 /**
- * The gap tick the code panel outlines in card `cardId`: the one it was opened from, or, for a block of
- * this card selected while not drawn on its own, the one that counts its marked line.
+ * What the code panel outlines in card `cardId` when nothing selected is drawn here: while nothing is
+ * selected, the gap tick (by its line) or the row of other calls (by its first call) it was opened
+ * from; for a block of this card selected while not drawn on its own, the gap tick that counts its
+ * marked line.
  */
-function useOutlineLine(cardId: string, selected: FlowSelection | null, geometry: FlowGeometry): FlowLine | null {
+function useOutline(cardId: string, selection: Selection, geometry: FlowGeometry): FlowOutline | null {
   const open = useCodePanel();
   const code = useCodeView(open);
   if (!open) {
     return null;
   }
-  if (open.gap) {
-    return open.gap;
+  if (selection.kind === "none") {
+    const gap = openGap(open);
+    if (gap) {
+      return { line: gap };
+    }
+    return open.from?.kind === "row" && open.cardId === cardId ? { block: open.from.key } : null;
   }
   const view = code.data;
   const line = view ? markedLine(view) : undefined;
-  const undrawn = open.cardId === cardId && selected?.kind === "block" && !geometry.blocks.has(selected.key);
-  return undrawn && view?.file !== undefined && line !== undefined ? { path: view.file, line } : null;
+  const undrawn = open.cardId === cardId && selection.kind === "card" && selection.key !== null && !geometry.blocks.has(selection.key);
+  return undrawn && view?.file !== undefined && line !== undefined ? { line: { path: view.file, line } } : null;
 }
 
 /** A popover a block's menu opened, beside the block it was opened on. */
@@ -179,7 +186,7 @@ function ExpandedBody({
   const selection = usePageView(target, (page) => page.selection);
   const selected = useMemo(() => flowSelection(selection, card.id), [selection, card.id]);
   const actions = useMemo(() => flowActions(target, card.id, view), [target, card.id, view]);
-  const outline = useOutlineLine(card.id, selected, geometry);
+  const outline = useOutline(card.id, selection, geometry);
   const hover = useCodeHover();
   const menu = useContextMenu("Block actions", 220);
   const [explaining, setExplaining] = useState<Explaining | null>(null);
@@ -210,7 +217,7 @@ function ExpandedBody({
             return;
           }
           const anchor = event.currentTarget as HTMLElement;
-          actions.onSelect(block);
+          selectForMenu(target, card.id, block);
           menu.open(
             event,
             blockMenuEntries(target, card, flow, block, {
@@ -238,11 +245,11 @@ function ExpandedBody({
   );
 }
 
-/** Whether a line hovered in the code panel is on a block this compact card holds. */
+/** Whether a line hovered in the code panel is on a block this compact card holds (drawn, or in a collapsed combined step). */
 function useHoverHeld(flow: DrawnFlow | undefined, expanded: boolean): boolean {
-  const key = useCodeHover()?.key ?? null;
-  const keys = useMemo(() => new Set(flow && !expanded ? flowBlocks(flow).map((block) => block.key) : []), [flow, expanded]);
-  return key !== null && keys.has(key);
+  const hover = useCodeHover();
+  const keys = useMemo(() => new Set(flow && !expanded ? [...flowBlocks(flow).map((block) => block.key), ...heldBlocks(flow)] : []), [flow, expanded]);
+  return [hover?.key, hover?.block].some((key) => key !== null && key !== undefined && keys.has(key));
 }
 
 export function BlockCard({ target, card, expanded, query, ports, selected }: BlockCardProps) {

@@ -51,6 +51,11 @@
               "id": 2,
               "key": "src/routes/orders.ts#createOrder/if[0]/then",
               "form": "then",
+              "label": "req.header(\"prefer\") === \"respond-async\"",
+              "lines": [
+                27,
+                31
+              ],
               "state": "reached",
               "test": {
                 "text": "req.header(\"prefer\") === \"respond-async\"",

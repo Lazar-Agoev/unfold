@@ -64,7 +64,7 @@
   box-shadow: 0 0 0 1.5px var(--color-focus-ring);
 }
 
-/* "Used in N places": the places, each opening the peek sheet at its line. */
+/* "Used in N places": each place by its label, with its file and line. */
 .type-uses-label {
   min-width: 0;
   overflow: hidden;

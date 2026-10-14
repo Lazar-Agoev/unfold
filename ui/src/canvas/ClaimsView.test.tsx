@@ -247,6 +247,32 @@ describe("resource cards", () => {
   });
 });
 
+describe("a card's review banner", () => {
+  it("shows a name held for review for a block the card draws, with the repairs it offers, applied through repair_board", async () => {
+    const held: HealthItem = {
+      page: "page-1",
+      kind: "review",
+      target: { name: ENQUEUE },
+      message: "orderService.place changed since it was named.",
+      repairs: ["accept", "reconnect", "remove"],
+    };
+    open({ names: [{ key: ENQUEUE, text: "Queue the order", author: "person:maya", signature: "" }] }, { ...HEALTHY, items: [held], review: 1 });
+    const { container } = renderBoard();
+    const banner = await waitFor(() => present(container.querySelector<HTMLElement>('[data-card-id="create-order"] .card-review')));
+    expect(container.querySelector('[data-card-id="worker"] .card-review')).toBeNull();
+    fireEvent.click(within(banner).getByRole("button", { name: "Review" }));
+    const menu = await screen.findByRole("menu", { name: "Review" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Accept", "Reconnect…", "Remove from page"]);
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Accept" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(repairs).toEqual([{ page: "page-1", kind: "accept", key: ENQUEUE }]);
+    });
+  });
+});
+
 describe("connections", () => {
   it("draw each kind's line in the authored style, with a chip saying its kind and what travels, and the agent mark", async () => {
     open({

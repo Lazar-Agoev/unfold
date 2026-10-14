@@ -2,7 +2,8 @@
  * Card widths: a compact card sizes to its header between 240 and 560 px; an expanded card to its
  * header, its signature, and its drawn flow (at least 280 px, and wider than 880 only for a flow that
  * needs it, so nothing is clipped); type cards (and compact classes) between 280 and 560 px; app and
- * entrance cards between 200 and 320 px; collapsed frames' nodes between 240 and 400 px; resource
+ * entrance cards between 200 and 320 px (with a 250 to 320 px dashed card beside them for each code that
+ * isn't found); collapsed frames' nodes between 240 and 400 px; resource
  * cards between 200 and 360 px (tables 240 to 520); and notes between 140 and 260 px, measured with
  * the bundled fonts. Longer lines soft-wrap and nothing scrolls inside a card. Heights follow from the
  * content and are measured by the canvas; before a card is drawn, its size is estimated from what the
@@ -14,7 +15,7 @@ import type { CardView, Description, Frame, Header, StartCard, TypeDefinition, V
 import { layoutFlow, type FlowGeometry, type Measure } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
 import { fieldRows } from "./arrows";
-import { cardShape, headerLocation, headerMark, startRowName, startRowPlace, startRows, type CardShape, type HeaderMark } from "./cardText";
+import { cardShape, headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type CardShape, type HeaderMark } from "./cardText";
 import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import {
   CODE_FONT,
@@ -176,12 +177,27 @@ const START_NAME_LINE = 20;
 const START_ON_LINE = 16;
 /** The app's small caps: 0.08em of letter spacing per character. */
 const CAPS_TRACKING = 0.08 * 10;
-/** The code rows under the words: the gap above them, a row, the gap between rows, and a dashed row's frame. */
+/** The code rows under the words (expanded): the gap above them, a row, and the gap between rows. */
 const ROWS_TOP = 8;
 const ROW = 20;
 const ROW_GAP = 4;
-const ROW_FRAME = 2 * 6 + 2;
 const ABOUT_LINE = 18;
+/**
+ * Code that isn't found, beside the card (cards.css `.start-unfound`): the arrow's length, the gap
+ * between cards, their widths, and their parts: the header ("?" and "Code not found") with its rule,
+ * the padding around the key, a key's line, and the lines under it (what happened, and its fix).
+ */
+const UNFOUND_LINK = 56;
+const UNFOUND_GAP = 16;
+const UNFOUND_MIN_WIDTH = 250;
+const UNFOUND_MAX_WIDTH = 320;
+const UNFOUND_BORDER = 2;
+const UNFOUND_HEADER = 11 + 20 + 11 + 1;
+const UNFOUND_HEADER_TEXT = 20 + 8 + 14 * 2;
+const UNFOUND_PADDING_X = 18;
+const UNFOUND_PADDING_Y = 16 + 18;
+const UNFOUND_KEY_LINE = 16;
+const UNFOUND_LINES = 2 * (4 + 20);
 
 /** What an app's or entrance's card shows in `shape`: its words, its sentence (expanded), and its code rows. */
 function startTexts(start: StartCard, shape: CardShape) {
@@ -189,27 +205,43 @@ function startTexts(start: StartCard, shape: CardShape) {
   return { about: shape === "expanded" ? (start.about ?? null) : null, rows };
 }
 
-/** An app's or entrance's card width: its small caps, name, what starts it, and its code rows, clamped to 200–320. */
+/** An app's or entrance's card width (the card itself): its small caps (an entrance's), name, what starts it, and its code rows, clamped to 200–320. */
 export function startCardWidth(start: StartCard, shape: CardShape, measure: Measure): number {
   const { rows } = startTexts(start, shape);
+  const entrance = start.kind === "entrance";
   const words = Math.max(
-    CHEVRON + GAP + measure(start.app.toUpperCase(), START_APP_FONT) + start.app.length * CAPS_TRACKING,
-    measure(start.name, START_NAME_FONT),
+    entrance ? CHEVRON + GAP + measure(start.app.toUpperCase(), START_APP_FONT) + start.app.length * CAPS_TRACKING : 0,
+    (entrance ? 0 : CHEVRON + GAP) + measure(start.name, START_NAME_FONT),
     measure(start.on ?? "", START_ON_FONT),
-    ...rows.map((row) => measure(row, CODE_FONT) + ROW_FRAME),
+    ...rows.map((row) => measure(row, CODE_FONT)),
   );
   return clampCardWidth(words + START_PADDING_X * 2 + START_BORDER, START_MIN_WIDTH, START_MAX_WIDTH);
 }
 
-/** An app's or entrance's card size in `shape`. */
+/** The size of the dashed card for code that isn't found: its header, and its key as written, which wraps. */
+function unfoundCardSize(key: string, measure: Measure): Size {
+  const width = clampCardWidth(Math.max(UNFOUND_HEADER_TEXT + measure("Code not found", TITLE_FONT), measure(key, LOCATION_FONT) + UNFOUND_PADDING_X * 2) + UNFOUND_BORDER, UNFOUND_MIN_WIDTH, UNFOUND_MAX_WIDTH);
+  const keyLines = wrappedLines(key, LOCATION_FONT, width - UNFOUND_PADDING_X * 2 - UNFOUND_BORDER, measure);
+  return { width, height: UNFOUND_BORDER + UNFOUND_HEADER + UNFOUND_PADDING_Y + keyLines * UNFOUND_KEY_LINE + UNFOUND_LINES };
+}
+
+/** An app's or entrance's card size in `shape`, with the dashed card of each code that isn't found beside it. */
 export function startCardSize(start: StartCard, shape: CardShape, measure: Measure): Size {
   const width = startCardWidth(start, shape, measure);
   const { about, rows } = startTexts(start, shape);
   const room = width - START_PADDING_X * 2 - START_BORDER;
-  const words = START_APP_LINE + START_GAP + START_NAME_LINE + (start.on !== undefined ? START_GAP + START_ON_LINE : 0);
+  const words = (start.kind === "entrance" ? START_APP_LINE + START_GAP : 0) + START_NAME_LINE + (start.on !== undefined ? START_GAP + START_ON_LINE : 0);
   const sentence = about !== null ? START_GAP + wrappedLines(about, DESCRIPTION_FONT, room, measure) * ABOUT_LINE : 0;
   const list = rows.length > 0 ? ROWS_TOP + rows.length * ROW + (rows.length - 1) * ROW_GAP : 0;
-  return { width, height: START_BORDER + START_PADDING_Y + words + sentence + list };
+  const height = START_BORDER + START_PADDING_Y + words + sentence + list;
+  const unfound = unfoundCode(start).map(({ code }) => unfoundCardSize(code.key, measure));
+  if (unfound.length === 0) {
+    return { width, height };
+  }
+  return {
+    width: width + UNFOUND_LINK + Math.max(...unfound.map((card) => card.width)),
+    height: Math.max(height, unfound.reduce((sum, card) => sum + card.height, 0) + (unfound.length - 1) * UNFOUND_GAP),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

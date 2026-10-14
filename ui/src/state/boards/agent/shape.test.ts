@@ -24,6 +24,8 @@ const MAYA = "person:maya";
 
 const createCard: Card = { id: "create-order", ref: { block: CREATE }, at: [0, 0], view: "expanded" };
 const entranceCard: Card = { id: "post-orders", ref: { entrance: "entrance:server/place-an-order" }, at: [-400, 0] };
+const ORDER = "src/types.ts#Order";
+const typeCard: Card = { id: "order", ref: { block: ORDER }, at: [0, 600] };
 
 let engine: FakeEngine;
 let saved: SaveBoardArgs[];
@@ -73,7 +75,16 @@ beforeEach(() => {
   refuseSave = null;
   engine = installFakeEngine({
     handlers: {
-      card: ({ key }) => (key === CREATE ? fixture("card", "card_create_order") : fixture("card", "card_place_an_order")),
+      card: ({ key }) => {
+        if (key === ORDER) {
+          const drawn = fixture("card", "card_create_order");
+          return drawn.type === "definition" ? { type: "definition", flow: { ...drawn.flow, header: { ...drawn.flow.header, key: ORDER, kind: "type", label: "Order" } } } : drawn;
+        }
+        return key === CREATE ? fixture("card", "card_create_order") : fixture("card", "card_place_an_order");
+      },
+      type_definition: () => {
+        throw Object.assign(new Error("Order has no fields here."), { code: "not_found" });
+      },
       save_board: (args) => {
         if (refuseSave !== null) {
           throw Object.assign(new Error(refuseSave), { code: "board_problem" });
@@ -151,10 +162,26 @@ describe("shape_card", () => {
   it("refuses a card that isn't on the page, or draws no flow, blank words, and what the board's save refuses, applying nothing", async () => {
     open();
     expect((await refusal([{ op: "shape_card", card: "nope", title: "X" }])).message).toContain("There is no card with id “nope”");
-    expect((await refusal([{ op: "shape_card", card: "post-orders", title: "X" }])).message).toContain("is an app's or entrance's card: it draws no flow of its own");
+    expect((await refusal([{ op: "shape_card", card: "post-orders", title: "X" }])).message).toContain("is an app's or entrance's card: it draws no flow of its own, so shape_card writes only its description");
     expect((await refusal([{ op: "shape_card", card: "create-order", title: "  " }])).message).toContain("is blank");
     refuseSave = "`src/routes/orders.ts#createOrder/if[0]/then/return[0]` is not in the body of `src/routes/orders.ts#createOrder/if[0]`: combined steps are consecutive steps of one body";
     expect(await refusal([{ op: "shape_card", card: "create-order", combine: [{ members: [IF, `${IF}/then/return[0]`], title: "Stop early" }] }])).toMatchObject({ code: "board_problem", message: refuseSave });
+  });
+
+  it("writes only the description of an app's, entrance's, or type card", async () => {
+    open({}, [createCard, entranceCard, typeCard]);
+    const result = await edit([
+      { op: "shape_card", card: "post-orders", description: "Takes an order from the client." },
+      { op: "shape_card", card: "order", description: "An order as the client sends it." },
+    ]);
+    expect(result.items).toMatchObject([
+      { kind: "card", id: "post-orders", status: "updated" },
+      { kind: "card", id: "order", status: "updated" },
+    ]);
+    expect(onPage().cards.map((card) => card.description?.text)).toEqual([undefined, "Takes an order from the client.", "An order as the client sends it."]);
+    expect((await refusal([{ op: "shape_card", card: "order", description: "An order.", names: [{ key: ORDER, text: "Order" }] }])).message).toBe(
+      "Order is a type card: it shows fields, not a flow, so shape_card writes only its description. Shape a function's, a class's, or a module's card for the rest.",
+    );
   });
 
   it("warns that a compact card shows its opened calls once expanded", async () => {

@@ -9,7 +9,7 @@ import type { BoardDocument, Connection, HealthItem, Page, RepairSpec, Resource,
 import { engineKey } from "../../ipc/queries";
 import * as store from "../../state/boards/store";
 import { installFakeEngine, type FakeEngine } from "../../test/engine";
-import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
+import { HEALTHY, boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
 import { SelectedSection } from "./SelectedSection";
 
 const P = "p-shop000000";
@@ -18,6 +18,7 @@ const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
 const REFUND = "shop/refunds.py#refund_order";
 const MOVED = "shop/refunds.py#refund";
+const REFUND_CALL = `${REFUND}/call:issue_refund`;
 const AUTHOR = "person:lazar";
 
 const orders: Resource = {
@@ -102,17 +103,20 @@ function pick(button: HTMLElement, menuName: string, label: string): void {
 }
 
 describe("Selected · a drawn link's kind", () => {
-  it("is Other until a kind is picked from the seven; picking one makes you its author, as one undo step", () => {
+  it("is Other until a kind is picked (Calls only leaves from a call); picking one makes you its author, saved as one undo step", async () => {
     openPage({ resources: [orders, customers], links: [{ ...drawnLink, author: "agent:claude" }] });
     renderSelected({ kind: "link", linkId: "slack" });
     const kind = screen.getByRole("button", { name: "Other" });
     fireEvent.click(kind);
     const menu = screen.getByRole("menu", { name: "Connection kind" });
-    expect(within(menu).getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual(["HTTP", "Queue", "Reads", "Writes", "Calls", "Relates", "Other"]);
+    expect(within(menu).getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual(["HTTP", "Queue", "Reads", "Writes", "Relates", "Other"]);
     act(() => {
       within(menu).getByRole("menuitemcheckbox", { name: "Writes" }).click();
     });
-    expect(currentPage()?.links[0]).toMatchObject({ kind: "writes", author: AUTHOR, label: { text: "posts to Slack" } });
+    await waitFor(() => {
+      expect(currentPage()?.links[0]).toMatchObject({ kind: "writes", author: AUTHOR, label: { text: "posts to Slack" } });
+    });
+    expect(engine.callsOf("save_board")).toHaveLength(1);
     act(() => {
       store.undo(REF);
     });
@@ -166,6 +170,30 @@ describe("Selected · a relationship", () => {
     });
     expect(currentPage()?.links[0]?.cardinality).toBeUndefined();
     expect(store.canUndo(REF)).toBe(false);
+  });
+});
+
+describe("Selected · a name held for review", () => {
+  const held: HealthItem = { page: "page-1", kind: "review", target: { name: REFUND_CALL }, message: "issue_refund changed since it was named.", repairs: ["accept", "reconnect", "remove"] };
+
+  it("says why, with the card banner's Review: Accept, Reconnect…, and Remove from page", async () => {
+    store.adoptBoardState(
+      boardState(P, ID, boardDocument([page("page-1", [{ id: "refund", ref: { block: REFUND }, at: [0, 400] }], { names: [{ key: REFUND_CALL, text: "Refund", author: AUTHOR, signature: "" }] })]), {
+        health: { ...HEALTHY, items: [held], review: 1 },
+      }),
+    );
+    renderSelected({ kind: "card", cardId: "refund", key: REFUND_CALL });
+    expect(screen.getByText(/issue_refund changed since it was named\./)).not.toBeNull();
+    expect(screen.getByRole("textbox", { name: "Name" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    const menu = screen.getByRole("menu", { name: "Review" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Accept", "Reconnect…", "Remove from page"]);
+    act(() => {
+      within(menu).getByRole("menuitem", { name: "Accept" }).click();
+    });
+    await waitFor(() => {
+      expect(repairs).toEqual([{ page: "page-1", kind: "accept", key: REFUND_CALL }]);
+    });
   });
 });
 

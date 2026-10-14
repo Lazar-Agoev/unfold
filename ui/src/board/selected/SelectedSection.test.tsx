@@ -22,6 +22,7 @@ const PLACE = "entrance:server/place-an-order";
 const CART = "key-cart";
 const CHARGE_CALL = "key-charge-call";
 const BRANCH = "src/routes/orders.ts#createOrder/if[0]/then";
+const SLACK_CALL = "src/routes/orders.ts#createOrder/call:slack.post";
 
 /** A type's card: its drawn flow's header says it is a type. */
 const cartView: CardView = {
@@ -186,18 +187,45 @@ describe("Selected · a card", () => {
 
 describe("Selected · a block", () => {
   it("shows the block as its card draws it, and names it page-wide", async () => {
-    selectNow({ kind: "card", cardId: "create-order", key: BRANCH });
+    selectNow({ kind: "card", cardId: "create-order", key: SLACK_CALL });
     renderSelected();
-    expect(await screen.findByRole("heading", { name: 'req.header("prefer") === "respond-async"' })).not.toBeNull();
-    expect(screen.getByText(/^Part · in/).textContent).toBe("Part · in createOrder");
-    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Wants an async reply?" } });
-    expect(currentPage()?.names).toEqual([{ key: BRANCH, text: "Wants an async reply?", author: "person:lazar", signature: "" }]);
+    expect(await screen.findByRole("heading", { name: "slack.post" })).not.toBeNull();
+    expect(screen.getByText(/^Call · in/).textContent).toBe("Call · in createOrder");
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Tell the team" } });
+    expect(currentPage()?.names).toEqual([{ key: SLACK_CALL, text: "Tell the team", author: "person:lazar", signature: "" }]);
     // The card is asked for again with the page's names.
     await waitFor(() => {
-      expect(engine.callsOf("card")).toContainEqual({ project: P, key: CREATE, overlay: { names: [{ key: BRANCH, text: "Wants an async reply?" }] } });
+      expect(engine.callsOf("card")).toContainEqual({ project: P, key: CREATE, overlay: { names: [{ key: SLACK_CALL, text: "Tell the team" }] } });
     });
     fireEvent.click(screen.getByRole("button", { name: "createOrder" }));
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "create-order", key: null });
+  });
+});
+
+describe("Selected · a part", () => {
+  /** createOrder as the reader draws it, its `then` part with the text that opens it and its lines. */
+  function withPart(view: CardView): CardView {
+    const draw = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.map(draw);
+      }
+      if (value !== null && typeof value === "object") {
+        const entries = Object.entries(value).map(([name, item]) => [name, draw(item)] as const);
+        const part = Object.fromEntries(entries) as Record<string, unknown>;
+        return part["key"] === BRANCH ? { ...part, label: 'if (req.header("prefer") === "respond-async")', lines: [31, 34] } : part;
+      }
+      return value;
+    };
+    return draw(view) as CardView;
+  }
+
+  it("shows the text that opens it and its lines", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({ handlers: { card: ({ key }) => withPart(card(key)) } });
+    selectNow({ kind: "card", cardId: "create-order", key: BRANCH });
+    renderSelected();
+    expect(await screen.findByRole("heading", { name: 'if (req.header("prefer") === "respond-async")' })).not.toBeNull();
+    expect(screen.getByText(/^Part ·/).textContent).toBe("Part · lines 31–34");
   });
 });
 
@@ -233,7 +261,7 @@ describe("Selected · an arrow", () => {
     selectNow(LINE);
     renderSelected();
     fireEvent.click(await screen.findByRole("button", { name: "Receipt" }));
-    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "block", key: "key-receipt" }, show: null, cardId: null, gap: null });
+    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "block", key: "key-receipt" }, show: null, cardId: null });
     // A library's type has no source here: it only names its package.
     expect(screen.queryByRole("button", { name: "PaymentDeclined" })).toBeNull();
   });

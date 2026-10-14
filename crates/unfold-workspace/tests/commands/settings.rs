@@ -188,6 +188,7 @@ fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
     let mark = harness.sink.mark();
     let scoped = edit(json!([{ "op": "exclude_from_graph", "path": "src/lib" }]));
     assert_eq!(scoped["config"]["settings"]["exclude"], json!(["src/lib"]));
+    assert_eq!(scoped["entries"], json!([]), "no app or entrance edit");
     crate::common::eventually("the update lands", || {
         !harness.sink.events(mark, "graph_updated").is_empty()
     });
@@ -207,7 +208,7 @@ fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
             json!([{ "op": "set_entrance", "app": "Server", "entrance": { "name": "X", "code": [] } }]),
             "settings_conflict",
         ),
-        (json!([{ "op": "add_entrance", "entrance": {} }]), "invalid_args"),
+        (json!([{ "op": "set_detector", "entrance": {} }]), "invalid_args"),
     ] {
         assert_eq!(
             harness.code(
@@ -223,4 +224,97 @@ fn config_edits_return_their_diff_and_app_edits_resolve_without_compiling() {
         std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read"),
         before
     );
+}
+
+#[test]
+fn entrance_edits_keep_what_they_leave_out_address_by_name_or_key_and_say_what_they_did() {
+    let harness = Harness::compiled("ts-orders");
+    let project = harness.project.clone();
+    let config = || std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read");
+    let edit = |edits: Value| {
+        harness.ok(
+            1,
+            "update_project_config",
+            json!({ "project": project, "edits": edits }),
+        )
+    };
+    let refused = |edits: Value| {
+        harness
+            .call(
+                1,
+                "update_project_config",
+                json!({ "project": project, "edits": edits }),
+            )
+            .expect_err("refused")
+    };
+    let before = config();
+
+    // Names that make an entry's key, and its key, address it: only `about` is written, and the
+    // app and entrance keep their names and every other field.
+    let changed = edit(json!([
+        { "op": "set_app", "app": { "name": "Server!", "about": "The HTTP API." } },
+        { "op": "set_entrance", "app": "server", "entrance": {
+            "name": "entrance:server/status", "about": "Says the API is up."
+        } },
+    ]));
+    assert_eq!(
+        changed["entries"],
+        json!([
+            { "change": "changed", "app": "Server", "newApp": false },
+            { "change": "changed", "app": "Server", "entrance": "Status", "newApp": false },
+        ])
+    );
+    let expected = before
+        .replacen(
+            "code = \"src/server.ts#\"\nentrances",
+            "code = \"src/server.ts#\"\nabout = \"The HTTP API.\"\nentrances",
+            1,
+        )
+        .replace(
+            "{ name = \"Status\", on = \"GET /v1/status\", code = \"src/server.ts#status\" }",
+            "{ name = \"Status\", on = \"GET /v1/status\", code = \"src/server.ts#status\", about = \"Says the API is up.\" }",
+        );
+    assert_eq!(config(), expected);
+
+    // Null removes a field; the rest stays.
+    edit(json!([{ "op": "set_entrance", "app": "Server", "entrance": { "name": "status", "on": null } }]));
+    assert!(
+        config().contains(
+            "{ name = \"Status\", code = \"src/server.ts#status\", about = \"Says the API is up.\" }"
+        ),
+        "{}",
+        config()
+    );
+
+    // Add adds one line, creating the app, and refuses a key the app has.
+    let added = edit(json!([{ "op": "add_entrance", "app": "Mailer", "entrance": {
+        "name": "Send an email", "code": ["src/queues/email-worker.ts#"]
+    } }]));
+    assert_eq!(
+        added["entries"],
+        json!([{ "change": "added", "app": "Mailer", "entrance": "Send an email", "newApp": true }])
+    );
+    let after = config();
+    let taken = refused(json!([{ "op": "add_entrance", "app": "Server", "entrance": {
+        "name": "status!", "code": ["src/server.ts#status"]
+    } }]));
+    assert_eq!(taken.code, "settings_conflict");
+    assert_eq!(
+        taken.message,
+        "Server already has the entrance “Status”; give this one another name"
+    );
+
+    // A new entrance needs code; an app or entrance the file doesn't have is named in the refusal.
+    let codeless =
+        refused(json!([{ "op": "set_entrance", "app": "Server", "entrance": { "name": "Refund" } }]));
+    assert_eq!(
+        codeless.message,
+        "“Refund” is a new entrance of Server, and a new entrance needs code: the block it starts at"
+    );
+    let unknown = refused(json!([{ "op": "remove_entrance", "app": "Dev server", "entrance": "Reload" }]));
+    assert_eq!(
+        unknown.message,
+        "the app Dev server has no entrance “Reload”. Its entrances: none"
+    );
+    assert_eq!(config(), after, "refused edits write nothing");
 }

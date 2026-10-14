@@ -39,7 +39,8 @@
 }
 
 /* A card an agent changed while it is still working (design §4.10): a soft authored outline. */
-.react-flow__node.agent-working > .board-card {
+.react-flow__node.agent-working > .board-card,
+.react-flow__node.agent-working > .start-node > .board-card {
   outline: 2px solid var(--color-authored-line);
   outline-offset: 3px;
 }
@@ -325,20 +326,104 @@
 .start-code-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .start-code-place { flex: 1; min-width: 0; overflow: hidden; font-size: 11px; color: var(--color-muted); white-space: nowrap; text-overflow: ellipsis; }
 
-/* Code that isn't found: dashed, labeled with its state. */
-.start-code.unfound {
-  padding: 1px 6px;
-  border: 1px dashed var(--color-dashed);
-  border-radius: var(--radius-chip);
-  color: var(--color-muted);
-}
-
+/* Stale code: its row says so; its card is the last good block, marked stale. */
 .start-code-state {
   flex-shrink: 0;
   margin-left: auto;
   font: 500 10.5px/16px var(--font-ui);
   color: var(--color-warn);
 }
+
+/*
+ * An app's or entrance's node: its card, then, for each code that isn't found, a gray arrow to a dashed
+ * card of its own (entrance-definitions.html's board; sizing.ts UNFOUND_*).
+ */
+.start-node {
+  display: flex;
+  align-items: flex-start;
+}
+
+.start-unfound {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.start-unfound-row { display: flex; align-items: flex-start; }
+
+.start-unfound-link {
+  position: relative;
+  flex-shrink: 0;
+  width: 56px;
+  height: 1.5px;
+  margin-top: 21px;
+  background: var(--color-contour);
+}
+
+.start-unfound-link::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -1px;
+  border-top: 4.75px solid transparent;
+  border-bottom: 4.75px solid transparent;
+  border-left: 6px solid var(--color-contour);
+}
+
+.start-unfound-card {
+  min-width: 250px;
+  max-width: 320px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.start-unfound-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--color-card-rule-soft);
+}
+
+.start-unfound-head b { font: 600 13px/20px var(--font-code); }
+
+.start-unfound-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-mono);
+  background: var(--color-step);
+  font: 600 11px/1 var(--font-code);
+  color: var(--color-muted);
+}
+
+.start-unfound-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px 18px 18px;
+}
+
+.start-unfound-key { font: 11px/16px var(--font-code); color: var(--color-muted); overflow-wrap: anywhere; }
+.start-unfound-what { font: 12.5px/20px var(--font-ui); color: var(--color-warn); }
+
+.start-unfound-fix {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 600 12px/20px var(--font-ui);
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.start-unfound-fix:hover { text-decoration: underline; }
+
+.start-unfound-choose { padding: 8px; }
 
 /* A start's arrows leave its edge: level with its header when compact, with each code row when expanded. */
 .start-head > .card-header-ports > .react-flow__handle { top: 21px; }

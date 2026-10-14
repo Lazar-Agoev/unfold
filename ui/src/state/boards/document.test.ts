@@ -186,12 +186,12 @@ describe("views and open calls", () => {
     expect("open" in (next.cards[0] ?? {})).toBe(false);
   });
 
-  it("never saves a path deeper than three calls", () => {
+  it("leaves how deep a path goes to the board's checks, writing it as asked", () => {
     const next = onPage((draft) => {
       draft.cards.push({ ...CARD });
       toggleOpen(draft, CARD.id, ["a", "b", "c", "d"]);
     });
-    expect(openPaths(next.cards[0] ?? CARD)).toEqual([]);
+    expect(openPaths(next.cards[0] ?? CARD)).toEqual([["a", "b", "c", "d"]]);
   });
 });
 

@@ -6,7 +6,8 @@
  * (or app or entrance) the reference became by a name search, offering the one the engine found when
  * exactly one fits; for a proposed step, the block of a card drawing it that it goes after now (an
  * explicit placement repair, never by a similar name). A card's banner also covers the combined and
- * proposed steps it draws. Selected and the code panel open the same menu (`ReviewButton`).
+ * proposed steps it draws and the page's names for its blocks (a name held for review). Selected and
+ * the code panel open the same menu (`ReviewButton`).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -51,17 +52,19 @@ export function claimProblem(item: HealthItem): string {
 
 const NO_ITEMS: readonly HealthItem[] = [];
 
-/** The health items about a card and the combined and proposed steps it draws (`view`), on its page. */
+/** The health items about a card, the combined and proposed steps it draws (`view`), and the page's names for blocks it draws, on its page. */
 function useCardHealth(target: PageTarget, cardId: string, view: CardView | undefined): readonly HealthItem[] {
   const health = useOpenBoard(target.board, (board) => board.health);
   return useMemo(() => {
     const drawn = new Set(view ? overlayIds(view) : []);
+    const blocks = new Set(view?.type === "definition" ? flowBlocks(view.flow).map((block) => block.key) : []);
     const items = (health?.items ?? []).filter(
       (item) =>
         item.page === target.page &&
         (("card" in item.target && item.target.card === cardId) ||
           ("combined" in item.target && drawn.has(item.target.combined)) ||
-          ("proposal" in item.target && drawn.has(item.target.proposal))),
+          ("proposal" in item.target && drawn.has(item.target.proposal)) ||
+          ("name" in item.target && blocks.has(item.target.name))),
     );
     return items.length > 0 ? items : NO_ITEMS;
   }, [health, view, target.page, cardId]);
@@ -326,7 +329,7 @@ export function ClaimReviewBanner({ target, project, item }: { readonly target: 
   ) : null;
 }
 
-/** The banner under a card's header while something about it, or a step it draws (`view`), needs review (nothing otherwise). */
+/** The banner under a card's header while something about it, a step it draws (`view`), or a name for one of its blocks needs review (nothing otherwise). */
 export function ReviewBanner({ target, cardId, view }: { readonly target: PageTarget; readonly cardId: string; readonly view: CardView | undefined }) {
   const project = target.board.project;
   const items = useCardHealth(target, cardId, view);

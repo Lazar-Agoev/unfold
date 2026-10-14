@@ -129,7 +129,7 @@ describe("update_project_settings", () => {
       engine: {
         update_project_config: (args): ProjectConfigUpdate => {
           applied.push(args["edits"] as SettingsEdit[]);
-          return { config, diff };
+          return { config, diff, entries: [] };
         },
       },
     });
@@ -173,7 +173,7 @@ describe("update_project_settings", () => {
     const conflict = await app.call(updateProjectSettings, { project: "ts-orders", edits: [{ op: "include_in_graph", path: "dist/x" }] });
     expect(conflict).toMatchObject({ isError: true, text: "`dist` is excluded by a broader rule `dist/**`; remove that rule first." });
 
-    const same = harness({ engine: { update_project_config: (): ProjectConfigUpdate => ({ config, diff: "" }) } });
+    const same = harness({ engine: { update_project_config: (): ProjectConfigUpdate => ({ config, diff: "", entries: [] }) } });
     expect((await same.call(updateProjectSettings, { project: "ts-orders", edits: [{ op: "exclude_from_graph", path: "dist" }] })).text).toContain(
       "Nothing in unfold.toml changed: the settings already said that.",
     );

@@ -427,7 +427,8 @@ class Builder {
     const endGap = flow.steps.endGap;
     if (!inset) {
       if (scope.toEnd.size > 0) {
-        const link = this.link(x, cy, [...scope.toEnd], null, endGap, file);
+        const routes = [...scope.toEnd];
+        const link = this.link(x, cy, routes, doneWords(routes), endGap, file);
         cy += link.height;
         width = Math.max(width, link.width);
       } else {
@@ -470,7 +471,7 @@ class Builder {
     for (const step of sequence.steps) {
       if (previous !== null) {
         const routes = carried(scope, previous, step.id);
-        const link = this.link(x, cy, routes, routes.some((route) => route.kind === "done") ? "done" : null, step.gap, file);
+        const link = this.link(x, cy, routes, doneWords(routes), step.gap, file);
         cy += link.height;
         width = Math.max(width, link.width);
       } else if (step.gap) {
@@ -1227,8 +1228,8 @@ class Builder {
       rect.height = top - y + inner.height + 12 + 1.5;
       return { width: rect.width, height: rect.height, box: rect };
     }
-    for (const member of step.members) {
-      this.block(member, rect);
+    for (const held of step.holds ?? []) {
+      this.block(held, rect);
     }
     const chrome = 1.5 + COMBINED.padLeft + COMBINED.padRight + 1.5;
     const toggle = this.toggleWidth("open");
@@ -1251,7 +1252,6 @@ class Builder {
     rect.width = width;
     rect.height = height;
     for (const call of step.calls) {
-      this.block(call.key, rect);
       this.anchors.push({ call: call.key, to: call.to, rect, at: { x: rect.x + rect.width, y: y + 1.5 + COMBINED.padTop + COMBINED.head / 2 } });
     }
     // The stacked edge drawn 4px behind it.
@@ -1272,6 +1272,11 @@ class Builder {
 
 // ---------------------------------------------------------------------------------------------
 // Helpers
+
+/** A wire's words when a loop's `done` is among its routes. */
+function doneWords(routes: readonly Route[]): "done" | null {
+  return routes.some((route) => route.kind === "done") ? "done" : null;
+}
 
 /** The library and unknown calls listed on a box: each, then the calls in its arguments a level deeper. */
 function callRows(calls: readonly OtherCall[], depth: number): CallRow[] {

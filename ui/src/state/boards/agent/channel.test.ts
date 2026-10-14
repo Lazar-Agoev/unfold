@@ -46,7 +46,7 @@ afterEach(() => {
 describe("the agent channel", () => {
   it("answers requests once the window's own state is restored, each with its window command", async () => {
     engine.emit({ type: "agent_read", requestId: 4, board: BOARD, page: "page-1" });
-    engine.emit({ type: "agent_edit", requestId: 5, board: BOARD, page: "page-1", agent: CLAUDE, title: "Describe", ops: [{ op: "describe", items: [{ id: "a", text: "Does a." }] }] });
+    engine.emit({ type: "agent_edit", requestId: 5, board: BOARD, page: "page-1", agent: CLAUDE, title: "Shape card", ops: [{ op: "shape_card", card: "a", description: "Does a." }] });
     await Promise.resolve();
     expect(engine.windowCalls).toEqual([]);
 
@@ -56,7 +56,7 @@ describe("the agent channel", () => {
     });
     const answers = new Map(engine.windowCalls.map((entry) => [entry.command, entry.args as { requestId: number; result: { ok: boolean } }]));
     expect(answers.get("agent_read_result")).toMatchObject({ requestId: 4, result: { ok: true, page: { id: "page-1" } } });
-    expect(answers.get("agent_edit_result")).toMatchObject({ requestId: 5, result: { ok: true, items: [{ id: "a", status: "created" }] } });
+    expect(answers.get("agent_edit_result")).toMatchObject({ requestId: 5, result: { ok: true, items: [{ id: "a", status: "updated" }] } });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.description?.author).toBe("agent:claude");
   });
 

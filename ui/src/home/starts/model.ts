@@ -151,7 +151,10 @@ export function filterRows(rows: readonly AppRows[], query: string): readonly Ap
   });
 }
 
-/** The edit that writes `code` in place of one code key: the entrance's `set_entrance`, or the app's `set_app`. */
+/**
+ * The edit that writes `code` in place of one code key: the entrance's `set_entrance`, or the app's
+ * `set_app`, with every field as the list shows it (null for one it doesn't have).
+ */
 export function rewriteCode({ app, entrance, index }: CodeSlot, code: Key): SettingsEdit | null {
   if (app.name === undefined) {
     return null;

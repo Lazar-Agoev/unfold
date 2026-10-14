@@ -39,6 +39,8 @@ use crate::source::{Source, Verified, verify_file};
 use lines::{Render, Text};
 use select::{MarkSpec, Origin, Shows, Span};
 
+pub(crate) use select::label;
+
 /// What the panel opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
@@ -97,6 +99,9 @@ pub struct CodeSources<'a> {
     pub inputs: &'a [Input],
     /// The apps of `unfold.toml`, with their entrances.
     pub apps: &'a [App],
+    /// Whether `unfold.toml` parses, as the engine last read it (the reader doesn't read
+    /// settings): one that doesn't is shown whole as it is now.
+    pub settings_parse: bool,
     /// One highlighter per language.
     pub highlighters: &'a [&'a dyn Highlighter],
 }
@@ -343,6 +348,9 @@ fn load(sources: &CodeSources<'_>, origin: &Origin) -> (CodeState, Option<Body>)
             return now(sources, tree.path(), CodeState::DoesNotParse);
         }
         Origin::Source(tree) => tree.file().hash,
+        Origin::Input(input) if input.role == InputRole::UnfoldConfig && !sources.settings_parse => {
+            return now(sources, &input.path, CodeState::DoesNotParse);
+        }
         Origin::Input(input) => Some(input.hash),
         Origin::Outside(path) => return now(sources, path, CodeState::NotAnalyzed),
     };

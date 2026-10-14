@@ -3,7 +3,7 @@
  * narrowed to what can start. That is modules, classes, and functions, inline handlers among them by
  * their labels ("callback to ordersRouter.post"). Home's Add entrance and Choose code… use it, and Add
  * resource…'s From a type… narrows it to types and classes. Focus stays in its input: ↑ ↓ move the
- * selection, and Enter picks it.
+ * selection, and Enter picks it (once the list answers what is typed).
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -41,10 +41,12 @@ export interface CodeSearchProps {
   readonly placeholder?: string;
   /** Called with the result picked; the field then shows its name until the person types again. */
   readonly onPick: (hit: SearchHit) => void;
+  /** Called when the person types, which leaves no result picked. */
+  readonly onEdit?: () => void;
   readonly ref?: Ref<HTMLInputElement>;
 }
 
-export function CodeSearch({ project, kinds = START_KINDS, label = "Code", placeholder = "Find a module or function", onPick, ref }: CodeSearchProps) {
+export function CodeSearch({ project, kinds = START_KINDS, label = "Code", placeholder = "Find a module or function", onPick, onEdit, ref }: CodeSearchProps) {
   const listId = useId();
   const [query, setQuery] = useState("");
   // Whether the list shows: typing opens it, and picking closes it.
@@ -57,6 +59,8 @@ export function CodeSearch({ project, kinds = START_KINDS, label = "Code", place
   const search = useQuery({ ...engineQueryOptions("search", searchArgs(settled, project, kinds)), enabled: searching, placeholderData: keepPreviousData });
   const data = searching ? search.data : undefined;
   const items = useMemo(() => (data ? resultItems(data) : NO_RESULTS), [data]);
+  // Whether the list answers what is typed now, not a query typed before (still shown while the new one runs).
+  const current = data !== undefined && settled === typed && !search.isPlaceholderData;
   const selectedIndex = Math.max(0, selectedId === null ? 0 : items.findIndex((item) => item.id === selectedId));
   const selected = items[selectedIndex] ?? null;
   const open = listing && typed !== "";
@@ -86,7 +90,7 @@ export function CodeSearch({ project, kinds = START_KINDS, label = "Code", place
         move(event.key === "ArrowDown" ? 1 : -1);
         break;
       case "Enter":
-        if (selected) {
+        if (selected && current) {
           pick(selected);
         }
         break;
@@ -134,6 +138,7 @@ export function CodeSearch({ project, kinds = START_KINDS, label = "Code", place
           setQuery(event.target.value);
           setListing(true);
           setSelectedId(null);
+          onEdit?.();
         }}
         onKeyDown={onKeyDown}
       />

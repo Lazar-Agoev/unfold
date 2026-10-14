@@ -331,14 +331,19 @@ pub(super) fn path(resolved: &Resolved, text: Option<&str>) -> Vec<PathStep> {
         .collect()
 }
 
-/// Block `id`'s label in the path.
-fn label(tree: &FileTree, id: u32, text: Option<&str>) -> String {
+/// Block `id`'s label in the path, which also labels a part in the drawn flow: the text that
+/// opens it. `text` is the file's verified source; without it, headers and tests fall back to
+/// their keywords.
+pub(crate) fn label(tree: &FileTree, id: u32, text: Option<&str>) -> String {
     let node = tree.node(id);
     let head = node
         .head
         .and_then(|head| text?.get(head.as_usize()))
         .map(|head| head.split_whitespace().collect::<Vec<_>>().join(" "));
-    let keyword = node.form.as_str();
+    let keyword = match (node.form, tree.language()) {
+        (Form::Elif, Language::TypeScript) => "else if",
+        (form, _) => form.as_str(),
+    };
     match node.kind() {
         NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Type => tree.label(id),
         // A `switch` is headed by its discriminant and a `match` by its subject.

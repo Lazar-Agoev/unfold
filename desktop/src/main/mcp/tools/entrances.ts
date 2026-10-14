@@ -3,42 +3,51 @@
  * `set_app`, `set_entrance`, and `remove_entrance` write the `[[app]]` tables of a project's
  * `unfold.toml` through `update_project_config`, and return the change as a diff.
  *
- * Apps and entrances are named by their names or keys, found in what `entrances` lists. A field left
- * out keeps what the table says; null removes it. Writing them never recompiles: Unfold looks up the
- * code keys again. `unfold.toml` is shared, so agents write it only when the person asks.
+ * Each sends what the agent gave: the engine finds the app or entrance by its name or key, keeps a
+ * field left out, removes one given null, and says whether it added, changed, or removed the entry.
+ * Writing them never recompiles: Unfold looks up the code keys again. `unfold.toml` is shared, so
+ * agents write it only when the person asks.
  */
 
 import { z } from "zod";
 import type { ToolContext } from "../context";
-import type { AppView, EntranceView, ProjectRow, SettingsEdit } from "../engine-types";
-import { cant, textResult, type ToolResult } from "../results";
+import type { EntryEdit, ProjectRow, SettingsEdit } from "../engine-types";
+import { textResult, type ToolResult } from "../results";
 import { defineTool } from "../tool";
 
 const SHARED = "unfold.toml is shared through the repository: write apps and entrances only when the person asks, and tell them the file changed.";
 
-/** Whether `name` names an entry: its key, or its name in any case. */
-function names(entry: { readonly key?: string; readonly name?: string }, name: string): boolean {
-  return entry.key === name || entry.name?.toLowerCase() === name.trim().toLowerCase();
+/** The fields the agent gave, without those left out (which the engine keeps as the file says). */
+function given<T extends object>(fields: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as { [K in keyof T]?: Exclude<T[K], undefined> };
 }
 
-/** The project's apps, as its `unfold.toml` declares them. */
-async function appsOf(context: ToolContext, project: ProjectRow): Promise<readonly AppView[]> {
-  return (await context.engine("entrances", { project: project.id })).apps;
+/** What the engine says the edit did, in a sentence. */
+function said({ change, app, entrance, newApp }: EntryEdit): string {
+  if (entrance === undefined) {
+    switch (change) {
+      case "added":
+        return `Added the app ${app}.`;
+      case "changed":
+        return `Changed the app ${app}.`;
+      case "removed":
+        return `Removed the app ${app} and its entrances.`;
+    }
+  }
+  switch (change) {
+    case "added":
+      return `Added the entrance ${entrance} to ${newApp ? `the new app ${app}` : app}.`;
+    case "changed":
+      return `Changed the entrance ${entrance} of ${app}.`;
+    case "removed":
+      return `Removed the entrance ${entrance} from ${app}.`;
+  }
 }
 
-/** The app `name` names (its name or key), if the file declares it. */
-function findApp(apps: readonly AppView[], name: string): AppView | undefined {
-  return apps.find((app) => names(app, name));
-}
-
-/** A field as an edit writes it: the value given, null to remove it, or (left out) what the table says. */
-function kept(given: string | null | undefined, written: string | undefined): string | null {
-  return given === undefined ? (written ?? null) : given;
-}
-
-/** Applies one edit to `unfold.toml` and answers with its diff. */
-async function write(context: ToolContext, project: ProjectRow, edit: SettingsEdit, done: string): Promise<ToolResult> {
-  const { diff } = await context.engine("update_project_config", { project: project.id, edits: [edit] });
+/** Applies one edit to `unfold.toml` and answers with what it did and its diff. */
+async function write(context: ToolContext, project: ProjectRow, edit: SettingsEdit): Promise<ToolResult> {
+  const { diff, entries } = await context.engine("update_project_config", { project: project.id, edits: [edit] });
+  const done = entries.map(said).join(" ");
   return textResult(
     context.header({ project: project.name }),
     diff.length > 0 ? `${done} Changed unfold.toml of ${project.name}:\n${["```diff", diff.trimEnd(), "```"].join("\n")}` : "Nothing in unfold.toml changed: it already said that.",
@@ -48,7 +57,7 @@ async function write(context: ToolContext, project: ProjectRow, edit: SettingsEd
 }
 
 const projectArg = z.string().min(1).describe("The project's name or id, or a link to one of its boards");
-const appArg = z.string().min(1).describe("The app's name or key (list_entrances lists them)");
+const appArg = z.string().trim().min(1).max(200).describe("The app's name or key (list_entrances lists them)");
 const field = (what: string) => z.string().trim().min(1).max(400).nullable().optional().describe(`${what}; null removes it; left out keeps it`);
 
 export const setApp = defineTool({
@@ -64,21 +73,9 @@ export const setApp = defineTool({
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ project, app, run, code, about }, context) {
-    const row = await context.project(project);
-    const existing = findApp(await appsOf(context, row), app);
-    const name = existing?.name ?? app.trim();
-    const edit: SettingsEdit = {
-      op: "set_app",
-      app: { name, run: kept(run, existing?.run), code: kept(code, existing?.code?.key), about: kept(about, existing?.about) },
-    };
-    return write(context, row, edit, existing ? `Changed the app ${name}.` : `Added the app ${name}.`);
+    return write(context, await context.project(project), { op: "set_app", app: { name: app, ...given({ run, code, about }) } });
   },
 });
-
-/** The entrance `name` names in `app` (its name or key), if the file declares it. */
-function findEntrance(app: AppView | undefined, name: string): EntranceView | undefined {
-  return app?.entrances.find((entrance) => names(entrance, name));
-}
 
 export const setEntrance = defineTool({
   name: "set_entrance",
@@ -97,23 +94,8 @@ export const setEntrance = defineTool({
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ project, app, name, on, code, about }, context) {
-    const row = await context.project(project);
-    const apps = await appsOf(context, row);
-    const owner = findApp(apps, app);
-    const existing = findEntrance(owner, name);
-    const keys = code === undefined ? (existing?.code.map((target) => target.key) ?? []) : typeof code === "string" ? [code] : code;
-    if (keys.length === 0) {
-      throw cant("add the entrance", `${name} is new, and an entrance needs code: the block it starts at`, "Pass code: a module's, definition's, or inline handler's key, from search or read_code.");
-    }
-    const entranceName = existing?.name ?? name;
-    const appName = owner?.name ?? app.trim();
-    const edit: SettingsEdit = {
-      op: "set_entrance",
-      app: appName,
-      entrance: { name: entranceName, on: kept(on, existing?.on), code: keys, about: kept(about, existing?.about) },
-    };
-    const done = existing ? `Changed the entrance ${entranceName} of ${appName}.` : `Added the entrance ${entranceName} to ${owner ? appName : `the new app ${appName}`}.`;
-    return write(context, row, edit, done);
+    const keys = typeof code === "string" ? [code] : code;
+    return write(context, await context.project(project), { op: "set_entrance", app, entrance: { name, ...given({ on, code: keys, about }) } });
   },
 });
 
@@ -124,27 +106,10 @@ export const removeEntrance = defineTool({
   input: z.object({
     project: projectArg,
     app: appArg,
-    entrance: z.string().min(1).optional().describe("The entrance's name or key (absent: the whole app)"),
+    entrance: z.string().trim().min(1).max(200).optional().describe("The entrance's name or key (absent: the whole app)"),
   }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   async run({ project, app, entrance }, context) {
-    const row = await context.project(project);
-    const apps = await appsOf(context, row);
-    const owner = findApp(apps, app);
-    if (!owner?.name) {
-      throw cant("remove it", `${row.name} declares no app “${app}”`, `Its apps: ${apps.map((item) => item.name ?? item.key ?? "(no name)").join(", ") || "none"}.`);
-    }
-    if (entrance === undefined) {
-      return write(context, row, { op: "remove_entrance", app: owner.name, entrance: null }, `Removed the app ${owner.name} and its entrances.`);
-    }
-    const found = findEntrance(owner, entrance);
-    if (!found?.name) {
-      throw cant(
-        "remove the entrance",
-        `the app ${owner.name} has no entrance “${entrance}”`,
-        `Its entrances: ${owner.entrances.map((item) => item.name ?? item.key ?? "(no name)").join(", ") || "none"}.`,
-      );
-    }
-    return write(context, row, { op: "remove_entrance", app: owner.name, entrance: found.name }, `Removed the entrance ${found.name} from ${owner.name}.`);
+    return write(context, await context.project(project), { op: "remove_entrance", app, entrance: entrance ?? null });
   },
 });

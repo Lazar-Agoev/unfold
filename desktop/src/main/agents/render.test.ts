@@ -52,7 +52,13 @@ function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number } 
   }
   const bridge = {
     views,
-    read: vi.fn(({ page }: { page: string }) => Promise.resolve({ ok: true as const, page: { ...PAGE, id: page, title: `Page ${page}` }, board: INFO, revision: "abcd1234" })),
+    read: vi.fn(({ page }: { page: string }) =>
+      Promise.resolve(
+        views.holds(BOARD)
+          ? { ok: true as const, page: { ...PAGE, id: page, title: `Page ${page}` }, board: INFO, revision: "abcd1234", windowId: 7 }
+          : { ok: false as const, code: "board_not_open", message: "Unfold's window doesn't hold this board." },
+      ),
+    ),
     open: vi.fn(() => {
       views.hold(BOARD);
       return Promise.resolve({ ok: true as const, windowId: 7 });
@@ -167,10 +173,25 @@ describe("screenshot", () => {
     const page = await request(window, 1);
     expect(page).toMatchObject({ page: PAGE, health: null, item: "create-order" });
     expect(engine.calls).toEqual([[0, "read_board", { project: BOARD.project, id: BOARD.id }]]);
-    expect(bridge.read).not.toHaveBeenCalled();
+    expect(bridge.open).not.toHaveBeenCalled();
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 100, height: 50 } });
     renderer.settle((await request(window, 2)).requestId, { ok: true });
     expect(await shot).toMatchObject({ ok: true, note: "No review banners: the board's health couldn't be read here (check reports it)." });
+  });
+
+  it("reads the board's file when the window closes as it reads, never opening it again", async () => {
+    const { engine, bridge, renderer } = setup({ held: true });
+    engine.answers.set("read_board", () => ({ document: { title: "Orders", pages: [PAGE] } }));
+    bridge.read.mockResolvedValueOnce({ ok: false, code: "window_closed", message: "Unfold's window closed before it answered." } as never);
+    const shot = renderer.screenshot({ board: BOARD, page: "page-1" });
+    const window = await loaded();
+    const page = await request(window, 1);
+    expect(page).toMatchObject({ page: PAGE, health: null });
+    expect(bridge.open).not.toHaveBeenCalled();
+    expect(engine.calls).toEqual([[0, "read_board", { project: BOARD.project, id: BOARD.id }]]);
+    renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 100, height: 50 } });
+    renderer.settle((await request(window, 2)).requestId, { ok: true });
+    expect((await shot).ok).toBe(true);
   });
 
   it("says when the board or the page isn't there", async () => {

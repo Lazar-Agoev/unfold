@@ -2,7 +2,8 @@
  * Tracing an app or entrance from How it starts (entrance-definitions.md, "Home: How it starts"): a new
  * board named after it, showing its card and the cards for its code, expanded, in a column to its right
  * in the order they run. Its arrows point at them. Code that names no block gets no card: the start card
- * lists it, dashed and labeled with its state. A failure is a toast; it never throws.
+ * lists it, dashed and labeled with its state. A trace of a start already being traced (a double click)
+ * does nothing. A failure is a toast; it never throws.
  */
 
 import { startCodePlacement } from "../../canvas/layout";
@@ -21,8 +22,16 @@ function drawn(project: ProjectId, ref: CardRef, showAllCalls: boolean) {
   return queryClient.query(cardQuery(cardArgs(project, { ref }, {}, showAllCalls)));
 }
 
-/** Traces the app or entrance `key`, called `name`, onto a new board, and shows it. */
+/** The starts being traced, by project. */
+const tracing = new Map<ProjectId, Set<Key>>();
+
+/** Traces the app or entrance `key`, called `name`, onto a new board, and shows it; once at a time. */
 export async function traceStart(project: ProjectId, key: Key, name: string): Promise<void> {
+  const inProject = tracing.get(project) ?? new Set<Key>();
+  if (inProject.has(key)) {
+    return;
+  }
+  tracing.set(project, inProject.add(key));
   try {
     const showAllCalls = getShowAllCalls();
     const start = await drawn(project, { entrance: key }, showAllCalls);
@@ -54,5 +63,7 @@ export async function traceStart(project: ProjectId, key: Key, name: string): Pr
     }
   } catch (error) {
     showToast({ title: `Couldn't trace ${name}`, body: toUnfoldError(error).message, tone: "danger" });
+  } finally {
+    inProject.delete(key);
   }
 }

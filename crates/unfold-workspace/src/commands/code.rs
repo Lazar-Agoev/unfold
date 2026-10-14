@@ -2,8 +2,9 @@
 //! block, lines of a file (with an optional mark), a field of a type card, a whole file, or an
 //! app or entrance (its lines in `unfold.toml`). The reader builds the model from the committed
 //! graph and the source verified against it; the workspace confines paths, finds an app's or
-//! entrance's span in `unfold.toml` among what the engine last resolved, and passes the
-//! languages' highlighters. Wakes the project.
+//! entrance's span in `unfold.toml` among what the engine last resolved, says whether that
+//! file parses as the engine last read it, and passes the languages' highlighters. Wakes the
+//! project.
 
 use serde::Deserialize;
 use ts_rs::TS;
@@ -100,6 +101,9 @@ pub fn code_view(ctx: &Ctx<'_>, args: CodeViewArgs) -> CommandResult<CodeView> {
     let reader = workspace.readers()?.get()?;
     let highlighters = workspace.highlighters();
     let root = workspace.root();
+    let settings_parse = workspace
+        .entrances()
+        .is_none_or(|resolved| resolved.settings_parse);
     let view = reader.snapshot(|reader| {
         let inputs = reader.inputs()?;
         let apps = reader.apps()?;
@@ -108,6 +112,7 @@ pub fn code_view(ctx: &Ctx<'_>, args: CodeViewArgs) -> CommandResult<CodeView> {
             root,
             inputs: &inputs,
             apps: &apps,
+            settings_parse,
             highlighters: &highlighters,
         };
         Ok(code_view::code_view(&sources, &request))

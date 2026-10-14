@@ -618,6 +618,152 @@ fn combined_steps_apply_inside_insets_and_open_in_place() {
     );
 }
 
+/// A combined step's blocks, and what is written in them, can't be combined again; collapsed,
+/// it holds every one of them, drawn or not, so it outlines them.
+#[test]
+fn a_combined_steps_blocks_are_held_and_not_combined_again() {
+    let in_place_order = |relative: &str| key(&format!("{PLACE_ORDER}/{relative}"));
+    let mut open = shaped();
+    for combine in &mut open.combined {
+        combine.collapsed = false;
+    }
+    let flow = drawn_with(&sample::shop(), PLACE_ORDER, &open, &[], false);
+    let Shape::Call(load) = &flow.steps.steps[0].shape else {
+        panic!("load_order is a box");
+    };
+    assert!(load.actions.combine.is_some());
+    let Shape::Combined(stop) = &flow.steps.steps[1].shape else {
+        panic!("the decision is combined");
+    };
+    assert!(stop.holds.is_empty());
+    let inner = stop
+        .steps
+        .as_ref()
+        .expect("an open combined step draws its steps");
+    let Shape::Decision(decision) = &inner.steps[0].shape else {
+        panic!("the decision is a frame");
+    };
+    assert_eq!(decision.actions.combine, None);
+    let Shape::Exit(raise) = &decision.lanes[0].steps.steps[0].shape else {
+        panic!("the raise is an exit");
+    };
+    assert_eq!(raise.actions.combine, None);
+    assert!(raise.actions.after);
+
+    let flow = drawn_with(&sample::shop(), PLACE_ORDER, &shaped(), &[], false);
+    let Shape::Combined(stop) = &flow.steps.steps[1].shape else {
+        panic!("the decision is combined");
+    };
+    assert_eq!(
+        stop.holds,
+        [
+            "if[0]",
+            "if[0]/then",
+            "if[0]/then/raise[0]",
+            "if[0]/then/raise[0]/call:ValueError",
+            "if[0]/elif[0]",
+            "if[0]/elif[0]/return[0]",
+        ]
+        .map(in_place_order)
+    );
+}
+
+/// `walk` calls itself, so its card can open the call in place at every level.
+fn walker() -> GraphBuilder {
+    const CODE: &str = "def walk(node):\n    walk(node.next)\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "tree/walk.py", Language::Python, CODE);
+    let module = c.module;
+    let walk = c.function(module, "walk", 1, 2, "def walk(node)");
+    c.call(
+        walk,
+        "walk",
+        2,
+        "walk(node.next)",
+        project(&key("tree/walk.py#walk")),
+    );
+    g
+}
+
+/// Whether the first call of `flow`, and of each inset opened under it, offers to open in place.
+fn opens_by_level(flow: &DrawnFlow) -> Vec<bool> {
+    let mut levels = Vec::new();
+    let mut at = Some(flow);
+    while let Some(flow) = at {
+        let Shape::Call(call) = &flow.steps.steps[0].shape else {
+            panic!("the call is a box");
+        };
+        levels.push(call.actions.open);
+        at = call.inset.as_deref();
+    }
+    levels
+}
+
+/// A call opens in place within three levels and 64 paths per card; an open one can always be
+/// closed.
+#[test]
+fn calls_open_in_place_within_three_levels_and_sixty_four_paths() {
+    const WALK: &str = "tree/walk.py#walk";
+    const CALL: &str = "tree/walk.py#walk/call:walk";
+    let deep: &[&[&str]] = &[&[CALL], &[CALL, CALL], &[CALL, CALL, CALL]];
+    let flow = drawn_with(&walker(), WALK, &Overlay::default(), deep, false);
+    assert_eq!(opens_by_level(&flow), [true, true, true, false]);
+
+    let others: Vec<String> = (0..63).map(|index| format!("{WALK}/call:other{index}")).collect();
+    let with_others = |count: usize| -> Vec<Vec<&str>> {
+        std::iter::once(vec![CALL])
+            .chain(others[..count].iter().map(|other| vec![other.as_str()]))
+            .collect()
+    };
+    let open = with_others(62);
+    let paths: Vec<&[&str]> = open.iter().map(Vec::as_slice).collect();
+    let flow = drawn_with(&walker(), WALK, &Overlay::default(), &paths, false);
+    assert_eq!(opens_by_level(&flow), [true, true]);
+    let full = with_others(63);
+    let paths: Vec<&[&str]> = full.iter().map(Vec::as_slice).collect();
+    let flow = drawn_with(&walker(), WALK, &Overlay::default(), &paths, false);
+    assert_eq!(opens_by_level(&flow), [true, false]);
+}
+
+/// A part carries the text that opens it, as the code panel's path labels it, and the lines it
+/// marks there; a TypeScript `else if` reads `ELSE IF` in agent text.
+#[test]
+fn parts_carry_their_opening_text_and_lines() {
+    let flow = drawn(&sample::shop(), PLACE_ORDER);
+    let Shape::Decision(decision) = &flow.steps.steps[1].shape else {
+        panic!("the decision is a frame");
+    };
+    let lanes: Vec<(&str, LineSpan)> = decision
+        .lanes
+        .iter()
+        .map(|lane| (lane.label.as_str(), lane.lines))
+        .collect();
+    assert_eq!(
+        lanes,
+        [
+            ("order is None", LineSpan { start: 12, end: 13 }),
+            ("elif order[\"paid\"]", LineSpan { start: 14, end: 15 }),
+        ]
+    );
+    let Shape::Try(attempt) = &flow.steps.steps[2].shape else {
+        panic!("the try is a frame");
+    };
+    assert_eq!(attempt.lanes[0].lines, LineSpan { start: 18, end: 19 });
+    assert_eq!(attempt.lanes[1].label, "except PaymentDeclined as error");
+
+    let ts = Playground::load("ts-orders");
+    let trees = ts.trees();
+    let card = Card {
+        definition: key("src/lib/validate.ts#validateOrder"),
+        open: Vec::new(),
+        show_all_calls: false,
+    };
+    let flow = draw(&trees, &ts.root, &Overlay::default(), &card).expect("the definition draws");
+    let text = plain(&flow);
+    assert!(text.contains("\n  ELSE IF typeof email !== \"string\""), "{text}");
+    assert!(!text.contains("ELIF"), "{text}");
+}
+
 /// Show all calls draws the builtins; a name lifts a library or unknown call out of its thin
 /// row into a box, which keeps its `?`.
 #[test]

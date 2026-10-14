@@ -190,22 +190,31 @@ describe("FlowView and the code panel", () => {
     expect(outlines(combined.container)).toEqual([{ lit: false, at: at(combined.geometry.items.get("save")) }]);
   });
 
-  it("outlines the gap tick that counts a line when nothing selected is drawn here", () => {
-    const { geometry, container } = show("01-place-order", { selected: { kind: "block", key: "elsewhere" }, outline: { path: "shop/service.py", line: 24 } });
+  it("outlines the gap tick that counts a line, or a row of other calls, when nothing selected is drawn here", () => {
+    const { geometry, container } = show("01-place-order", { selected: { kind: "block", key: "elsewhere" }, outline: { line: { path: "shop/service.py", line: 24 } } });
     const tick = geometry.pieces.find((piece) => piece.kind === "gap" && piece.gap.lines[0] === 24);
     expect(outlines(container)).toEqual([{ lit: false, at: at(tick?.rect) }]);
+    container.remove();
+    const row = show("01-place-order", { outline: { block: "shop/service.py#place_order/try[0]/except[0]/call:logger.warning" } });
+    const thin = row.geometry.pieces.find((piece) => piece.kind === "thin");
+    expect(outlines(row.container)).toEqual([{ lit: false, at: at(thin?.rect) }]);
   });
 
   it("lights a hovered line's block, or the gap tick of a line no block covers", () => {
     const key = "shop/service.py#place_order/call:load_order";
-    const block = show("01-place-order", { hover: { key, path: "shop/service.py", line: 11 } });
+    const block = show("01-place-order", { hover: { key, block: key, path: "shop/service.py", line: 11 } });
     expect(outlines(block.container)).toEqual([{ lit: true, at: at(block.geometry.blocks.get(key)) }]);
     block.container.remove();
-    const gap = show("01-place-order", { hover: { key: null, path: "shop/service.py", line: 17 } });
+    // A builtin isn't drawn on its own: the line's block lights instead.
+    const save = "shop/service.py#place_order/call:save_order";
+    const builtin = show("01-place-order", { hover: { key: "shop/service.py#place_order/call:len", block: save, path: "shop/service.py", line: 25 } });
+    expect(outlines(builtin.container)).toEqual([{ lit: true, at: at(builtin.geometry.blocks.get(save)) }]);
+    builtin.container.remove();
+    const gap = show("01-place-order", { hover: { key: null, block: null, path: "shop/service.py", line: 17 } });
     const tick = gap.geometry.pieces.find((piece) => piece.kind === "gap" && piece.gap.lines[0] === 17);
     expect(outlines(gap.container)).toEqual([{ lit: true, at: at(tick?.rect) }]);
     gap.container.remove();
-    const elsewhere = show("01-place-order", { hover: { key: null, path: "shop/other.py", line: 17 } });
+    const elsewhere = show("01-place-order", { hover: { key: null, block: null, path: "shop/other.py", line: 17 } });
     expect(outlines(elsewhere.container)).toEqual([]);
   });
 

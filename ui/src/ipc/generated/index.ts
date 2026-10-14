@@ -110,25 +110,27 @@ export type AppSettings = {
 editorCommand?: string, };
 
 /**
- * An `[[app]]` table as the editor submits it: everything but its entrances.
+ * An `[[app]]` table as an edit submits it: everything but its entrances. A field left out
+ * keeps what the table says; null removes it.
  */
 export type AppSpec = { 
 /**
- * The app's name, which addresses it.
+ * The app's name or key, which addresses it. A new app is written with this name; an
+ * existing one keeps its own.
  */
 name: string, 
 /**
  * The command that starts it.
  */
-run: string | null, 
+run?: string | null, 
 /**
  * The block key where that command starts.
  */
-code: string | null, 
+code?: string | null, 
 /**
  * One sentence for its card.
  */
-about: string | null, };
+about?: string | null, };
 
 /**
  * One `[[app]]` table as written.
@@ -1020,6 +1022,11 @@ members: Array<Key>,
  */
 collapsed: boolean, 
 /**
+ * Every block it holds while collapsed (its blocks and everything written in them, drawn
+ * or not, outside the definitions inside), which it outlines; empty when open.
+ */
+holds?: Array<Key>, 
+/**
  * The lines it covers: its blocks' statements and the code between them.
  */
 lines: [number, number], 
@@ -1367,26 +1374,28 @@ name: string,
 app: string, };
 
 /**
- * One entrance as the editor submits it.
+ * One entrance as an edit submits it. A field left out keeps what the entrance says; null
+ * removes `on` or `about`.
  */
 export type EntranceSpec = { 
 /**
- * The entrance's name, which addresses it within its app.
+ * The entrance's name or key, which addresses it within its app. A new entrance is
+ * written with this name; an existing one keeps its own.
  */
 name: string, 
 /**
  * What starts it.
  */
-on: string | null, 
+on?: string | null, 
 /**
- * The block keys it starts at, in order; at least one. One key is written as a string,
- * several as a list.
+ * The block keys it starts at, in order; at least one, and a new entrance needs them. One
+ * key is written as a string, several as a list.
  */
-code: Array<string>, 
+code?: Array<string>, 
 /**
  * One sentence for its card.
  */
-about: string | null, };
+about?: string | null, };
 
 /**
  * One entrance of an app as written.
@@ -1423,6 +1432,19 @@ lines?: [number, number],
 problem?: EntryProblemView, };
 
 /**
+ * The arguments of `entrances`.
+ */
+export type EntrancesArgs = { 
+/**
+ * The project.
+ */
+project: ProjectId, 
+/**
+ * An app's name or key: only that app is listed. Absent lists them all.
+ */
+app?: string, };
+
+/**
  * The apps and entrances of a project.
  */
 export type EntrancesView = { 
@@ -1436,6 +1458,32 @@ resolved: boolean,
  * The `[[app]]` tables, in file order.
  */
 apps: Array<AppView>, };
+
+/**
+ * What an app or entrance edit did.
+ */
+export type EntryChange = "added" | "changed" | "removed";
+
+/**
+ * What one app or entrance edit did, named as the file writes them.
+ */
+export type EntryEdit = { 
+/**
+ * What it did to the entry.
+ */
+change: EntryChange, 
+/**
+ * The app's name.
+ */
+app: string, 
+/**
+ * The entrance's name; absent for an edit of the app itself.
+ */
+entrance?: string, 
+/**
+ * Whether the edit added the app (with its first entrance, for an entrance edit).
+ */
+newApp: boolean, };
 
 /**
  * The kinds of [`EntryProblemView`].
@@ -2024,6 +2072,16 @@ key: Key,
  */
 form: Form, 
 /**
+ * The text that opens it, as the code panel's path labels it: `order is None`,
+ * `elif order["paid"]`, `case "refund"`, `except PaymentDeclined as error`, `else`.
+ */
+label: string, 
+/**
+ * The lines it marks in the code panel: the line that opens it and its body (a `body`
+ * part starts on its control block's header).
+ */
+lines: [number, number], 
+/**
  * Whether a route reaches it.
  */
 state: RouteState, 
@@ -2516,7 +2574,12 @@ config: ProjectConfig,
 /**
  * The unified diff from the old text to the new; empty when the edits changed nothing.
  */
-diff: string, };
+diff: string, 
+/**
+ * What each app and entrance edit did, in order: added, changed, or removed, with the
+ * names the file writes; empty when the edits had none.
+ */
+entries: Array<EntryEdit>, };
 
 /**
  * Home's Health line.
@@ -2535,10 +2598,11 @@ boardsNeedingReview: number,
  */
 boards: Array<BoardHealthCount>, 
 /**
- * The `code` keys of apps and entrances whose code isn't there: `missing`, `not_analyzed`,
- * or `not_a_start`.
+ * The apps and entrances that need a look, one each: an entry with its own problem (it
+ * stays out of the graph), or one with a `code` key that isn't there (`missing`,
+ * `not_analyzed`, or `not_a_start`).
  */
-entrancesNotFound: number, };
+entrancesToCheck: number, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
@@ -3336,7 +3400,15 @@ pattern: string, } | { "op": "set_app",
  */
 app: AppSpec, } | { "op": "set_entrance", 
 /**
- * The app's name.
+ * The app's name or key.
+ */
+app: string, 
+/**
+ * The entrance.
+ */
+entrance: EntranceSpec, } | { "op": "add_entrance", 
+/**
+ * The app's name or key.
  */
 app: string, 
 /**
@@ -3344,11 +3416,11 @@ app: string,
  */
 entrance: EntranceSpec, } | { "op": "remove_entrance", 
 /**
- * The app's name.
+ * The app's name or key.
  */
 app: string, 
 /**
- * The entrance's name; `None` removes the app.
+ * The entrance's name or key; `None` removes the app.
  */
 entrance: string | null, };
 
@@ -4009,10 +4081,10 @@ export interface Commands {
    */
   project_summary: { args: ProjectArgs; result: ProjectSummary };
   /**
-   * The apps and entrances of `unfold.toml` as written, each `code` with its state and its
-   * fix when one exists.
+   * The apps and entrances of `unfold.toml` as written (or one app, by its name or key),
+   * each `code` with its state and its fix when one exists.
    */
-  entrances: { args: ProjectArgs; result: EntrancesView };
+  entrances: { args: EntrancesArgs; result: EntrancesView };
   /**
    * The Problems list, with the health of every board.
    */

@@ -1,6 +1,6 @@
 /**
  * The icon set's drawings. Path data is the designs' own, verbatim, in the viewBox each was drawn in:
- * the custom 16px icons of Home, the 24px icons of the board, Add, and the peek sheet, and the
+ * the custom 16px icons of Home, the 24px icons of the board, Add, and the code panel, and the
  * 10px disclosure chevrons. The Lucide-style icons of Health (check, close, folder, warning, info) are
  * redrawn in the 16px style, and the frames' icons are drawn in it. Strokes are `currentColor`, 1.5
  * unless noted, with round caps and joins.
@@ -31,14 +31,11 @@ export const ICON_NAMES = [
   "search",
   "folder",
   "board",
-  "board-new",
   "check",
   "gear",
   "arrange",
   "external-link",
-  "pin",
   "close",
-  "add-circle",
   "warning-circle",
   "warning-triangle",
   "info",
@@ -92,14 +89,6 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   search: { box: 16, shapes: [{ circle: [7, 7, 4.5] }, { d: "M10.5 10.5L13.5 13.5" }] },
   folder: { box: 16, shapes: [{ d: FOLDER }] },
   board: { box: 16, shapes: [{ d: "M5.5 2.5H11.5C12.6 2.5 13.5 3.4 13.5 4.5V10.5" }, { rect: [2.5, 4.75, 8.75, 8.75, 1.5] }] },
-  // A new board, dashed (Trace on a New Board).
-  "board-new": {
-    box: 16,
-    shapes: [
-      { d: "M5.5 2.5H11.5C12.6 2.5 13.5 3.4 13.5 4.5V10.5", dash: "2 2" },
-      { rect: [2.5, 4.75, 8.75, 8.75, 1.5], dash: "2 1.75" },
-    ],
-  },
   // Home's Health line, redrawn.
   check: { box: 16, shapes: [{ d: "M3.5 8.5L6.5 11.5L12.5 4.5" }] },
   gear: {
@@ -119,24 +108,13 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
       { d: "M9 12h3M12 6v12M12 6h3M12 18h3" },
     ],
   },
-  // Peek sheet menu and header.
+  // The code panel's Open in editor.
   "external-link": {
     box: 24,
     shapes: [{ d: "M15 3h6v6" }, { d: "M10 14 21 3" }, { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }],
   },
-  pin: {
-    box: 24,
-    shapes: [
-      { d: "M12 17v5" },
-      {
-        d: "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z",
-      },
-    ],
-  },
   // Dialogs' close, redrawn.
   close: { box: 16, shapes: [{ d: "M4 4L12 12M12 4L4 12" }] },
-  // The peek's ⊕.
-  "add-circle": { box: 24, stroke: 1.75, shapes: [{ circle: [12, 12, 9] }, { d: "M12 8v8" }, { d: "M8 12h8" }] },
   // Health's problem icon, redrawn; the triangle follows the failed state glyph.
   "warning-circle": { box: 16, shapes: [{ circle: [8, 8, 6] }, { d: "M8 5V8.75" }, { circle: [8, 11, 0.9], filled: true }] },
   "warning-triangle": {

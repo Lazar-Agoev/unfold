@@ -507,13 +507,12 @@ describe("card views and open calls", () => {
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBeUndefined();
   });
 
-  it("opens calls in place as paths of up to three keys, closing a path with every path inside it", async () => {
+  it("opens calls in place as paths, closing a path with every path inside it", async () => {
     const { isOpen, openPaths, toggleOpen } = await import("./document");
     store.adoptBoardState(state(doc([{ id: "a", ref: { block: "key-a" }, at: [0, 0] }])));
     edit((draft) => {
       toggleOpen(draft, "a", ["call-1"]);
       toggleOpen(draft, "a", ["call-1", "call-2"]);
-      toggleOpen(draft, "a", ["call-1", "call-2", "call-3", "call-4"]);
     });
     const card = () => store.getOpenBoard(REF)?.document.pages[0]?.cards[0] ?? { open: [] };
     expect(openPaths(card())).toEqual([["call-1"], ["call-1", "call-2"]]);

@@ -45,7 +45,12 @@ A compiled flow is code-shaped. shape_card turns it into the few named steps a p
 would draw, in one call per card and one undo step. Read the card with read_code
 first: it lists each block's short label and full key. The result is the card as the
 person now sees it.
+- Short labels name the card's own blocks. Name a block of a call the card opens in
+  place by its full key (read_code on that call lists them); in **open**, each next
+  block may be a short label of what the one before opens.
 - **title** names the card; **description** says in one sentence what it does and why.
+  An app's or entrance's card, or a type card, draws no flow: give it only a
+  description.
 - **names** `{block: text}`: any block (a call, a branch, a loop, an except part, an
   exit, a callback). Name only what the code doesn't say: `orderService.place` needs
   none. Ask a branch as a yes-or-no question whose yes is the written test's yes.
