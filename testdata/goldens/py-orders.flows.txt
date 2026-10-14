@@ -1,0 +1,1096 @@
+=== src/orders_extensions/labels.py#
+( src/orders_extensions/labels.py )   key=src/orders_extensions/labels.py#
+( End )
+
+=== src/orders_extensions/labels.py#namespace_label
+( namespace_label )   key=src/orders_extensions/labels.py#namespace_label
+  RETURN "namespace" → End   key=src/orders_extensions/labels.py#namespace_label/return[0]
+( End )
+
+=== src/orders_playground/__init__.py#
+( src/orders_playground/__init__.py )   key=src/orders_playground/__init__.py#
+( End )
+
+=== src/orders_playground/cli.py#
+( src/orders_playground/cli.py )   key=src/orders_playground/cli.py#
+  imports · argparse, importlib, .jobs.import_orders, .jobs.retry_failed
+  IF __name__ == "__main__"   key=src/orders_playground/cli.py#/if[0] src/orders_playground/cli.py#/if[0]/then
+      ▸ main   key=src/orders_playground/cli.py#/if[0]/then/call:main
+( End )
+
+=== src/orders_playground/cli.py#report_command
+( report_command )   key=src/orders_playground/cli.py#report_command
+  · importlib.import_module → report   key=src/orders_playground/cli.py#report_command/call:importlib.import_module
+  RETURN report.print_report ? → End   key=src/orders_playground/cli.py#report_command/return[0]
+( End )
+
+=== src/orders_playground/cli.py#main
+( main )   key=src/orders_playground/cli.py#main
+  · argparse.ArgumentParser → parser, parser.add_argument ?, parser.add_argument ?, parser.parse_args ? → arguments   4 calls, 3 unknown   key=src/orders_playground/cli.py#main/call:argparse.ArgumentParser src/orders_playground/cli.py#main/call:parser.add_argument src/orders_playground/cli.py#main/call:parser.add_argument[1] src/orders_playground/cli.py#main/call:parser.parse_args
+  MATCH match arguments.command   key=src/orders_playground/cli.py#main/match[0]
+  CASE "import"   key=src/orders_playground/cli.py#main/match[0]/case[0]
+      ▸ import_orders   key=src/orders_playground/cli.py#main/match[0]/case[0]/call:import_orders
+  CASE "report"   key=src/orders_playground/cli.py#main/match[0]/case[1]
+      ▸ report_command   key=src/orders_playground/cli.py#main/match[0]/case[1]/call:report_command
+  CASE "replay" | "retry"   key=src/orders_playground/cli.py#main/match[0]/case[2]
+      ▸ retry_failed   key=src/orders_playground/cli.py#main/match[0]/case[2]/call:retry_failed
+  DEFAULT _   key=src/orders_playground/cli.py#main/match[0]/default
+      RAISE ValueError → the caller   key=src/orders_playground/cli.py#main/match[0]/default/raise[0]
+( End )
+
+=== src/orders_playground/config.py#
+( src/orders_playground/config.py )   key=src/orders_playground/config.py#
+  imports · os
+  · os.environ.get, os.environ.get → API_VERSION, os.environ.get → BROKER_URL, os.environ.get → REPORT_QUEUE, os.environ.get   5 calls   key=src/orders_playground/config.py#/call:int/call:os.environ.get src/orders_playground/config.py#/call:os.environ.get src/orders_playground/config.py#/call:os.environ.get[1] src/orders_playground/config.py#/call:os.environ.get[2] src/orders_playground/config.py#/call:os.environ.get[3]
+( End )
+
+=== src/orders_playground/db/__init__.py#
+( src/orders_playground/db/__init__.py )   key=src/orders_playground/db/__init__.py#
+  imports · .connection, .repository
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/db/connection.py#
+( src/orders_playground/db/connection.py )   key=src/orders_playground/db/connection.py#
+  imports · .repository
+( End )
+
+=== src/orders_playground/db/connection.py#connect
+( connect )   key=src/orders_playground/db/connection.py#connect
+  RETURN ▸ OrderRepository → End   key=src/orders_playground/db/connection.py#connect/return[0]
+( End )
+
+=== src/orders_playground/db/repository.py#
+( src/orders_playground/db/repository.py )   key=src/orders_playground/db/repository.py#
+  imports · typing
+  ⋯ 1 line · if
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository
+( OrderRepository )   key=src/orders_playground/db/repository.py#OrderRepository
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.__init__
+( __init__ )   key=src/orders_playground/db/repository.py#OrderRepository.__init__
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.insert
+( insert )   key=src/orders_playground/db/repository.py#OrderRepository.insert
+  IF order["id"] in self.orders   key=src/orders_playground/db/repository.py#OrderRepository.insert/if[0] src/orders_playground/db/repository.py#OrderRepository.insert/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/db/repository.py#OrderRepository.insert/if[0]/then/raise[0]
+  ⋯ 1 line
+  RETURN order → End   key=src/orders_playground/db/repository.py#OrderRepository.insert/return[0]
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.find
+( find )   key=src/orders_playground/db/repository.py#OrderRepository.find
+  RETURN self.orders.get ? → End   key=src/orders_playground/db/repository.py#OrderRepository.find/return[0]
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.list
+( list )   key=src/orders_playground/db/repository.py#OrderRepository.list
+  RETURN list → End   key=src/orders_playground/db/repository.py#OrderRepository.list/return[0]
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.remove
+( remove )   key=src/orders_playground/db/repository.py#OrderRepository.remove
+  · self.orders.pop ?   key=src/orders_playground/db/repository.py#OrderRepository.remove/return[0]/call:self.orders.pop
+  RETURN self.orders.pop(order_id, None) is not None → End   key=src/orders_playground/db/repository.py#OrderRepository.remove/return[0]
+( End )
+
+=== src/orders_playground/db/repository.py#OrderRepository.cancel
+( cancel )   key=src/orders_playground/db/repository.py#OrderRepository.cancel
+  ▸ self.find → order   key=src/orders_playground/db/repository.py#OrderRepository.cancel/call:self.find
+  ⋯ 2 lines · if
+  RETURN order → End   key=src/orders_playground/db/repository.py#OrderRepository.cancel/return[0]
+( End )
+
+=== src/orders_playground/features/__init__.py#
+( src/orders_playground/features/__init__.py )   key=src/orders_playground/features/__init__.py#
+( End )
+
+=== src/orders_playground/features/control.py#
+( src/orders_playground/features/control.py )   key=src/orders_playground/features/control.py#
+  imports · collections.abc, contextlib, io
+  · @asynccontextmanager   key=src/orders_playground/features/control.py#/call:asynccontextmanager
+( End )
+
+=== src/orders_playground/features/control.py#normalize
+( normalize )   key=src/orders_playground/features/control.py#normalize
+  RETURN value.strip().upper ? → End   key=src/orders_playground/features/control.py#normalize/return[0]
+( End )
+
+=== src/orders_playground/features/control.py#records
+( records )   key=src/orders_playground/features/control.py#records
+  LOOP for value in values   key=src/orders_playground/features/control.py#records/for[0] src/orders_playground/features/control.py#records/for[0]/body
+      YIELD ▸ normalize   key=src/orders_playground/features/control.py#records/for[0]/body/yield[0]
+( End )
+
+=== src/orders_playground/features/control.py#scan
+( scan )   key=src/orders_playground/features/control.py#scan
+  COMPREHENSION for value in values → cleaned   key=src/orders_playground/features/control.py#scan/comprehension[0] src/orders_playground/features/control.py#scan/comprehension[0]/body
+      WHEN (length := len(value)) > 0
+      ▸ normalize   key=src/orders_playground/features/control.py#scan/comprehension[0]/body/call:normalize
+  COMPREHENSION for value in values → names   key=src/orders_playground/features/control.py#scan/comprehension[1] src/orders_playground/features/control.py#scan/comprehension[1]/body
+      ▸ normalize   key=src/orders_playground/features/control.py#scan/comprehension[1]/body/call:normalize
+  COMPREHENSION for value in values → unique   key=src/orders_playground/features/control.py#scan/comprehension[2] src/orders_playground/features/control.py#scan/comprehension[2]/body
+      ▸ normalize   key=src/orders_playground/features/control.py#scan/comprehension[2]/body/call:normalize
+  COMPREHENSION for value in values   key=src/orders_playground/features/control.py#scan/call:tuple/comprehension[0] src/orders_playground/features/control.py#scan/call:tuple/comprehension[0]/body
+      ▸ normalize   key=src/orders_playground/features/control.py#scan/call:tuple/comprehension[0]/body/call:normalize
+  LOOP for value in cleaned   key=src/orders_playground/features/control.py#scan/for[0] src/orders_playground/features/control.py#scan/for[0]/body
+      IF value == "STOP"   key=src/orders_playground/features/control.py#scan/for[0]/body/if[0] src/orders_playground/features/control.py#scan/for[0]/body/if[0]/then
+          BREAK → after the loop   key=src/orders_playground/features/control.py#scan/for[0]/body/if[0]/then/break[0]
+      IF value == "SKIP"   key=src/orders_playground/features/control.py#scan/for[0]/body/if[1] src/orders_playground/features/control.py#scan/for[0]/body/if[1]/then
+          CONTINUE → next   key=src/orders_playground/features/control.py#scan/for[0]/body/if[1]/then/continue[0]
+  LOOP ELSE   key=src/orders_playground/features/control.py#scan/for[0]/else
+      · cleaned.append ?   key=src/orders_playground/features/control.py#scan/for[0]/else/call:cleaned.append
+  TRY   key=src/orders_playground/features/control.py#scan/try[0] src/orders_playground/features/control.py#scan/try[0]/body
+      ⋯ 1 line
+  ON ERROR → except IndexError   key=src/orders_playground/features/control.py#scan/try[0]/except[0]
+      · cleaned.append ?   key=src/orders_playground/features/control.py#scan/try[0]/except[0]/call:cleaned.append
+  ELSE   key=src/orders_playground/features/control.py#scan/try[0]/else
+      · cleaned.append ? + first.lower ?   key=src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append
+  FINALLY   key=src/orders_playground/features/control.py#scan/try[0]/finally
+      ⋯ 1 line
+  WITH with StringIO("a\nb") as source   key=src/orders_playground/features/control.py#scan/with[0] src/orders_playground/features/control.py#scan/with[0]/body
+      · source.readline().strip ? → names["first"]   key=src/orders_playground/features/control.py#scan/with[0]/body/call:source.readline().strip
+  RETURN cleaned, names, unique, streamed → End   key=src/orders_playground/features/control.py#scan/return[0]
+( End )
+
+=== src/orders_playground/features/control.py#counter
+( counter )   key=src/orders_playground/features/control.py#counter
+  ⋯ 1 line
+  RETURN increment → End   key=src/orders_playground/features/control.py#counter/return[0]
+( End )
+
+=== src/orders_playground/features/control.py#counter.increment
+( increment )   key=src/orders_playground/features/control.py#counter.increment
+  ⋯ 2 lines
+  RETURN count → End   key=src/orders_playground/features/control.py#counter.increment/return[0]
+( End )
+
+=== src/orders_playground/features/control.py#async_records
+( async_records )   key=src/orders_playground/features/control.py#async_records
+  LOOP for value in ["a", "b"]   key=src/orders_playground/features/control.py#async_records/for[0] src/orders_playground/features/control.py#async_records/for[0]/body
+      YIELD ▸ normalize   key=src/orders_playground/features/control.py#async_records/for[0]/body/yield[0]
+( End )
+
+=== src/orders_playground/features/control.py#resource
+( resource )   key=src/orders_playground/features/control.py#resource
+  runs when defined · @asynccontextmanager   key=src/orders_playground/features/control.py#/call:asynccontextmanager
+  ⋯ 1 line
+  TRY   key=src/orders_playground/features/control.py#resource/try[0] src/orders_playground/features/control.py#resource/try[0]/body
+      YIELD state   key=src/orders_playground/features/control.py#resource/try[0]/body/yield[0]
+  FINALLY   key=src/orders_playground/features/control.py#resource/try[0]/finally
+      ⋯ 1 line
+( End )
+
+=== src/orders_playground/features/control.py#collect
+( collect )   key=src/orders_playground/features/control.py#collect
+  ⋯ 1 line
+  WITH async with resource() as state   key=src/orders_playground/features/control.py#collect/with[0] src/orders_playground/features/control.py#collect/with[0]/body
+      LOOP async for value in async_records() · ▸ async_records   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0] src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body
+          IF state["open"]   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0] src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then
+              · results.append ?   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then/call:results.append
+  RETURN results → End   key=src/orders_playground/features/control.py#collect/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#
+( src/orders_playground/features/decorators.py )   key=src/orders_playground/features/decorators.py#
+  imports · collections.abc, functools, typing
+  ▸ @traced   key=src/orders_playground/features/decorators.py#/call:traced
+  · @lru_cache, @cache, @overload, @overload, @final   5 calls   key=src/orders_playground/features/decorators.py#/call:lru_cache src/orders_playground/features/decorators.py#/call:cache src/orders_playground/features/decorators.py#/call:overload src/orders_playground/features/decorators.py#/call:overload[1] src/orders_playground/features/decorators.py#/call:final
+( End )
+
+=== src/orders_playground/features/decorators.py#traced
+( traced )   key=src/orders_playground/features/decorators.py#traced
+  RETURN decorate → End   key=src/orders_playground/features/decorators.py#traced/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#traced.decorate
+( decorate )   key=src/orders_playground/features/decorators.py#traced.decorate
+  · @wraps   key=src/orders_playground/features/decorators.py#traced.decorate/call:wraps
+  RETURN wrapped → End   key=src/orders_playground/features/decorators.py#traced.decorate/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#traced.decorate.wrapped
+( wrapped )   key=src/orders_playground/features/decorators.py#traced.decorate.wrapped
+  runs when defined · @wraps   key=src/orders_playground/features/decorators.py#traced.decorate/call:wraps
+  RETURN fn ? → End   key=src/orders_playground/features/decorators.py#traced.decorate.wrapped/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#invoice_label
+( invoice_label )   key=src/orders_playground/features/decorators.py#invoice_label
+  runs when defined · @traced, @lru_cache   key=src/orders_playground/features/decorators.py#/call:traced src/orders_playground/features/decorators.py#/call:lru_cache
+  RETURN f"Invoice {order_id}" → End   key=src/orders_playground/features/decorators.py#invoice_label/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#normalize_sku
+( normalize_sku )   key=src/orders_playground/features/decorators.py#normalize_sku
+  runs when defined · @cache   key=src/orders_playground/features/decorators.py#/call:cache
+  RETURN value.strip().upper ? → End   key=src/orders_playground/features/decorators.py#normalize_sku/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#stringify
+( stringify )   key=src/orders_playground/features/decorators.py#stringify
+  runs when defined · @overload   key=src/orders_playground/features/decorators.py#/call:overload
+( End )
+
+=== src/orders_playground/features/decorators.py#stringify[1]
+( stringify )   key=src/orders_playground/features/decorators.py#stringify[1]
+  runs when defined · @overload   key=src/orders_playground/features/decorators.py#/call:overload[1]
+( End )
+
+=== src/orders_playground/features/decorators.py#stringify[2]
+( stringify )   key=src/orders_playground/features/decorators.py#stringify[2]
+  RETURN str → End   key=src/orders_playground/features/decorators.py#stringify[2]/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#Named
+( Named )   key=src/orders_playground/features/decorators.py#Named
+( End )
+
+=== src/orders_playground/features/decorators.py#Named.name
+( name )   key=src/orders_playground/features/decorators.py#Named.name
+  RETURN "base" → End   key=src/orders_playground/features/decorators.py#Named.name/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels
+( Labels )   key=src/orders_playground/features/decorators.py#Labels
+  runs when defined · @final   key=src/orders_playground/features/decorators.py#/call:final
+  · @value.setter ?, @override   2 calls, 1 unknown   key=src/orders_playground/features/decorators.py#Labels/call:value.setter src/orders_playground/features/decorators.py#Labels/call:override
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.__init__
+( __init__ )   key=src/orders_playground/features/decorators.py#Labels.__init__
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.value
+( value )   key=src/orders_playground/features/decorators.py#Labels.value
+  runs when defined · @property   key=src/orders_playground/features/decorators.py#Labels/call:property
+  RETURN self._value → End   key=src/orders_playground/features/decorators.py#Labels.value/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.value[1]
+( value )   key=src/orders_playground/features/decorators.py#Labels.value[1]
+  runs when defined · @value.setter ?   key=src/orders_playground/features/decorators.py#Labels/call:value.setter
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.clean
+( clean )   key=src/orders_playground/features/decorators.py#Labels.clean
+  runs when defined · @staticmethod   key=src/orders_playground/features/decorators.py#Labels/call:staticmethod
+  RETURN ▸ normalize_sku → End   key=src/orders_playground/features/decorators.py#Labels.clean/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.from_text
+( from_text )   key=src/orders_playground/features/decorators.py#Labels.from_text
+  runs when defined · @classmethod   key=src/orders_playground/features/decorators.py#Labels/call:classmethod
+  ▸ cls.clean · into cls(…)   key=src/orders_playground/features/decorators.py#Labels.from_text/return[0]/call:cls/call:cls.clean
+  RETURN cls ? → End   key=src/orders_playground/features/decorators.py#Labels.from_text/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#Labels.name
+( name )   key=src/orders_playground/features/decorators.py#Labels.name
+  runs when defined · @override   key=src/orders_playground/features/decorators.py#Labels/call:override
+  RETURN ▸ self.clean → End   key=src/orders_playground/features/decorators.py#Labels.name/return[0]
+( End )
+
+=== src/orders_playground/features/decorators.py#examples
+( examples )   key=src/orders_playground/features/decorators.py#examples
+  ▸ Labels.from_text → labels   key=src/orders_playground/features/decorators.py#examples/call:Labels.from_text
+  ⋯ 1 line
+  · invoice_label ? + labels.name ?   key=src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label
+  ▸ stringify   key=src/orders_playground/features/decorators.py#examples/return[0]/call:stringify
+  RETURN invoice_label(labels.name()), stringify(1) → End   key=src/orders_playground/features/decorators.py#examples/return[0]
+( End )
+
+=== src/orders_playground/features/dynamic.py#
+( src/orders_playground/features/dynamic.py )   key=src/orders_playground/features/dynamic.py#
+  imports · functools, ., .fallback
+( End )
+
+=== src/orders_playground/features/dynamic.py#format_order
+( format_order )   key=src/orders_playground/features/dynamic.py#format_order
+  RETURN f"{prefix}{order_id}{suffix}" → End   key=src/orders_playground/features/dynamic.py#format_order/return[0]
+( End )
+
+=== src/orders_playground/features/dynamic.py#replacement_label
+( replacement_label )   key=src/orders_playground/features/dynamic.py#replacement_label
+  RETURN "replacement" → End   key=src/orders_playground/features/dynamic.py#replacement_label/return[0]
+( End )
+
+=== src/orders_playground/features/dynamic.py#monkey_patch
+( monkey_patch )   key=src/orders_playground/features/dynamic.py#monkey_patch
+  ⋯ 1 line
+  RETURN fallback.public_label ? → End   key=src/orders_playground/features/dynamic.py#monkey_patch/return[0]
+( End )
+
+=== src/orders_playground/features/dynamic.py#examples
+( examples )   key=src/orders_playground/features/dynamic.py#examples
+  ⋯ 2 lines
+  · partial → prefixed   key=src/orders_playground/features/dynamic.py#examples/call:partial
+  ⋯ 1 line
+  ▸ format_order   key=src/orders_playground/features/dynamic.py#examples/return[0]/call:format_order
+  ▸ format_order   key=src/orders_playground/features/dynamic.py#examples/return[0]/call:format_order[1]
+  · prefixed ?, dispatch ?   2 calls, 2 unknown   key=src/orders_playground/features/dynamic.py#examples/return[0]/call:prefixed src/orders_playground/features/dynamic.py#examples/return[0]/call:dispatch
+  RETURN ( format_order(*args, **kwargs), format_order(order_id="123", prefix="named/", s… → End   key=src/orders_playground/features/dynamic.py#examples/return[0]
+( End )
+
+=== src/orders_playground/features/exported.py#
+( src/orders_playground/features/exported.py )   key=src/orders_playground/features/exported.py#
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/features/exported.py#public_label
+( public_label )   key=src/orders_playground/features/exported.py#public_label
+  RETURN "public" → End   key=src/orders_playground/features/exported.py#public_label/return[0]
+( End )
+
+=== src/orders_playground/features/exported.py#private_label
+( private_label )   key=src/orders_playground/features/exported.py#private_label
+  RETURN "private" → End   key=src/orders_playground/features/exported.py#private_label/return[0]
+( End )
+
+=== src/orders_playground/features/fallback.py#
+( src/orders_playground/features/fallback.py )   key=src/orders_playground/features/fallback.py#
+( End )
+
+=== src/orders_playground/features/fallback.py#public_label
+( public_label )   key=src/orders_playground/features/fallback.py#public_label
+  RETURN "fallback" → End   key=src/orders_playground/features/fallback.py#public_label/return[0]
+( End )
+
+=== src/orders_playground/features/imports.py#
+( src/orders_playground/features/imports.py )   key=src/orders_playground/features/imports.py#
+  imports · orders_playground.features.exported, typing, orders_extensions.labels, .exported, .exported, .fallback
+  ⋯ 3 lines · if, try
+( End )
+
+=== src/orders_playground/features/imports.py#examples
+( examples )   key=src/orders_playground/features/imports.py#examples
+  ▸ public_label   key=src/orders_playground/features/imports.py#examples/return[0]/call:public_label
+  · selected_label ?   key=src/orders_playground/features/imports.py#examples/return[0]/call:selected_label
+  ▸ namespace_label   key=src/orders_playground/features/imports.py#examples/return[0]/call:namespace_label
+  ▸ orders_playground.features.exported.public_label   key=src/orders_playground/features/imports.py#examples/return[0]/call:orders_playground.features.exported.public_label
+  RETURN ( public_label(), selected_label(), namespace_label(), orders_playground.feature… → End   key=src/orders_playground/features/imports.py#examples/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#
+( src/orders_playground/features/inheritance.py )   key=src/orders_playground/features/inheritance.py#
+( End )
+
+=== src/orders_playground/features/inheritance.py#Root
+( Root )   key=src/orders_playground/features/inheritance.py#Root
+( End )
+
+=== src/orders_playground/features/inheritance.py#Root.code
+( code )   key=src/orders_playground/features/inheritance.py#Root.code
+  RETURN "root" → End   key=src/orders_playground/features/inheritance.py#Root.code/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#Left
+( Left )   key=src/orders_playground/features/inheritance.py#Left
+( End )
+
+=== src/orders_playground/features/inheritance.py#Left.code
+( code )   key=src/orders_playground/features/inheritance.py#Left.code
+  · super().code ?   key=src/orders_playground/features/inheritance.py#Left.code/return[0]/call:super().code
+  RETURN "left/" + super().code() → End   key=src/orders_playground/features/inheritance.py#Left.code/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#Right
+( Right )   key=src/orders_playground/features/inheritance.py#Right
+( End )
+
+=== src/orders_playground/features/inheritance.py#Right.code
+( code )   key=src/orders_playground/features/inheritance.py#Right.code
+  ▸ super().code   key=src/orders_playground/features/inheritance.py#Right.code/return[0]/call:super().code
+  RETURN "right/" + super().code() → End   key=src/orders_playground/features/inheritance.py#Right.code/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#Combined
+( Combined )   key=src/orders_playground/features/inheritance.py#Combined
+( End )
+
+=== src/orders_playground/features/inheritance.py#Combined.describe
+( describe )   key=src/orders_playground/features/inheritance.py#Combined.describe
+  RETURN ▸ self.code → End   key=src/orders_playground/features/inheritance.py#Combined.describe/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#ReceiptFormatter
+( ReceiptFormatter )   key=src/orders_playground/features/inheritance.py#ReceiptFormatter
+( End )
+
+=== src/orders_playground/features/inheritance.py#ReceiptFormatter.__call__
+( __call__ )   key=src/orders_playground/features/inheritance.py#ReceiptFormatter.__call__
+  RETURN f"receipt/{order_id}" → End   key=src/orders_playground/features/inheritance.py#ReceiptFormatter.__call__/return[0]
+( End )
+
+=== src/orders_playground/features/inheritance.py#examples
+( examples )   key=src/orders_playground/features/inheritance.py#examples
+  ▸ Combined → combined · new   key=src/orders_playground/features/inheritance.py#examples/call:Combined
+  ▸ ReceiptFormatter → formatter · new   key=src/orders_playground/features/inheritance.py#examples/call:ReceiptFormatter
+  ▸ combined.describe   key=src/orders_playground/features/inheritance.py#examples/return[0]/call:combined.describe
+  ▸ formatter   key=src/orders_playground/features/inheritance.py#examples/return[0]/call:formatter
+  RETURN combined.describe(), formatter("demo") → End   key=src/orders_playground/features/inheritance.py#examples/return[0]
+( End )
+
+=== src/orders_playground/features/unicode.py#
+( src/orders_playground/features/unicode.py )   key=src/orders_playground/features/unicode.py#
+  IF __name__ == "__main__"   key=src/orders_playground/features/unicode.py#/if[0] src/orders_playground/features/unicode.py#/if[0]/then
+      ▸ unicode_example · into print(…)   key=src/orders_playground/features/unicode.py#/if[0]/then/call:print/call:unicode_example
+( End )
+
+=== src/orders_playground/features/unicode.py#κόστος
+( κόστος )   key=src/orders_playground/features/unicode.py#κόστος
+  RETURN f"📦 café: {ποσό} €" → End   key=src/orders_playground/features/unicode.py#κόστος/return[0]
+( End )
+
+=== src/orders_playground/features/unicode.py#𐐀receipt
+( 𐐀receipt )   key=src/orders_playground/features/unicode.py#𐐀receipt
+  RETURN ▸ κόστος → End   key=src/orders_playground/features/unicode.py#𐐀receipt/return[0]
+( End )
+
+=== src/orders_playground/features/unicode.py#unicode_example
+( unicode_example )   key=src/orders_playground/features/unicode.py#unicode_example
+  ⋯ 1 line
+  ▸ 𐐀receipt   key=src/orders_playground/features/unicode.py#unicode_example/return[0]/call:𐐀receipt
+  RETURN label + 𐐀receipt(3) → End   key=src/orders_playground/features/unicode.py#unicode_example/return[0]
+( End )
+
+=== src/orders_playground/jobs/__init__.py#
+( src/orders_playground/jobs/__init__.py )   key=src/orders_playground/jobs/__init__.py#
+( End )
+
+=== src/orders_playground/jobs/cleanup.py#
+( src/orders_playground/jobs/cleanup.py )   key=src/orders_playground/jobs/cleanup.py#
+  imports · datetime, ..lib.logger, ..services.order_service
+( End )
+
+=== src/orders_playground/jobs/cleanup.py#cleanup_expired_orders
+( cleanup_expired_orders )   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders
+  · datetime.now, timedelta, timedelta   3 calls   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:datetime.now src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:timedelta src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:timedelta[1]
+  ⋯ 1 line
+  LOOP for order in order_service.list() · ▸ order_service.list   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body
+      · datetime.fromisoformat → created_at   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/call:datetime.fromisoformat
+      IF order["status"] == "pending" and created_at < expires_before   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0]/then
+          ▸ order_service.cancel   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0]/then/call:order_service.cancel
+      IF order["status"] != "paid" and created_at < purge_before   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then
+          · expired.append ?   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then/call:expired.append
+  ⋯ 1 line
+  LOOP while expired   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body
+      IF order_service.remove(expired.pop()) · ▸ order_service.remove   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then
+          ⋯ 1 line
+  ▸ logger.info   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:logger.info
+  RETURN removed → End   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/return[0]
+( End )
+
+=== src/orders_playground/jobs/import_orders.py#
+( src/orders_playground/jobs/import_orders.py )   key=src/orders_playground/jobs/import_orders.py#
+  imports · json, pathlib, ..lib.logger, ..lib.validate, ..services.order_service
+( End )
+
+=== src/orders_playground/jobs/import_orders.py#import_orders
+( import_orders )   key=src/orders_playground/jobs/import_orders.py#import_orders
+  WITH with Path(path).open(encoding="utf-8") as source   key=src/orders_playground/jobs/import_orders.py#import_orders/with[0] src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body
+      · json.load → values   key=src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body/call:json.load
+  IF not isinstance(values, list)   key=src/orders_playground/jobs/import_orders.py#import_orders/if[0] src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then/raise[0]
+  ⋯ 2 lines
+  LOOP for index, value in enumerate(values)   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0] src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body
+      TRY   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0] src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/body
+          ▸ validate_order → draft   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/body/call:validate_order
+          ▸ order_service.place   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/body/call:order_service.place
+      ON ERROR → except ValueError as error   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]
+          ▸ logger.error   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:logger.error
+          · failures.append ?   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:failures.append
+      ELSE   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/else
+          ⋯ 1 line
+  ⋯ 1 line
+  ▸ logger.info   key=src/orders_playground/jobs/import_orders.py#import_orders/call:logger.info
+  IF failures   key=src/orders_playground/jobs/import_orders.py#import_orders/if[1] src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then
+      RAISE ExceptionGroup ? → the caller   key=src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]
+  RETURN summary → End   key=src/orders_playground/jobs/import_orders.py#import_orders/return[0]
+( End )
+
+=== src/orders_playground/jobs/process_order.py#
+( src/orders_playground/jobs/process_order.py )   key=src/orders_playground/jobs/process_order.py#
+  imports · ..services.order_service, ..types
+( End )
+
+=== src/orders_playground/jobs/process_order.py#process_order
+( process_order )   key=src/orders_playground/jobs/process_order.py#process_order
+  RETURN ▸ order_service.place → End   key=src/orders_playground/jobs/process_order.py#process_order/return[0]
+( End )
+
+=== src/orders_playground/jobs/report.py#
+( src/orders_playground/jobs/report.py )   key=src/orders_playground/jobs/report.py#
+  imports · ..lib.logger, ..services.order_service
+( End )
+
+=== src/orders_playground/jobs/report.py#print_report
+( print_report )   key=src/orders_playground/jobs/report.py#print_report
+  ⋯ 1 line
+  ▸ logger.info   key=src/orders_playground/jobs/report.py#print_report/call:logger.info
+  RETURN report → End   key=src/orders_playground/jobs/report.py#print_report/return[0]
+( End )
+
+=== src/orders_playground/jobs/report.py#report_metrics
+( report_metrics )   key=src/orders_playground/jobs/report.py#report_metrics
+  COMPREHENSION for order in order_service.list() · ▸ order_service.list   key=src/orders_playground/jobs/report.py#report_metrics/call:sum/comprehension[0] src/orders_playground/jobs/report.py#report_metrics/call:sum/comprehension[0]/body
+  ▸ logger.info   key=src/orders_playground/jobs/report.py#report_metrics/call:logger.info
+  RETURN metrics → End   key=src/orders_playground/jobs/report.py#report_metrics/return[0]
+( End )
+
+=== src/orders_playground/jobs/retry_failed.py#
+( src/orders_playground/jobs/retry_failed.py )   key=src/orders_playground/jobs/retry_failed.py#
+  imports · ..lib.retry, .send_email
+( End )
+
+=== src/orders_playground/jobs/retry_failed.py#retry_failed
+( retry_failed )   key=src/orders_playground/jobs/retry_failed.py#retry_failed
+  ▸ with_retry   key=src/orders_playground/jobs/retry_failed.py#retry_failed/call:with_retry
+( End )
+
+=== src/orders_playground/jobs/send_email.py#
+( src/orders_playground/jobs/send_email.py )   key=src/orders_playground/jobs/send_email.py#
+  imports · time, ..lib.logger
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/jobs/send_email.py#send_email
+( send_email )   key=src/orders_playground/jobs/send_email.py#send_email
+  IF "@" not in payload["to"]   key=src/orders_playground/jobs/send_email.py#send_email/if[0] src/orders_playground/jobs/send_email.py#send_email/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/jobs/send_email.py#send_email/if[0]/then/raise[0]
+  · outbox.append ?, sleep   2 calls, 1 unknown   key=src/orders_playground/jobs/send_email.py#send_email/call:outbox.append src/orders_playground/jobs/send_email.py#send_email/call:sleep
+  ▸ logger.info   key=src/orders_playground/jobs/send_email.py#send_email/call:logger.info
+  · outbox.remove ?   key=src/orders_playground/jobs/send_email.py#send_email/call:outbox.remove
+( End )
+
+=== src/orders_playground/jobs/send_email.py#flush_outbox
+( flush_outbox )   key=src/orders_playground/jobs/send_email.py#flush_outbox
+  LOOP for payload in list(outbox)   key=src/orders_playground/jobs/send_email.py#flush_outbox/for[0] src/orders_playground/jobs/send_email.py#flush_outbox/for[0]/body
+      ▸ send_email   key=src/orders_playground/jobs/send_email.py#flush_outbox/for[0]/body/call:send_email
+( End )
+
+=== src/orders_playground/lib/__init__.py#
+( src/orders_playground/lib/__init__.py )   key=src/orders_playground/lib/__init__.py#
+( End )
+
+=== src/orders_playground/lib/async_handler.py#
+( src/orders_playground/lib/async_handler.py )   key=src/orders_playground/lib/async_handler.py#
+  imports · collections.abc, functools
+( End )
+
+=== src/orders_playground/lib/async_handler.py#async_handler
+( async_handler )   key=src/orders_playground/lib/async_handler.py#async_handler
+  · @wraps   key=src/orders_playground/lib/async_handler.py#async_handler/call:wraps
+  RETURN wrapped → End   key=src/orders_playground/lib/async_handler.py#async_handler/return[0]
+( End )
+
+=== src/orders_playground/lib/async_handler.py#async_handler.wrapped
+( wrapped )   key=src/orders_playground/lib/async_handler.py#async_handler.wrapped
+  runs when defined · @wraps   key=src/orders_playground/lib/async_handler.py#async_handler/call:wraps
+  RETURN fn ? → End   key=src/orders_playground/lib/async_handler.py#async_handler.wrapped/return[0]
+( End )
+
+=== src/orders_playground/lib/calendar.py#
+( src/orders_playground/lib/calendar.py )   key=src/orders_playground/lib/calendar.py#
+  imports · collections.abc
+( End )
+
+=== src/orders_playground/lib/calendar.py#schedule
+( schedule )   key=src/orders_playground/lib/calendar.py#schedule
+  RETURN handler ? → End   key=src/orders_playground/lib/calendar.py#schedule/return[0]
+( End )
+
+=== src/orders_playground/lib/logger.py#
+( src/orders_playground/lib/logger.py )   key=src/orders_playground/lib/logger.py#
+  imports · collections.abc
+  ⋯ 1 line
+  ▸ Logger → logger · new   key=src/orders_playground/lib/logger.py#/call:Logger
+( End )
+
+=== src/orders_playground/lib/logger.py#set_sink
+( set_sink )   key=src/orders_playground/lib/logger.py#set_sink
+  ⋯ 2 lines
+( End )
+
+=== src/orders_playground/lib/logger.py#Logger
+( Logger )   key=src/orders_playground/lib/logger.py#Logger
+( End )
+
+=== src/orders_playground/lib/logger.py#Logger.info
+( info )   key=src/orders_playground/lib/logger.py#Logger.info
+  · sink ?   key=src/orders_playground/lib/logger.py#Logger.info/call:sink
+( End )
+
+=== src/orders_playground/lib/logger.py#Logger.error
+( error )   key=src/orders_playground/lib/logger.py#Logger.error
+  · sink ?   key=src/orders_playground/lib/logger.py#Logger.error/call:sink
+( End )
+
+=== src/orders_playground/lib/pool.py#
+( src/orders_playground/lib/pool.py )   key=src/orders_playground/lib/pool.py#
+  imports · collections.abc
+( End )
+
+=== src/orders_playground/lib/pool.py#Worker
+( Worker )   key=src/orders_playground/lib/pool.py#Worker
+( End )
+
+=== src/orders_playground/lib/pool.py#Worker.__init__
+( __init__ )   key=src/orders_playground/lib/pool.py#Worker.__init__
+  ⋯ 2 lines
+( End )
+
+=== src/orders_playground/lib/pool.py#Worker.run
+( run )   key=src/orders_playground/lib/pool.py#Worker.run
+  · self.handler ?   key=src/orders_playground/lib/pool.py#Worker.run/call:self.handler
+( End )
+
+=== src/orders_playground/lib/retry.py#
+( src/orders_playground/lib/retry.py )   key=src/orders_playground/lib/retry.py#
+  imports · collections.abc, .logger
+( End )
+
+=== src/orders_playground/lib/retry.py#with_retry
+( with_retry )   key=src/orders_playground/lib/retry.py#with_retry
+  IF attempts < 1   key=src/orders_playground/lib/retry.py#with_retry/if[0] src/orders_playground/lib/retry.py#with_retry/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/lib/retry.py#with_retry/if[0]/then/raise[0]
+  ⋯ 1 line
+  LOOP while attempt < attempts   key=src/orders_playground/lib/retry.py#with_retry/while[0] src/orders_playground/lib/retry.py#with_retry/while[0]/body
+      TRY   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0] src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/body
+          RETURN fn ? → finally → End   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/body/return[0]
+      ON ERROR → except Exception as error   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/except[0]
+          IF attempt + 1 == attempts   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/except[0]/if[0] src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/except[0]/if[0]/then
+              RAISE → finally → the caller   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/except[0]/if[0]/then/raise[0]
+          ▸ logger.error   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/except[0]/call:logger.error
+      FINALLY   key=src/orders_playground/lib/retry.py#with_retry/while[0]/body/try[0]/finally
+          ⋯ 1 line
+  RAISE RuntimeError → the caller   key=src/orders_playground/lib/retry.py#with_retry/raise[0]
+( End )
+
+=== src/orders_playground/lib/slack.py#
+( src/orders_playground/lib/slack.py )   key=src/orders_playground/lib/slack.py#
+  imports · .logger
+  ▸ Slack → slack · new   key=src/orders_playground/lib/slack.py#/call:Slack
+( End )
+
+=== src/orders_playground/lib/slack.py#Slack
+( Slack )   key=src/orders_playground/lib/slack.py#Slack
+( End )
+
+=== src/orders_playground/lib/slack.py#Slack.post
+( post )   key=src/orders_playground/lib/slack.py#Slack.post
+  ▸ logger.info   key=src/orders_playground/lib/slack.py#Slack.post/call:logger.info
+( End )
+
+=== src/orders_playground/lib/validate.py#
+( src/orders_playground/lib/validate.py )   key=src/orders_playground/lib/validate.py#
+  imports · math, typing, ..types
+( End )
+
+=== src/orders_playground/lib/validate.py#validate_order
+( validate_order )   key=src/orders_playground/lib/validate.py#validate_order
+  IF not isinstance(value, dict)   key=src/orders_playground/lib/validate.py#validate_order/if[0] src/orders_playground/lib/validate.py#validate_order/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/if[0]/then/raise[0]
+  ELIF not isinstance(value.get("customer_id"), str) or not value["customer_id"]   key=src/orders_playground/lib/validate.py#validate_order/if[0]/elif[0]
+      RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/if[0]/elif[0]/raise[0]
+  ELIF not isinstance(value.get("email"), str) or "@" not in value["email"]   key=src/orders_playground/lib/validate.py#validate_order/if[0]/elif[1]
+      RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/if[0]/elif[1]/raise[0]
+  · value.get ? → items   key=src/orders_playground/lib/validate.py#validate_order/call:value.get
+  IF not isinstance(items, list) or not items   key=src/orders_playground/lib/validate.py#validate_order/if[1] src/orders_playground/lib/validate.py#validate_order/if[1]/then
+      RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/if[1]/then/raise[0]
+  LOOP for item in items   key=src/orders_playground/lib/validate.py#validate_order/for[0] src/orders_playground/lib/validate.py#validate_order/for[0]/body
+      IF not isinstance(item, dict) or not isinstance(item.get("sku"), str)   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[0] src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[0]/then
+          RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[0]/then/raise[0]
+      · item.get ?, item.get ?   2 calls, 2 unknown   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/call:item.get src/orders_playground/lib/validate.py#validate_order/for[0]/body/call:item.get[1]
+      IF type(quantity) is not int or quantity < 1   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[1] src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[1]/then
+          RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[1]/then/raise[0]
+      IF type(price) not in (int, float) or not isfinite(price) or price <= 0   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[2] src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[2]/then
+          RAISE ValueError → the caller   key=src/orders_playground/lib/validate.py#validate_order/for[0]/body/if[2]/then/raise[0]
+  RETURN cast → End   key=src/orders_playground/lib/validate.py#validate_order/return[0]
+( End )
+
+=== src/orders_playground/queues/__init__.py#
+( src/orders_playground/queues/__init__.py )   key=src/orders_playground/queues/__init__.py#
+( End )
+
+=== src/orders_playground/queues/email_worker.py#
+( src/orders_playground/queues/email_worker.py )   key=src/orders_playground/queues/email_worker.py#
+  imports · ..jobs.send_email, ..lib.retry, .queues
+  · @celery_app.task ?   key=src/orders_playground/queues/email_worker.py#/call:celery_app.task
+( End )
+
+=== src/orders_playground/queues/email_worker.py#email_task
+( email_task )   key=src/orders_playground/queues/email_worker.py#email_task
+  runs when defined · @celery_app.task ?   key=src/orders_playground/queues/email_worker.py#/call:celery_app.task
+  ▸ with_retry   key=src/orders_playground/queues/email_worker.py#email_task/call:with_retry
+      ↳ callback lambda   key=src/orders_playground/queues/email_worker.py#email_task/call:with_retry/callback[0]
+( End )
+
+=== src/orders_playground/queues/email_worker.py#email_task/call:with_retry/callback[0]
+( callback to with_retry )   key=src/orders_playground/queues/email_worker.py#email_task/call:with_retry/callback[0]
+  ▸ send_email   key=src/orders_playground/queues/email_worker.py#email_task/call:with_retry/callback[0]/call:send_email
+( End )
+
+=== src/orders_playground/queues/orders_worker.py#
+( src/orders_playground/queues/orders_worker.py )   key=src/orders_playground/queues/orders_worker.py#
+  imports · ..jobs.process_order, .queues
+  · celery_app.task() ? → process_order_task   key=src/orders_playground/queues/orders_worker.py#/call:celery_app.task()
+( End )
+
+=== src/orders_playground/queues/queues.py#
+( src/orders_playground/queues/queues.py )   key=src/orders_playground/queues/queues.py#
+  imports · celery, ..config
+  · Celery → celery_app, celery_app.conf.update ?   2 calls, 1 unknown   key=src/orders_playground/queues/queues.py#/call:Celery src/orders_playground/queues/queues.py#/call:celery_app.conf.update
+( End )
+
+=== src/orders_playground/queues/report_worker.py#
+( src/orders_playground/queues/report_worker.py )   key=src/orders_playground/queues/report_worker.py#
+  imports · ..config, ..jobs.report, .queues
+  · celery_app.task() ? → report_task   key=src/orders_playground/queues/report_worker.py#/call:celery_app.task()
+( End )
+
+=== src/orders_playground/routes/__init__.py#
+( src/orders_playground/routes/__init__.py )   key=src/orders_playground/routes/__init__.py#
+( End )
+
+=== src/orders_playground/routes/admin.py#
+( src/orders_playground/routes/admin.py )   key=src/orders_playground/routes/admin.py#
+  imports · fastapi, ..services.order_service
+( End )
+
+=== src/orders_playground/routes/admin.py#admin_stats
+( admin_stats )   key=src/orders_playground/routes/admin.py#admin_stats
+  ▸ order_service.list → orders   key=src/orders_playground/routes/admin.py#admin_stats/call:order_service.list
+  RETURN {"orders": order_service.count, "pending": sum(order["status"] == "pending" for … → End   key=src/orders_playground/routes/admin.py#admin_stats/return[0]
+( End )
+
+=== src/orders_playground/routes/admin.py#register_admin_routes
+( register_admin_routes )   key=src/orders_playground/routes/admin.py#register_admin_routes
+  · app.get() ?   key=src/orders_playground/routes/admin.py#register_admin_routes/call:app.get()
+( End )
+
+=== src/orders_playground/routes/health.py#
+( src/orders_playground/routes/health.py )   key=src/orders_playground/routes/health.py#
+  imports · fastapi
+  · APIRouter → health_router   key=src/orders_playground/routes/health.py#/call:APIRouter
+  □ health_router.get() ?   key=src/orders_playground/routes/health.py#/call:health_router.get()
+      ↳ callback lambda   key=src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]
+( End )
+
+=== src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]
+( callback to health_router.get() )   key=src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]
+( End )
+
+=== src/orders_playground/routes/middleware.py#
+( src/orders_playground/routes/middleware.py )   key=src/orders_playground/routes/middleware.py#
+  imports · fastapi, ..lib.validate
+  · Header   key=src/orders_playground/routes/middleware.py#/call:Header
+( End )
+
+=== src/orders_playground/routes/middleware.py#require_user
+( require_user )   key=src/orders_playground/routes/middleware.py#require_user
+  runs when defined · Header (default)   key=src/orders_playground/routes/middleware.py#/call:Header
+  IF not x_user   key=src/orders_playground/routes/middleware.py#require_user/if[0] src/orders_playground/routes/middleware.py#require_user/if[0]/then
+      RAISE HTTPException → the caller   key=src/orders_playground/routes/middleware.py#require_user/if[0]/then/raise[0]
+  RETURN x_user → End   key=src/orders_playground/routes/middleware.py#require_user/return[0]
+( End )
+
+=== src/orders_playground/routes/middleware.py#validate_body
+( validate_body )   key=src/orders_playground/routes/middleware.py#validate_body
+  TRY   key=src/orders_playground/routes/middleware.py#validate_body/try[0] src/orders_playground/routes/middleware.py#validate_body/try[0]/body
+      ▸ validate_order + request.json ?   key=src/orders_playground/routes/middleware.py#validate_body/try[0]/body/call:validate_order
+  ON ERROR → except ValueError as error   key=src/orders_playground/routes/middleware.py#validate_body/try[0]/except[0]
+      RAISE HTTPException → the caller   key=src/orders_playground/routes/middleware.py#validate_body/try[0]/except[0]/raise[0]
+( End )
+
+=== src/orders_playground/routes/orders.py#
+( src/orders_playground/routes/orders.py )   key=src/orders_playground/routes/orders.py#
+  imports · fastapi, fastapi.responses, ..lib.async_handler, ..lib.slack, ..queues.queues, ..services.order_service, .middleware
+  · APIRouter → orders_router, orders_router.get() ?   2 calls, 1 unknown   key=src/orders_playground/routes/orders.py#/call:APIRouter src/orders_playground/routes/orders.py#/call:orders_router.get()
+  ▸ async_handler · into orders_router.get()(…)   key=src/orders_playground/routes/orders.py#/call:orders_router.get()[1]/call:async_handler
+  · orders_router.get() ?, orders_router.post() ? + Depends, Depends, orders_router.delete() ? + Depends   3 calls, 3 unknown   key=src/orders_playground/routes/orders.py#/call:orders_router.get()[1] src/orders_playground/routes/orders.py#/call:orders_router.post() src/orders_playground/routes/orders.py#/call:orders_router.delete()
+( End )
+
+=== src/orders_playground/routes/orders.py#list_orders
+( list_orders )   key=src/orders_playground/routes/orders.py#list_orders
+  ▸ order_service.list   key=src/orders_playground/routes/orders.py#list_orders/return[0]/call:order_service.list
+  RETURN {"orders": order_service.list()} → End   key=src/orders_playground/routes/orders.py#list_orders/return[0]
+( End )
+
+=== src/orders_playground/routes/orders.py#get_order
+( get_order )   key=src/orders_playground/routes/orders.py#get_order
+  ▸ order_service.get → order   key=src/orders_playground/routes/orders.py#get_order/call:order_service.get
+  IF order is None   key=src/orders_playground/routes/orders.py#get_order/if[0] src/orders_playground/routes/orders.py#get_order/if[0]/then
+      RAISE HTTPException → the caller   key=src/orders_playground/routes/orders.py#get_order/if[0]/then/raise[0]
+  RETURN order → End   key=src/orders_playground/routes/orders.py#get_order/return[0]
+( End )
+
+=== src/orders_playground/routes/orders.py#create_order
+( create_order )   key=src/orders_playground/routes/orders.py#create_order
+  · request.json ? → draft   key=src/orders_playground/routes/orders.py#create_order/call:request.json
+  IF request.headers.get("prefer") == "respond-async"   key=src/orders_playground/routes/orders.py#create_order/if[0] src/orders_playground/routes/orders.py#create_order/if[0]/then
+      · celery_app.signature().delay ? → job   key=src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay
+      RETURN JSONResponse → End   key=src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]
+  ▸ order_service.place → order   key=src/orders_playground/routes/orders.py#create_order/call:order_service.place
+  ▸ slack.post   key=src/orders_playground/routes/orders.py#create_order/call:slack.post
+  RETURN JSONResponse → End   key=src/orders_playground/routes/orders.py#create_order/return[0]
+( End )
+
+=== src/orders_playground/routes/orders.py#cancel_order
+( cancel_order )   key=src/orders_playground/routes/orders.py#cancel_order
+  ▸ order_service.cancel → order   key=src/orders_playground/routes/orders.py#cancel_order/call:order_service.cancel
+  IF order is None   key=src/orders_playground/routes/orders.py#cancel_order/if[0] src/orders_playground/routes/orders.py#cancel_order/if[0]/then
+      RAISE HTTPException → the caller   key=src/orders_playground/routes/orders.py#cancel_order/if[0]/then/raise[0]
+  RETURN order → End   key=src/orders_playground/routes/orders.py#cancel_order/return[0]
+( End )
+
+=== src/orders_playground/scheduler.py#
+( src/orders_playground/scheduler.py )   key=src/orders_playground/scheduler.py#
+  imports · apscheduler.schedulers.blocking, apscheduler.triggers.cron, .jobs.cleanup, .jobs.report, .lib.calendar
+  · BlockingScheduler → scheduler, scheduler.add_job ? + CronTrigger.from_crontab   2 calls, 1 unknown   key=src/orders_playground/scheduler.py#/call:BlockingScheduler src/orders_playground/scheduler.py#/call:scheduler.add_job
+  □ scheduler.add_job ? + CronTrigger.from_crontab   key=src/orders_playground/scheduler.py#/call:scheduler.add_job[1]
+      ↳ callback lambda   key=src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]
+  IF __name__ == "__main__"   key=src/orders_playground/scheduler.py#/if[0] src/orders_playground/scheduler.py#/if[0]/then
+      ▸ main   key=src/orders_playground/scheduler.py#/if[0]/then/call:main
+( End )
+
+=== src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]
+( callback to scheduler.add_job )   key=src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]
+  ▸ report_metrics   key=src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]/call:report_metrics
+( End )
+
+=== src/orders_playground/scheduler.py#main
+( main )   key=src/orders_playground/scheduler.py#main
+  ▸ schedule_reminder   key=src/orders_playground/scheduler.py#main/call:schedule_reminder
+  · scheduler.start ?   key=src/orders_playground/scheduler.py#main/call:scheduler.start
+( End )
+
+=== src/orders_playground/server.py#
+( src/orders_playground/server.py )   key=src/orders_playground/server.py#
+  imports · signal, uvicorn, fastapi, .config, .lib.logger, .routes.admin, .routes.health, .routes.orders, .services.order_service
+  · FastAPI → app, @app.get ?, @app.get ?, app.include_router ?, app.include_router ?   5 calls, 4 unknown   key=src/orders_playground/server.py#/call:FastAPI src/orders_playground/server.py#/call:app.get src/orders_playground/server.py#/call:app.get[1] src/orders_playground/server.py#/call:app.include_router src/orders_playground/server.py#/call:app.include_router[1]
+  ▸ register_admin_routes   key=src/orders_playground/server.py#/call:register_admin_routes
+  IF __name__ == "__main__"   key=src/orders_playground/server.py#/if[0] src/orders_playground/server.py#/if[0]/then
+      ▸ main   key=src/orders_playground/server.py#/if[0]/then/call:main
+( End )
+
+=== src/orders_playground/server.py#health_check
+( health_check )   key=src/orders_playground/server.py#health_check
+  runs when defined · @app.get ?   key=src/orders_playground/server.py#/call:app.get
+  RETURN {"status": "ok"} → End   key=src/orders_playground/server.py#health_check/return[0]
+( End )
+
+=== src/orders_playground/server.py#status
+( status )   key=src/orders_playground/server.py#status
+  runs when defined · @app.get ?   key=src/orders_playground/server.py#/call:app.get[1]
+  RETURN {"version": API_VERSION, "orders": order_service.count} → End   key=src/orders_playground/server.py#status/return[0]
+( End )
+
+=== src/orders_playground/server.py#shutdown
+( shutdown )   key=src/orders_playground/server.py#shutdown
+  ▸ logger.info   key=src/orders_playground/server.py#shutdown/call:logger.info
+( End )
+
+=== src/orders_playground/server.py#main
+( main )   key=src/orders_playground/server.py#main
+  · signal.signal, uvicorn.run   2 calls   key=src/orders_playground/server.py#main/call:signal.signal src/orders_playground/server.py#main/call:uvicorn.run
+( End )
+
+=== src/orders_playground/services/__init__.py#
+( src/orders_playground/services/__init__.py )   key=src/orders_playground/services/__init__.py#
+( End )
+
+=== src/orders_playground/services/events.py#
+( src/orders_playground/services/events.py )   key=src/orders_playground/services/events.py#
+  imports · collections.abc, ..types
+  ⋯ 1 line
+  ▸ Events → events · new   key=src/orders_playground/services/events.py#/call:Events
+( End )
+
+=== src/orders_playground/services/events.py#Events
+( Events )   key=src/orders_playground/services/events.py#Events
+( End )
+
+=== src/orders_playground/services/events.py#Events.on
+( on )   key=src/orders_playground/services/events.py#Events.on
+  · subscriptions.setdefault().append ?   key=src/orders_playground/services/events.py#Events.on/call:subscriptions.setdefault().append
+( End )
+
+=== src/orders_playground/services/events.py#Events.emit
+( emit )   key=src/orders_playground/services/events.py#Events.emit
+  LOOP for handler in subscriptions.get(name, [])   key=src/orders_playground/services/events.py#Events.emit/for[0] src/orders_playground/services/events.py#Events.emit/for[0]/body
+      · handler ?   key=src/orders_playground/services/events.py#Events.emit/for[0]/body/call:handler
+( End )
+
+=== src/orders_playground/services/notifier.py#
+( src/orders_playground/services/notifier.py )   key=src/orders_playground/services/notifier.py#
+  imports · abc, ..lib.logger, ..types, .events
+  · ReceiptNotifier ? → notifier   key=src/orders_playground/services/notifier.py#/call:ReceiptNotifier
+  ▸ events.on   key=src/orders_playground/services/notifier.py#/call:events.on
+( End )
+
+=== src/orders_playground/services/notifier.py#Notifier
+( Notifier )   key=src/orders_playground/services/notifier.py#Notifier
+  · @abstractmethod   key=src/orders_playground/services/notifier.py#Notifier/call:abstractmethod
+( End )
+
+=== src/orders_playground/services/notifier.py#Notifier.send
+( send )   key=src/orders_playground/services/notifier.py#Notifier.send
+  runs when defined · @abstractmethod   key=src/orders_playground/services/notifier.py#Notifier/call:abstractmethod
+  RAISE NotImplementedError → the caller   key=src/orders_playground/services/notifier.py#Notifier.send/raise[0]
+( End )
+
+=== src/orders_playground/services/notifier.py#Notifier.notify
+( notify )   key=src/orders_playground/services/notifier.py#Notifier.notify
+  · self.send ?   key=src/orders_playground/services/notifier.py#Notifier.notify/call:self.send
+( End )
+
+=== src/orders_playground/services/notifier.py#ReceiptNotifier
+( ReceiptNotifier )   key=src/orders_playground/services/notifier.py#ReceiptNotifier
+( End )
+
+=== src/orders_playground/services/notifier.py#ReceiptNotifier.send
+( send )   key=src/orders_playground/services/notifier.py#ReceiptNotifier.send
+  ▸ logger.info   key=src/orders_playground/services/notifier.py#ReceiptNotifier.send/call:logger.info
+( End )
+
+=== src/orders_playground/services/notifier.py#notify_customer
+( notify_customer )   key=src/orders_playground/services/notifier.py#notify_customer
+  · notifier.notify ?   key=src/orders_playground/services/notifier.py#notify_customer/call:notifier.notify
+( End )
+
+=== src/orders_playground/services/order_service.py#
+( src/orders_playground/services/order_service.py )   key=src/orders_playground/services/order_service.py#
+  imports · datetime, uuid, ..db, ..lib.validate, ..types, ., .notifier, .payment, .events, .payment
+  ▸ open_database · into OrderService(…)   key=src/orders_playground/services/order_service.py#/call:OrderService/call:open_database
+  ▸ payments.create_provider · into OrderService(…)   key=src/orders_playground/services/order_service.py#/call:OrderService/call:payments.create_provider
+  ▸ OrderService → order_service · new   key=src/orders_playground/services/order_service.py#/call:OrderService
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService
+( OrderService )   key=src/orders_playground/services/order_service.py#OrderService
+  ⋯ 2 lines
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.__init__
+( __init__ )   key=src/orders_playground/services/order_service.py#OrderService.__init__
+  ⋯ 2 lines
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.place
+( place )   key=src/orders_playground/services/order_service.py#OrderService.place
+  ▸ validate_order → draft   key=src/orders_playground/services/order_service.py#OrderService.place/call:validate_order
+  · self.payments.charge ?, uuid4, datetime.now().isoformat ?   3 calls, 2 unknown   key=src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4 src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat
+  ▸ self.repo.insert   key=src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert
+  ▸ events.emit   key=src/orders_playground/services/order_service.py#OrderService.place/call:events.emit
+  RETURN order → End   key=src/orders_playground/services/order_service.py#OrderService.place/return[0]
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.list
+( list )   key=src/orders_playground/services/order_service.py#OrderService.list
+  RETURN ▸ self.repo.list → End   key=src/orders_playground/services/order_service.py#OrderService.list/return[0]
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.get
+( get )   key=src/orders_playground/services/order_service.py#OrderService.get
+  RETURN ▸ self.repo.find → End   key=src/orders_playground/services/order_service.py#OrderService.get/return[0]
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.cancel
+( cancel )   key=src/orders_playground/services/order_service.py#OrderService.cancel
+  RETURN ▸ self.repo.cancel → End   key=src/orders_playground/services/order_service.py#OrderService.cancel/return[0]
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.remove
+( remove )   key=src/orders_playground/services/order_service.py#OrderService.remove
+  RETURN ▸ self.repo.remove → End   key=src/orders_playground/services/order_service.py#OrderService.remove/return[0]
+( End )
+
+=== src/orders_playground/services/order_service.py#OrderService.count
+( count )   key=src/orders_playground/services/order_service.py#OrderService.count
+  runs when defined · @property   key=src/orders_playground/services/order_service.py#OrderService/call:property
+  ▸ self.repo.list · into len(…)   key=src/orders_playground/services/order_service.py#OrderService.count/return[0]/call:len/call:self.repo.list
+  RETURN len → End   key=src/orders_playground/services/order_service.py#OrderService.count/return[0]
+( End )
+
+=== src/orders_playground/services/payment.py#
+( src/orders_playground/services/payment.py )   key=src/orders_playground/services/payment.py#
+  imports · ..lib.logger, ..types
+( End )
+
+=== src/orders_playground/services/payment.py#PaymentProvider
+( PaymentProvider )   key=src/orders_playground/services/payment.py#PaymentProvider
+( End )
+
+=== src/orders_playground/services/payment.py#PaymentProvider.charge
+( charge )   key=src/orders_playground/services/payment.py#PaymentProvider.charge
+  ⋯ 1 line
+  IF total <= 0   key=src/orders_playground/services/payment.py#PaymentProvider.charge/if[0] src/orders_playground/services/payment.py#PaymentProvider.charge/if[0]/then
+      RAISE ValueError → the caller   key=src/orders_playground/services/payment.py#PaymentProvider.charge/if[0]/then/raise[0]
+  ▸ logger.info   key=src/orders_playground/services/payment.py#PaymentProvider.charge/call:logger.info
+( End )
+
+=== src/orders_playground/services/payment.py#StripeProvider
+( StripeProvider )   key=src/orders_playground/services/payment.py#StripeProvider
+( End )
+
+=== src/orders_playground/services/payment.py#StripeProvider.charge
+( charge )   key=src/orders_playground/services/payment.py#StripeProvider.charge
+  ▸ super().charge   key=src/orders_playground/services/payment.py#StripeProvider.charge/call:super().charge
+  ▸ logger.info   key=src/orders_playground/services/payment.py#StripeProvider.charge/call:logger.info
+( End )
+
+=== src/orders_playground/services/payment.py#create_provider
+( create_provider )   key=src/orders_playground/services/payment.py#create_provider
+  RETURN ▸ StripeProvider → End   key=src/orders_playground/services/payment.py#create_provider/return[0]
+( End )
+
+=== src/orders_playground/types.py#
+( src/orders_playground/types.py )   key=src/orders_playground/types.py#
+  imports · typing
+  ⋯ 1 line
+( End )
+
+=== src/orders_playground/types.py#OrderItem
+( OrderItem )   key=src/orders_playground/types.py#OrderItem
+  ⋯ 3 lines
+( End )
+
+=== src/orders_playground/types.py#OrderDraft
+( OrderDraft )   key=src/orders_playground/types.py#OrderDraft
+  ⋯ 3 lines
+( End )
+
+=== src/orders_playground/types.py#Order
+( Order )   key=src/orders_playground/types.py#Order
+  ⋯ 3 lines
+( End )
+
+=== src/orders_playground/worker.py#
+( src/orders_playground/worker.py )   key=src/orders_playground/worker.py#
+  imports · .config, .lib.pool, .queues, .queues.email_worker, .queues.orders_worker, .queues.report_worker, .queues.queues, .services.order_service
+  ▸ Worker → maintenance · new   key=src/orders_playground/worker.py#/call:Worker
+  IF __name__ == "__main__"   key=src/orders_playground/worker.py#/if[0] src/orders_playground/worker.py#/if[0]/then
+      ▸ main   key=src/orders_playground/worker.py#/if[0]/then/call:main
+( End )
+
+=== src/orders_playground/worker.py#purge
+( purge )   key=src/orders_playground/worker.py#purge
+  LOOP for order in order_service.list() · ▸ order_service.list   key=src/orders_playground/worker.py#purge/for[0] src/orders_playground/worker.py#purge/for[0]/body
+      IF order["status"] == "cancelled"   key=src/orders_playground/worker.py#purge/for[0]/body/if[0] src/orders_playground/worker.py#purge/for[0]/body/if[0]/then
+          ▸ order_service.remove   key=src/orders_playground/worker.py#purge/for[0]/body/if[0]/then/call:order_service.remove
+( End )
+
+=== src/orders_playground/worker.py#main
+( main )   key=src/orders_playground/worker.py#main
+  ▸ maintenance.run   key=src/orders_playground/worker.py#main/call:maintenance.run
+  · celery_app.worker_main ?   key=src/orders_playground/worker.py#main/call:celery_app.worker_main
+( End )
+

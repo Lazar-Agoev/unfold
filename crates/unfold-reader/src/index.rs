@@ -1,120 +1,33 @@
-//! The compact structure every derived view walks: blocks numbered across files, their parents,
-//! kinds, roles, owners, and subtrees, edges grouped by owner and by target, the classes each
-//! scope owns, and the entrances with their targets resolved to block numbers.
+//! The compact whole-graph structure behind owners, closures, and Reached from: nodes numbered
+//! across files with their kinds, first lines, and owners; what each definition reaches; and the
+//! apps' and entrances' starting definitions.
 //!
-//! It holds no names, ranges, or slots, so it stays small enough to keep per graph version; the
-//! views that need text read it from the [`Graph`] it was built from or from per-file store
-//! queries. Building it is one pass over the files plus counting sorts: no per-block allocation
-//! beyond a key's reference count.
+//! It holds no ranges or texts, so it stays small enough to keep per graph version. Building it
+//! is one pass over the files, then resolving link and target keys to node numbers.
+//!
+//! **What a definition reaches** is what running it can run, by written facts only:
+//!
+//! - the project targets of the `calls`, `passes`, and `imports` links it holds: the links of
+//!   the blocks that belong to it ([`unfold_core::owner`]) and its own links (a function's or
+//!   module's `imports`);
+//! - the classes it defines (defining a class runs its body) and the inline functions written
+//!   in it (callbacks and lambdas, which it hands to what it calls).
+//!
+//! Library and unknown links stop there.
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{BlockKind, DetectorId, EdgeKind, EntranceKind, Language, Resolution, Role};
-use unfold_core::{Block, Entrance, FileGraph, Graph, Key, Launches, RepoPath};
+use unfold_core::vocab::{Form, LinkKind, NodeKind, TargetState};
+use unfold_core::{App, FileGraph, Graph, Key, LinkTarget, owner};
 
-/// A block's number in an index: its position across all files, in graph (path, then preorder)
+use crate::catalog::{Start, starts};
+use crate::tree::to_u32;
+
+/// A node's number in an index: its position across all files, in graph (path, then preorder)
 /// order.
-pub type BlockId = u32;
+pub(crate) type NodeId = u32;
 
-/// The absent [`BlockId`].
-pub(crate) const NONE: BlockId = u32::MAX;
-
-/// Whether a block of `child_role` under a parent of `parent_kind` belongs to that parent's
-/// activation (docs/reader.md#derived-views): every child of a file; a class's children except Python
-/// header expressions; a callable's body and parameters. Nothing else owns: the owner walk
-/// passes through statements and through TypeScript `interface`, `type_alias`, and `enum`
-/// blocks (calls in an enum member's initializer belong to the enum's owner).
-pub(crate) fn owns(parent_kind: BlockKind, child_role: Option<Role>) -> bool {
-    match parent_kind {
-        BlockKind::File => true,
-        BlockKind::Class => child_role != Some(Role::Header),
-        kind if kind.is_function_like() => matches!(child_role, Some(Role::Body | Role::Parameter)),
-        _ => false,
-    }
-}
-
-/// Whether blocks of `kind` declare types only (TypeScript `interface`, `type_alias`, and
-/// `enum`): they are neither callable nor classes, and Flow and the statement outline leave
-/// them out. They are not in the definition catalog.
-pub(crate) fn is_type_only(kind: BlockKind) -> bool {
-    matches!(
-        kind,
-        BlockKind::Interface | BlockKind::TypeAlias | BlockKind::Enum
-    )
-}
-
-/// The owner of every block of one file, by local ID: the function, class, or file whose
-/// activation the block belongs to. Blocks come in preorder, so one pass suffices: a block's
-/// owner is its parent when the parent owns it, and otherwise the parent's owner. A block with
-/// no valid parent owns itself.
-pub fn file_owners(blocks: &[Block]) -> Vec<u32> {
-    let mut owners: Vec<u32> = Vec::with_capacity(blocks.len());
-    for (index, block) in blocks.iter().enumerate() {
-        let local = to_u32(index);
-        let owner = match block.parent.filter(|&parent| parent < local) {
-            None => local,
-            Some(parent) if owns(blocks[parent as usize].kind, block.role) => parent,
-            Some(parent) => owners[parent as usize],
-        };
-        owners.push(owner);
-    }
-    owners
-}
-
-/// The end (exclusive local ID) of every block's subtree in one file. In preorder a subtree is
-/// the contiguous run from the block to its end.
-pub(crate) fn file_subtree_ends(blocks: &[Block]) -> Vec<u32> {
-    let mut ends: Vec<u32> = (1..=to_u32(blocks.len())).collect();
-    for (index, block) in blocks.iter().enumerate().rev() {
-        if let Some(parent) = block.parent.filter(|&parent| (parent as usize) < index) {
-            let end = ends[index];
-            let slot = &mut ends[parent as usize];
-            *slot = (*slot).max(end);
-        }
-    }
-    ends
-}
-
-pub(crate) fn to_u32(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
-}
-
-/// The facts of one edge that derived views need.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EdgeFact {
-    /// The occurrence block.
-    pub source: BlockId,
-    /// The resolved target, or [`NONE`] (also when a resolved target's key is not indexed).
-    pub target: BlockId,
-    pub seq: u32,
-    pub position: Option<u32>,
-    pub kind: EdgeKind,
-    pub resolution: Resolution,
-}
-
-impl EdgeFact {
-    /// The target, when the edge is resolved to an indexed block.
-    pub fn resolved_target(&self) -> Option<BlockId> {
-        (self.resolution == Resolution::Resolved && self.target != NONE).then_some(self.target)
-    }
-}
-
-/// The facts of one entrance that derived views need.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EntranceFact {
-    pub key: Key,
-    pub kind: EntranceKind,
-    pub detector: DetectorId,
-    /// The source evidence block, or [`NONE`].
-    pub evidence_block: BlockId,
-    /// The first target when it is resolved to an indexed block, or [`NONE`].
-    pub first: BlockId,
-    /// Every target resolved to an indexed block, in position order.
-    pub resolved: Box<[BlockId]>,
-    /// The application binding a route's mount chain reaches, or [`NONE`].
-    pub binding: BlockId,
-    /// For a launch, the indexed blocks it runs besides its startup ([`unfold_core::Launch::seeds`]).
-    pub seeds: Box<[BlockId]>,
-}
+/// The absent [`NodeId`].
+const NONE: NodeId = u32::MAX;
 
 /// Items grouped into numbered buckets, in insertion order within each bucket.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -143,7 +56,7 @@ impl Buckets {
         Self { starts, items }
     }
 
-    fn get(&self, bucket: BlockId) -> &[u32] {
+    fn get(&self, bucket: NodeId) -> &[u32] {
         let bucket = bucket as usize;
         match (self.starts.get(bucket), self.starts.get(bucket + 1)) {
             (Some(&start), Some(&end)) => &self.items[start as usize..end as usize],
@@ -152,306 +65,245 @@ impl Buckets {
     }
 }
 
-/// The compact graph structure. Build it from a [`Graph`] with [`GraphIndex::from_graph`], or
-/// file by file (from store reads) with a [`GraphIndexBuilder`].
+/// An app's start or an entrance, with the definitions it starts at.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GraphIndex {
+pub(crate) struct StartFact {
+    /// `entrance:<app>` or `entrance:<app>/<entrance>`.
+    pub key: Key,
+    /// An entrance rather than an app's own start.
+    pub entrance: bool,
+    /// Its `code` targets that name a definition in the index (`found`, or `stale`: a file's
+    /// last good version), in order.
+    pub seeds: Box<[NodeId]>,
+}
+
+/// The compact graph structure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphIndex {
     keys: Vec<Key>,
-    by_key: FxHashMap<Key, BlockId>,
-    file_of: Vec<u32>,
-    file_starts: Vec<BlockId>,
-    paths: Vec<RepoPath>,
-    languages: Vec<Language>,
-    parent: Vec<BlockId>,
-    kind: Vec<BlockKind>,
-    role: Vec<Option<Role>>,
-    owner: Vec<BlockId>,
-    subtree_end: Vec<BlockId>,
-    edges: Vec<EdgeFact>,
-    owned_edges: Buckets,
-    incoming: Buckets,
-    owned_classes: Buckets,
-    entrances: Vec<EntranceFact>,
+    by_key: FxHashMap<Key, NodeId>,
+    kind: Vec<NodeKind>,
+    line: Vec<u32>,
+    owner: Vec<NodeId>,
+    reaches: Buckets,
+    starts: Vec<StartFact>,
 }
 
 impl GraphIndex {
-    /// Indexes `graph` with its launch records. Block numbers follow its file order, so block `i` of file `f` is
-    /// [`GraphIndex::file_start`]`(f) + i`.
-    pub fn from_graph(graph: &Graph, launches: &Launches) -> Self {
-        let mut builder = GraphIndexBuilder::new();
+    /// Indexes `graph`.
+    pub fn from_graph(graph: &Graph) -> Self {
+        let mut keys = Vec::new();
+        let mut kind = Vec::new();
+        let mut line = Vec::new();
+        let mut owners = Vec::new();
+        // Each reach before its target is resolved: the holding definition and the target key.
+        let mut links: Vec<(NodeId, &Key)> = Vec::new();
+        let mut defines: Vec<(u32, u32)> = Vec::new();
         for file in &graph.files {
-            builder.add_file(file);
-        }
-        builder.finish(&graph.entrances, launches)
-    }
-
-    /// The number of blocks.
-    pub fn len(&self) -> usize {
-        self.keys.len()
-    }
-
-    /// Whether the index has no blocks.
-    pub fn is_empty(&self) -> bool {
-        self.keys.is_empty()
-    }
-
-    /// The block with `key`.
-    pub fn id(&self, key: &str) -> Option<BlockId> {
-        self.by_key.get(key).copied()
-    }
-
-    /// A block's key.
-    pub fn key(&self, id: BlockId) -> &Key {
-        &self.keys[id as usize]
-    }
-
-    /// A block's kind.
-    pub fn kind(&self, id: BlockId) -> BlockKind {
-        self.kind[id as usize]
-    }
-
-    /// A block's role.
-    pub fn role(&self, id: BlockId) -> Option<Role> {
-        self.role[id as usize]
-    }
-
-    /// A block's parent.
-    pub fn parent(&self, id: BlockId) -> Option<BlockId> {
-        let parent = self.parent[id as usize];
-        (parent != NONE).then_some(parent)
-    }
-
-    /// The function, class, or file whose activation the block belongs to.
-    pub fn owner(&self, id: BlockId) -> BlockId {
-        self.owner[id as usize]
-    }
-
-    /// Whether `id` is `ancestor` or lies inside it.
-    pub fn within(&self, id: BlockId, ancestor: BlockId) -> bool {
-        ancestor <= id && id < self.subtree_end[ancestor as usize]
-    }
-
-    /// The position of the block's file in graph order.
-    pub fn file_of(&self, id: BlockId) -> usize {
-        self.file_of[id as usize] as usize
-    }
-
-    /// The number of the first block (the root) of the file at position `file`.
-    pub fn file_start(&self, file: usize) -> BlockId {
-        self.file_starts[file]
-    }
-
-    /// The block's local ID in its file.
-    pub fn local_id(&self, id: BlockId) -> u32 {
-        id - self.file_starts[self.file_of(id)]
-    }
-
-    /// The root of the block's file.
-    pub fn file_root(&self, id: BlockId) -> BlockId {
-        self.file_starts[self.file_of(id)]
-    }
-
-    /// The path of the block's file.
-    pub fn path(&self, id: BlockId) -> &RepoPath {
-        &self.paths[self.file_of(id)]
-    }
-
-    /// The language of the block's file.
-    pub fn language(&self, id: BlockId) -> Language {
-        self.languages[self.file_of(id)]
-    }
-
-    /// The nearest class at or above `id`.
-    pub fn enclosing_class(&self, id: BlockId) -> Option<BlockId> {
-        let mut current = Some(id);
-        while let Some(block) = current {
-            if self.kind(block) == BlockKind::Class {
-                return Some(block);
-            }
-            current = self.parent(block);
-        }
-        None
-    }
-
-    /// The edges whose occurrence `owner` owns, in graph order.
-    pub(crate) fn owned_edges(&self, owner: BlockId) -> impl Iterator<Item = &EdgeFact> {
-        self.owned_edges
-            .get(owner)
-            .iter()
-            .map(|&edge| &self.edges[edge as usize])
-    }
-
-    /// The resolved edges that target `target`, in graph order.
-    pub(crate) fn incoming(&self, target: BlockId) -> impl Iterator<Item = &EdgeFact> {
-        self.incoming
-            .get(target)
-            .iter()
-            .map(|&edge| &self.edges[edge as usize])
-    }
-
-    /// The classes whose owner is `owner`, in preorder.
-    pub(crate) fn owned_classes(&self, owner: BlockId) -> &[BlockId] {
-        self.owned_classes.get(owner)
-    }
-
-    /// Every edge, in graph order.
-    pub(crate) fn edges(&self) -> &[EdgeFact] {
-        &self.edges
-    }
-
-    /// The entrances, in canonical order.
-    pub(crate) fn entrances(&self) -> &[EntranceFact] {
-        &self.entrances
-    }
-}
-
-/// Builds a [`GraphIndex`] one file at a time, so a caller streaming files from the store never
-/// holds the whole graph.
-#[derive(Debug, Default)]
-pub struct GraphIndexBuilder {
-    keys: Vec<Key>,
-    file_of: Vec<u32>,
-    file_starts: Vec<BlockId>,
-    paths: Vec<RepoPath>,
-    languages: Vec<Language>,
-    parent: Vec<BlockId>,
-    kind: Vec<BlockKind>,
-    role: Vec<Option<Role>>,
-    owner: Vec<BlockId>,
-    subtree_end: Vec<BlockId>,
-    edges: Vec<EdgeFact>,
-    /// The target key of each edge in `edges`, exactly when it is resolved.
-    targets: Vec<Option<Key>>,
-}
-
-impl GraphIndexBuilder {
-    /// An empty builder.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Adds the next file. Files must come in path order for block numbers to follow graph
-    /// order; derived views only need each file's blocks to be in preorder.
-    pub fn add_file(&mut self, file: &FileGraph) {
-        let base = to_u32(self.keys.len());
-        let file_index = to_u32(self.paths.len());
-        self.file_starts.push(base);
-        self.paths.push(file.file.path.clone());
-        self.languages.push(file.file.language);
-        let owners = file_owners(&file.blocks);
-        let ends = file_subtree_ends(&file.blocks);
-        for (index, block) in file.blocks.iter().enumerate() {
-            let local = to_u32(index);
-            self.keys.push(block.key.clone());
-            self.file_of.push(file_index);
-            self.parent.push(
-                block
-                    .parent
-                    .filter(|&parent| parent < local)
-                    .map_or(NONE, |parent| base + parent),
-            );
-            self.kind.push(block.kind);
-            self.role.push(block.role);
-            self.owner.push(base + owners[index]);
-            self.subtree_end.push(base + ends[index]);
-        }
-        let count = to_u32(file.blocks.len());
-        for edge in file.edges.iter().filter(|edge| edge.source < count) {
-            self.edges.push(EdgeFact {
-                source: base + edge.source,
-                target: NONE,
-                seq: edge.seq,
-                position: edge.position,
-                kind: edge.kind,
-                resolution: edge.resolution,
-            });
-            self.targets.push(
-                edge.target
-                    .clone()
-                    .filter(|_| edge.resolution == Resolution::Resolved),
+            add_file(
+                file,
+                &mut keys,
+                &mut kind,
+                &mut line,
+                &mut owners,
+                &mut links,
+                &mut defines,
             );
         }
-    }
-
-    /// Resolves edge and entrance targets (and launch seeds) to block numbers and groups edges
-    /// and classes.
-    pub fn finish(mut self, entrances: &[Entrance], launches: &Launches) -> GraphIndex {
-        let by_key: FxHashMap<Key, BlockId> = self
-            .keys
+        let by_key: FxHashMap<Key, NodeId> = keys
             .iter()
             .enumerate()
             .map(|(id, key)| (key.clone(), to_u32(id)))
             .collect();
-        let lookup = |key: Option<&Key>| key.and_then(|key| by_key.get(key.as_str()).copied());
-        for (edge, target) in self.edges.iter_mut().zip(&self.targets) {
-            edge.target = lookup(target.as_ref()).unwrap_or(NONE);
-        }
-        let count = self.keys.len();
-        let owned_pairs: Vec<(u32, u32)> = self
-            .edges
-            .iter()
-            .enumerate()
-            .map(|(index, edge)| (self.owner[edge.source as usize], to_u32(index)))
-            .collect();
-        let incoming_pairs: Vec<(u32, u32)> = self
-            .edges
-            .iter()
-            .enumerate()
-            .filter_map(|(index, edge)| edge.resolved_target().map(|target| (target, to_u32(index))))
-            .collect();
-        let class_pairs: Vec<(u32, u32)> = (0..count)
-            .filter(|&id| self.kind[id] == BlockKind::Class && self.owner[id] != to_u32(id))
-            .map(|id| (self.owner[id], to_u32(id)))
-            .collect();
-        let seeds: FxHashMap<&str, &[Key]> = launches
-            .launches
-            .iter()
-            .map(|launch| (launch.entrance.as_str(), &launch.seeds[..]))
-            .collect();
-        let entrances = entrances
-            .iter()
-            .map(|entrance| {
-                let resolved = |target: &unfold_core::EntranceTarget| {
-                    if target.resolution == Resolution::Resolved {
-                        lookup(target.target.as_ref())
-                    } else {
-                        None
-                    }
-                };
-                EntranceFact {
-                    key: entrance.key.clone(),
-                    kind: entrance.kind,
-                    detector: entrance.detector,
-                    evidence_block: lookup(entrance.evidence.block.as_ref()).unwrap_or(NONE),
-                    first: entrance.targets.first().and_then(resolved).unwrap_or(NONE),
-                    resolved: entrance.targets.iter().filter_map(resolved).collect(),
-                    binding: lookup(entrance.binding.as_ref()).unwrap_or(NONE),
-                    seeds: seeds
-                        .get(entrance.key.as_str())
-                        .map_or_else(Box::default, |seeds| {
-                            seeds.iter().filter_map(|key| lookup(Some(key))).collect()
-                        }),
-                }
-            })
-            .collect();
-        self.file_starts.push(to_u32(count));
-        GraphIndex {
-            owned_edges: Buckets::new(count, &owned_pairs),
-            incoming: Buckets::new(count, &incoming_pairs),
-            owned_classes: Buckets::new(count, &class_pairs),
-            keys: self.keys,
+        let mut pairs = defines;
+        pairs.extend(
+            links
+                .into_iter()
+                .filter_map(|(holder, target)| Some((holder, *by_key.get(target)?))),
+        );
+        pairs.sort_unstable();
+        pairs.dedup();
+        let starts = start_facts(&graph.apps, &by_key, &kind);
+        Self {
+            reaches: Buckets::new(keys.len(), &pairs),
+            keys,
             by_key,
-            file_of: self.file_of,
-            file_starts: self.file_starts,
-            paths: self.paths,
-            languages: self.languages,
-            parent: self.parent,
-            kind: self.kind,
-            role: self.role,
-            owner: self.owner,
-            subtree_end: self.subtree_end,
-            edges: self.edges,
-            entrances,
+            kind,
+            line,
+            owner: owners,
+            starts,
         }
+    }
+
+    /// The number of nodes.
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    /// The node with `key`.
+    pub fn id(&self, key: &str) -> Option<NodeId> {
+        self.by_key.get(key).copied()
+    }
+
+    /// A node's key.
+    pub fn key(&self, id: NodeId) -> &Key {
+        &self.keys[id as usize]
+    }
+
+    /// A node's first line.
+    pub fn line(&self, id: NodeId) -> u32 {
+        self.line[id as usize]
+    }
+
+    /// The definition a node belongs to; `None` for a module.
+    pub fn owner(&self, id: NodeId) -> Option<NodeId> {
+        let owner = self.owner[id as usize];
+        (owner != NONE).then_some(owner)
+    }
+
+    /// The node itself when it is a definition, else the definition it belongs to.
+    pub fn definition(&self, id: NodeId) -> Option<NodeId> {
+        if self.kind[id as usize].is_definition() {
+            Some(id)
+        } else {
+            self.owner(id)
+        }
+    }
+
+    /// What definition `id` reaches (see the module documentation), in node order.
+    pub fn reaches(&self, id: NodeId) -> &[NodeId] {
+        self.reaches.get(id)
+    }
+
+    /// The apps' starts and entrances, in file order.
+    pub fn starts(&self) -> &[StartFact] {
+        &self.starts
+    }
+}
+
+/// Adds one file's nodes, its reaches by key, and its defined classes and inline functions.
+fn add_file<'a>(
+    file: &'a FileGraph,
+    keys: &mut Vec<Key>,
+    kind: &mut Vec<NodeKind>,
+    line: &mut Vec<u32>,
+    owners: &mut Vec<NodeId>,
+    links: &mut Vec<(NodeId, &'a Key)>,
+    defines: &mut Vec<(u32, u32)>,
+) {
+    let base = to_u32(keys.len());
+    for (local, node) in file.nodes.iter().enumerate() {
+        let local = to_u32(local);
+        let owner = owner(&file.nodes, local).map_or(NONE, |owner| base + owner);
+        keys.push(node.key.clone());
+        kind.push(node.kind());
+        line.push(node.lines.start);
+        owners.push(owner);
+        let defined = node.kind() == NodeKind::Class || node.form == Form::Lambda;
+        if defined && owner != NONE {
+            defines.push((owner, base + local));
+        }
+    }
+    for link in &file.links {
+        let LinkTarget::Project(target) = &link.to else {
+            continue;
+        };
+        if !matches!(link.kind, LinkKind::Calls | LinkKind::Passes | LinkKind::Imports) {
+            continue;
+        }
+        let from = base + link.from;
+        let holder = if kind[from as usize].is_definition() {
+            from
+        } else {
+            owners[from as usize]
+        };
+        if holder != NONE {
+            links.push((holder, target));
+        }
+    }
+}
+
+/// The starts of `apps`, with their targets that name an indexed definition.
+fn start_facts(apps: &[App], by_key: &FxHashMap<Key, NodeId>, kind: &[NodeKind]) -> Vec<StartFact> {
+    starts(apps)
+        .map(|start| StartFact {
+            key: start.key().clone(),
+            entrance: matches!(start, Start::Entrance { .. }),
+            seeds: start
+                .targets()
+                .iter()
+                .filter(|target| matches!(target.state, TargetState::Found | TargetState::Stale))
+                .filter_map(|target| by_key.get(target.code.as_str()).copied())
+                .filter(|&id| kind[id as usize].is_definition())
+                .collect(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use unfold_core::testkit::sample;
+
+    use super::*;
+
+    fn keys(index: &GraphIndex, ids: &[NodeId]) -> Vec<String> {
+        ids.iter().map(|&id| index.key(id).to_string()).collect()
+    }
+
+    #[test]
+    fn definitions_reach_their_project_links_classes_and_inline_functions() {
+        let index = GraphIndex::from_graph(&sample::shop().build());
+        let reach = |key: &str| keys(&index, index.reaches(index.id(key).unwrap()));
+        assert_eq!(
+            reach("shop/service.py#place_order"),
+            [
+                "shop/payments.py#charge_card",
+                "shop/store.py#load_order",
+                "shop/store.py#save_order",
+                "shop/store.py#mark_failed",
+                "shop/store.py#reserve_stock",
+            ]
+        );
+        // The module's own `imports` links, and the class it defines and the decorator's target.
+        assert_eq!(
+            reach("shop/payments.py#"),
+            ["shop/payments.py#PaymentDeclined", "shop/payments.py#retry"]
+        );
+        assert_eq!(reach("shop/service.py#"), ["shop/payments.py#", "shop/store.py#"]);
+        // A `passes` link reaches, and so does a callback written in the function.
+        assert_eq!(reach("shop/store.py#save_all"), ["shop/store.py#save_order"]);
+        assert_eq!(
+            reach("shop/store.py#reserve_stock"),
+            ["shop/store.py#reserve_stock/for[0]/call:sorted/callback[0]"]
+        );
+        assert_eq!(
+            reach("shop/payments.py#charge_card"),
+            ["shop/payments.py#PaymentDeclined"]
+        );
+    }
+
+    #[test]
+    fn starts_keep_their_definitions_in_order() {
+        let index = GraphIndex::from_graph(&sample::shop().build());
+        let starts: Vec<(&str, bool, Vec<String>)> = index
+            .starts()
+            .iter()
+            .map(|start| (start.key.as_str(), start.entrance, keys(&index, &start.seeds)))
+            .collect();
+        assert_eq!(
+            starts[0],
+            ("entrance:shop", false, vec!["shop/service.py#".to_owned()])
+        );
+        assert_eq!(
+            starts[1],
+            (
+                "entrance:shop/place-an-order",
+                true,
+                vec!["shop/service.py#place_order".to_owned()]
+            )
+        );
+        // A missing key and a key that is no start add nothing.
+        assert!(starts[3].2.is_empty());
+        assert_eq!(starts[4].2, ["shop/payments.py#charge_card"]);
     }
 }

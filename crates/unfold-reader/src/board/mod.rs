@@ -1,8 +1,8 @@
-//! Boards (docs/reader.md#boards; decisions board format, board references): the `unfold-board`
-//! version 1 format with pages, its JSON Schema, strict parsing, deterministic serialization,
-//! signatures, guards, groups, drawn links and connections, frames, resource cards, notes,
-//! proposed steps, the claims' signatures and grounding, health with repairs per page, and the
-//! board files of a project.
+//! Boards (docs/designs/core-rebuild-plan.md, "The board file"): the `unfold-board` version 1
+//! format with pages, its JSON Schema, strict parsing, deterministic serialization, signatures,
+//! guards, the page's overlay (names, combined steps, proposed steps, and calls opened in place)
+//! checked against the overlay rules, connections, frames, resource cards, notes, the claims'
+//! signatures and grounding, health with repairs per page, and the board files of a project.
 //!
 //! ```text
 //! text ─parse─► Board ─health(Page, BoardGraph)─► Health, repairs
@@ -27,14 +27,14 @@ pub use check::{
     Health, HealthItem, HealthKind, Repair, RepairKind, Target, apply_repair, board_health, current_guard,
     health,
 };
-pub use graph::{BlockAt, BoardGraph, Lines};
+pub use graph::{BoardGraph, Lines};
 pub use json::serialize;
 pub use model::{
-    Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT,
-    Frame, FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind,
-    MAX_EXPANDED_CALLS, MAX_EXPANSION_DEPTH, MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON,
-    MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note, Page, Proposal, ProposalPath, References, Resource,
-    ResourceKind, SCHEMA, Signature, VERSION, View, is_folder_name,
+    Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Combined, Connection,
+    ConnectionKind, Description, FORMAT, Frame, FrameDirection, FrameIcon, FrameLook, GuardEntry,
+    MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, NameEntry,
+    Note, Page, Place, Proposal, References, Resource, ResourceKind, SCHEMA, Signature, VERSION, View,
+    is_folder_name,
 };
 pub use parse::{parse, parse_edit};
 pub use save::prepare_save;
@@ -60,7 +60,7 @@ pub enum BoardError {
         /// What is wrong.
         message: String,
     },
-    /// A reference, group, label, or link breaks a rule against the current graphs.
+    /// A reference, overlay item, or claim breaks a rule against the current graph.
     #[error("page `{page}`, {target}: {message}")]
     Problem {
         /// The page it is on.
@@ -73,7 +73,7 @@ pub enum BoardError {
     /// Text cannot be signed: the source is missing, changed, or unreadable.
     #[error("cannot sign {what}: its source is missing or changed; compile first")]
     Unverified {
-        /// The card, group, key, or link.
+        /// The card, name, combined step, claim, or key.
         what: String,
     },
     /// A board file name is not a plain stem.

@@ -1,68 +1,46 @@
-//! Graph-wide answers for requests: owners, callers, closures, and reached-from, from one
-//! [`GraphIndex`] per graph version.
+//! Graph-wide answers for requests: owners, closures, and Reached from, from one index per
+//! graph version.
 //!
-//! Cards are served from the store: per-card data (blocks, slots, edges, definitions) comes from
-//! per-file queries. What needs the whole graph (callers mapped to owners, activation closures,
-//! reached-from) comes from a [`ReaderIndex`], loaded once from the store (or built from the
-//! in-memory graph the workspace just committed) and shared through a [`ReaderCache`] until the
-//! next commit invalidates it.
+//! Cards are served from the store: per-card data comes from per-file queries, and callers from
+//! the store's reverse index ([`crate::relations::callers`]). What needs the whole graph (owners
+//! across files, closures, Reached from) comes from a [`ReaderIndex`], loaded once from the store
+//! (or built from the in-memory graph the workspace just committed) and shared through a
+//! [`ReaderCache`] until the next commit invalidates it.
 //!
 //! Closures are cached per seed: the closure of a seed set is the union of its seeds'
-//! closures, and many entrances share handlers, so reached-from for every definition costs one
-//! walk per distinct seed in the life of the index.
+//! closures, and many entrances share code, so Reached from for every definition costs one walk
+//! per distinct seed in the life of the index.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::EntranceKind;
-use unfold_core::{Graph, Key, Launches};
+use unfold_core::{Graph, Key};
 use unfold_store::{ReadPool, Reader};
 
-use crate::applications::{entrance_seeds, keys};
 use crate::closure::{closure, union};
 use crate::error::Result;
-use crate::index::{BlockId, GraphIndex, GraphIndexBuilder};
-use crate::relations::{Caller, callers, reached_from};
+use crate::index::{GraphIndex, NodeId};
 
 /// The whole-graph structure of one graph version, with cached closures. Cheap to share
 /// behind an [`Arc`]; every method takes `&self` and is safe to call from several threads.
 #[derive(Debug)]
 pub struct ReaderIndex {
     index: GraphIndex,
-    seed_closures: Mutex<FxHashMap<BlockId, Arc<[BlockId]>>>,
+    seed_closures: Mutex<FxHashMap<NodeId, Arc<[NodeId]>>>,
 }
 
 impl ReaderIndex {
-    /// Loads the committed graph's structure from the store, file by file, in one snapshot.
+    /// Loads the committed graph's structure from the store, in one snapshot.
     pub fn load(reader: &Reader) -> Result<Self> {
-        let index = reader.snapshot(|reader| {
-            let mut builder = GraphIndexBuilder::new();
-            for row in reader.files()? {
-                if let Some(file) = reader.file_graph(row.path.as_str())? {
-                    builder.add_file(&file);
-                }
-            }
-            Ok(builder.finish(&reader.entrances()?, &reader.launches()?))
-        })?;
-        Ok(Self::new(index))
+        Ok(Self::from_graph(&reader.graph()?))
     }
 
-    /// Builds the structure from an in-memory graph and its launch records, such as the ones
-    /// just committed.
-    pub fn from_graph(graph: &Graph, launches: &Launches) -> Self {
-        Self::new(GraphIndex::from_graph(graph, launches))
-    }
-
-    fn new(index: GraphIndex) -> Self {
+    /// Builds the structure from an in-memory graph, such as the one just committed.
+    pub fn from_graph(graph: &Graph) -> Self {
         Self {
-            index,
+            index: GraphIndex::from_graph(graph),
             seed_closures: Mutex::new(FxHashMap::default()),
         }
-    }
-
-    /// The underlying index.
-    pub fn index(&self) -> &GraphIndex {
-        &self.index
     }
 
     /// Whether a block with `key` exists.
@@ -70,67 +48,71 @@ impl ReaderIndex {
         self.index.id(key).is_some()
     }
 
-    /// The function, class, or file whose activation the block with `key` belongs to.
+    /// The key of the definition the block with `key` belongs to: the nearest definition above
+    /// it. `None` for a module or a key that is not a block.
     pub fn owner(&self, key: &str) -> Option<&Key> {
-        let id = self.index.id(key)?;
-        Some(self.index.key(self.index.owner(id)))
+        let owner = self.index.owner(self.index.id(key)?)?;
+        Some(self.index.key(owner))
     }
 
-    /// The resolved edges into the block with `key`, each with its occurrence's owner, in graph
-    /// order. `None` when the block does not exist.
-    pub fn callers(&self, key: &str) -> Option<Vec<Caller>> {
-        self.index.id(key).map(|id| callers(&self.index, id))
+    /// The first line of the block with `key`.
+    pub fn line(&self, key: &str) -> Option<u32> {
+        self.index.id(key).map(|id| self.index.line(id))
     }
 
-    /// The non-process entrances whose closures contain the block with `key`, in canonical
-    /// order. `None` when the block does not exist.
+    /// The entrances whose closures contain the block with `key` (a definition, or the
+    /// definition a block belongs to), in file order. An app's own start is left out: it starts
+    /// the whole process, so it reaches nearly everything. `None` when the block does not exist.
     pub fn reached_from(&self, key: &str) -> Option<Vec<Key>> {
         let id = self.index.id(key)?;
-        let entrances = self.index.entrances();
-        Some(reached_from(&self.index, id, |position, id| {
-            entrance_seeds(&entrances[position])
-                .into_iter()
-                .any(|seed| self.seed_closure(seed).binary_search(&id).is_ok())
-        }))
+        let Some(definition) = self.index.definition(id) else {
+            return Some(Vec::new());
+        };
+        Some(
+            self.index
+                .starts()
+                .iter()
+                .filter(|start| start.entrance)
+                .filter(|start| {
+                    start
+                        .seeds
+                        .iter()
+                        .any(|&seed| self.seed_closure(seed).binary_search(&definition).is_ok())
+                })
+                .map(|start| start.key.clone())
+                .collect(),
+        )
     }
 
-    /// The activation closure of the blocks with `seeds`, as keys sorted by graph order. Unknown
-    /// keys are ignored.
+    /// The closure of the blocks with `seeds` (each standing for its definition), as definition
+    /// keys in graph order. Unknown keys are ignored.
     pub fn closure(&self, seeds: &[&str]) -> Vec<Key> {
-        let ids: Vec<BlockId> = seeds.iter().filter_map(|key| self.index.id(key)).collect();
-        keys(&self.index, &self.closure_ids(&ids))
+        let ids: Vec<NodeId> = seeds.iter().filter_map(|key| self.index.id(key)).collect();
+        self.keys(&self.closure_ids(&ids))
     }
 
-    /// The activation closure of the entrance with `key`: a launch's startup and seeds, or every
-    /// resolved target of any other entrance. `None` when the entrance does not
-    /// exist.
-    pub fn entrance_closure(&self, key: &str) -> Option<Vec<Key>> {
-        let entrance = self
+    /// The closure of the app or entrance with `key`: of every `code` target it starts at that
+    /// names a definition. `None` when no app or entrance has that key.
+    pub fn start_closure(&self, key: &str) -> Option<Vec<Key>> {
+        let start = self
             .index
-            .entrances()
+            .starts()
             .iter()
-            .find(|entrance| entrance.key.as_str() == key)?;
-        let seeds = entrance_seeds(entrance);
-        Some(keys(&self.index, &self.closure_ids(&seeds)))
+            .find(|start| start.key.as_str() == key)?;
+        Some(self.keys(&self.closure_ids(&start.seeds)))
     }
 
-    /// The keys of the non-process entrances, in canonical order.
-    pub fn non_process_entrances(&self) -> Vec<Key> {
-        self.index
-            .entrances()
-            .iter()
-            .filter(|entrance| entrance.kind != EntranceKind::Process)
-            .map(|entrance| entrance.key.clone())
-            .collect()
+    fn keys(&self, ids: &[NodeId]) -> Vec<Key> {
+        ids.iter().map(|&id| self.index.key(id).clone()).collect()
     }
 
-    fn closure_ids(&self, seeds: &[BlockId]) -> Vec<BlockId> {
-        let per_seed: Vec<Arc<[BlockId]>> = seeds.iter().map(|&seed| self.seed_closure(seed)).collect();
+    fn closure_ids(&self, seeds: &[NodeId]) -> Vec<NodeId> {
+        let per_seed: Vec<Arc<[NodeId]>> = seeds.iter().map(|&seed| self.seed_closure(seed)).collect();
         union(&per_seed.iter().map(|list| &list[..]).collect::<Vec<_>>())
     }
 
     /// The closure of one seed, computed once per index.
-    fn seed_closure(&self, seed: BlockId) -> Arc<[BlockId]> {
+    fn seed_closure(&self, seed: NodeId) -> Arc<[NodeId]> {
         let cached = self
             .seed_closures
             .lock()
@@ -142,7 +124,7 @@ impl ReaderIndex {
         }
         // Computed outside the lock so other requests are not held up; a race computes the
         // same set twice, harmlessly.
-        let computed: Arc<[BlockId]> = closure(&self.index, &[seed]).into();
+        let computed: Arc<[NodeId]> = closure(&self.index, &[seed]).into();
         self.seed_closures
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

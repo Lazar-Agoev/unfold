@@ -1,53 +1,53 @@
-//! Derived views over a stored graph: owners, the catalog, activation closures, applications,
-//! relations, the Flow model, the code render model, and typed lines; and boards (the
-//! `unfold-board` format with pages, its JSON Schema, validation, signatures, guards, drawn
-//! links, health, and board files). It never parses source; highlighting arrives through a `Highlighter` trait.
-//!
-//! `docs/reader.md` is the authoritative description of the rules implemented here.
+//! What people and agents see of a stored graph, computed from its records: owners, the
+//! catalog, relations, verified source, contracts, the overlay rules, and boards. It never
+//! parses source and never reads key text: kinds, parents, and files come from the records.
 //!
 //! # Shape
 //!
 //! ```text
-//! after each update (workspace):   project(&graph, &launches) ─► Projections ─► store commit
-//! per request:                     ReaderCache::get(pool) ─► ReaderIndex ─► callers, reached-from, closures
-//!                                  Reader::file_graph(path) ─► outgoing(), code_view()
-//!                                  contracts::Facts(reader) ─► call_contract(), type_definition()
+//! after each commit (workspace):  catalog::definitions(file) ─► store       ReaderIndex::from_graph ─► ReaderCache
+//! per request:                    Reader::file_graph(path) ─► FileTree ─► overlay rules, relations::outgoing
+//!                                 ReaderCache::get(pool) ─► ReaderIndex ─► owner, reached_from, closure
+//!                                 relations::callers(reader, index, key)    (the store's reverse index)
+//!                                 contracts::Facts(reader, root) ─► call_contract, type_definition
+//!                                 source::verify_file ─► Source ─► text, lines, UTF-16 ranges
 //! ```
 //!
-//! - [`project`] computes the rows the store keeps (definitions, applications, memberships)
-//!   from the whole in-memory graph.
-//! - [`ReaderIndex`] answers graph-wide questions from a compact [`GraphIndex`] of one graph
-//!   version, with closures cached per seed; [`ReaderCache`] holds it until the next commit.
-//! - [`code::code_view`] builds what a Code card or the peek sheet renders, in UTF-16 offsets, from
-//!   one file's stored facts and bytes verified against the facts' hash ([`source`]).
-//! - [`flow::flow_view`] builds a card's Flow (paths from written structure) from the same facts.
-//! - [`contracts`] builds typed lines (a call's contract, a type's definition and uses) from one
-//!   or two files' typed records, per request.
-//! - [`board`] reads, checks, signs, and writes `unfold-board` files against a
-//!   [`board::BoardGraph`] of the files a board touches.
+//! - [`tree`]: one file's nodes with their structure ([`FileTree`]), and blocks found by key
+//!   across files ([`Trees`], [`Blocks`]). Every view below walks it.
+//! - [`catalog`]: the definitions that can be cards, their labels and qualified names, and the
+//!   apps and entrances found by key.
+//! - [`ReaderIndex`]: graph-wide owners, closures, and Reached from, shared through a
+//!   [`ReaderCache`] until the next commit.
+//! - [`relations`]: callers (from the store's reverse index) and a definition's outgoing links.
+//! - [`source`]: source verified against the facts' hash, with UTF-8 to UTF-16 conversion.
+//! - [`contracts`]: a call's contract, and classes and types with their uses.
+//! - [`overlay`]: what names, combined steps, proposals, and calls opened in place may do.
+//! - [`notes`]: the words for modules, reasons, and pairings, and [`notes::LinkEnd`].
+//! - [`board`]: the `unfold-board` format, its checks, health, and files.
 
 #![forbid(unsafe_code)]
 
-mod applications;
 pub mod board;
 pub mod catalog;
 mod closure;
-pub mod code;
+pub mod code_view;
 pub mod contracts;
+pub mod drawing;
 mod error;
-pub mod flow;
 mod index;
-pub mod launches;
 pub mod notes;
-mod project;
+pub mod overlay;
 mod reader_index;
 pub mod relations;
 pub mod source;
+pub mod tree;
 
+#[cfg(test)]
+mod testing;
 #[cfg(test)]
 mod tests;
 
 pub use error::{ReaderError, Result};
-pub use index::{BlockId, GraphIndex, GraphIndexBuilder, file_owners};
-pub use project::{Projections, project};
 pub use reader_index::{ReaderCache, ReaderIndex};
+pub use tree::{Block, Blocks, FileTree, Trees};

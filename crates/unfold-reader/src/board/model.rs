@@ -1,18 +1,20 @@
-//! The `unfold-board` version 1 document (docs/reader.md#boards, decisions board format, board references).
+//! The `unfold-board` version 1 document (docs/designs/core-rebuild-plan.md, "The board file").
 //!
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
-//! choices only: references to blocks and entrances of the board's project by structural key,
-//! canvas positions, each card's saved view and calls expanded in place, groups, descriptions,
-//! Flow labels, the guards that
-//! keep references from silently reattaching to different code, links drawn between cards
-//! (connections, when they have a kind), frames around items, resource cards, notes, and proposed
-//! steps. It never holds copied source or compiled arrows.
+//! choices only: cards that show blocks and entrances of the board's project by key, their
+//! canvas positions, views, descriptions, and the calls they open in place; the page's overlay
+//! (names, combined steps, and proposed steps, which apply page-wide by key); the guards that
+//! keep references from silently reattaching to different code; connections between items;
+//! frames around items; resource cards; and notes. It never holds copied source or compiled
+//! arrows.
 
 use std::fmt;
 
 use rustc_hash::FxHashSet;
 use serde::Serialize;
 use unfold_core::{ContentHash, Key, RepoPath};
+
+use crate::overlay::ProposalSpot;
 
 /// The `format` value.
 pub const FORMAT: &str = "unfold-board";
@@ -31,12 +33,6 @@ pub const MAX_NOTE_CHARACTERS: usize = 400;
 
 /// How deep frames nest: a frame in a frame in a frame.
 pub const MAX_FRAME_DEPTH: usize = 3;
-
-/// The most calls one card expands in place.
-pub const MAX_EXPANDED_CALLS: usize = 64;
-
-/// The most keys an expanded call's path holds: calls expand in place at most three levels deep.
-pub const MAX_EXPANSION_DEPTH: usize = 3;
 
 /// The most characters a proposed step's title holds.
 pub const MAX_PROPOSAL_TITLE: usize = 120;
@@ -88,12 +84,10 @@ macro_rules! words {
 words! {
     /// A card's view.
     View {
-        /// The exact verified source.
-        Code = "code",
-        /// Paths from written structure.
-        Flow = "flow",
-        /// One compact node: the kind's mark, the name, the location, and the description.
-        Diagram = "diagram",
+        /// The card's name, location, and description.
+        Compact = "compact",
+        /// The card's drawn flow.
+        Expanded = "expanded",
     }
 }
 
@@ -168,40 +162,22 @@ words! {
 }
 
 words! {
-    /// How the two ends of a connection talk.
-    LinkKind {
-        /// An HTTP request: a client call to a route.
+    /// What a connection stands for: the seven kinds of line a person or an agent draws.
+    ConnectionKind {
+        /// A request to another service: a route, or an RPC, tRPC, or GraphQL call.
         Http = "http",
-        /// Another request–response protocol: gRPC, tRPC, GraphQL.
-        Rpc = "rpc",
-        /// A job or message through a queue or topic.
+        /// A job, message, or event through a queue or a bus.
         Queue = "queue",
-        /// An event emitted and handled.
-        Event = "event",
-        /// Code that inserts, updates, or deletes.
-        Writes = "writes",
-        /// Code that queries or loads.
+        /// Reading from a store.
         Reads = "reads",
-        /// Where a call the graph can't follow goes when the program runs.
+        /// Inserting into or updating a store.
+        Writes = "writes",
+        /// Where an unknown call goes when the program runs.
         Calls = "calls",
-        /// A relationship between two tables.
+        /// Two tables joined by a value.
         Relates = "relates",
-        /// Anything else (a link without a kind is one too).
+        /// Anything else; it has a label.
         Other = "other",
-    }
-}
-
-words! {
-    /// Which path of a decision a proposed step goes on.
-    ProposalPath {
-        /// A condition holds.
-        Yes = "yes",
-        /// A condition does not hold (also an `else if`).
-        No = "no",
-        /// Into a loop body.
-        Each = "each",
-        /// Out of a loop.
-        Done = "done",
     }
 }
 
@@ -317,7 +293,7 @@ impl From<Author> for String {
     }
 }
 
-/// `sha256:` and the hash of the exact selected source bytes.
+/// `sha256:` and the hash of the bytes something was written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(type = "string"))]
 #[serde(into = "String")]
@@ -349,8 +325,8 @@ impl From<Signature> for String {
     }
 }
 
-/// A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
-/// drawn link's label.
+/// Authored words: a description (of a card, combined step, frame, resource, or connection), a
+/// block's name, or a connection's label.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Description {
@@ -375,19 +351,20 @@ fn signature_or_empty<S: serde::Serializer>(
     }
 }
 
-/// What a card shows: exactly one block or entrance of the board's project, by structural key.
+/// What a card shows: one block (a module, definition, or type) or one start (an app's start
+/// or an entrance) of the board's project, by key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
 pub enum CardRef {
-    /// A block (a definition or another indexed block).
+    /// A module, definition, or type.
     Block {
         /// The block's key.
         block: Key,
     },
-    /// A declared entrance.
+    /// An app's start or an entrance.
     Entrance {
-        /// The entrance's key.
+        /// The app's or entrance's key.
         entrance: Key,
     },
 }
@@ -398,7 +375,7 @@ impl CardRef {
         Self::Block { block: key }
     }
 
-    /// An entrance.
+    /// An app's start or an entrance.
     pub fn entrance(key: Key) -> Self {
         Self::Entrance { entrance: key }
     }
@@ -443,55 +420,54 @@ pub struct Card {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub view: Option<View>,
-    /// The card's description.
+    /// The card's description, signed over its code.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<Description>,
-    /// Calls expanded in place in Diagram (docs/reader.md#boards): each a path of 1 to 3 keys,
-    /// outermost first. A key is a call occurrence of the block shown at that level (a `call`/`new`
-    /// occurrence block, as `CallLink.source` / `FlowChip.source` name it) or a callback written
-    /// there (`FlowCallback.key`). Presentation only: never guarded, never a claim; a key that no
-    /// longer resolves is ignored.
+    /// The calls a block card opens in place: each a path of 1 to
+    /// [`crate::overlay::MAX_OPEN_DEPTH`] keys of project calls or callbacks, outermost first,
+    /// at most [`crate::overlay::MAX_OPEN_PATHS`]. Presentation only: never guarded.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
-    pub expanded: Vec<Vec<Key>>,
+    pub open: Vec<Vec<Key>>,
 }
 
-/// A run of consecutive sibling statements inside one block card.
+/// A block's name: words that replace its code name wherever the page draws it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub struct Group {
-    /// Unique among the page's items.
-    pub id: String,
-    /// The card it belongs to.
-    pub card: String,
-    /// Its title on the rail.
-    pub title: String,
-    /// The member statements' keys, in source order.
-    pub members: Vec<Key>,
-    /// Whether the group is collapsed.
-    pub collapsed: bool,
-    /// The group's description.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub description: Option<Description>,
-    /// Who wrote the title; absent on groups titled before titles were attributed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub author: Option<Author>,
-}
-
-/// A Flow-node label: the authored name of a block inside a card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-pub struct LabelEntry {
-    /// The labeled block's key.
+pub struct NameEntry {
+    /// The named block's key.
     pub key: Key,
     /// The text, author, and signature (of the block's source).
     #[serde(flatten)]
     #[cfg_attr(feature = "ts", ts(flatten))]
-    pub label: Description,
+    pub name: Description,
+}
+
+/// A combined step: consecutive blocks of one body, or one whole control block, under one
+/// title, wherever the page draws them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub struct Combined {
+    /// Unique among the page's items.
+    pub id: String,
+    /// Its title.
+    pub title: String,
+    /// The blocks' keys, in written order.
+    pub members: Vec<Key>,
+    /// Whether it draws as one step.
+    pub collapsed: bool,
+    /// Its description, signed over the same span as the step.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub description: Option<Description>,
+    /// Who combined the blocks.
+    pub author: Author,
+    /// The signature of the source from its first block's start to its last block's end;
+    /// `None` until a save signs it (written as `""`).
+    #[serde(serialize_with = "signature_or_empty")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    pub signature: Option<Signature>,
 }
 
 /// What a reference was when it was saved, so it can reconnect safely: one per referenced key.
@@ -500,21 +476,21 @@ pub struct LabelEntry {
 pub struct GuardEntry {
     /// The referenced key.
     pub key: Key,
-    /// The block kind, or `entrance:<kind>`.
+    /// The block's node kind, or `entrance` for an app or entrance.
     pub kind: String,
-    /// The owner's key for a block; empty for an entrance.
+    /// The owner's key for a block; empty for a module, an app, or an entrance.
     pub owner: String,
-    /// The signature of the referenced source.
+    /// A block's source signature; for an app or entrance, the signature of its `code` keys.
     pub signature: Signature,
 }
 
-/// What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
-/// or a line range of an evidence file.
+/// What a resource card or a connection cites, which Unfold can verify: a block, app, or
+/// entrance key, or a line range of an evidence file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged)]
 pub enum Anchor {
-    /// A block key (`path#…`) or an entrance key (`entrance:[…]`).
+    /// A block, app, or entrance key.
     Key {
         /// The key.
         key: Key,
@@ -538,28 +514,25 @@ impl Anchor {
     }
 }
 
-/// A link drawn between two items of a page, where the graph draws no arrow. A link with a
-/// `kind` is a **connection**: a typed line that says how its ends talk, with its evidence; one
-/// without is drawn as `other`, with an optional signed label ("calls over HTTP").
+/// A connection: a typed line between two items of a page for what the compiled graph can't
+/// show, with what it cites.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct Link {
+pub struct Connection {
     /// Unique among the page's items.
     pub id: String,
     /// The card, resource, or frame it starts at: the side that acts.
     pub from: String,
     /// The card, resource, or frame it points at; never `from`.
     pub to: String,
-    /// Its label, signed over both ends' guard signatures (informational: never outdated).
+    /// What it stands for.
+    pub kind: ConnectionKind,
+    /// Its label, signed over what it cites; an `other` connection has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub label: Option<Description>,
-    /// How its ends talk; absent for a drawn link (`other`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub kind: Option<LinkKind>,
-    /// The statement or call inside the `from` card's block it leaves from.
+    /// The key of the call inside the `from` card's block it leaves from.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub step: Option<Key>,
@@ -583,33 +556,32 @@ pub struct Link {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub cardinality: Option<Cardinality>,
-    /// The evidence for the receiving side.
+    /// What it cites besides its step.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub anchors: Vec<Anchor>,
-    /// The evidence in words.
+    /// What it means, in words.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<Description>,
-    /// Who drew it; every connection has one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub author: Option<Author>,
-    /// The signature of its step's and anchors' source; absent until a save signs it.
+    /// Who drew it.
+    pub author: Author,
+    /// The signature of its step's and anchors' source; absent until a save signs it, and for
+    /// a connection that cites nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub signature: Option<Signature>,
 }
 
-impl Link {
-    /// A drawn link from `from` to `to`, without a label or a kind.
-    pub fn new(id: &str, from: &str, to: &str) -> Self {
+impl Connection {
+    /// A `kind` connection from `from` to `to`, drawn by `author`, citing nothing.
+    pub fn new(id: &str, kind: ConnectionKind, from: &str, to: &str, author: Author) -> Self {
         Self {
             id: id.to_owned(),
             from: from.to_owned(),
             to: to.to_owned(),
+            kind,
             label: None,
-            kind: None,
             step: None,
             from_column: None,
             to_column: None,
@@ -618,14 +590,9 @@ impl Link {
             cardinality: None,
             anchors: Vec::new(),
             description: None,
-            author: None,
+            author,
             signature: None,
         }
-    }
-
-    /// Whether it is a `relates` connection.
-    pub fn relates(&self) -> bool {
-        self.kind == Some(LinkKind::Relates)
     }
 }
 
@@ -633,10 +600,12 @@ impl Link {
 /// graph.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct References<'a> {
-    /// Block and entrance keys, without duplicates: cards, group members, labels, and proposed
-    /// steps' anchors, then the claims' keys (tables' types, connections' steps and carried types,
-    /// and key anchors).
+    /// The guarded keys, without duplicates: cards, names, combined steps' members, and proposed
+    /// steps' places, then the claims' keys (tables' types, connections' steps and carried
+    /// types, and key anchors).
     pub keys: Vec<&'a str>,
+    /// The keys of the calls cards open in place, without duplicates: loaded, never guarded.
+    pub open: Vec<&'a str>,
     /// The types of tables backed by a type, whose fields a save checks marks against.
     pub tables: Vec<&'a str>,
     /// The evidence files anchors cite, without duplicates.
@@ -647,6 +616,7 @@ impl<'a> References<'a> {
     /// Adds what `other` references.
     fn append(&mut self, other: References<'a>) {
         self.keys.extend(other.keys);
+        self.open.extend(other.open);
         self.tables.extend(other.tables);
         self.files.extend(other.files);
     }
@@ -658,6 +628,7 @@ impl<'a> References<'a> {
             items.retain(|item| seen.insert(*item));
         }
         first(&mut self.keys);
+        first(&mut self.open);
         first(&mut self.tables);
         first(&mut self.files);
         self
@@ -674,7 +645,7 @@ pub struct Frame {
     pub id: String,
     /// The title; never blank.
     pub title: String,
-    /// The frame's description, signed over its member cards' guards.
+    /// The frame's description, signed over its member cards' signatures.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub description: Option<Description>,
@@ -724,8 +695,8 @@ pub struct Column {
     pub optional: bool,
 }
 
-/// A resource card: something the code talks to that isn't a function (a table, a queue, a
-/// cache, storage, an outside service, or an actor), authored and anchored.
+/// A resource card: something the code talks to that isn't code on the page (a table, a queue,
+/// a cache, storage, an outside service, or an actor), with what it cites.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Resource {
@@ -743,7 +714,7 @@ pub struct Resource {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
     pub columns: Vec<Column>,
-    /// What it is anchored to.
+    /// What it cites.
     pub anchors: Vec<Anchor>,
     /// The canvas position: finite numbers.
     pub at: [f64; 2],
@@ -759,8 +730,9 @@ pub struct Resource {
     pub signature: Option<Signature>,
 }
 
-/// A short piece of plain text on a page: free, or attached to a card, frame, resource, or link
-/// and moving with it. Notes are about the page, not the code: never signed, no health.
+/// A short piece of plain text on a page: free, or attached to a card, frame, resource, or
+/// connection and moving with it. Notes are about the page, not the code: never signed, no
+/// health.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Note {
@@ -768,10 +740,10 @@ pub struct Note {
     pub id: String,
     /// The text: 1 to 400 characters, not blank.
     pub text: String,
-    /// The canvas position; an offset from the attached item's top-left (a link's midpoint) when
-    /// attached.
+    /// The canvas position; an offset from the attached item's top-left (a connection's
+    /// midpoint) when attached.
     pub at: [f64; 2],
-    /// The card, frame, resource, or link it is attached to.
+    /// The card, frame, resource, or connection it is attached to.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub attach: Option<String>,
@@ -779,22 +751,59 @@ pub struct Note {
     pub author: Author,
 }
 
-/// A proposed step: an intended addition after a real step of a block card, clearly not a compiler
-/// fact. It has no implementation source and is never signed.
+/// Where a proposed step goes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(untagged)]
+pub enum Place {
+    /// After a step of a body.
+    After {
+        /// The step's key.
+        after: Key,
+    },
+    /// At the start of a definition's or a part's body.
+    Start {
+        /// The definition's or part's key.
+        start: Key,
+    },
+}
+
+impl Place {
+    /// The key it is placed by.
+    pub fn key(&self) -> &Key {
+        match self {
+            Self::After { after: key } | Self::Start { start: key } => key,
+        }
+    }
+
+    /// The same place by `key`.
+    pub(crate) fn with_key(&self, key: Key) -> Self {
+        match self {
+            Self::After { .. } => Self::After { after: key },
+            Self::Start { .. } => Self::Start { start: key },
+        }
+    }
+
+    /// The overlay rules' name for it.
+    pub(crate) fn spot(&self) -> ProposalSpot {
+        match self {
+            Self::After { after } => ProposalSpot::After(after.clone()),
+            Self::Start { start } => ProposalSpot::Start(start.clone()),
+        }
+    }
+}
+
+/// A proposed step: an intended change, clearly not a compiler fact. It has no source and is
+/// never signed; its place is guarded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
 pub struct Proposal {
     /// Unique among the page's items.
     pub id: String,
-    /// The block card it belongs to.
-    pub card: String,
-    /// The real step it goes after: a key inside the card's block. Guarded.
-    pub after: Key,
-    /// For a step with several outgoing paths (a condition or a loop): which one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub path: Option<ProposalPath>,
+    /// Where it goes.
+    #[serde(flatten)]
+    #[cfg_attr(feature = "ts", ts(flatten))]
+    pub place: Place,
     /// What it would do, in words: one line, never blank, at most 120 characters
     /// ([`MAX_PROPOSAL_TITLE`]).
     pub title: String,
@@ -819,14 +828,14 @@ pub struct Page {
     pub default_view: View,
     /// The cards.
     pub cards: Vec<Card>,
-    /// The groups.
-    pub groups: Vec<Group>,
-    /// Flow-node labels, one per key.
-    pub labels: Vec<LabelEntry>,
+    /// Names, one per key.
+    pub names: Vec<NameEntry>,
+    /// Combined steps.
+    pub combined: Vec<Combined>,
     /// Guards, one per referenced key.
     pub guards: Vec<GuardEntry>,
-    /// Drawn links and connections.
-    pub links: Vec<Link>,
+    /// Connections.
+    pub links: Vec<Connection>,
     /// Frames.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "ts", ts(optional = nullable))]
@@ -846,15 +855,15 @@ pub struct Page {
 }
 
 impl Page {
-    /// An empty page, showing Diagram by default.
+    /// An empty page, with compact cards by default.
     pub fn new(id: &str, title: &str) -> Self {
         Self {
             id: id.to_owned(),
             title: title.to_owned(),
-            default_view: View::Diagram,
+            default_view: View::Compact,
             cards: Vec::new(),
-            groups: Vec::new(),
-            labels: Vec::new(),
+            names: Vec::new(),
+            combined: Vec::new(),
             guards: Vec::new(),
             links: Vec::new(),
             frames: Vec::new(),
@@ -869,14 +878,14 @@ impl Page {
         self.cards.iter().find(|card| card.id == id)
     }
 
-    /// The group with `id`.
-    pub fn group(&self, id: &str) -> Option<&Group> {
-        self.groups.iter().find(|group| group.id == id)
+    /// The combined step with `id`.
+    pub fn combined_step(&self, id: &str) -> Option<&Combined> {
+        self.combined.iter().find(|combined| combined.id == id)
     }
 
-    /// The link with `id`.
-    pub fn link(&self, id: &str) -> Option<&Link> {
-        self.links.iter().find(|link| link.id == id)
+    /// The connection with `id`.
+    pub fn connection(&self, id: &str) -> Option<&Connection> {
+        self.links.iter().find(|connection| connection.id == id)
     }
 
     /// The frame with `id`.
@@ -899,9 +908,9 @@ impl Page {
         self.proposals.iter().find(|proposal| proposal.id == id)
     }
 
-    /// The label of block `key`.
-    pub fn label_entry(&self, key: &str) -> Option<&LabelEntry> {
-        self.labels.iter().find(|entry| entry.key.as_str() == key)
+    /// The name of block `key`.
+    pub fn name_entry(&self, key: &str) -> Option<&NameEntry> {
+        self.names.iter().find(|entry| entry.key.as_str() == key)
     }
 
     /// The guard of `key`.
@@ -909,26 +918,29 @@ impl Page {
         self.guards.iter().find(|entry| entry.key.as_str() == key)
     }
 
-    /// Everything the page references, without duplicates: the keys of cards, group members,
-    /// labels, and proposed steps' anchors, in that order, then of the claims (tables' types,
-    /// connections' steps and carried types, and key anchors); the types of tables backed by one;
-    /// and the evidence files anchors cite.
+    /// Everything the page references, without duplicates: the guarded keys of cards, names,
+    /// combined steps' members, and proposed steps' places, in that order, then of the claims
+    /// (tables' types, connections' steps and carried types, and key anchors); the keys of the
+    /// calls cards open in place; the types of tables backed by one; and the evidence files
+    /// anchors cite.
     pub fn references(&self) -> References<'_> {
         let mut references = References::default();
         references
             .keys
             .extend(self.cards.iter().map(|card| card.reference.key().as_str()));
+        references
+            .keys
+            .extend(self.names.iter().map(|entry| entry.key.as_str()));
         references.keys.extend(
-            self.groups
+            self.combined
                 .iter()
-                .flat_map(|group| group.members.iter().map(Key::as_str)),
+                .flat_map(|combined| combined.members.iter().map(Key::as_str)),
         );
-        references
-            .keys
-            .extend(self.labels.iter().map(|entry| entry.key.as_str()));
-        references
-            .keys
-            .extend(self.proposals.iter().map(|proposal| proposal.after.as_str()));
+        references.keys.extend(
+            self.proposals
+                .iter()
+                .map(|proposal| proposal.place.key().as_str()),
+        );
         for table in self
             .resources
             .iter()
@@ -937,21 +949,26 @@ impl Page {
             references.keys.push(table.as_str());
             references.tables.push(table.as_str());
         }
-        for link in &self.links {
-            references.keys.extend(link.step.iter().map(Key::as_str));
-            references.keys.extend(link.carries.iter().map(Key::as_str));
+        for connection in &self.links {
+            references.keys.extend(connection.step.iter().map(Key::as_str));
+            references.keys.extend(connection.carries.iter().map(Key::as_str));
         }
         let anchors = self
             .resources
             .iter()
             .flat_map(|resource| &resource.anchors)
-            .chain(self.links.iter().flat_map(|link| &link.anchors));
+            .chain(self.links.iter().flat_map(|connection| &connection.anchors));
         for anchor in anchors {
             match anchor {
                 Anchor::Key { key } => references.keys.push(key.as_str()),
                 Anchor::File { file, .. } => references.files.push(file),
             }
         }
+        references.open.extend(
+            self.cards
+                .iter()
+                .flat_map(|card| card.open.iter().flatten().map(Key::as_str)),
+        );
         references.dedup()
     }
 }
@@ -1007,27 +1024,6 @@ impl Board {
     }
 }
 
-/// Whether a key is position-based: it contains an ordinal step (`if[0]`, `function:f[1]`),
-/// which shifts when code is inserted before it.
-pub(crate) fn is_ordinal(key: &str) -> bool {
-    let bytes = key.as_bytes();
-    let mut at = 0;
-    while let Some(open) = bytes[at..].iter().position(|&byte| byte == b'[') {
-        let start = at + open + 1;
-        let digits = bytes[start..]
-            .iter()
-            .take_while(|byte| byte.is_ascii_digit())
-            .count();
-        let close = start + digits;
-        if digits > 0 && bytes.get(close) == Some(&b']') && matches!(bytes.get(close + 1), None | Some(b'/'))
-        {
-            return true;
-        }
-        at = start;
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1044,16 +1040,6 @@ mod tests {
         assert_eq!(Signature::parse(&signature.to_string()), Some(signature));
         assert!(Signature::parse("sha256:ABC").is_none());
         assert!(Signature::parse("md5:00").is_none());
-    }
-
-    #[test]
-    fn ordinal_keys() {
-        assert!(is_ordinal("a.ts#function:f/if[0]"));
-        assert!(is_ordinal("a.ts#function:f[1]/return[0]"));
-        assert!(is_ordinal("a.ts#function:f/if[12]/call[3]"));
-        assert!(!is_ordinal("a.ts#function:f"));
-        assert!(!is_ordinal("a.ts#variable:a%5B0%5D"));
-        assert!(!is_ordinal("a.ts#function:f/variable:x[y]"));
     }
 
     #[test]
@@ -1078,5 +1064,15 @@ mod tests {
         ] {
             assert!(!is_folder_name(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_seven_connection_kinds_and_two_views() {
+        assert_eq!(
+            ConnectionKind::WORDS,
+            ["http", "queue", "reads", "writes", "calls", "relates", "other"]
+        );
+        assert_eq!(View::WORDS, ["compact", "expanded"]);
+        assert_eq!(Page::new("p", "P").default_view, View::Compact);
     }
 }

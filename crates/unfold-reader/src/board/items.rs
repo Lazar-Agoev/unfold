@@ -1,33 +1,35 @@
-//! The items of one page and the references between them: cards, groups, frames, resource
-//! cards, links, notes, and proposed steps share one id space per page, and the rules that need
-//! nothing but the page (no graph) are checked here, on every parse and before every write.
+//! The items of one page and the references between them: cards, combined steps, frames,
+//! resource cards, connections, notes, and proposed steps share one id space per page, and the
+//! rules that need nothing but the page (no graph) are checked here, on every parse and before
+//! every write.
 //!
-//! - **Groups** belong to a card of the page.
+//! - **Combined steps** never share a block: a key is a member of at most one.
 //! - **Frames** hold one or more cards, resources, notes, or frames of the page; an item is in at
 //!   most one frame, frames never hold each other in a cycle, and they nest at most
 //!   [`MAX_FRAME_DEPTH`] deep.
-//! - **Links** join two different cards, resources, or frames. A `relates` connection joins two
-//!   tables (by columns a table that lists its own columns has); a step leaves from a block card.
-//! - **Notes** attach to a card, frame, resource, or link.
-//! - **Proposed steps** belong to a block card of the page.
+//! - **Connections** join two different cards, resources, or frames. A `relates` connection
+//!   joins two tables (by columns a table that lists its own columns has); a step leaves from a
+//!   block card.
+//! - **Notes** attach to a card, frame, resource, or connection.
 //!
 //! Removing an item ([`remove_items`]) removes what would be left dangling, so a page stays
 //! readable.
 
 use rustc_hash::{FxHashMap, FxHashSet};
+use unfold_core::Key;
 
 use super::BoardError;
-use super::model::{CardRef, MAX_FRAME_DEPTH, Page, ResourceKind};
+use super::model::{CardRef, ConnectionKind, MAX_FRAME_DEPTH, Page, ResourceKind};
 use super::parse::Path;
 
 /// What an id names on a page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Card,
-    Group,
+    Combined,
     Frame,
     Resource,
-    Link,
+    Connection,
     Note,
     Proposal,
 }
@@ -37,10 +39,10 @@ impl Kind {
     fn word(self) -> &'static str {
         match self {
             Self::Card => "card",
-            Self::Group => "group",
+            Self::Combined => "combined step",
             Self::Frame => "frame",
             Self::Resource => "resource",
-            Self::Link => "link",
+            Self::Connection => "connection",
             Self::Note => "note",
             Self::Proposal => "proposed step",
         }
@@ -50,10 +52,10 @@ impl Kind {
     fn array(self) -> &'static str {
         match self {
             Self::Card => "cards",
-            Self::Group => "groups",
+            Self::Combined => "combined",
             Self::Frame => "frames",
             Self::Resource => "resources",
-            Self::Link => "links",
+            Self::Connection => "links",
             Self::Note => "notes",
             Self::Proposal => "proposals",
         }
@@ -68,8 +70,8 @@ fn kinds<'p>(page: &'p Page, path: &Path) -> Result<FxHashMap<&'p str, Kind>, Bo
             page.cards.iter().map(|item| item.id.as_str()).collect(),
         ),
         (
-            Kind::Group,
-            page.groups.iter().map(|item| item.id.as_str()).collect(),
+            Kind::Combined,
+            page.combined.iter().map(|item| item.id.as_str()).collect(),
         ),
         (
             Kind::Frame,
@@ -80,7 +82,7 @@ fn kinds<'p>(page: &'p Page, path: &Path) -> Result<FxHashMap<&'p str, Kind>, Bo
             page.resources.iter().map(|item| item.id.as_str()).collect(),
         ),
         (
-            Kind::Link,
+            Kind::Connection,
             page.links.iter().map(|item| item.id.as_str()).collect(),
         ),
         (
@@ -127,42 +129,50 @@ fn expect(
 /// [module documentation](self).
 pub(super) fn check_items(page: &Page, path: &Path) -> Result<(), BoardError> {
     let kinds = kinds(page, path)?;
-    for (index, group) in page.groups.iter().enumerate() {
-        if kinds.get(group.card.as_str()) != Some(&Kind::Card) {
-            return Err(path
-                .join("groups")
-                .join(index)
-                .join("card")
-                .fail(format!("refers to an unknown card `{}`", group.card)));
+    let mut combined: FxHashMap<&Key, &str> = FxHashMap::default();
+    for (index, step) in page.combined.iter().enumerate() {
+        for (position, member) in step.members.iter().enumerate() {
+            if let Some(other) = combined.insert(member, &step.id) {
+                return Err(path
+                    .join("combined")
+                    .join(index)
+                    .join("members")
+                    .join(position)
+                    .fail(format!(
+                        "`{member}` is already in combined step `{other}`; combined steps never overlap"
+                    )));
+            }
         }
     }
     check_frames(page, &kinds, path)?;
-    for (index, link) in page.links.iter().enumerate() {
-        let link_path = path.join("links").join(index);
-        for (end, id) in [("from", &link.from), ("to", &link.to)] {
-            let what = "a link joins cards, resources, and frames";
+    for (index, connection) in page.links.iter().enumerate() {
+        let connection_path = path.join("links").join(index);
+        for (end, id) in [("from", &connection.from), ("to", &connection.to)] {
+            let what = "a connection joins cards, resources, and frames";
             expect(
                 &kinds,
                 id,
                 &[Kind::Card, Kind::Resource, Kind::Frame],
                 what,
-                &link_path.join(end),
+                &connection_path.join(end),
             )?;
         }
-        if link.from == link.to {
-            return Err(link_path.join("to").fail("must be another item than `from`"));
+        if connection.from == connection.to {
+            return Err(connection_path
+                .join("to")
+                .fail("must be another item than `from`"));
         }
-        if link.relates() {
+        if connection.kind == ConnectionKind::Relates {
             let ends = [
-                ("from", &link.from, "fromColumn", &link.from_column),
-                ("to", &link.to, "toColumn", &link.to_column),
+                ("from", &connection.from, "fromColumn", &connection.from_column),
+                ("to", &connection.to, "toColumn", &connection.to_column),
             ];
             for (end, id, column_field, column) in ends {
                 let Some(table) = page
                     .resource(id)
                     .filter(|resource| resource.kind == ResourceKind::Table)
                 else {
-                    return Err(link_path
+                    return Err(connection_path
                         .join(end)
                         .fail("must be a table: a `relates` connection joins two tables"));
                 };
@@ -170,19 +180,19 @@ pub(super) fn check_items(page: &Page, path: &Path) -> Result<(), BoardError> {
                     && table.type_key.is_none()
                     && !table.columns.iter().any(|known| &known.name == column)
                 {
-                    return Err(link_path
+                    return Err(connection_path
                         .join(column_field)
                         .fail(format!("names no column of table `{id}`")));
                 }
             }
         }
         let from_block = page
-            .card(&link.from)
+            .card(&connection.from)
             .is_some_and(|card| matches!(card.reference, CardRef::Block { .. }));
-        if link.step.is_some() && !from_block {
-            return Err(link_path.join("step").fail(
-                "a step is a statement or call inside the `from` card's block: `from` must be a block card",
-            ));
+        if connection.step.is_some() && !from_block {
+            return Err(connection_path
+                .join("step")
+                .fail("a step is a call inside the `from` card's block: `from` must be a block card"));
         }
     }
     for (index, note) in page.notes.iter().enumerate() {
@@ -190,21 +200,10 @@ pub(super) fn check_items(page: &Page, path: &Path) -> Result<(), BoardError> {
             expect(
                 &kinds,
                 target,
-                &[Kind::Card, Kind::Frame, Kind::Resource, Kind::Link],
-                "a note attaches to a card, frame, resource, or link",
+                &[Kind::Card, Kind::Frame, Kind::Resource, Kind::Connection],
+                "a note attaches to a card, frame, resource, or connection",
                 &path.join("notes").join(index).join("attach"),
             )?;
-        }
-    }
-    for (index, proposal) in page.proposals.iter().enumerate() {
-        let card_path = path.join("proposals").join(index).join("card");
-        let what = "a proposed step goes after a step of a block card";
-        expect(&kinds, &proposal.card, &[Kind::Card], what, &card_path)?;
-        if page
-            .card(&proposal.card)
-            .is_some_and(|card| card.reference.block_key().is_none())
-        {
-            return Err(card_path.fail(format!("`{}` is an entrance card; {what}", proposal.card)));
         }
     }
     Ok(())
@@ -254,12 +253,12 @@ fn check_frames(page: &Page, kinds: &FxHashMap<&str, Kind>, path: &Path) -> Resu
     Ok(())
 }
 
-/// The most items a position walks through: a link's end frames, and their nested frames.
+/// The most items a position walks through: a connection's end frames, and their nested frames.
 const POSITION_DEPTH: usize = MAX_FRAME_DEPTH + 2;
 
 /// Where item `id` is on the canvas, as far as the file says: a card's or resource's position,
-/// the top-left of a frame's cards, resources, and nested frames, or the midpoint of a link's
-/// ends. `None` for anything else (a frame of notes only).
+/// the top-left of a frame's cards, resources, and nested frames, or the midpoint of a
+/// connection's ends. `None` for anything else (a frame of notes only).
 fn position(page: &Page, id: &str, depth: usize) -> Option<[f64; 2]> {
     if depth > POSITION_DEPTH {
         return None;
@@ -277,39 +276,28 @@ fn position(page: &Page, id: &str, depth: usize) -> Option<[f64; 2]> {
             .filter_map(|member| position(page, member, depth + 1))
             .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1])]);
     }
-    let link = page.link(id)?;
+    let connection = page.connection(id)?;
     let (from, to) = (
-        position(page, &link.from, depth + 1)?,
-        position(page, &link.to, depth + 1)?,
+        position(page, &connection.from, depth + 1)?,
+        position(page, &connection.to, depth + 1)?,
     );
     Some([(from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0])
 }
 
-/// Removes items `ids` from `page` with everything that would dangle: a removed card's groups and
-/// proposed steps, the links that end at a removed item, removed items from the frames that hold
-/// them (a frame left empty is removed too), and notes attached to a removed item, which stay where
-/// they were, unattached. Removing a frame keeps its members.
+/// Removes items `ids` from `page` with everything that would dangle: the connections that end
+/// at a removed item, removed items from the frames that hold them (a frame left empty is
+/// removed too), and notes attached to a removed item, which stay where they were, unattached.
+/// Removing a frame keeps its members. Names, combined steps, and proposed steps apply
+/// page-wide by key, so removing a card keeps them.
 pub(crate) fn remove_items(page: &mut Page, ids: &[&str]) {
     let mut removed: FxHashSet<String> = ids.iter().map(|id| (*id).to_owned()).collect();
     loop {
         let before = removed.len();
         let dangling: Vec<String> = page
-            .groups
+            .links
             .iter()
-            .filter(|group| removed.contains(&group.card))
-            .map(|group| group.id.clone())
-            .chain(
-                page.proposals
-                    .iter()
-                    .filter(|proposal| removed.contains(&proposal.card))
-                    .map(|proposal| proposal.id.clone()),
-            )
-            .chain(
-                page.links
-                    .iter()
-                    .filter(|link| removed.contains(&link.from) || removed.contains(&link.to))
-                    .map(|link| link.id.clone()),
-            )
+            .filter(|connection| removed.contains(&connection.from) || removed.contains(&connection.to))
+            .map(|connection| connection.id.clone())
             .chain(
                 page.frames
                     .iter()
@@ -340,13 +328,13 @@ pub(crate) fn remove_items(page: &mut Page, ids: &[&str]) {
     }
     let kept = |id: &String| !removed.contains(id);
     page.cards.retain(|card| kept(&card.id));
-    page.groups.retain(|group| kept(&group.id));
+    page.combined.retain(|combined| kept(&combined.id));
     page.frames.retain(|frame| kept(&frame.id));
     for frame in &mut page.frames {
         frame.members.retain(kept);
     }
     page.resources.retain(|resource| kept(&resource.id));
-    page.links.retain(|link| kept(&link.id));
+    page.links.retain(|connection| kept(&connection.id));
     page.notes.retain(|note| kept(&note.id));
     page.proposals.retain(|proposal| kept(&proposal.id));
 }

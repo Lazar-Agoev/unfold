@@ -1,184 +1,227 @@
-//! The definition catalog (docs/reader.md#derived-views): every function-like, class, or type declaration
-//! (`interface`, `type_alias`, `enum`) block that has a name or is the target of a resolved edge
-//! or entrance, with its qualified name and display label.
+//! The catalog: the definitions that can be cards, with their labels and qualified names, and
+//! the apps and entrances of `unfold.toml` found by key.
 //!
-//! - The **label** is the block's name. An unnamed callable passed as an argument is labeled
-//!   `callback to <callee>`, after the written callee of the call or construction it is passed
-//!   to; any other unnamed callable is an `anonymous function`, and an unnamed class `class`.
-//! - The **qualified name** prepends the names of enclosing classes and callables, and of a
-//!   variable whose initializer contains the definition (`OrderService.place`,
-//!   `handlers.onCreate`), joined with `.`. Type declarations are in the catalog but name
-//!   nothing written inside them (a callback in an enum member's initializer).
-//!
-//! An entrance's **title** is its label, or its method (or kind) and trigger.
+//! - **Definitions** are every module, class, function (inline functions included), and type.
+//!   [`definitions`] lists one file's for the store, which indexes them for search; it needs only
+//!   that file, so a commit recomputes the files it changes.
+//! - A definition's **label** is its name. A module's is its path. An inline function written in
+//!   a call's arguments is a `callback to <callee>`, after that call's written callee; any other
+//!   inline function is an `anonymous function`.
+//! - The **qualified name** puts the names of the enclosing named definitions before the label,
+//!   joined with `.` (`OrderService.place`). A module's is its path.
+//! - An app's start and its entrances are [`Start`]s, found by key with [`start`]. A start's
+//!   title is its name.
 
-use unfold_core::vocab::{BlockKind, EdgeKind, Role};
-use unfold_core::{Block, Entrance, FileGraph, Graph};
+use unfold_core::vocab::NodeKind;
+use unfold_core::{App, Entrance, EntranceTarget, FileGraph, Key, Node, RepoPath};
 use unfold_store::Definition;
 
-use crate::index::{BlockId, GraphIndex, to_u32};
+use crate::tree::to_u32;
 
-/// Whether blocks of `kind` can be catalog definitions: function-like blocks, classes, and type
-/// declarations.
-fn is_definition_kind(kind: BlockKind) -> bool {
-    kind.is_function_like() || kind.is_type_declaration()
-}
-
-/// Whether blocks of `kind` name the definitions written inside them: function-like blocks and
-/// classes.
-fn qualifies(kind: BlockKind) -> bool {
-    kind.is_function_like() || kind == BlockKind::Class
-}
-
-/// One file's blocks and edges, for name lookups.
-struct FileView<'a> {
-    file: &'a FileGraph,
-}
-
-impl FileView<'_> {
-    fn block(&self, local: u32) -> &Block {
-        &self.file.blocks[local as usize]
+/// Node `id`'s label: a definition's name, a module's path, `callback to <callee>` for an
+/// inline function written in a call's arguments, `anonymous function` for any other inline
+/// function. Any other node is labeled by its name (a call's callee) or its form.
+pub fn label(nodes: &[Node], path: &RepoPath, id: u32) -> String {
+    let node = &nodes[id as usize];
+    if let Some(name) = &node.name {
+        return name.to_string();
     }
-
-    fn parent(&self, local: u32) -> Option<u32> {
-        self.block(local).parent.filter(|&parent| parent < local)
-    }
-
-    /// The written callee of a call or construction: the text of its first non-reference edge.
-    fn callee_text(&self, local: u32) -> Option<&str> {
-        let edges = &self.file.edges;
-        let start = edges.partition_point(|edge| edge.source < local);
-        edges[start..]
-            .iter()
-            .take_while(|edge| edge.source == local)
-            .find(|edge| edge.kind != EdgeKind::References)
-            .map(|edge| &*edge.text)
-    }
-
-    /// The block's display label.
-    fn label(&self, local: u32) -> String {
-        let block = self.block(local);
-        if let Some(name) = &block.name {
-            return name.to_string();
-        }
-        match block.kind {
-            BlockKind::File => self.file.file.path.as_str().to_owned(),
-            kind if kind.is_function_like() => self.callable_label(local),
-            kind => kind.as_str().to_owned(),
-        }
-    }
-
-    /// `callback to <callee>` when the unnamed callable is (inside) an argument of a call or
-    /// construction before any enclosing definition or file; otherwise `anonymous function`.
-    fn callable_label(&self, local: u32) -> String {
-        let mut child = local;
-        while let Some(parent) = self.parent(child) {
-            let parent_kind = self.block(parent).kind;
-            if qualifies(parent_kind) || parent_kind == BlockKind::File {
-                break;
+    match node.kind() {
+        NodeKind::Module => path.as_str().to_owned(),
+        NodeKind::Function => {
+            let call = node
+                .parent
+                .map(|parent| &nodes[parent as usize])
+                .filter(|parent| parent.kind() == NodeKind::Call)
+                // A function called where it is written is the call's callee, not its argument.
+                .filter(|call| !call.head.is_some_and(|head| head.contains(node.range)));
+            match call.and_then(|call| call.name.as_deref()) {
+                Some(callee) => format!("callback to {callee}"),
+                None => "anonymous function".to_owned(),
             }
-            if matches!(parent_kind, BlockKind::Call | BlockKind::New)
-                && self.block(child).role == Some(Role::Argument)
-            {
-                let callee = self.callee_text(parent).filter(|text| !text.is_empty());
-                return format!("callback to {}", callee.unwrap_or("call"));
-            }
-            child = parent;
         }
-        "anonymous function".to_owned()
-    }
-
-    /// The qualified name: enclosing class, callable, and initialized-variable names, then the
-    /// label.
-    fn qualified_name(&self, local: u32) -> String {
-        let mut names: Vec<&str> = Vec::new();
-        let mut child = local;
-        while let Some(parent) = self.parent(child) {
-            let block = self.block(parent);
-            let named = qualifies(block.kind)
-                || (block.kind == BlockKind::Variable && self.block(child).role == Some(Role::Initializer));
-            if let Some(name) = block.name.as_deref().filter(|_| named) {
-                names.push(name);
-            }
-            child = parent;
-        }
-        let label = self.label(local);
-        let mut qualified =
-            String::with_capacity(names.iter().map(|name| name.len() + 1).sum::<usize>() + label.len());
-        for name in names.iter().rev() {
-            qualified.push_str(name);
-            qualified.push('.');
-        }
-        qualified.push_str(&label);
-        qualified
+        _ => node.form.as_str().to_owned(),
     }
 }
 
-/// The qualified name of block `local` in `file`.
-pub fn qualified_name(file: &FileGraph, local: u32) -> Option<String> {
-    ((local as usize) < file.blocks.len()).then(|| FileView { file }.qualified_name(local))
-}
-
-/// The display label of block `local` in `file`.
-pub fn label(file: &FileGraph, local: u32) -> Option<String> {
-    ((local as usize) < file.blocks.len()).then(|| FileView { file }.label(local))
-}
-
-/// An entrance's title: its label, or its method (or kind) and trigger.
-pub fn entrance_title(entrance: &Entrance) -> String {
-    if let Some(label) = entrance.label.as_deref().filter(|label| !label.is_empty()) {
-        return label.to_owned();
-    }
-    let head = entrance
-        .method
-        .map_or(entrance.kind.as_str(), |method| method.as_str());
-    format!(
-        "{head} {}",
-        entrance.trigger.as_deref().unwrap_or("unknown trigger")
-    )
-}
-
-/// The catalog of every file, aligned with `graph.files`. `index` must be built from `graph`.
-pub(crate) fn catalog(graph: &Graph, index: &GraphIndex) -> Vec<Vec<Definition>> {
-    let mut targeted = vec![false; index.len()];
-    let mut mark = |id: BlockId| {
-        if let Some(slot) = targeted.get_mut(id as usize) {
-            *slot = true;
+/// Node `id`'s qualified name: the names of the named definitions it is written in, outermost
+/// first, then its label, joined with `.`. A module's is its path.
+pub fn qualified_name(nodes: &[Node], path: &RepoPath, id: u32) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    let mut parent = nodes[id as usize].parent;
+    while let Some(ancestor) = parent {
+        let node = &nodes[ancestor as usize];
+        if node.kind().is_definition()
+            && let Some(name) = &node.name
+        {
+            names.push(name);
         }
-    };
-    for edge in index.edges() {
-        if let Some(target) = edge.resolved_target() {
-            mark(target);
-        }
+        parent = node.parent;
     }
-    for entrance in index.entrances() {
-        entrance.resolved.iter().copied().for_each(&mut mark);
+    let mut qualified = String::new();
+    for name in names.iter().rev() {
+        qualified.push_str(name);
+        qualified.push('.');
     }
-    graph
-        .files
+    qualified.push_str(&label(nodes, path, id));
+    qualified
+}
+
+/// The catalog entries of one file: every definition, in preorder.
+pub fn definitions(file: &FileGraph) -> Vec<Definition> {
+    let path = &file.file.path;
+    file.nodes
         .iter()
         .enumerate()
-        .map(|(file_index, file)| {
-            let base = index.file_start(file_index);
-            let view = FileView { file };
-            file.blocks
-                .iter()
-                .enumerate()
-                .filter(|(local, block)| {
-                    is_definition_kind(block.kind)
-                        && (block.name.is_some() || targeted[(base + to_u32(*local)) as usize])
-                })
-                .map(|(local, block)| {
-                    let local = to_u32(local);
-                    Definition {
-                        key: block.key.clone(),
-                        local_id: local,
-                        kind: block.kind,
-                        qualified_name: view.qualified_name(local).into(),
-                        label: view.label(local).into(),
-                    }
-                })
-                .collect()
+        .filter(|(_, node)| node.kind().is_definition())
+        .map(|(id, node)| {
+            let id = to_u32(id);
+            Definition {
+                key: node.key.clone(),
+                node: id,
+                kind: node.kind(),
+                qualified_name: qualified_name(&file.nodes, path, id).into(),
+                label: label(&file.nodes, path, id).into(),
+            }
         })
         .collect()
+}
+
+/// An app's start (`entrance:<app>`) or one of its entrances (`entrance:<app>/<entrance>`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start<'a> {
+    /// The app itself: what its `run` command starts.
+    App(&'a App),
+    /// One entrance of an app.
+    Entrance {
+        /// The app it belongs to.
+        app: &'a App,
+        /// The entrance.
+        entrance: &'a Entrance,
+    },
+}
+
+impl<'a> Start<'a> {
+    /// The start's key.
+    pub fn key(&self) -> &'a Key {
+        match self {
+            Self::App(app) => &app.key,
+            Self::Entrance { entrance, .. } => &entrance.key,
+        }
+    }
+
+    /// Its name, which is also its title.
+    pub fn name(&self) -> &'a str {
+        match self {
+            Self::App(app) => &app.name,
+            Self::Entrance { entrance, .. } => &entrance.name,
+        }
+    }
+
+    /// What starts it, as written: an app's `run` command, an entrance's `on`.
+    pub fn on(&self) -> Option<&'a str> {
+        match self {
+            Self::App(app) => app.run.as_deref(),
+            Self::Entrance { entrance, .. } => entrance.on.as_deref(),
+        }
+    }
+
+    /// Its one sentence, if written.
+    pub fn about(&self) -> Option<&'a str> {
+        match self {
+            Self::App(app) => app.about.as_deref(),
+            Self::Entrance { entrance, .. } => entrance.about.as_deref(),
+        }
+    }
+
+    /// Its `code` keys in order, each with its state; empty for an app without `code`.
+    pub fn targets(&self) -> &'a [EntranceTarget] {
+        match self {
+            Self::App(app) => app.code.as_slice(),
+            Self::Entrance { entrance, .. } => &entrance.code,
+        }
+    }
+
+    /// The app it is, or belongs to.
+    pub fn app(&self) -> &'a App {
+        match self {
+            Self::App(app) | Self::Entrance { app, .. } => app,
+        }
+    }
+}
+
+/// Every start of `apps`: each app, followed by its entrances, in file order.
+pub fn starts(apps: &[App]) -> impl Iterator<Item = Start<'_>> {
+    apps.iter().flat_map(|app| {
+        std::iter::once(Start::App(app)).chain(
+            app.entrances
+                .iter()
+                .map(move |entrance| Start::Entrance { app, entrance }),
+        )
+    })
+}
+
+/// The app or entrance of `apps` with `key`.
+pub fn start<'a>(apps: &'a [App], key: &str) -> Option<Start<'a>> {
+    starts(apps).find(|start| start.key().as_str() == key)
+}
+
+#[cfg(test)]
+mod tests {
+    use unfold_core::testkit::sample;
+
+    use super::*;
+
+    #[test]
+    fn labels_and_qualified_names_follow_the_tree() {
+        let graph = sample::shop().build();
+        let orders = graph.file("src/orders.ts").unwrap();
+        let entries = definitions(orders);
+        let labels: Vec<(&str, &str, &str)> = entries
+            .iter()
+            .map(|entry| (entry.key.as_str(), &*entry.label, &*entry.qualified_name))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("src/orders.ts#", "src/orders.ts", "src/orders.ts"),
+                ("src/orders.ts#Order", "Order", "Order"),
+                (
+                    "src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]",
+                    "callback to ordersRouter.post",
+                    "callback to ordersRouter.post"
+                ),
+                ("src/orders.ts#loadOrder", "loadOrder", "loadOrder"),
+            ]
+        );
+        assert!(entries.iter().all(|entry| entry.kind.is_definition()));
+
+        let payments = graph.file("shop/payments.py").unwrap();
+        let lambda = payments
+            .local_id("shop/payments.py#retry/return[0]/lambda[0]")
+            .unwrap();
+        assert_eq!(
+            label(&payments.nodes, &payments.file.path, lambda),
+            "anonymous function"
+        );
+        assert_eq!(
+            qualified_name(&payments.nodes, &payments.file.path, lambda),
+            "retry.anonymous function"
+        );
+    }
+
+    #[test]
+    fn starts_are_found_by_key() {
+        let graph = sample::shop().build();
+        let app = start(&graph.apps, "entrance:shop").unwrap();
+        assert_eq!(app.name(), "Shop");
+        assert_eq!(app.on(), Some("python -m shop.service"));
+        assert_eq!(app.targets().len(), 1);
+        let entrance = start(&graph.apps, "entrance:shop/charge-a-card").unwrap();
+        assert_eq!(entrance.name(), "Charge a card");
+        assert_eq!(entrance.app().key.as_str(), "entrance:shop");
+        assert_eq!(entrance.targets().len(), 2);
+        assert!(start(&graph.apps, "entrance:shop/absent").is_none());
+        assert_eq!(starts(&graph.apps).count(), 1 + graph.apps[0].entrances.len());
+    }
 }

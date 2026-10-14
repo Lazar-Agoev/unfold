@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://unfold.dev/schemas/unfold-board-1.schema.json",
   "title": "unfold-board version 1",
-  "description": "An Unfold board: titled pages of cards that reference blocks and entrances of the board's project by structural key, their positions, views, and calls expanded in place, groups of consecutive sibling statements, attributed descriptions and Flow labels, guards that keep references from reattaching to different code, links drawn between items (connections, when they have a kind), frames around items, resource cards, notes, and proposed steps. Unknown fields are rejected.",
+  "description": "An Unfold board: titled pages of cards that show blocks, apps, and entrances of the board's project by key, with their positions, views, descriptions, and the calls they open in place; the page's overlay of names, combined steps, and proposed steps, which apply page-wide by key; guards that keep references from reattaching to different code; connections between items; frames around items; resource cards; and notes. Unknown fields are rejected.",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "pages", "title", "version"],
@@ -23,18 +23,13 @@
     }
   },
   "$defs": {
-    "text": {
-      "type": "string",
-      "pattern": "\\S"
-    },
+    "text": { "type": "string", "pattern": "\\S" },
     "id": {
       "type": "string",
-      "description": "A page or item id. Card, group, frame, resource, link, note, and proposal ids are unique together within their page.",
+      "description": "A page or item id. Card, combined step, frame, resource, connection, note, and proposal ids are unique together within their page.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
     },
-    "view": {
-      "enum": ["code", "flow", "diagram"]
-    },
+    "view": { "enum": ["compact", "expanded"] },
     "position": {
       "type": "array",
       "description": "A canvas position.",
@@ -42,19 +37,16 @@
       "minItems": 2,
       "maxItems": 2
     },
-    "signature": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
+    "signature": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "blockKey": {
       "type": "string",
       "pattern": "^(?!entrance:).*#",
-      "description": "A structural block key: the file path, `#`, then the steps."
+      "description": "A block key: the file path, `#`, then the names and steps."
     },
     "entranceKey": {
       "type": "string",
-      "pattern": "^entrance:",
-      "description": "A structural entrance key."
+      "pattern": "^entrance:[^/#\\s]+(?:/[^/#\\s]+)?$",
+      "description": "An app's key (`entrance:<app>`) or an entrance's (`entrance:<app>/<entrance>`)."
     },
     "author": {
       "type": "string",
@@ -62,7 +54,7 @@
       "description": "`person:<username>` or `agent:<name>`."
     },
     "textSignature": {
-      "description": "`sha256:` and the hash of the exact selected source bytes; empty until a save signs it from verified source.",
+      "description": "`sha256:` and the hash of the source it was written for; empty until a save signs it from verified source.",
       "anyOf": [{ "$ref": "#/$defs/signature" }, { "const": "" }]
     },
     "description": {
@@ -78,23 +70,21 @@
     "page": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["cards", "defaultView", "groups", "id", "title"],
+      "required": ["cards", "defaultView", "id", "title"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "title": { "$ref": "#/$defs/text", "description": "The page's title." },
         "defaultView": { "$ref": "#/$defs/view", "description": "The view of cards without their own." },
-        "cards": {
+        "cards": { "type": "array", "items": { "$ref": "#/$defs/card" } },
+        "names": {
           "type": "array",
-          "items": { "$ref": "#/$defs/card" }
+          "description": "Names of blocks, one per key, sorted by key. A name applies wherever the page draws its block.",
+          "items": { "$ref": "#/$defs/name" }
         },
-        "groups": {
+        "combined": {
           "type": "array",
-          "items": { "$ref": "#/$defs/group" }
-        },
-        "labels": {
-          "type": "array",
-          "description": "Flow-node labels, one per key, sorted by key.",
-          "items": { "$ref": "#/$defs/label" }
+          "description": "Combined steps, sorted by id. They apply wherever the page draws their blocks, and never overlap or nest.",
+          "items": { "$ref": "#/$defs/combined" }
         },
         "guards": {
           "type": "array",
@@ -103,8 +93,8 @@
         },
         "links": {
           "type": "array",
-          "description": "Links drawn between two cards, resources, or frames of the page; a link with a `kind` is a connection.",
-          "items": { "$ref": "#/$defs/link" }
+          "description": "Connections between two cards, resources, or frames of the page, sorted by id.",
+          "items": { "$ref": "#/$defs/connection" }
         },
         "frames": {
           "type": "array",
@@ -123,7 +113,7 @@
         },
         "proposals": {
           "type": "array",
-          "description": "Proposed steps, sorted by id: at most 200. Written only when there are some.",
+          "description": "Proposed steps, sorted by id: at most 200. They apply wherever the page draws their place. Written only when there are some.",
           "maxItems": 200,
           "items": { "$ref": "#/$defs/proposal" }
         }
@@ -136,66 +126,50 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "ref": {
-          "description": "Exactly one block or entrance.",
+          "description": "A block (a module, definition, or type), or an app's start or an entrance.",
           "oneOf": [
             {
               "type": "object",
               "additionalProperties": false,
               "required": ["block"],
-              "properties": {
-                "block": { "$ref": "#/$defs/blockKey" }
-              }
+              "properties": { "block": { "$ref": "#/$defs/blockKey" } }
             },
             {
               "type": "object",
               "additionalProperties": false,
               "required": ["entrance"],
-              "properties": {
-                "entrance": { "$ref": "#/$defs/entranceKey" }
-              }
+              "properties": { "entrance": { "$ref": "#/$defs/entranceKey" } }
             }
           ]
         },
         "at": { "$ref": "#/$defs/position" },
-        "view": { "$ref": "#/$defs/view" },
-        "description": { "$ref": "#/$defs/description" },
-        "expanded": {
+        "view": { "$ref": "#/$defs/view", "description": "The card's own view; the page's default when absent." },
+        "description": {
+          "$ref": "#/$defs/description",
+          "description": "Signed over the card's code: a block's source, or the source of an app's or entrance's code."
+        },
+        "open": {
           "type": "array",
-          "description": "A block card's calls expanded in place in Diagram, at most 64: each a path of 1 to 3 keys, outermost first, each a call occurrence or a callback written in the block shown at that level. Presentation only, never guarded; a key that no longer resolves is ignored. Written only when there are some.",
+          "description": "The calls a block card opens in place, at most 64: each a path of 1 to 3 keys of project calls or callbacks, outermost first, each drawn in what the one before it opens. Never guarded. Written only when there are some.",
           "maxItems": 64,
           "uniqueItems": true,
-          "items": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 3,
-            "items": { "$ref": "#/$defs/blockKey" }
+          "items": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "$ref": "#/$defs/blockKey" } }
+        }
+      },
+      "if": {
+        "type": "object",
+        "required": ["ref"],
+        "properties": {
+          "ref": {
+            "type": "object",
+            "required": ["entrance"],
+            "properties": { "entrance": { "$ref": "#/$defs/entranceKey" } }
           }
         }
       },
-      "if": { "type": "object", "required": ["ref"], "properties": { "ref": { "type": "object", "required": ["entrance"], "properties": { "entrance": { "$ref": "#/$defs/entranceKey" } } } } },
-      "then": { "type": "object", "properties": { "expanded": { "type": "array", "maxItems": 0 } } }
+      "then": { "type": "object", "properties": { "open": { "type": "array", "maxItems": 0 } } }
     },
-    "group": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["card", "collapsed", "id", "members", "title"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "card": { "$ref": "#/$defs/id", "description": "The id of the block card of this page the group belongs to." },
-        "title": { "$ref": "#/$defs/text" },
-        "members": {
-          "type": "array",
-          "description": "The keys of consecutive sibling statements with one parent and one body role.",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/blockKey" }
-        },
-        "collapsed": { "type": "boolean" },
-        "description": { "$ref": "#/$defs/description" },
-        "author": { "$ref": "#/$defs/author", "description": "Who wrote the title; absent on groups titled before titles were attributed." }
-      }
-    },
-    "label": {
+    "name": {
       "type": "object",
       "additionalProperties": false,
       "required": ["author", "key", "text"],
@@ -203,7 +177,30 @@
         "key": { "$ref": "#/$defs/blockKey" },
         "text": { "$ref": "#/$defs/text" },
         "author": { "$ref": "#/$defs/author" },
-        "signature": { "$ref": "#/$defs/textSignature" }
+        "signature": { "$ref": "#/$defs/textSignature", "description": "Signed over the block's source." }
+      }
+    },
+    "combined": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "collapsed", "id", "members", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/text" },
+        "members": {
+          "type": "array",
+          "description": "Block keys: consecutive blocks of one body, in written order, or one whole control block. A key is in at most one combined step.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/blockKey" }
+        },
+        "collapsed": { "type": "boolean" },
+        "description": { "$ref": "#/$defs/description" },
+        "author": { "$ref": "#/$defs/author", "description": "Who combined the blocks." },
+        "signature": {
+          "$ref": "#/$defs/textSignature",
+          "description": "Signed over the source from the first block's start to the last block's end."
+        }
       }
     },
     "guard": {
@@ -211,18 +208,36 @@
       "additionalProperties": false,
       "required": ["key", "kind", "owner", "signature"],
       "properties": {
-        "key": { "$ref": "#/$defs/text", "description": "A block or entrance key." },
+        "key": { "type": "string", "description": "A block, app, or entrance key.", "pattern": "^entrance:|#" },
         "kind": {
-          "type": "string",
-          "description": "The block kind, or `entrance:` and the entrance kind.",
-          "pattern": "^(file|function|class|method|constructor|getter|setter|variable|call|new|import|if|for|for_in|for_of|while|do_while|switch|case|default|try|catch|return|throw|break|continue|expression_statement|with|match|interface|type_alias|enum|entrance:(process|command|http|worker|schedule|event))$"
+          "enum": [
+            "module",
+            "class",
+            "function",
+            "type",
+            "decision",
+            "loop",
+            "try",
+            "with",
+            "part",
+            "call",
+            "exit",
+            "entrance"
+          ],
+          "description": "The block's node kind, or `entrance` for an app or entrance."
         },
-        "owner": { "type": "string", "description": "The owner's block key; empty for an entrance." },
-        "signature": { "$ref": "#/$defs/signature" }
+        "owner": {
+          "type": "string",
+          "description": "The owner's block key; empty for a module, an app, or an entrance."
+        },
+        "signature": {
+          "$ref": "#/$defs/signature",
+          "description": "A block's source signature; for an app or entrance, the signature of its `code` keys, each followed by a newline."
+        }
       }
     },
     "anchor": {
-      "description": "What a resource card or a connection cites: a block or entrance key, or lines of an evidence file.",
+      "description": "What a resource card or a connection cites: a block, app, or entrance key, or lines of an evidence file.",
       "oneOf": [
         {
           "type": "object",
@@ -231,7 +246,7 @@
           "properties": {
             "key": {
               "type": "string",
-              "description": "A block key or an entrance key.",
+              "description": "A block key, or an app's or entrance's key.",
               "pattern": "^entrance:|^[^#]+#"
             }
           }
@@ -249,10 +264,7 @@
             "lines": {
               "type": "array",
               "description": "The first and last line, 1-based and inclusive.",
-              "prefixItems": [
-                { "type": "integer", "minimum": 1 },
-                { "type": "integer", "minimum": 1 }
-              ],
+              "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }],
               "minItems": 2,
               "maxItems": 2
             }
@@ -260,42 +272,54 @@
         }
       ]
     },
-    "link": {
+    "connection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "id", "to"],
-      "dependentRequired": {
-        "kind": ["author"]
-      },
+      "required": ["author", "from", "id", "kind", "to"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "from": { "$ref": "#/$defs/id", "description": "The card, resource, or frame it starts at: the side that acts." },
-        "to": { "$ref": "#/$defs/id", "description": "The card, resource, or frame it points at; another item than `from`." },
-        "label": {
-          "$ref": "#/$defs/description",
-          "description": "Its label: signed over the code a connection cites (its step and anchors), else over the guard signatures of both ends."
+        "from": {
+          "$ref": "#/$defs/id",
+          "description": "The card, resource, or frame it starts at: the side that acts."
+        },
+        "to": {
+          "$ref": "#/$defs/id",
+          "description": "The card, resource, or frame it points at; another item than `from`."
         },
         "kind": {
-          "enum": ["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"],
-          "description": "How its ends talk; absent for a drawn link (`other`), which has a label and none of a connection's other fields."
+          "enum": ["http", "queue", "reads", "writes", "calls", "relates", "other"],
+          "description": "What the line stands for."
         },
-        "step": { "$ref": "#/$defs/blockKey", "description": "The statement or call inside the `from` card's block it leaves from (a block card's)." },
+        "label": {
+          "$ref": "#/$defs/description",
+          "description": "Its label, signed over what it cites; required for `other`."
+        },
+        "step": {
+          "$ref": "#/$defs/blockKey",
+          "description": "The key of the call inside the `from` card's block it leaves from (a block card's). A `calls` connection starts at an unknown call."
+        },
         "fromColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `from` table." },
         "toColumn": { "$ref": "#/$defs/text", "description": "For `relates`: the column of the `to` table." },
         "channel": { "$ref": "#/$defs/text", "description": "What travels: the route, the queue, or the event." },
-        "carries": { "$ref": "#/$defs/blockKey", "description": "The type it carries: a type declaration or class key." },
+        "carries": {
+          "$ref": "#/$defs/blockKey",
+          "description": "The type it carries: a type declaration or class key."
+        },
         "cardinality": {
           "enum": ["one-to-one", "one-to-many", "many-to-one", "many-to-many"],
           "description": "For `relates`: how many rows of each table it joins."
         },
         "anchors": {
           "type": "array",
-          "description": "The evidence for the receiving side. Written only when there are some.",
+          "description": "What it cites besides its step. Written only when there are some.",
           "items": { "$ref": "#/$defs/anchor" }
         },
         "description": { "$ref": "#/$defs/description" },
-        "author": { "$ref": "#/$defs/author", "description": "Who drew it; required with `kind`." },
-        "signature": { "$ref": "#/$defs/textSignature" }
+        "author": { "$ref": "#/$defs/author", "description": "Who drew it." },
+        "signature": {
+          "$ref": "#/$defs/signature",
+          "description": "Signed over its step's and anchors' source; absent until a save signs it, and when it cites nothing."
+        }
       },
       "allOf": [
         {
@@ -308,18 +332,8 @@
           }
         },
         {
-          "if": { "not": { "type": "object", "required": ["kind"] } },
-          "then": {
-            "type": "object",
-            "properties": {
-              "anchors": { "type": "array", "maxItems": 0 },
-              "carries": false,
-              "channel": false,
-              "description": false,
-              "signature": false,
-              "step": false
-            }
-          }
+          "if": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "other" } } },
+          "then": { "type": "object", "required": ["label"], "properties": { "label": true } }
         }
       ]
     },
@@ -368,16 +382,16 @@
         "id": { "$ref": "#/$defs/id" },
         "kind": { "enum": ["table", "queue", "cache", "storage", "external", "actor"] },
         "name": { "$ref": "#/$defs/text", "description": "The technical name, such as `orders`." },
-        "type": { "$ref": "#/$defs/blockKey", "description": "For a table: the type declaration or class that declares its shape." },
+        "type": {
+          "$ref": "#/$defs/blockKey",
+          "description": "For a table: the type declaration or class that declares its shape."
+        },
         "columns": {
           "type": "array",
           "description": "For a table: its columns (names unique), or, for a table backed by a type, marks only. Written only when there are some.",
           "items": { "$ref": "#/$defs/column" }
         },
-        "anchors": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/anchor" }
-        },
+        "anchors": { "type": "array", "items": { "$ref": "#/$defs/anchor" } },
         "at": { "$ref": "#/$defs/position" },
         "description": { "$ref": "#/$defs/description" },
         "author": { "$ref": "#/$defs/author" },
@@ -385,7 +399,9 @@
       },
       "allOf": [
         {
-          "if": { "not": { "type": "object", "properties": { "kind": { "const": "table" } } } },
+          "if": {
+            "not": { "type": "object", "properties": { "kind": { "const": "table" } } }
+          },
           "then": { "type": "object", "properties": { "type": false, "columns": false } }
         },
         {
@@ -393,7 +409,10 @@
           "then": {
             "type": "object",
             "properties": {
-              "columns": { "type": "array", "items": { "type": "object", "properties": { "type": false, "optional": false } } }
+              "columns": {
+                "type": "array",
+                "items": { "type": "object", "properties": { "type": false, "optional": false } }
+              }
             }
           }
         }
@@ -405,24 +424,34 @@
       "required": ["at", "author", "id", "text"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "text": { "type": "string", "pattern": "\\S", "maxLength": 400, "description": "Plain text, at most 400 characters." },
-        "at": { "$ref": "#/$defs/position", "description": "The canvas position; an offset from the attached item's top-left (a link's midpoint) when attached." },
-        "attach": { "$ref": "#/$defs/id", "description": "The card, frame, resource, or link it is attached to." },
+        "text": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 400,
+          "description": "Plain text, at most 400 characters."
+        },
+        "at": {
+          "$ref": "#/$defs/position",
+          "description": "The canvas position; an offset from the attached item's top-left (a connection's midpoint) when attached."
+        },
+        "attach": {
+          "$ref": "#/$defs/id",
+          "description": "The card, frame, resource, or connection it is attached to."
+        },
         "author": { "$ref": "#/$defs/author" }
       }
     },
     "proposal": {
       "type": "object",
-      "description": "A proposed step: an intended addition after a real step of a block card, not a compiler fact. It has no implementation source and is never signed; its anchor is guarded.",
+      "description": "A proposed step: an intended change, not a compiler fact. It goes after a block or at the start of a body, has no source, and is never signed; its place is guarded.",
       "additionalProperties": false,
-      "required": ["after", "author", "card", "id", "title"],
+      "required": ["author", "id", "title"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "card": { "$ref": "#/$defs/id", "description": "The id of the block card of this page it belongs to." },
-        "after": { "$ref": "#/$defs/blockKey", "description": "The real step it goes after: a key inside the card's block (under `<card's block key>/`)." },
-        "path": {
-          "enum": ["yes", "no", "each", "done"],
-          "description": "For a step with several outgoing paths (a condition or a loop): which one."
+        "after": { "$ref": "#/$defs/blockKey", "description": "The block it goes after: a step of a body." },
+        "start": {
+          "$ref": "#/$defs/blockKey",
+          "description": "The definition or part at the start of whose body it goes."
         },
         "title": {
           "type": "string",
@@ -430,9 +459,18 @@
           "maxLength": 120,
           "description": "What it would do: one line of at most 120 characters, without control characters."
         },
-        "reason": { "type": "string", "pattern": "\\S", "maxLength": 400, "description": "Why: at most 400 characters." },
+        "reason": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 400,
+          "description": "Why: at most 400 characters."
+        },
         "author": { "$ref": "#/$defs/author", "description": "Who proposed it." }
-      }
+      },
+      "oneOf": [
+        { "type": "object", "required": ["after"], "properties": { "after": true } },
+        { "type": "object", "required": ["start"], "properties": { "start": true } }
+      ]
     }
   }
 }

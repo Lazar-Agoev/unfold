@@ -1,166 +1,125 @@
-//! Relations of one definition (docs/reader.md#derived-views): its callers, its outgoing occurrences, and
-//! the entrances it is reached from.
+//! A definition's relations: who calls it, what it calls, and (through
+//! [`crate::ReaderIndex::reached_from`]) which entrances reach it.
 //!
-//! - **Callers** reverse resolved edges and map each occurrence to its owner.
-//! - **Outgoing** occurrences are the edges the definition owns, in source order, grouped as
-//!   already on the board, resolved and openable, or external or unresolved. Ownership never
-//!   crosses files, so this needs only the definition's own file.
-//! - **Reached from** lists the non-process entrances whose activation closures contain the
-//!   definition; [`crate::ReaderIndex`] computes it with cached closures.
+//! - **Callers** are the `calls` and `passes` links whose project target is the definition,
+//!   read a page at a time from the store's reverse index, each with the call it starts at and
+//!   the definition that call belongs to.
+//! - **Outgoing links** are the `calls` and `passes` links of the call nodes that belong to the
+//!   definition, in source order, whatever they reach. Ownership never crosses files, so this
+//!   needs only the definition's own file.
 
 use serde::Serialize;
-use unfold_core::vocab::{EdgeKind, EntranceKind, Reason, Resolution};
-use unfold_core::{Edge, FileGraph, Key, ModuleLabel, RepoPath};
+use unfold_core::vocab::{LinkKind, NodeKind};
+use unfold_core::{Key, RepoPath};
+use unfold_store::{Cursor, Reader};
 
-use crate::index::{BlockId, GraphIndex, file_owners};
-use crate::notes::note;
+use crate::ReaderIndex;
+use crate::error::Result;
+use crate::notes::LinkEnd;
+use crate::tree::FileTree;
 
-/// One resolved edge into a definition, seen from the definition.
+/// One call of a definition, seen from the definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Caller {
-    /// The definition (or file) that owns the occurrence.
+    /// The definition the calling block belongs to.
     pub owner: Key,
-    /// The occurrence block.
-    pub source: Key,
-    /// The occurrence's file.
+    /// The call.
+    pub call: Key,
+    /// The call's file.
     pub path: RepoPath,
-    /// The edge's position among the occurrence's edges.
-    pub seq: u32,
-    /// The relationship.
-    pub kind: EdgeKind,
-    /// The argument position of a passed reference.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub position: Option<u32>,
+    /// The call's first line.
+    pub line: u32,
+    /// `calls`, or `passes` when the call passes the definition as a value.
+    pub kind: LinkKind,
 }
 
-/// The callers of `id`, in graph order (path, then occurrence, then sequence).
-pub(crate) fn callers(index: &GraphIndex, id: BlockId) -> Vec<Caller> {
-    index
-        .incoming(id)
-        .map(|edge| Caller {
-            owner: index.key(index.owner(edge.source)).clone(),
-            source: index.key(edge.source).clone(),
-            path: index.path(edge.source).clone(),
-            seq: edge.seq,
-            kind: edge.kind,
-            position: edge.position,
-        })
-        .collect()
-}
-
-/// One edge a definition owns.
+/// One page of a definition's callers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct OutgoingCall {
-    /// The occurrence block.
-    pub source: Key,
-    /// The edge's position among the occurrence's edges (0 is the occurrence itself).
-    pub seq: u32,
-    /// The relationship.
-    pub kind: EdgeKind,
-    /// How it resolved.
-    pub resolution: Resolution,
-    /// The target, when resolved.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub target: Option<Key>,
-    /// The written callee, argument, or specifier.
-    pub text: Box<str>,
-    /// Why it is unresolved.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub reason: Option<Reason>,
-    /// Where an external target comes from.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub module: Option<ModuleLabel>,
-    /// The module or reason as display text ([`crate::notes`]).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub note: Option<String>,
-    /// The argument position of a passed reference.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub position: Option<u32>,
-    /// The line the occurrence starts on.
-    pub line: u32,
+pub struct Callers {
+    /// How many calls there are in all.
+    pub total: u64,
+    /// This page, in path order and then source order.
+    pub callers: Vec<Caller>,
+    /// Where the next page starts, or `None` after the last page.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub next: Option<Cursor>,
 }
 
-/// A definition's outgoing edges, grouped for the inspector.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// One page of the callers of the block with `key`, after `after` (the previous page's
+/// `next`), at most `limit`. `index` must be of the same graph version as `reader`'s snapshot.
+pub fn callers(
+    reader: &Reader,
+    index: &ReaderIndex,
+    key: &str,
+    after: Option<&Cursor>,
+    limit: usize,
+) -> Result<Callers> {
+    reader
+        .snapshot(|reader| {
+            let page = reader.callers(key, after, limit)?;
+            let total = reader.caller_count(key)?;
+            Ok((page, total))
+        })
+        .map(|(page, total)| Callers {
+            total,
+            callers: page
+                .items
+                .into_iter()
+                .filter_map(|incoming| {
+                    // A call always belongs to a definition; the index and the store hold the same
+                    // graph, so every calling block is in both.
+                    Some(Caller {
+                        owner: index.owner(incoming.from.as_str())?.clone(),
+                        line: index.line(incoming.from.as_str())?,
+                        call: incoming.from,
+                        path: incoming.path,
+                        kind: incoming.link.kind,
+                    })
+                })
+                .collect(),
+            next: page.next,
+        })
+        .map_err(Into::into)
+}
+
+/// One `calls` or `passes` link of a call that belongs to a definition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct Outgoing {
-    /// Resolved edges whose target is already on the board.
-    pub on_board: Vec<OutgoingCall>,
-    /// Resolved edges whose target can be opened.
-    pub openable: Vec<OutgoingCall>,
-    /// External and unresolved edges, with their notes.
-    pub external_or_unresolved: Vec<OutgoingCall>,
+pub struct OutgoingLink {
+    /// The call.
+    pub call: Key,
+    /// The call's first line.
+    pub line: u32,
+    /// `calls` (what the call runs) or `passes` (a definition it passes as a value).
+    pub kind: LinkKind,
+    /// How the callee or passed name is written.
+    pub text: Box<str>,
+    /// Where it goes.
+    pub to: LinkEnd,
 }
 
-/// The edges owned by block `definition` of `file`, in source order. Empty when the block does
-/// not exist.
-fn owned_edges(file: &FileGraph, definition: u32) -> Vec<&Edge> {
-    if definition as usize >= file.blocks.len() {
-        return Vec::new();
-    }
-    let owners = file_owners(&file.blocks);
-    file.edges
-        .iter()
-        .filter(|edge| owners.get(edge.source as usize) == Some(&definition))
-        .collect()
-}
-
-/// The outgoing edges of block `definition` of `file`, grouped; `on_board` tells whether a
-/// target key is already on the board. `None` when the block does not exist.
-pub fn outgoing(file: &FileGraph, definition: u32, on_board: impl Fn(&str) -> bool) -> Option<Outgoing> {
-    if definition as usize >= file.blocks.len() {
-        return None;
-    }
-    let mut grouped = Outgoing::default();
-    for edge in owned_edges(file, definition) {
-        let call = OutgoingCall {
-            source: file.blocks[edge.source as usize].key.clone(),
-            seq: edge.seq,
-            kind: edge.kind,
-            resolution: edge.resolution,
-            target: edge.target.clone(),
-            text: edge.text.clone(),
-            reason: edge.reason,
-            module: edge.module.clone(),
-            note: note(edge.resolution, edge.reason, edge.module.as_ref()),
-            position: edge.position,
-            line: file.blocks[edge.source as usize].lines.start,
-        };
-        match &call.target {
-            Some(target) if edge.resolution == Resolution::Resolved && on_board(target.as_str()) => {
-                grouped.on_board.push(call);
-            }
-            Some(_) if edge.resolution == Resolution::Resolved => grouped.openable.push(call),
-            _ => grouped.external_or_unresolved.push(call),
-        }
-    }
-    Some(grouped)
-}
-
-/// The non-process entrances whose closure (given per entrance by `reaches`) contains `id`, as
-/// entrance keys in canonical order.
-pub(crate) fn reached_from(
-    index: &GraphIndex,
-    id: BlockId,
-    mut reaches: impl FnMut(usize, BlockId) -> bool,
-) -> Vec<Key> {
-    index
-        .entrances()
-        .iter()
-        .enumerate()
-        .filter(|(_, entrance)| entrance.kind != EntranceKind::Process)
-        .filter(|(position, _)| reaches(*position, id))
-        .map(|(_, entrance)| entrance.key.clone())
+/// The outgoing links of definition `definition` of `tree`, in source order: each call's
+/// `calls` link, then its `passes` links.
+pub fn outgoing(tree: &FileTree, definition: u32) -> Vec<OutgoingLink> {
+    tree.owned(definition)
+        .filter(|&id| tree.kind(id) == NodeKind::Call)
+        .flat_map(|id| {
+            tree.links(id)
+                .iter()
+                .filter(|link| matches!(link.kind, LinkKind::Calls | LinkKind::Passes))
+                .map(move |link| OutgoingLink {
+                    call: tree.key(id).clone(),
+                    line: tree.node(id).lines.start,
+                    kind: link.kind,
+                    text: link.text.clone(),
+                    to: LinkEnd::of(&link.to),
+                })
+        })
         .collect()
 }

@@ -1,13 +1,14 @@
-//! The short texts that explain an external or unresolved occurrence (docs/reader.md#derived-views).
+//! The short texts that explain where a link goes when it is not a project definition
+//! (`docs/reader.md`, "Derived views"), and [`LinkEnd`], a link's target as payloads carry it.
 //!
-//! External occurrences show their module; unresolved ones show a compact reason. The wording
-//! is the proof of concept's. A guess never replaces either: the reader never upgrades an
-//! unresolved occurrence because its text resembles a known function. An argument that fills
-//! no proven parameter shows its pairing reason the same way ([`pairing_text`]).
+//! Library and builtin targets show their module; unknown ones show a compact reason. A guess
+//! never replaces either: the reader never upgrades an unknown link because its text resembles a
+//! known function. An argument that fills no proven parameter shows its pairing reason the same
+//! way ([`pairing_text`]).
 
-use unfold_core::ModuleLabel;
-use unfold_core::vocab::{PairingReason, Reason, Resolution};
-
+use serde::Serialize;
+use unfold_core::vocab::{Outcome, PairingReason, Reason};
+use unfold_core::{Key, LinkTarget, ModuleLabel};
 /// The compact display text of an unresolved reason.
 pub const fn reason_text(reason: Reason) -> &'static str {
     match reason {
@@ -48,13 +49,57 @@ pub fn module_text(module: &ModuleLabel) -> String {
     }
 }
 
-/// The note shown with an occurrence or target: its module when external, its reason when
-/// unresolved, nothing when resolved (or when the expected part is missing).
-pub fn note(resolution: Resolution, reason: Option<Reason>, module: Option<&ModuleLabel>) -> Option<String> {
-    match resolution {
-        Resolution::Resolved => None,
-        Resolution::External => module.map(module_text),
-        Resolution::Unresolved => reason.map(|reason| reason_text(reason).to_owned()),
+/// The note shown with a link's target: its module for a library or builtin, its reason when
+/// unknown, nothing for a project definition.
+pub fn note(target: &LinkTarget) -> Option<String> {
+    match target {
+        LinkTarget::Project(_) => None,
+        LinkTarget::Library(module) | LinkTarget::Builtin(module) => Some(module_text(module)),
+        LinkTarget::Unknown(reason) => Some(reason_text(*reason).to_owned()),
+    }
+}
+
+/// Where a link goes, as payloads carry it: its outcome, and the key, module, or reason that
+/// outcome names, with the module or reason in words.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LinkEnd {
+    /// How the link resolved.
+    pub outcome: Outcome,
+    /// The project definition, for `project`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub key: Option<Key>,
+    /// The module, for `library` and `builtin`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub module: Option<ModuleLabel>,
+    /// Why nothing was proven, for `unknown`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub reason: Option<Reason>,
+    /// The module or reason in words ([`note`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub note: Option<String>,
+}
+
+impl LinkEnd {
+    /// The payload form of `target`.
+    pub fn of(target: &LinkTarget) -> Self {
+        let (key, module, reason) = match target {
+            LinkTarget::Project(key) => (Some(key.clone()), None, None),
+            LinkTarget::Library(module) | LinkTarget::Builtin(module) => (None, Some(module.clone()), None),
+            LinkTarget::Unknown(reason) => (None, None, Some(*reason)),
+        };
+        Self {
+            outcome: target.outcome(),
+            key,
+            module,
+            reason,
+            note: note(target),
+        }
     }
 }
 
@@ -75,21 +120,27 @@ mod tests {
     }
 
     #[test]
-    fn notes_follow_the_resolution() {
+    fn notes_follow_the_outcome() {
         let express = ModuleLabel::single("express").unwrap();
         let pair = ModuleLabel::from_set(["client-b", "client-a"]).unwrap();
+        assert_eq!(note(&LinkTarget::Library(express)).as_deref(), Some("express"));
         assert_eq!(
-            note(Resolution::External, None, Some(&express)).as_deref(),
-            Some("express")
-        );
-        assert_eq!(
-            note(Resolution::External, None, Some(&pair)).as_deref(),
+            note(&LinkTarget::Builtin(pair.clone())).as_deref(),
             Some("client-a or client-b")
         );
         assert_eq!(
-            note(Resolution::Unresolved, Some(Reason::Parameter), None).as_deref(),
+            note(&LinkTarget::Unknown(Reason::Parameter)).as_deref(),
             Some("parameter")
         );
-        assert_eq!(note(Resolution::Resolved, None, None), None);
+        let project = LinkTarget::Project(Key::from_text("a.py#f"));
+        assert_eq!(note(&project), None);
+        let end = LinkEnd::of(&project);
+        assert_eq!(
+            (end.outcome, end.key.as_ref().map(Key::as_str)),
+            (Outcome::Project, Some("a.py#f"))
+        );
+        let end = LinkEnd::of(&LinkTarget::Builtin(pair));
+        assert_eq!(end.outcome, Outcome::Builtin);
+        assert_eq!(end.note.as_deref(), Some("client-a or client-b"));
     }
 }

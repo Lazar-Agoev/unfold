@@ -2527,7 +2527,6 @@ dependencies = [
  "ts-rs",
  "unfold-core",
  "unfold-store",
- "unicode-id-start",
  "unicode-normalization",
 ]
 

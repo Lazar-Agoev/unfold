@@ -1,24 +1,36 @@
-//! Board tests: strict parsing, deterministic serialization, signatures, guards, groups, drawn
-//! links, health and repairs, saving, and board files, on a small hand-built graph whose source
-//! is written to a temporary folder.
+//! Board tests: strict parsing, canonical serialization, signatures, guards, the overlay checks
+//! on save, health of every kind with its repairs, and board files, on a small hand-built graph
+//! whose source is written to a temporary folder so it can be edited and compiled again.
 
 use std::path::Path;
 
-use unfold_core::testkit::{GraphBuilder, Outcome};
-use unfold_core::vocab::{BlockKind, EdgeKind, Language, Role, SlotName};
+use unfold_core::key::Callee;
+use unfold_core::testkit::{GraphBuilder, NodeRef, library, project, target, unknown};
+use unfold_core::vocab::{Form, Language, LinkKind, Reason, TargetState};
 use unfold_core::{ByteRange, Graph, Key};
 
-use super::check::group_problem;
 use super::files::{BoardDirs, BoardFile, Change, MAX_BOARD_BYTES, Revision, slug};
 use super::*;
 
-const SOURCE: &str = "export function run() {\n  const first = 1;\n  if (first) { console.log(first); }\n  console.log('done');\n  return first;\n}\n";
+/// Three functions: `run` loads a value, logs it when it is there, logs again, and returns it;
+/// `load` returns `helper()`; `helper` returns an unknown call.
+const SOURCE: &str = "export function run() {\n  const first = load();\n  if (first) { console.log(first); }\n  console.log('done');\n  return first;\n}\nexport function load() {\n  return helper();\n}\nexport function helper() {\n  return dep.fetch();\n}\n";
 
-const RUN: &str = "main.ts#function:run";
-const FIRST: &str = "main.ts#function:run/variable:first";
-const IF0: &str = "main.ts#function:run/if[0]";
-const LOG0: &str = "main.ts#function:run/expression_statement[0]";
-const RETURN0: &str = "main.ts#function:run/return[0]";
+const MODULE: &str = "main.ts#";
+const RUN: &str = "main.ts#run";
+const LOAD_CALL: &str = "main.ts#run/call:load";
+const IF0: &str = "main.ts#run/if[0]";
+const THEN: &str = "main.ts#run/if[0]/then";
+const INNER_LOG: &str = "main.ts#run/if[0]/then/call:console.log";
+const LOG: &str = "main.ts#run/call:console.log";
+const RETURN0: &str = "main.ts#run/return[0]";
+const LOAD: &str = "main.ts#load";
+const HELPER_CALL: &str = "main.ts#load/return[0]/call:helper";
+const HELPER: &str = "main.ts#helper";
+const FETCH: &str = "main.ts#helper/return[0]/call:dep.fetch";
+
+const RUN_IT: &str = "entrance:shop/run-it";
+const LOAD_IT: &str = "entrance:shop/load-it";
 
 fn range(start: usize, end: usize) -> ByteRange {
     ByteRange {
@@ -27,101 +39,109 @@ fn range(start: usize, end: usize) -> ByteRange {
     }
 }
 
-fn console_log(
-    builder: &mut GraphBuilder,
-    parent: unfold_core::testkit::BlockRef,
-    role: Role,
-    at: usize,
-    text: &str,
-) {
-    let statement_text = &text[at..at + text[at..].find(';').unwrap() + 1];
-    let statement = builder.block(
-        parent,
-        BlockKind::ExpressionStatement,
-        Some(role),
-        None,
-        range(at, at + statement_text.len()),
-    );
-    let call = range(at, at + statement_text.len() - 1);
-    builder.slot(statement, SlotName::Expression, None, call);
-    let block = builder.block(statement, BlockKind::Call, Some(Role::Expression), None, call);
-    builder.slot(block, SlotName::Callee, None, range(at, at + "console.log".len()));
-    builder.edge(
-        block,
-        EdgeKind::Calls,
-        Outcome::external("global"),
-        "console.log",
-        None,
-    );
+/// A call written as `text` (`callee(…)`) at byte `at` under `parent`, with its `calls` link:
+/// to a function of `functions` in the file, to the global `console`, or unknown.
+fn call(builder: &mut GraphBuilder, parent: NodeRef, at: usize, text: &str, functions: &[&str]) -> NodeRef {
+    let written = &text[..text.find('(').unwrap()];
+    let mut parts = written.split('.');
+    let mut callee = Callee::name(parts.next().unwrap());
+    for part in parts {
+        callee = callee.member(part);
+    }
+    let end = at + text.rfind(')').unwrap() + 1;
+    let node = builder.call(parent, &callee, range(at, end));
+    let head = range(at, at + written.len());
+    builder.node_mut(node).head = Some(head);
+    let to = if functions.contains(&written) {
+        project(&Key::from_text(&format!("main.ts#{written}")))
+    } else if written == "console.log" {
+        library("global")
+    } else {
+        unknown(Reason::UnknownReceiver)
+    };
+    builder.link(node, LinkKind::Calls, head, written, to);
+    node
 }
 
-/// The graph of one function written as `text`: one statement per line, each a `const`, an
-/// `if (…) { console.log(…); }`, a `console.log(…);`, or a `return`.
+/// The graph of `main.ts` written as `text`: top-level `export function name() {…}`s, each
+/// with one statement per line: `const x = f();`, `if (…) { console.log(…); }`, a call, or
+/// `return …;` (whose value may be a call). The app `Shop` starts at the module; its entrances
+/// are `Run it` (code `run`), `Load it`, and `Load again` (both code `load`).
 fn graph_of(text: &str) -> Graph {
     let mut builder = GraphBuilder::new();
     let root = builder.file("main.ts", Language::TypeScript, text);
-    let start = text.find("function ").unwrap();
-    let name = &text[start + "function ".len()..text.find('(').unwrap()];
-    let end = text.rfind('}').unwrap() + 1;
-    let function = builder.block(
-        root,
-        BlockKind::Function,
-        Some(Role::Body),
-        Some(name),
-        range(start, end),
-    );
-    let mut offset = text.find('\n').unwrap() + 1;
-    for line in text[offset..].lines() {
-        let indent = line.len() - line.trim_start().len();
-        let at = offset + indent;
+    let names: Vec<&str> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("export function "))
+        .map(|rest| &rest[..rest.find('(').unwrap()])
+        .collect();
+    let mut offset = 0;
+    let mut function = None;
+    for line in text.split_inclusive('\n') {
+        let at = offset + line.len() - line.trim_start().len();
         let statement = line.trim();
-        if let Some(rest) = statement.strip_prefix("const ") {
-            let name = &rest[..rest.find(' ').unwrap()];
-            let block = builder.block(
-                function,
-                BlockKind::Variable,
-                Some(Role::Body),
-                Some(name),
-                range(at, at + statement.len() - 1),
-            );
-            let initializer = at + statement.find("= ").unwrap() + 2;
-            builder.slot(
-                block,
-                SlotName::Initializer,
-                None,
-                range(initializer, at + statement.len() - 1),
-            );
-        } else if statement.starts_with("if (") {
-            let block = builder.block(
-                function,
-                BlockKind::If,
-                Some(Role::Body),
-                None,
-                range(at, at + statement.len()),
-            );
-            let close = statement.find(')').unwrap();
-            builder.slot(block, SlotName::Condition, None, range(at + 4, at + close));
-            let then = at + statement.find('{').unwrap();
-            builder.slot(block, SlotName::Then, None, range(then, at + statement.len()));
-            console_log(&mut builder, block, Role::Then, then + 2, text);
-        } else if statement.starts_with("console.log") {
-            console_log(&mut builder, function, Role::Body, at, text);
-        } else if statement.starts_with("return ") {
-            let block = builder.block(
-                function,
-                BlockKind::Return,
-                Some(Role::Body),
-                None,
-                range(at, at + statement.len()),
-            );
-            builder.slot(
-                block,
-                SlotName::Expression,
-                None,
-                range(at + 7, at + statement.len() - 1),
-            );
+        offset += line.len();
+        if let Some(rest) = statement.strip_prefix("export function ") {
+            let start = at + "export ".len();
+            let end = start + text[start..].find("\n}").unwrap() + 2;
+            let name = &rest[..rest.find('(').unwrap()];
+            let node = builder.def(root, Form::Function, name, range(start, end));
+            builder.node_mut(node).body = Some(range(start + text[start..].find('{').unwrap(), end));
+            function = Some(node);
+            continue;
         }
-        offset += line.len() + 1;
+        let Some(function) = function.filter(|_| !statement.is_empty() && statement != "}") else {
+            continue;
+        };
+        let end = at + statement.len();
+        if statement.starts_with("if (") {
+            let decision = builder.block(function, Form::If, range(at, end));
+            builder.node_mut(decision).stmt = Some(range(at, end));
+            let open = at + statement.find('{').unwrap();
+            let part = builder.block(decision, Form::Then, range(at, end));
+            builder.node_mut(part).body = Some(range(open, end));
+            let inner = &statement[statement.find('{').unwrap() + 2..];
+            let node = call(&mut builder, part, open + 2, inner, &names);
+            builder.node_mut(node).stmt = Some(range(open + 2, open + 2 + inner.find(';').unwrap() + 1));
+        } else if let Some(value) = statement.strip_prefix("return ") {
+            let exit = builder.block(function, Form::Return, range(at, end));
+            let value_at = at + "return ".len();
+            let node = builder.node_mut(exit);
+            node.stmt = Some(range(at, end));
+            node.value = Some(range(value_at, end - 1));
+            if value.contains('(') {
+                call(&mut builder, exit, value_at, value, &names);
+            }
+        } else if let Some(rest) = statement.strip_prefix("const ") {
+            let (binds, value) = rest.split_once(" = ").unwrap();
+            let value_at = end - value.len();
+            let node = call(&mut builder, function, value_at, value, &names);
+            let node = builder.node_mut(node);
+            node.stmt = Some(range(at, end));
+            node.binds = Some(binds.into());
+        } else {
+            let node = call(&mut builder, function, at, statement, &names);
+            builder.node_mut(node).stmt = Some(range(at, end));
+        }
+    }
+    let shop = builder.app(
+        "Shop",
+        Some("npm start"),
+        Some(target(MODULE, TargetState::Found)),
+    );
+    builder.entrance(
+        shop,
+        "Run it",
+        Some("POST /run"),
+        vec![target(RUN, TargetState::Found)],
+    );
+    for name in ["Load it", "Load again"] {
+        builder.entrance(
+            shop,
+            name,
+            Some("GET /load"),
+            vec![target(LOAD, TargetState::Found)],
+        );
     }
     builder.build()
 }
@@ -140,68 +160,106 @@ fn recompiled(dir: &Path, text: &str) -> BoardGraph {
     BoardGraph::from_graph(&graph_of(text), dir)
 }
 
-fn author() -> Author {
+/// The exact text of `needle` in `SOURCE`.
+fn bytes_of(needle: &str) -> &'static [u8] {
+    let start = SOURCE.find(needle).unwrap();
+    &SOURCE.as_bytes()[start..start + needle.len()]
+}
+
+/// `run`'s source.
+fn run_source() -> &'static str {
+    &SOURCE[SOURCE.find("function run").unwrap()..SOURCE.find("\n}\n").unwrap() + 2]
+}
+
+fn key(text: &str) -> Key {
+    Key::from_text(text)
+}
+
+fn agent() -> Author {
     Author::agent("test").unwrap()
+}
+
+fn person() -> Author {
+    Author::person("tester").unwrap()
 }
 
 fn unsigned(text: &str) -> Description {
     Description {
         text: text.to_owned(),
-        author: author(),
+        author: agent(),
         signature: None,
     }
 }
 
-fn card(id: &str, reference: CardRef) -> Card {
+fn block_card(id: &str, block: &str) -> Card {
     Card {
         id: id.to_owned(),
-        reference,
+        reference: CardRef::block(key(block)),
         at: [10.0, 20.0],
         view: None,
         description: None,
-        expanded: Vec::new(),
+        open: Vec::new(),
     }
 }
 
-fn run_card(id: &str) -> Card {
-    card(id, CardRef::block(Key::from_text(RUN)))
-}
-
-fn label(key: &str, text: &str) -> LabelEntry {
-    LabelEntry {
-        key: Key::from_text(key),
-        label: unsigned(text),
+fn start_card(id: &str, start: &str) -> Card {
+    Card {
+        reference: CardRef::entrance(key(start)),
+        ..block_card(id, RUN)
     }
 }
 
-fn link(id: &str, from: &str, to: &str, text: Option<&str>) -> Link {
-    Link {
-        label: text.map(unsigned),
-        ..Link::new(id, from, to)
+fn name(block: &str, text: &str) -> NameEntry {
+    NameEntry {
+        key: key(block),
+        name: unsigned(text),
     }
 }
 
-/// A board with one Flow page holding card `run`.
-fn sample_board() -> Board {
+fn combined(id: &str, members: &[&str]) -> Combined {
+    Combined {
+        id: id.to_owned(),
+        title: "Steps".to_owned(),
+        members: members.iter().map(|member| key(member)).collect(),
+        collapsed: true,
+        description: None,
+        author: agent(),
+        signature: None,
+    }
+}
+
+fn proposal(id: &str, place: Place) -> Proposal {
+    Proposal {
+        id: id.to_owned(),
+        place,
+        title: "Email the customer".to_owned(),
+        reason: Some("They asked for a receipt".to_owned()),
+        author: agent(),
+    }
+}
+
+fn after(block: &str) -> Place {
+    Place::After { after: key(block) }
+}
+
+fn start(block: &str) -> Place {
+    Place::Start { start: key(block) }
+}
+
+/// A board whose one page shows card `run`.
+fn run_board() -> Board {
     let mut board = Board::new("Run explanation");
-    board.pages[0].default_view = View::Flow;
-    board.pages[0].cards.push(run_card("run"));
+    board.pages[0].cards.push(block_card("run", RUN));
     board
 }
 
-fn group(members: &[&str]) -> Group {
-    Group {
-        id: "steps".to_owned(),
-        card: "run".to_owned(),
-        title: "Steps".to_owned(),
-        members: members.iter().map(|key| Key::from_text(key)).collect(),
-        collapsed: false,
-        description: None,
-        author: None,
-    }
+/// `run_board` with `edit` applied to its page.
+fn run_board_with(edit: impl FnOnce(&mut Page)) -> Board {
+    let mut board = run_board();
+    edit(&mut board.pages[0]);
+    board
 }
 
-/// Saves `board` (over `previous`) against `graph`.
 fn save(
     board: Board,
     previous: Option<(&Board, &Health)>,
@@ -210,16 +268,32 @@ fn save(
     prepare_save(board, previous, graph)
 }
 
-fn page_health(board: &Board, graph: &BoardGraph) -> Health {
-    board_health(board, graph)
+/// The problem a save refuses `board` with.
+fn refusal(board: Board, graph: &BoardGraph) -> (Target, String) {
+    match save(board, None, graph) {
+        Err(BoardError::Problem { target, message, .. }) => (target, message),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
 }
 
 fn repair(board: &mut Board, graph: &BoardGraph, repair: &Repair) -> Result<(), BoardError> {
     apply_repair(&mut board.pages[0], graph, repair)
 }
 
-fn label_target(key: &str) -> Target {
-    Target::Label(key.to_owned())
+/// The health items of `board`'s page as (kind, target, key, repairs).
+fn items(health: &Health) -> Vec<(HealthKind, Target, Option<&str>, &[RepairKind])> {
+    health
+        .items
+        .iter()
+        .map(|item| {
+            (
+                item.kind,
+                item.target.clone(),
+                item.key.as_deref(),
+                item.repairs.as_slice(),
+            )
+        })
+        .collect()
 }
 
 fn invalid(text: &str) -> (String, String) {
@@ -229,1343 +303,816 @@ fn invalid(text: &str) -> (String, String) {
     }
 }
 
-const MINIMAL: &str = r#"{"format":"unfold-board","pages":[{"cards":[{"at":[0,0],"id":"run","ref":{"block":"main.ts#function:run"}}],"defaultView":"code","groups":[],"id":"page-1","title":"P"}],"title":"T","version":1}"#;
+const MINIMAL: &str = r#"{"format":"unfold-board","pages":[{"cards":[{"at":[0,0],"id":"run","ref":{"block":"main.ts#run"}}],"defaultView":"compact","id":"page-1","title":"P"}],"title":"T","version":1}"#;
 
-/// `MINIMAL` with `"groups":[]` replaced by `groups` (and whatever follows it in the page).
-fn with_page_fields(fields: &str) -> String {
-    MINIMAL.replace("\"groups\":[]", fields)
+/// `MINIMAL` with `fields` (`"name":value,…`) added to its page.
+fn with_page(fields: &str) -> String {
+    MINIMAL.replace(r#""id":"page-1""#, &format!(r#"{fields},"id":"page-1""#))
+}
+
+/// `MINIMAL` with `fields` added to its card.
+fn with_card(fields: &str) -> String {
+    MINIMAL.replace(r#""id":"run""#, &format!(r#"{fields},"id":"run""#))
 }
 
 #[test]
 fn parsing_rejects_everything_outside_the_format_with_a_path() {
     assert!(parse(MINIMAL).is_ok());
-    let card_ref = r#"{"block":"main.ts#function:run"}"#;
     let signature = format!("sha256:{}", "0".repeat(64));
+    let connection = |fields: &str| {
+        with_page(&format!(
+            r#""links":[{{"author":"agent:a","from":"run","id":"c","to":"other",{fields}}}],"resources":[{{"anchors":[],"at":[0,0],"author":"agent:a","id":"other","kind":"actor","name":"Customer"}}]"#
+        ))
+    };
+    let open = |paths: &str| with_card(&format!(r#""open":{paths}"#));
+    let deep = format!(r#"[["{LOAD_CALL}","{HELPER_CALL}","{FETCH}","{LOG}"]]"#);
+    let many = format!(
+        "[{}]",
+        (0..65)
+            .map(|index| format!(r#"["main.ts#run/call:f[{}]"]"#, index + 1))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     let cases = [
         (
-            MINIMAL.replace("\"title\":\"T\"", "\"extra\":1,\"title\":\"T\""),
+            MINIMAL.replace(r#""title":"T""#, r#""extra":1,"title":"T""#),
             "/extra",
             "unknown field",
         ),
         (
-            MINIMAL.replace("\"id\":\"run\"", "\"id\":\"run\",\"state\":\"code\""),
-            "/pages/0/cards/0/state",
-            "unknown field",
-        ),
-        (
-            MINIMAL.replace(
-                card_ref,
-                r#"{"block":"main.ts#function:run","entrance":"entrance:x"}"#,
-            ),
-            "/pages/0/cards/0/ref",
-            "exactly one",
-        ),
-        (
-            MINIMAL.replace(card_ref, r#"{"block":"entrance:x"}"#),
-            "/pages/0/cards/0/ref/block",
-            "block key",
-        ),
-        (
-            MINIMAL.replace(card_ref, r#"{"block":"main.ts#function:run","project":"web"}"#),
-            "/pages/0/cards/0/ref/project",
-            "unknown field",
-        ),
-        (
-            MINIMAL.replace("[0,0]", "[0]"),
-            "/pages/0/cards/0/at",
-            "two numbers",
-        ),
-        (
-            MINIMAL.replace("[0,0]", "[0,\"1\"]"),
-            "/pages/0/cards/0/at/1",
-            "finite number",
-        ),
-        (
-            MINIMAL.replace("\"version\":1", "\"version\":3"),
-            "/version",
-            "unsupported version",
-        ),
-        (
-            MINIMAL.replace("unfold-board", "codegraph-board"),
+            MINIMAL.replace("unfold-board", "other"),
             "/format",
-            "unfold-board",
+            "must be \"unfold-board\"",
         ),
         (
-            MINIMAL.replace("\"code\"", "\"canvas\""),
+            MINIMAL.replace(r#""version":1"#, r#""version":2"#),
+            "/version",
+            "unsupported version; expected 1",
+        ),
+        (
+            MINIMAL.replace(r#""title":"T""#, r#""folder":"a/b","title":"T""#),
+            "/folder",
+            "must be a folder name",
+        ),
+        (
+            MINIMAL.replace(r#""compact""#, r#""code""#),
             "/pages/0/defaultView",
-            "\"code\", \"flow\", or \"diagram\"",
-        ),
-        (MINIMAL.replace("\"T\"", "\"  \""), "/title", "must not be empty"),
-        (
-            MINIMAL.replace("\"P\"", "\"\""),
-            "/pages/0/title",
-            "must not be empty",
+            "must be \"compact\" or \"expanded\"",
         ),
         (
-            MINIMAL.replace(",\"groups\":[]", ""),
-            "/pages/0",
-            "missing field `groups`",
+            MINIMAL.replace(r#"{"block":"main.ts#run"}"#, r#"{"block":"entrance:shop"}"#),
+            "/pages/0/cards/0/ref/block",
+            "must be a block key",
         ),
         (
-            MINIMAL.replace(
-                &MINIMAL[MINIMAL.find('[').unwrap()..MINIMAL.find(",\"title\":\"T\"").unwrap()],
-                "[]",
-            ),
-            "/pages",
-            "at least one page",
+            MINIMAL.replace(r#"{"block":"main.ts#run"}"#, r#"{"entrance":"main.ts#run"}"#),
+            "/pages/0/cards/0/ref/entrance",
+            "must be an app's or entrance's key",
         ),
         (
-            MINIMAL.replace("\"id\":\"run\"", "\"id\":\"run card\""),
-            "/pages/0/cards/0/id",
-            "letter or digit",
+            MINIMAL.replace(r#"{"block":"main.ts#run"}"#, r#"{"block":"main.ts"}"#),
+            "/pages/0/cards/0/ref/block",
+            "must be a block key",
         ),
         (
-            MINIMAL.replace("\"page-1\"", "\"-1\""),
-            "/pages/0/id",
-            "letter or digit",
+            with_card(r#""view":"flow""#),
+            "/pages/0/cards/0/view",
+            "must be \"compact\" or \"expanded\"",
         ),
+        (open(&deep), "/pages/0/cards/0/open/0", "must list 1 to 3 keys"),
+        (open("[[]]"), "/pages/0/cards/0/open/0", "must list 1 to 3 keys"),
+        (open(&many), "/pages/0/cards/0/open", "at most 64 open paths"),
         (
-            MINIMAL.replace("\"format\"", "\"folder\":\"\",\"format\""),
-            "/folder",
-            "folder name",
-        ),
-        (
-            MINIMAL.replace("\"format\"", "\"folder\":\"Checkout/Refunds\",\"format\""),
-            "/folder",
-            "folder name",
+            open(&format!(r#"[["{LOAD_CALL}"],["{LOAD_CALL}"]]"#)),
+            "/pages/0/cards/0/open/1",
+            "repeats an earlier open path",
         ),
         (
             MINIMAL.replace(
-                "\"id\":\"run\"",
-                r#""id":"run","description":{"author":"you","text":"x"}"#,
+                r#""ref":{"block":"main.ts#run"}"#,
+                &format!(r#""open":[["{LOAD_CALL}"]],"ref":{{"entrance":"{RUN_IT}"}}"#),
             ),
-            "/pages/0/cards/0/description/author",
-            "person:<name>",
+            "/pages/0/cards/0/open",
+            "only a block card opens calls in place",
         ),
         (
-            MINIMAL.replace(
-                "\"id\":\"run\"",
-                r#""id":"run","description":{"author":"person:a","text":"x","signature":"sha256:XYZ"}"#,
-            ),
-            "/pages/0/cards/0/description/signature",
-            "sha256",
+            with_page(&format!(
+                r#""names":[{{"author":"agent:a","key":"{IF0}","text":"A"}},{{"author":"agent:a","key":"{IF0}","text":"B"}}]"#
+            )),
+            "/pages/0/names/1",
+            "repeats the name of",
         ),
         (
-            with_page_fields(
-                r#""groups":[{"card":"nope","collapsed":false,"id":"g","members":["main.ts#function:run/if[0]"],"title":"G"}]"#,
-            ),
-            "/pages/0/groups/0/card",
-            "unknown card",
+            with_page(r#""names":[{"author":"agent:a","key":"entrance:shop","text":"A"}]"#),
+            "/pages/0/names/0/key",
+            "must be a block key",
         ),
         (
-            with_page_fields(
-                r#""groups":[{"card":"run","collapsed":false,"id":"run","members":["main.ts#a"],"title":"G"}]"#,
-            ),
-            "/pages/0/groups/0/id",
-            "duplicate id",
+            with_page(&format!(
+                r#""combined":[{{"collapsed":true,"id":"s","members":["{IF0}"],"title":"S"}}]"#
+            )),
+            "/pages/0/combined/0",
+            "missing field `author`",
         ),
         (
-            with_page_fields(
-                r#""groups":[{"card":"run","collapsed":false,"id":"g","members":["main.ts#a","main.ts#a"],"title":"G"}]"#,
+            with_page(
+                r#""combined":[{"author":"agent:a","collapsed":true,"id":"s","members":[],"title":"S"}]"#,
             ),
-            "/pages/0/groups/0/members/1",
-            "repeats",
+            "/pages/0/combined/0/members",
+            "must list at least one block key",
         ),
         (
-            with_page_fields(&format!(
-                r#""groups":[],"guards":[{{"key":"main.ts#a","kind":"lambda","owner":"","signature":"{signature}"}}]"#
+            with_page(&format!(
+                r#""combined":[{{"author":"agent:a","collapsed":true,"id":"s","members":["{IF0}","{IF0}"],"title":"S"}}]"#
+            )),
+            "/pages/0/combined/0/members/1",
+            "repeats an earlier member",
+        ),
+        (
+            with_page(&format!(
+                r#""combined":[{{"author":"agent:a","collapsed":true,"id":"s","members":["{IF0}"],"title":"S"}},{{"author":"agent:a","collapsed":false,"id":"t","members":["{LOG}","{IF0}"],"title":"T"}}]"#
+            )),
+            "/pages/0/combined/1/members/1",
+            "is already in combined step `s`; combined steps never overlap",
+        ),
+        (
+            with_page(&format!(
+                r#""guards":[{{"key":"{IF0}","kind":"if","owner":"","signature":"{signature}"}}]"#
             )),
             "/pages/0/guards/0/kind",
-            "block kind",
+            "must be a node kind or `entrance`",
         ),
         (
-            with_page_fields(&format!(
-                r#""groups":[],"guards":[{{"key":"main.ts#a","kind":"if","owner":"","signature":"{signature}"}},{{"key":"main.ts#a","kind":"if","owner":"","signature":"{signature}"}}]"#
+            with_page(&format!(
+                r#""guards":[{{"key":"{RUN_IT}","kind":"entrance:http","owner":"","signature":"{signature}"}}]"#
             )),
-            "/pages/0/guards/1",
-            "repeats the guard",
+            "/pages/0/guards/0/kind",
+            "must be a node kind or `entrance`",
         ),
         (
-            with_page_fields(
-                r#""groups":[],"labels":[{"author":"agent:x","key":"a/b#c","text":"t","extra":1}]"#,
-            ),
-            "/pages/0/labels/0/extra",
+            connection(r#""kind":"rpc""#),
+            "/pages/0/links/0/kind",
+            "must be \"http\", \"queue\", \"reads\", \"writes\", \"calls\", \"relates\", or \"other\"",
+        ),
+        (
+            connection(r#""kind":"event""#),
+            "/pages/0/links/0/kind",
+            "must be \"http\"",
+        ),
+        (
+            connection(r#""label":{"author":"agent:a","text":"x"}"#),
+            "/pages/0/links/0",
+            "missing field `kind`",
+        ),
+        (
+            connection(r#""kind":"other""#),
+            "/pages/0/links/0",
+            "missing field `label`: an `other` connection says what it is",
+        ),
+        (
+            connection(r#""kind":"writes","fromColumn":"id""#),
+            "/pages/0/links/0/fromColumn",
+            "only a `relates` connection joins columns",
+        ),
+        (
+            connection(&format!(r#""kind":"writes","step":"{RUN_IT}""#)),
+            "/pages/0/links/0/step",
+            "must be a block key",
+        ),
+        (
+            with_page(&format!(
+                r#""proposals":[{{"after":"{LOG}","author":"agent:a","id":"p","start":"{RUN}","title":"T"}}]"#
+            )),
+            "/pages/0/proposals/0",
+            "must have exactly one of `after` or `start`",
+        ),
+        (
+            with_page(r#""proposals":[{"author":"agent:a","id":"p","title":"T"}]"#),
+            "/pages/0/proposals/0",
+            "must have exactly one of `after` or `start`",
+        ),
+        (
+            with_page(&format!(
+                r#""proposals":[{{"after":"{LOG}","author":"agent:a","id":"p","title":"Two\nlines"}}]"#
+            )),
+            "/pages/0/proposals/0/title",
+            "must be one line",
+        ),
+        (
+            with_page(&format!(
+                r#""proposals":[{{"after":"{LOG}","author":"agent:a","id":"run","title":"T"}}]"#
+            )),
+            "/pages/0/proposals/0/id",
+            "duplicate id `run`",
+        ),
+        (
+            MINIMAL.replace(r#""ref""#, r#""at2":[0,0],"ref""#),
+            "/pages/0/cards/0/at2",
             "unknown field",
         ),
         (
-            with_page_fields(
-                r##""groups":[],"labels":[{"author":"agent:x","key":"a#c","text":"t"},{"author":"agent:x","key":"a#c","text":"u"}]"##,
-            ),
-            "/pages/0/labels/1",
-            "repeats the label",
-        ),
-        (
-            with_page_fields(
-                r##""groups":[],"labels":[{"author":"agent:x","key":"entrance:x","text":"t"}]"##,
-            ),
-            "/pages/0/labels/0/key",
-            "block key",
-        ),
-        (
-            with_page_fields(r#""groups":[],"links":[{"from":"run","id":"l","to":"run"}]"#),
-            "/pages/0/links/0/to",
-            "another item",
-        ),
-        (
-            with_page_fields(r#""groups":[],"links":[{"from":"nope","id":"l","to":"run"}]"#),
-            "/pages/0/links/0/from",
-            "unknown item `nope`",
-        ),
-        (
-            with_page_fields(r#""groups":[],"links":[{"from":"run","id":"run","to":"run"}]"#),
-            "/pages/0/links/0/id",
-            "duplicate id",
-        ),
-        (
-            with_page_fields(
-                r#""groups":[],"links":[{"from":"run","id":"l","to":"x","label":{"author":"agent:x","text":" "}}]"#,
-            ),
-            "/pages/0/links/0/label/text",
-            "must not be empty",
+            MINIMAL.replace(r#"[0,0]"#, r#"[0,"x"]"#),
+            "/pages/0/cards/0/at/1",
+            "must be a finite number",
         ),
     ];
     for (text, path, message) in cases {
-        let (actual_path, actual_message) = invalid(&text);
-        assert_eq!(actual_path, path, "{text}");
-        assert!(
-            actual_message.contains(message),
-            "{actual_message} lacks {message}"
-        );
+        let (got_path, got_message) = invalid(&text);
+        assert_eq!(got_path, path, "{text}\n{got_message}");
+        assert!(got_message.contains(message), "{message:?} in {got_message:?}");
     }
-    // Two pages with one id.
-    let page = &MINIMAL[MINIMAL.find("[{\"cards\"").unwrap() + 1..MINIMAL.find("],\"title\":\"T\"").unwrap()];
-    assert_eq!(
-        invalid(&MINIMAL.replace(page, &format!("{page},{page}"))),
-        ("/pages/1/id".to_owned(), "duplicate page id `page-1`".to_owned())
-    );
-    // A key is labeled once.
-    let twice = with_page_fields(
-        r##""groups":[],"labels":[{"author":"agent:x","key":"a#c","text":"t"},{"author":"agent:x","key":"a#c","text":"u"}]"##,
-    );
-    assert_eq!(
-        invalid(&twice),
-        (
-            "/pages/0/labels/1".to_owned(),
-            "repeats the label of `a#c`".to_owned()
-        )
-    );
-    assert!(
-        matches!(parse("{\"a\":1,\"a\":2}"), Err(BoardError::Syntax { .. })),
-        "duplicate keys"
-    );
-    assert!(matches!(parse("[1,"), Err(BoardError::Syntax { line: 1, .. })));
-    assert_eq!(invalid("[]").0, "/");
+    assert!(matches!(parse("{"), Err(BoardError::Syntax { .. })));
+    assert!(matches!(
+        parse(&MINIMAL.replace(r#""title":"T""#, r#""title":"T","title":"U""#)),
+        Err(BoardError::Syntax { .. })
+    ));
 }
 
-/// `MINIMAL` with a second card `two`, a table `t` listing column `id`, and `fields` in the page.
-fn with_items(fields: &str) -> String {
-    MINIMAL.replace(
-        "\"groups\":[]",
-        &format!(
-            r#""groups":[],"resources":[{{"anchors":[],"at":[0,0],"author":"agent:x","columns":[{{"name":"id"}}],"id":"t","kind":"table","name":"t"}}]{fields}"#
+#[test]
+fn old_board_files_fail_like_any_invalid_file() {
+    let card = r#"{"at":[0,0],"id":"run","ref":{"block":"main.ts#run"}}"#;
+    let page = |fields: &str| {
+        format!(
+            r#"{{"format":"unfold-board","pages":[{{"cards":[{card}],"defaultView":"compact","id":"p",{fields}"title":"P"}}],"title":"T","version":1}}"#
+        )
+    };
+    let cases = [
+        (page(r#""groups":[],"#), "/pages/0/groups"),
+        (page(r#""labels":[],"#), "/pages/0/labels"),
+        (
+            MINIMAL.replace(r#""id":"run""#, r#""expanded":[],"id":"run""#),
+            "/pages/0/cards/0/expanded",
         ),
-    )
-    .replace(
-        "\"cards\":[",
-        r#""cards":[{"at":[0,0],"id":"two","ref":{"entrance":"entrance:x"}},"#,
-    )
+        (
+            MINIMAL.replace(r#""id":"run""#, r#""folded":true,"id":"run""#),
+            "/pages/0/cards/0/folded",
+        ),
+        (
+            MINIMAL.replace(r#""title":"T""#, r#""projects":[],"title":"T""#),
+            "/projects",
+        ),
+        (
+            MINIMAL.replace(r#""title":"T""#, r#""publishes":"x","title":"T""#),
+            "/publishes",
+        ),
+        (
+            MINIMAL.replace(r#""main.ts#run"}"#, r#""main.ts#run","project":"p"}"#),
+            "/pages/0/cards/0/ref/project",
+        ),
+        (
+            page(&format!(
+                r#""proposals":[{{"after":"{LOG}","author":"agent:a","card":"run","id":"q","title":"T"}}],"#
+            )),
+            "/pages/0/proposals/0/card",
+        ),
+        (
+            page(r#""links":[{"from":"run","id":"l","label":{"author":"agent:a","text":"x"},"to":"run"}],"#),
+            "/pages/0/links/0",
+        ),
+    ];
+    for (text, path) in cases {
+        assert_eq!(invalid(&text).0, path, "{text}");
+    }
+    // Old keys and views fail too.
+    let old_key = MINIMAL.replace("main.ts#run", "main.ts#function:run/variable:first");
+    assert_eq!(invalid(&old_key).0, "/pages/0/cards/0/ref/block");
+    assert_eq!(
+        invalid(&MINIMAL.replace(r#""compact""#, r#""diagram""#)).0,
+        "/pages/0/defaultView"
+    );
+    let old_entrance = MINIMAL.replace(
+        r#"{"block":"main.ts#run"}"#,
+        r#"{"entrance":"entrance:[\"express.route\",\"http\",\"POST\",\"/orders\"]"}"#,
+    );
+    assert_eq!(invalid(&old_entrance).0, "/pages/0/cards/0/ref/entrance");
 }
 
 #[test]
 fn parsing_checks_frames_resources_connections_and_notes() {
+    let resource = |id: &str, kind: &str, extra: &str| {
+        format!(
+            r#"{{"anchors":[],"at":[0,0],"author":"agent:a","id":"{id}","kind":"{kind}","name":"n"{extra}}}"#
+        )
+    };
+    let actor = resource("who", "actor", "");
     let frame = |id: &str, members: &str| {
-        format!(r#"{{"author":"agent:x","id":"{id}","look":"box","members":[{members}],"title":"F"}}"#)
+        format!(r#"{{"author":"agent:a","id":"{id}","look":"box","members":{members},"title":"F"}}"#)
     };
-    let resource = |fields: &str| {
-        with_page_fields(&format!(
-            r#""groups":[],"resources":[{{"anchors":[],"at":[0,0],"author":"agent:x","id":"r","name":"r",{fields}}}]"#
-        ))
-    };
-    let anchor = |anchor: &str| {
-        with_page_fields(&format!(
-            r#""groups":[],"resources":[{{"anchors":[{anchor}],"at":[0,0],"author":"agent:x","id":"r","kind":"queue","name":"r"}}]"#
-        ))
-    };
-    let note = |fields: &str| {
-        with_items(&format!(
-            r#","notes":[{{"at":[0,0],"author":"agent:x","id":"n",{fields}}}]"#
-        ))
-    };
-    let long = "x".repeat(MAX_NOTE_CHARACTERS + 1);
     let cases = [
-        // Frames.
         (
-            with_items(&format!(r#","frames":[{}]"#, frame("f", ""))),
-            "/pages/0/frames/0/members",
-            "at least one item",
-        ),
-        (
-            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""run","run""#))),
-            "/pages/0/frames/0/members/1",
-            "repeats an earlier member",
-        ),
-        (
-            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""nope""#))),
+            with_page(&format!(r#""frames":[{}]"#, frame("f", r#"["nope"]"#))),
             "/pages/0/frames/0/members/0",
-            "unknown item `nope`",
+            "refers to an unknown item `nope`",
         ),
         (
-            with_items(r#","frames":[{"author":"agent:x","id":"f","look":"box","members":["run"],"title":" "}]"#),
-            "/pages/0/frames/0/title",
-            "must not be empty",
-        ),
-        (
-            with_items(r#","frames":[{"author":"agent:x","id":"f","look":"round","members":["run"],"title":"F"}]"#),
-            "/pages/0/frames/0/look",
-            "must be \"box\" or \"zone\"",
-        ),
-        (
-            with_items(r#","frames":[{"author":"agent:x","icon":"db","id":"f","look":"box","members":["run"],"title":"F"}]"#),
-            "/pages/0/frames/0/icon",
-            "\"library\", or \"system\"",
-        ),
-        (
-            with_items(r#","frames":[{"id":"f","look":"box","members":["run"],"title":"F"}]"#),
-            "/pages/0/frames/0",
-            "missing field `author`",
-        ),
-        (
-            with_items(&format!(
-                r#","frames":[{},{}]"#,
-                frame("f", r#""run""#),
-                frame("g", r#""run""#)
+            with_page(&format!(
+                r#""frames":[{},{}]"#,
+                frame("f", r#"["run"]"#),
+                frame("g", r#"["run"]"#)
             )),
             "/pages/0/frames/1/members/0",
-            "already in frame `f`",
+            "is already in frame `f`",
         ),
         (
-            with_items(&format!(
-                r#","frames":[{},{}]"#,
-                frame("f", r#""g""#),
-                frame("g", r#""f""#)
+            with_page(&format!(
+                r#""frames":[{},{}]"#,
+                frame("f", r#"["g"]"#),
+                frame("g", r#"["f"]"#)
             )),
             "/pages/0/frames/0",
-            "inside itself",
+            "is inside itself",
         ),
         (
-            with_items(&format!(r#","frames":[{}]"#, frame("f", r#""f""#))),
-            "/pages/0/frames/0",
-            "inside itself",
-        ),
-        (
-            with_items(&format!(
-                r#","frames":[{},{},{},{}]"#,
-                frame("a", r#""run""#),
-                frame("b", r#""a""#),
-                frame("c", r#""b""#),
-                frame("d", r#""c""#)
+            with_page(&format!(
+                r#""frames":[{},{},{},{}]"#,
+                frame("a", r#"["b"]"#),
+                frame("b", r#"["c"]"#),
+                frame("c", r#"["d"]"#),
+                frame("d", r#"["run"]"#)
             )),
-            "/pages/0/frames/0",
-            "nested 4 frames deep",
+            "/pages/0/frames/3",
+            "frames nest at most 3 deep",
         ),
         (
-            with_page_fields(&format!(
-                r#""groups":[{{"card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}}],"frames":[{}]"#,
-                frame("f", r#""g""#)
+            with_page(&format!(
+                r#""resources":[{}]"#,
+                resource("q", "queue", r#","columns":[{"name":"id"}]"#)
             )),
-            "/pages/0/frames/0/members/0",
-            "`g` is a group; a frame holds cards, resources, notes, and frames",
-        ),
-        (
-            with_items(&format!(r#","frames":[{}]"#, frame("run", r#""two""#))),
-            "/pages/0/frames/0/id",
-            "duplicate id `run`",
-        ),
-        // Resource cards and anchors.
-        (resource(r#""kind":"db""#), "/pages/0/resources/0/kind", "\"external\", or \"actor\""),
-        (
-            resource(r#""kind":"queue","columns":[]"#),
             "/pages/0/resources/0/columns",
-            "only a table",
+            "only a table has a type and columns",
         ),
         (
-            resource(r#""kind":"queue","type":"a.ts#interface:A""#),
-            "/pages/0/resources/0/type",
-            "only a table",
-        ),
-        (
-            resource(r#""kind":"table","project":"web""#),
-            "/pages/0/resources/0/project",
-            "unknown field",
-        ),
-        (
-            resource(r#""kind":"table","columns":[{"name":"id"},{"name":"id"}]"#),
-            "/pages/0/resources/0/columns/1/name",
-            "repeats column `id`",
-        ),
-        (
-            resource(r#""kind":"table","type":"a.ts#interface:A","columns":[{"name":"id","type":"string"}]"#),
+            with_page(&format!(
+                r#""resources":[{}]"#,
+                resource(
+                    "t",
+                    "table",
+                    &format!(r#","columns":[{{"name":"id","type":"string"}}],"type":"{RUN}""#)
+                )
+            )),
             "/pages/0/resources/0/columns/0/type",
-            "marks only",
+            "a table backed by a type lists marks only",
         ),
         (
-            resource(r#""kind":"table","columns":[{"name":"id","references":"a.id"}]"#),
+            with_page(&format!(
+                r#""resources":[{}]"#,
+                resource("t", "table", r#","columns":[{"name":"id","references":"x.id"}]"#)
+            )),
             "/pages/0/resources/0/columns/0/references",
             "only a foreign key",
         ),
         (
-            with_page_fields(r#""groups":[],"resources":[{"at":[0,0],"author":"agent:x","id":"r","kind":"actor","name":"r"}]"#),
-            "/pages/0/resources/0",
-            "missing field `anchors`",
+            with_page(r#""links":[{"author":"agent:a","from":"run","id":"c","kind":"writes","to":"run"}]"#),
+            "/pages/0/links/0/to",
+            "must be another item than `from`",
         ),
         (
-            anchor(r#"{"key":"a.ts#b","file":"a.sql","lines":[1,1]}"#),
-            "/pages/0/resources/0/anchors/0",
-            "exactly one of `key` or `file`",
-        ),
-        (
-            anchor(r#"{"key":"orders"}"#),
-            "/pages/0/resources/0/anchors/0/key",
-            "entrance key",
-        ),
-        (
-            anchor(r#"{"key":"a.ts#b","lines":[1,2]}"#),
-            "/pages/0/resources/0/anchors/0/lines",
-            "only a file anchor",
-        ),
-        (
-            anchor(r#"{"file":"../a.sql","lines":[1,2]}"#),
-            "/pages/0/resources/0/anchors/0/file",
-            "relative to the project's folder",
-        ),
-        (
-            anchor(r#"{"file":"a.sql"}"#),
-            "/pages/0/resources/0/anchors/0",
-            "missing field `lines`",
-        ),
-        (
-            anchor(r#"{"file":"a.sql","lines":[0,2]}"#),
-            "/pages/0/resources/0/anchors/0/lines/0",
-            "line number",
-        ),
-        (
-            anchor(r#"{"file":"a.sql","lines":[5,2]}"#),
-            "/pages/0/resources/0/anchors/0/lines/1",
-            "before the first line",
-        ),
-        (
-            anchor(r#"{"file":"a.sql","lines":[2]}"#),
-            "/pages/0/resources/0/anchors/0/lines",
-            "two line numbers",
-        ),
-        // Connections.
-        (
-            with_items(r#","links":[{"author":"agent:x","from":"run","id":"l","kind":"ftp","to":"t"}]"#),
-            "/pages/0/links/0/kind",
-            "\"relates\", or \"other\"",
-        ),
-        (
-            with_items(r#","links":[{"from":"run","id":"l","kind":"http","to":"t"}]"#),
-            "/pages/0/links/0",
-            "missing field `author`",
-        ),
-        (
-            with_items(r#","links":[{"author":"agent:x","from":"run","fromColumn":"id","id":"l","kind":"writes","to":"t"}]"#),
-            "/pages/0/links/0/fromColumn",
-            "only a `relates` connection",
-        ),
-        (
-            with_items(r#","links":[{"cardinality":"one-to-one","from":"run","id":"l","to":"t"}]"#),
-            "/pages/0/links/0/cardinality",
-            "only a `relates` connection",
-        ),
-        (
-            with_items(r#","links":[{"author":"agent:x","from":"run","id":"l","kind":"relates","to":"t"}]"#),
+            with_page(&format!(
+                r#""links":[{{"author":"agent:a","from":"run","id":"c","kind":"relates","to":"who"}}],"resources":[{actor}]"#
+            )),
             "/pages/0/links/0/from",
             "must be a table",
         ),
         (
-            with_items(&format!(
-                r#","frames":[{}],"links":[{{"author":"agent:x","from":"t","id":"l","kind":"relates","to":"f","toColumn":"id"}}]"#,
-                frame("f", r#""two""#)
+            with_page(&format!(
+                r#""links":[{{"author":"agent:a","from":"who","id":"c","kind":"writes","step":"{LOG}","to":"run"}}],"resources":[{actor}]"#
             )),
-            "/pages/0/links/0/to",
-            "must be a table",
-        ),
-        (
-            with_items(r#","links":[{"author":"agent:x","from":"t","fromColumn":"nope","id":"l","kind":"relates","to":"t2"}]"#)
-                .replace(
-                    r#""resources":["#,
-                    r#""resources":[{"anchors":[],"at":[0,0],"author":"agent:x","id":"t2","kind":"table","name":"t2"},"#,
-                ),
-            "/pages/0/links/0/fromColumn",
-            "names no column of table `t`",
-        ),
-        (
-            with_items(r#","links":[{"author":"agent:x","from":"t","id":"l","kind":"writes","step":"main.ts#function:run/if[0]","to":"run"}]"#),
             "/pages/0/links/0/step",
-            "must be a block card",
+            "`from` must be a block card",
         ),
         (
-            with_items(r#","links":[{"author":"agent:x","from":"two","id":"l","kind":"calls","step":"main.ts#function:run/if[0]","to":"run"}]"#),
-            "/pages/0/links/0/step",
-            "must be a block card",
+            with_page(
+                r#""links":[{"author":"agent:a","from":"n","id":"c","kind":"writes","to":"run"}],"notes":[{"at":[0,0],"author":"agent:a","id":"n","text":"x"}]"#,
+            ),
+            "/pages/0/links/0/from",
+            "`n` is a note; a connection joins cards, resources, and frames",
         ),
         (
-            with_items(r#","links":[{"anchors":[{"key":"main.ts#a"}],"from":"run","id":"l","to":"t"}]"#),
-            "/pages/0/links/0/anchors",
-            "only a connection (a link with `kind`)",
+            with_page(r#""notes":[{"at":[0,0],"attach":"nope","author":"agent:a","id":"n","text":"x"}]"#),
+            "/pages/0/notes/0/attach",
+            "refers to an unknown item `nope`",
         ),
         (
-            with_items(r#","links":[{"description":{"author":"person:a","text":"T"},"from":"run","id":"l","to":"t"}]"#),
-            "/pages/0/links/0/description",
-            "a drawn link has a label",
-        ),
-        (
-            with_items(r#","notes":[{"at":[0,0],"author":"agent:x","id":"n","text":"N"}],"links":[{"from":"run","id":"l","to":"n"}]"#),
-            "/pages/0/links/0/to",
-            "`n` is a note; a link joins cards, resources, and frames",
-        ),
-        // Notes.
-        (
-            note(&format!(r#""text":"{long}""#)),
+            with_page(&format!(
+                r#""notes":[{{"at":[0,0],"author":"agent:a","id":"n","text":"{}"}}]"#,
+                "x".repeat(401)
+            )),
             "/pages/0/notes/0/text",
             "at most 400 characters",
         ),
-        (note(r#""text":" ""#), "/pages/0/notes/0/text", "must not be empty"),
-        (
-            note(r#""text":"N","attach":"nope""#),
-            "/pages/0/notes/0/attach",
-            "unknown item `nope`",
-        ),
-        (
-            with_page_fields(
-                r#""groups":[{"card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}],"notes":[{"at":[0,0],"attach":"g","author":"agent:x","id":"n","text":"N"}]"#,
-            ),
-            "/pages/0/notes/0/attach",
-            "`g` is a group; a note attaches to a card, frame, resource, or link",
-        ),
-        // Step groups name who wrote their title.
-        (
-            with_page_fields(
-                r#""groups":[{"author":"robot","card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}]"#,
-            ),
-            "/pages/0/groups/0/author",
-            "person:<name>",
-        ),
     ];
     for (text, path, message) in cases {
-        let (actual_path, actual_message) = invalid(&text);
-        assert_eq!(actual_path, path, "{text}\n{actual_message}");
-        assert!(
-            actual_message.contains(message),
-            "{actual_message} lacks {message}"
-        );
+        let (got_path, got_message) = invalid(&text);
+        assert_eq!(got_path, path, "{text}\n{got_message}");
+        assert!(got_message.contains(message), "{message:?} in {got_message:?}");
     }
-
-    // Everything at once reads: Diagram views, frames nested three deep, links to tables and
-    // frames, a relationship between columns, and notes on a link and a frame.
-    let valid = with_items(&format!(
-        r#","frames":[{},{},{}],"links":[{{"anchors":[{{"file":"db/schema.sql","lines":[3,9]}},{{"key":"entrance:x"}}],"author":"agent:x","channel":"orders","from":"run","id":"l","kind":"queue","step":"main.ts#function:run/if[0]","to":"c"}},{{"author":"person:a","cardinality":"one-to-many","from":"t","fromColumn":"id","id":"m","kind":"relates","to":"u","toColumn":"order_id"}}],"notes":[{{"at":[0,0],"attach":"l","author":"agent:x","id":"n","text":"{}"}},{{"at":[1,1],"attach":"c","author":"agent:x","id":"o","text":"Free"}}]"#,
-        frame("a", r#""run","n""#),
-        frame("b", r#""a""#),
-        frame("c", r#""b","t""#),
-        "y".repeat(MAX_NOTE_CHARACTERS),
-    ))
-    .replace("\"defaultView\":\"code\"", "\"defaultView\":\"diagram\"")
-    .replace("\"id\":\"two\",", "\"id\":\"two\",\"view\":\"diagram\",")
-    .replace(
-        r#""resources":["#,
-        r#""resources":[{"anchors":[],"at":[0,0],"author":"agent:x","id":"u","kind":"table","name":"u","type":"a.ts#interface:Item"},"#,
-    );
-    let error = parse(&valid).err();
-    assert!(error.is_none(), "{error:?}");
-    let parsed = parse(&valid).unwrap();
-    assert_eq!(parsed.pages[0].default_view, View::Diagram);
-    assert_eq!(parsed.pages[0].card("two").unwrap().view, Some(View::Diagram));
-    assert!(
-        parsed.pages[0].link("m").unwrap().relates(),
-        "a type-backed table's column"
-    );
 }
 
-#[test]
-fn new_items_are_written_only_when_present() {
-    // Empty arrays and false flags on input are the defaults: they're never written.
-    let text = with_page_fields(
-        r#""groups":[{"author":"person:a","card":"run","collapsed":false,"id":"g","members":["main.ts#a"],"title":"G"}],"frames":[],"notes":[],"resources":[],"links":[{"anchors":[],"from":"run","id":"l","to":"run2"}]"#,
-    )
-    .replace(
-        "\"cards\":[",
-        r#""cards":[{"at":[0,0],"id":"run2","ref":{"entrance":"entrance:x"}},"#,
-    );
-    let written = serialize(&parse(&text).unwrap());
-    for absent in ["\"frames\"", "\"notes\"", "\"resources\"", "\"anchors\""] {
-        assert!(!written.contains(absent), "{absent} in {written}");
-    }
-    assert!(written.contains("\"author\": \"person:a\""), "the group's author");
-
-    // One of each item, written canonically: keys sorted, items by id, optional fields only
-    // when present.
-    let mut page = Page::new("p", "P");
-    page.cards.push(run_card("run"));
-    let agent = author();
-    page.frames.push(Frame {
-        id: "f".to_owned(),
-        title: "Unit".to_owned(),
-        description: None,
-        members: vec!["run".to_owned(), "t".to_owned()],
-        look: FrameLook::Box,
-        icon: Some(FrameIcon::Api),
-        direction: Some(FrameDirection::Down),
-        collapsed: true,
-        author: agent.clone(),
-    });
-    page.resources.push(Resource {
-        id: "t".to_owned(),
-        kind: ResourceKind::Table,
-        name: "orders".to_owned(),
-        type_key: Some(Key::from_text("a.ts#interface:Order")),
-        columns: vec![Column {
-            name: "id".to_owned(),
-            written_type: None,
-            key: Some(ColumnKey::Primary),
-            references: None,
-            optional: false,
-        }],
-        anchors: vec![Anchor::File {
-            file: unfold_core::RepoPath::new("db/schema.sql").unwrap(),
-            lines: [3, 9],
-        }],
-        at: [1.5, -2.0],
-        description: None,
-        author: agent.clone(),
-        signature: None,
-    });
-    page.links.push(Link {
-        kind: Some(LinkKind::Writes),
-        step: Some(Key::from_text(IF0)),
-        author: Some(agent.clone()),
-        anchors: vec![Anchor::Key {
-            key: Key::from_text(RUN),
-        }],
-        ..Link::new("w", "run", "t")
-    });
-    page.notes.push(Note {
-        id: "n".to_owned(),
-        text: "Mind the gap".to_owned(),
-        at: [0.0, 10.0],
-        attach: Some("w".to_owned()),
-        author: agent,
-    });
-    let board = Board::with_pages("T", None, vec![page]);
-    let text = serialize(&board);
-    let expected = r#"{
+/// `full_board`'s canonical text.
+const FULL_BOARD: &str = r##"{
+  "folder": "Checkout",
   "format": "unfold-board",
   "pages": [
     {
       "cards": [
         {
           "at": [
+            -0.5,
+            1e+21
+          ],
+          "id": "a-entrance",
+          "ref": {
+            "entrance": "entrance:shop/run-it"
+          }
+        },
+        {
+          "at": [
             10,
             20
           ],
+          "description": {
+            "author": "agent:test",
+            "signature": "",
+            "text": "Loads a value, logs it, and returns it."
+          },
           "id": "run",
+          "open": [
+            [
+              "main.ts#run/call:load",
+              "main.ts#load/return[0]/call:helper"
+            ],
+            [
+              "main.ts#run/call:load"
+            ]
+          ],
           "ref": {
-            "block": "main.ts#function:run"
-          }
+            "block": "main.ts#run"
+          },
+          "view": "compact"
         }
       ],
-      "defaultView": "diagram",
+      "combined": [
+        {
+          "author": "agent:test",
+          "collapsed": true,
+          "id": "a-check",
+          "members": [
+            "main.ts#run/if[0]"
+          ],
+          "signature": "",
+          "title": "Steps"
+        },
+        {
+          "author": "agent:test",
+          "collapsed": true,
+          "description": {
+            "author": "agent:test",
+            "signature": "",
+            "text": "Log and hand it back"
+          },
+          "id": "steps",
+          "members": [
+            "main.ts#run/call:console.log",
+            "main.ts#run/return[0]"
+          ],
+          "signature": "",
+          "title": "Steps"
+        }
+      ],
+      "defaultView": "expanded",
       "frames": [
         {
           "author": "agent:test",
           "collapsed": true,
           "direction": "down",
           "icon": "api",
-          "id": "f",
+          "id": "server",
           "look": "box",
           "members": [
             "run",
-            "t"
+            "a-entrance"
           ],
-          "title": "Unit"
+          "title": "Server"
         }
       ],
-      "groups": [],
       "guards": [],
-      "id": "p",
-      "labels": [],
+      "id": "page-1",
       "links": [
+        {
+          "author": "person:tester",
+          "from": "run",
+          "id": "note",
+          "kind": "other",
+          "label": {
+            "author": "person:tester",
+            "signature": "",
+            "text": "Quote \" and\nnewline"
+          },
+          "step": "main.ts#run/call:console.log",
+          "to": "customer"
+        },
         {
           "anchors": [
             {
-              "key": "main.ts#function:run"
+              "key": "entrance:shop/run-it"
             }
           ],
           "author": "agent:test",
-          "from": "run",
-          "id": "w",
-          "kind": "writes",
-          "step": "main.ts#function:run/if[0]",
-          "to": "t"
+          "from": "customer",
+          "id": "posts",
+          "kind": "http",
+          "to": "a-entrance"
+        }
+      ],
+      "names": [
+        {
+          "author": "agent:test",
+          "key": "main.ts#run/call:load",
+          "signature": "",
+          "text": "Load the value"
+        },
+        {
+          "author": "agent:test",
+          "key": "main.ts#run/if[0]",
+          "signature": "",
+          "text": "Is it there?"
         }
       ],
       "notes": [
         {
           "at": [
             0,
-            10
+            -40
           ],
-          "attach": "w",
+          "attach": "posts",
           "author": "agent:test",
-          "id": "n",
-          "text": "Mind the gap"
+          "id": "hint",
+          "text": "Read the request first."
+        }
+      ],
+      "proposals": [
+        {
+          "after": "main.ts#run/call:console.log",
+          "author": "agent:test",
+          "id": "p-after",
+          "reason": "They asked for a receipt",
+          "title": "Email the customer"
+        },
+        {
+          "author": "agent:test",
+          "id": "p-start",
+          "start": "main.ts#run/if[0]/then",
+          "title": "Email the customer"
         }
       ],
       "resources": [
         {
-          "anchors": [
-            {
-              "file": "db/schema.sql",
-              "lines": [
-                3,
-                9
-              ]
-            }
-          ],
+          "anchors": [],
           "at": [
-            1.5,
-            -2
+            -300,
+            0
           ],
           "author": "agent:test",
-          "columns": [
-            {
-              "key": "primary",
-              "name": "id"
-            }
-          ],
-          "id": "t",
-          "kind": "table",
-          "name": "orders",
-          "type": "a.ts#interface:Order"
+          "id": "customer",
+          "kind": "actor",
+          "name": "Customer"
         }
       ],
-      "title": "P"
+      "title": "Placing an order"
+    },
+    {
+      "cards": [],
+      "combined": [],
+      "defaultView": "compact",
+      "guards": [],
+      "id": "a-second",
+      "links": [],
+      "names": [],
+      "title": "Second"
     }
   ],
-  "title": "T",
+  "title": "Orders",
   "version": 1
 }
-"#;
-    assert_eq!(text, expected);
-    let reparsed = parse(&text).unwrap();
-    assert_eq!(reparsed, board);
-    // What the window receives (serde) has the file's shape, numbers aside (`10.0` is `10`).
-    fn numbers(value: serde_json::Value) -> serde_json::Value {
-        match value {
-            serde_json::Value::Number(number) => number.as_f64().map_or(serde_json::Value::Null, Into::into),
-            serde_json::Value::Array(items) => items.into_iter().map(numbers).collect(),
-            serde_json::Value::Object(map) => {
-                map.into_iter().map(|(key, item)| (key, numbers(item))).collect()
-            }
-            other => other,
-        }
-    }
-    let ipc = numbers(serde_json::to_value(&board.pages[0]).unwrap());
-    let file: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(ipc, numbers(file["pages"][0].clone()));
-}
+"##;
 
-/// A board using every part of the format: a folder, two pages, an entrance card, a label,
-/// guards, a group, and a labeled link.
+/// A board with every kind of item, unsigned, in no particular order.
 fn full_board() -> Board {
-    let signature = Signature::of(b"x");
-    let mut first = Page::new("page-1", "Placing an order");
-    first.default_view = View::Flow;
-    first.cards.push(Card {
-        at: [-0.5, 1e21],
-        view: Some(View::Code),
-        description: Some(unsigned("Quote \" and\nnewline")),
-        ..card(
-            "z-last",
-            CardRef::entrance(Key::from_text("entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]")),
-        )
+    let mut page = Page::new("page-1", "Placing an order");
+    page.default_view = View::Expanded;
+    let mut run = block_card("run", RUN);
+    run.open = vec![vec![key(LOAD_CALL), key(HELPER_CALL)], vec![key(LOAD_CALL)]];
+    run.view = Some(View::Compact);
+    run.description = Some(unsigned("Loads a value, logs it, and returns it."));
+    let mut entrance = start_card("a-entrance", RUN_IT);
+    entrance.at = [-0.5, 1e21];
+    page.cards = vec![run, entrance];
+    page.names = vec![name(IF0, "Is it there?"), name(LOAD_CALL, "Load the value")];
+    let mut steps = combined("steps", &[LOG, RETURN0]);
+    steps.description = Some(unsigned("Log and hand it back"));
+    page.combined = vec![steps, combined("a-check", &[IF0])];
+    let mut post = Connection::new("posts", ConnectionKind::Http, "customer", "a-entrance", agent());
+    post.anchors = vec![Anchor::Key { key: key(RUN_IT) }];
+    let mut note = Connection::new("note", ConnectionKind::Other, "run", "customer", person());
+    note.label = Some(Description {
+        text: "Quote \" and\nnewline".to_owned(),
+        author: person(),
+        signature: None,
     });
-    first.cards.push(Card {
-        at: [0.0, 0.0],
-        ..run_card("run")
-    });
-    first.groups.push(group(&[IF0]));
-    first.labels.push(label(IF0, "Own"));
-    first.guards.push(GuardEntry {
-        key: Key::from_text("entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]"),
-        kind: "entrance:worker".to_owned(),
-        owner: String::new(),
-        signature,
-    });
-    first.guards.push(GuardEntry {
-        key: Key::from_text(RUN),
-        kind: "function".to_owned(),
-        owner: RUN.to_owned(),
-        signature,
-    });
-    first
-        .links
-        .push(link("calls", "z-last", "run", Some("calls over HTTP")));
-    let second = Page::new("a-second", "Second");
-    Board::with_pages("T", Some("Checkout".to_owned()), vec![first, second])
+    note.step = Some(key(LOG));
+    page.links = vec![post, note];
+    page.resources = vec![Resource {
+        id: "customer".to_owned(),
+        kind: ResourceKind::Actor,
+        name: "Customer".to_owned(),
+        type_key: None,
+        columns: Vec::new(),
+        anchors: Vec::new(),
+        at: [-300.0, 0.0],
+        description: None,
+        author: agent(),
+        signature: None,
+    }];
+    page.frames = vec![Frame {
+        id: "server".to_owned(),
+        title: "Server".to_owned(),
+        description: None,
+        members: vec!["run".to_owned(), "a-entrance".to_owned()],
+        look: FrameLook::Box,
+        icon: Some(FrameIcon::Api),
+        direction: Some(FrameDirection::Down),
+        collapsed: true,
+        author: agent(),
+    }];
+    page.notes = vec![Note {
+        id: "hint".to_owned(),
+        text: "Read the request first.".to_owned(),
+        at: [0.0, -40.0],
+        attach: Some("posts".to_owned()),
+        author: agent(),
+    }];
+    page.proposals = vec![
+        proposal("p-after", after(LOG)),
+        Proposal {
+            reason: None,
+            ..proposal("p-start", start(THEN))
+        },
+    ];
+    // In canonical order, as a parsed file holds them.
+    page.cards.sort_by(|a, b| a.id.cmp(&b.id));
+    page.names.sort_by(|a, b| a.key.cmp(&b.key));
+    page.combined.sort_by(|a, b| a.id.cmp(&b.id));
+    page.links.sort_by(|a, b| a.id.cmp(&b.id));
+    Board::with_pages(
+        "Orders",
+        Some("Checkout".to_owned()),
+        vec![page, Page::new("a-second", "Second")],
+    )
 }
 
 #[test]
 fn serialization_is_canonical_and_round_trips() {
     let board = full_board();
     let text = serialize(&board);
-    let signature = format!("sha256:{}", Signature::of(b"x").0);
-    let expected = format!(
-        r#"{{
-  "folder": "Checkout",
-  "format": "unfold-board",
-  "pages": [
-    {{
-      "cards": [
-        {{
-          "at": [
-            0,
-            0
-          ],
-          "id": "run",
-          "ref": {{
-            "block": "main.ts#function:run"
-          }}
-        }},
-        {{
-          "at": [
-            -0.5,
-            1e+21
-          ],
-          "description": {{
-            "author": "agent:test",
-            "signature": "",
-            "text": "Quote \" and\nnewline"
-          }},
-          "id": "z-last",
-          "ref": {{
-            "entrance": "entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]"
-          }},
-          "view": "code"
-        }}
-      ],
-      "defaultView": "flow",
-      "groups": [
-        {{
-          "card": "run",
-          "collapsed": false,
-          "id": "steps",
-          "members": [
-            "main.ts#function:run/if[0]"
-          ],
-          "title": "Steps"
-        }}
-      ],
-      "guards": [
-        {{
-          "key": "entrance:[\"manual\",\"worker\",\"\",\"\",\"x\"]",
-          "kind": "entrance:worker",
-          "owner": "",
-          "signature": "{signature}"
-        }},
-        {{
-          "key": "main.ts#function:run",
-          "kind": "function",
-          "owner": "main.ts#function:run",
-          "signature": "{signature}"
-        }}
-      ],
-      "id": "page-1",
-      "labels": [
-        {{
-          "author": "agent:test",
-          "key": "main.ts#function:run/if[0]",
-          "signature": "",
-          "text": "Own"
-        }}
-      ],
-      "links": [
-        {{
-          "from": "z-last",
-          "id": "calls",
-          "label": {{
-            "author": "agent:test",
-            "signature": "",
-            "text": "calls over HTTP"
-          }},
-          "to": "run"
-        }}
-      ],
-      "title": "Placing an order"
-    }},
-    {{
-      "cards": [],
-      "defaultView": "diagram",
-      "groups": [],
-      "guards": [],
-      "id": "a-second",
-      "labels": [],
-      "links": [],
-      "title": "Second"
-    }}
-  ],
-  "title": "T",
-  "version": 1
-}}
-"#
-    );
-    assert_eq!(text, expected);
-    let reparsed = parse(&text).unwrap();
-    assert_eq!(serialize(&reparsed), text);
-    assert_eq!(reparsed.pages[0].card("z-last"), board.pages[0].card("z-last"));
-    // The schema is the documented one and is valid JSON.
-    let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
-    assert_eq!(schema["properties"]["format"]["const"], FORMAT);
-    let mirror = std::fs::read_to_string(
-        unfold_core::testkit::testdata_dir().join("../docs/schemas/unfold-board.schema.json"),
-    )
-    .unwrap();
-    assert_eq!(mirror, SCHEMA, "docs/schemas mirrors the crate's schema");
-}
+    let parsed = parse(&text).unwrap();
+    assert_eq!(parsed, board);
+    assert_eq!(serialize(&parsed), text);
+    assert_eq!(text, FULL_BOARD);
 
-#[test]
-fn edits_have_their_own_framing() {
-    let board = full_board();
-    // An edit holds the title and pages only; the folder is the caller's.
+    // An agent writing the same board with JSON.stringify and sorted keys and arrays writes the
+    // same bytes; any other order reads back to the same canonical text.
+    let mut shuffled = board.clone();
+    shuffled.pages[0].cards.reverse();
+    shuffled.pages[0].names.reverse();
+    shuffled.pages[0].combined.reverse();
+    shuffled.pages[0].links.reverse();
+    assert_eq!(serialize(&shuffled), text);
+
+    // The UI's edit (its serde form) reads back as the same pages.
     let edit = serde_json::json!({ "title": board.title, "pages": board.pages }).to_string();
-    let edited = parse_edit(&edit, board.folder.clone()).unwrap();
-    assert_eq!(edited, board);
-    assert_eq!(parse_edit(&edit, None).unwrap().folder, None);
-    let framed = edit.replacen('{', "{\"format\":\"unfold-board\",", 1);
-    assert_eq!(
-        match parse_edit(&framed, None) {
-            Err(BoardError::Invalid { path, .. }) => path,
-            other => panic!("{other:?}"),
-        },
-        "/format"
-    );
+    assert_eq!(parse_edit(&edit, board.folder.clone()).unwrap(), board);
+    assert!(matches!(
+        parse_edit(
+            &edit.replace(r#""title":"Orders""#, r#""folder":"x","title":"Orders""#),
+            None
+        ),
+        Err(BoardError::Invalid { .. })
+    ));
 }
 
 #[test]
-fn old_board_files_fail_like_any_invalid_file() {
-    let text = serialize(&full_board());
-    let old_fields = [
-        ("\"projects\": [\"web\"],", "/projects"),
-        ("\"publishes\": \"boards/orders.json\",", "/publishes"),
-    ];
-    for (field, path) in old_fields {
-        let old = text.replacen("\"title\": \"T\"", &format!("{field} \"title\": \"T\""), 1);
-        assert_eq!(
-            invalid(&old),
-            (path.to_owned(), "unknown field".to_owned()),
-            "{field}"
+fn optional_items_are_written_only_when_present() {
+    let text = serialize(&parse(MINIMAL).unwrap());
+    for absent in [
+        "frames",
+        "resources",
+        "notes",
+        "proposals",
+        "open",
+        "view",
+        "folder",
+    ] {
+        assert!(!text.contains(&format!("\"{absent}\"")), "{absent} in {text}");
+    }
+    for present in ["names", "combined", "guards", "links"] {
+        assert!(
+            text.contains(&format!("\"{present}\": []")),
+            "{present} in {text}"
         );
     }
-    let old_card = text.replacen(
-        "\"block\": \"main.ts#function:run\"",
-        "\"block\": \"main.ts#function:run\", \"project\": \"web\"",
-        1,
-    );
-    assert_eq!(invalid(&old_card).1, "unknown field");
-    let deep = text.replace("\"folder\": \"Checkout\"", "\"folder\": \"Checkout/Orders\"");
-    assert_eq!(invalid(&deep).0, "/folder");
 }
 
 #[test]
-fn descriptions_are_signed_from_verified_source_and_go_outdated() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].cards[0].description = Some(unsigned("Explains run"));
-    board.pages[0].labels.push(label(FIRST, "Start with one"));
-    let (mut board, report) = save(board, None, &graph).unwrap();
-    assert!(report.is_healthy());
-    let card_signature = board.pages[0].cards[0].description.as_ref().unwrap().signature;
-    assert_eq!(card_signature, graph.signature(RUN));
-    assert_eq!(board.pages[0].labels[0].label.signature, graph.signature(FIRST));
+fn descriptions_names_and_combined_steps_are_signed_from_verified_source() {
+    let (_dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.cards[0].description = Some(unsigned("Runs it"));
+        let mut entrance = start_card("run-it", RUN_IT);
+        entrance.description = Some(unsigned("Where a run starts"));
+        page.cards.push(entrance);
+        page.names.push(name(LOAD_CALL, "Load the value"));
+        let mut steps = combined("steps", &[LOAD_CALL, IF0]);
+        steps.description = Some(unsigned("Load and check"));
+        page.combined.push(steps);
+    });
+    let (saved, health) = save(board, None, &graph).unwrap();
+    assert!(health.is_healthy(), "{health:#?}");
+    let page = &saved.pages[0];
+    let run = Signature::of(run_source().as_bytes());
+    assert_eq!(page.cards[0].description.as_ref().unwrap().signature, Some(run));
+    // An entrance card's description is signed over the source of its code.
+    let code = Signature::of(format!("{}\n", run_source()).as_bytes());
+    assert_eq!(page.cards[1].description.as_ref().unwrap().signature, Some(code));
+    assert_eq!(
+        page.names[0].name.signature,
+        Some(Signature::of(bytes_of("load()")))
+    );
+    let span = Signature::of(bytes_of("load();\n  if (first) { console.log(first); }"));
+    assert_eq!(page.combined[0].signature, Some(span));
+    assert_eq!(
+        page.combined[0].description.as_ref().unwrap().signature,
+        Some(span)
+    );
 
-    // The file changes on disk but is not compiled yet: nothing can be signed against it.
-    std::fs::write(
-        dir.path().join("main.ts"),
-        SOURCE.replace("first = 1", "first = 2"),
-    )
-    .unwrap();
+    // Guards record every guarded reference: a block's kind, owner, and source signature, and
+    // an entrance's kind and its `code` keys.
+    let guard = |key: &str| page.guard(key).unwrap();
+    assert_eq!(
+        (guard(RUN).kind.as_str(), guard(RUN).owner.as_str()),
+        ("function", MODULE)
+    );
+    assert_eq!(guard(RUN).signature, run);
+    assert_eq!(
+        (guard(IF0).kind.as_str(), guard(IF0).owner.as_str()),
+        ("decision", RUN)
+    );
+    assert_eq!(
+        (guard(RUN_IT).kind.as_str(), guard(RUN_IT).owner.as_str()),
+        ("entrance", "")
+    );
+    assert_eq!(
+        guard(RUN_IT).signature,
+        Signature::of(format!("{RUN}\n").as_bytes())
+    );
+    assert_eq!(page.guards.len(), 4);
+}
+
+#[test]
+fn source_that_does_not_verify_is_never_signed() {
+    let (dir, graph) = folder(SOURCE);
+    std::fs::write(dir.path().join("main.ts"), SOURCE.replace("done", "DONE")).unwrap();
     let stale = BoardGraph::from_graph(&graph_of(SOURCE), dir.path());
-    assert_eq!(page_health(&board, &stale).outdated, 2);
-    let mut unsigned_card = board.clone();
-    unsigned_card.pages[0].cards[0].description = Some(unsigned("x"));
-    assert!(matches!(
-        save(unsigned_card, Some((&board, &report)), &stale),
-        Err(BoardError::Unverified { .. })
-    ));
-
-    // After the compile, the named references reconnect and their text is outdated.
-    let updated = recompiled(dir.path(), &SOURCE.replace("first = 1", "first = 2"));
-    let report = page_health(&board, &updated);
-    assert_eq!((report.outdated, report.review, report.missing), (2, 0, 0));
-    assert_eq!(report.label().as_deref(), Some("2 outdated"));
-    assert!(
-        report
-            .items
-            .iter()
-            .all(|item| item.page == "page-1" && item.repairs.contains(&RepairKind::Resign))
-    );
-    // Outdated text never refuses a save.
-    assert!(save(board.clone(), Some((&board, &report)), &updated).is_ok());
-    repair(
-        &mut board,
-        &updated,
-        &Repair::Resign(Target::Card("run".to_owned())),
-    )
-    .unwrap();
-    repair(&mut board, &updated, &Repair::Resign(label_target(FIRST))).unwrap();
-    assert!(page_health(&board, &updated).is_healthy());
-    repair(
-        &mut board,
-        &updated,
-        &Repair::RemoveDescription(label_target(FIRST)),
-    )
-    .unwrap();
-    assert!(board.pages[0].labels.is_empty());
-}
-
-#[test]
-fn an_ordinal_reference_whose_code_changed_is_held_for_review() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].groups.push(group(&[IF0]));
-    board.pages[0].labels.push(label(IF0, "Log when set"));
-    board.pages[0].labels.push(label(FIRST, "Start with one"));
-    let (saved, report) = save(board, None, &graph).unwrap();
-    assert!(report.is_healthy());
-    let page = &saved.pages[0];
-    assert_eq!(page.guard(IF0).unwrap().kind, "if");
-    assert_eq!(page.guard(IF0).unwrap().owner, RUN);
-    assert_eq!(page.guards.len(), 3, "the card, the group member, and the labels");
-
-    let inserted = SOURCE.replace(
-        "  if (first)",
-        "  if (!first) { console.log('inserted'); }\n  if (first)",
-    );
-    let updated = recompiled(dir.path(), &inserted);
-    let report = page_health(&saved, &updated);
-    let held: Vec<&HealthItem> = report
-        .items
-        .iter()
-        .filter(|item| item.kind == HealthKind::Review)
-        .collect();
-    assert_eq!(held.len(), 2, "{:#?}", report.items);
-    assert!(
-        held.iter()
-            .all(|item| item.message.contains("Position-based reference changed"))
-    );
-    assert!(
-        report.items.iter().all(|item| item.target != label_target(FIRST)),
-        "a named, unchanged reference stays healthy"
-    );
-    let mut described = saved.clone();
-    described.pages[0].groups[0].description = Some(unsigned("New text"));
-    assert!(save(described, Some((&saved, &report)), &updated).is_err());
-    // Saving with the problem carried over unchanged is allowed; accepting clears it.
-    let mut moved = saved.clone();
-    moved.pages[0].cards[0].at = [99.0, 99.0];
-    let (moved, moved_report) = save(moved, Some((&saved, &report)), &updated).unwrap();
-    assert_eq!(moved_report.review, 2);
+    let board = run_board_with(|page| page.names.push(name(LOG, "Log it")));
     assert_eq!(
-        moved.pages[0].guard(IF0),
-        saved.pages[0].guard(IF0),
-        "guards survive until accepted"
+        save(board.clone(), None, &stale).unwrap_err(),
+        BoardError::Unverified { what: LOG.to_owned() }
     );
-    let mut accepted = moved;
-    repair(&mut accepted, &updated, &Repair::Accept(IF0.to_owned())).unwrap();
-    let after = page_health(&accepted, &updated);
-    assert_eq!(after.review, 0);
-    assert_eq!(after.outdated, 1, "the accepted label must still be re-signed");
+    assert!(save(board, None, &graph).is_ok());
 }
 
 #[test]
-fn groups_are_consecutive_siblings_in_one_body() {
+fn saving_restores_dropped_guards_drops_unused_ones_and_reuses_unchanged_pages() {
     let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    let then_statement = "main.ts#function:run/if[0]/expression_statement[0]";
-    let cases: [(&[&str], Option<&str>); 6] = [
-        (&[FIRST, IF0], None),
-        (&[FIRST, LOG0], Some("consecutive siblings")),
-        (&[LOG0, IF0], Some("consecutive siblings")),
-        (&[IF0, then_statement], Some("siblings in the same body")),
-        (&[RUN], Some("inside their card's body")),
-        (&["main.ts#function:run/nope[0]"], Some("missing block")),
-    ];
-    for (members, problem) in cases {
-        board.pages[0].groups = vec![group(members)];
-        let page = &board.pages[0];
-        let found = group_problem(page, &graph, &page.groups[0]);
-        match problem {
-            Some(expected) => assert!(
-                found.is_some_and(|text| text.contains(expected)),
-                "{members:?}: {found:?}"
-            ),
-            None => assert_eq!(found, None, "{members:?}"),
-        }
-    }
-    // Overlapping and nested groups are broken, and a save that adds them is refused.
-    board.pages[0].groups = vec![
-        group(&[FIRST, IF0]),
-        Group {
-            id: "inner".to_owned(),
-            ..group(&[then_statement])
-        },
-    ];
-    assert_eq!(page_health(&board, &graph).broken_groups, 2);
-    assert!(matches!(
-        save(board.clone(), None, &graph),
-        Err(BoardError::Problem { page, target: Target::Group(_), .. }) if page == "page-1"
-    ));
-    repair(&mut board, &graph, &Repair::Ungroup("inner".to_owned())).unwrap();
-    assert!(page_health(&board, &graph).is_healthy());
-    // A group on an entrance card is broken.
-    board.pages[0].cards.push(card(
-        "entrance",
-        CardRef::entrance(Key::from_text("entrance:none")),
-    ));
-    let entrance_group = Group {
-        card: "entrance".to_owned(),
-        ..group(&[FIRST])
-    };
-    assert_eq!(
-        group_problem(&board.pages[0], &graph, &entrance_group),
-        Some("Group must belong to a block card")
-    );
-}
-
-#[test]
-fn missing_references_are_placeholders_with_repairs() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].labels.push(label(RETURN0, "Hand back first"));
-    let (saved, _) = save(board, None, &graph).unwrap();
-    let renamed = SOURCE.replace("function run", "function start");
-    let updated = recompiled(dir.path(), &renamed);
-    let report = page_health(&saved, &updated);
-    assert_eq!(report.missing, 2);
-    let card_item = report
-        .items
-        .iter()
-        .find(|item| item.target == Target::Card("run".to_owned()))
-        .unwrap();
-    assert_eq!(card_item.repairs, [RepairKind::Reconnect, RepairKind::RemoveCard]);
-    // A position update keeps the placeholder; a new missing reference is refused.
-    let mut moved = saved.clone();
-    moved.pages[0].cards[0].at = [1.0, 2.0];
-    assert!(save(moved.clone(), Some((&saved, &report)), &updated).is_ok());
-    let new = Card {
-        id: "new".to_owned(),
-        reference: CardRef::block(Key::from_text("main.ts#function:nope")),
-        ..moved.pages[0].cards[0].clone()
-    };
-    moved.pages[0].cards.push(new);
-    assert!(matches!(
-        save(moved, Some((&saved, &report)), &updated),
-        Err(BoardError::Problem { target: Target::Card(id), .. }) if id == "new"
-    ));
-    // The manual repair after a rename.
-    let mut repaired = saved;
-    for (from, to) in [
-        (RUN, "main.ts#function:start"),
-        (RETURN0, "main.ts#function:start/return[0]"),
-    ] {
-        repair(
-            &mut repaired,
-            &updated,
-            &Repair::Reconnect {
-                from: from.to_owned(),
-                to: to.to_owned(),
-            },
-        )
-        .unwrap();
-    }
-    let report = page_health(&repaired, &updated);
-    assert_eq!(report.missing, 0, "{:#?}", report.items);
-    let page = &repaired.pages[0];
-    assert!(page.guard("main.ts#function:start").is_some());
-    assert!(page.guard(RUN).is_none());
-    assert_eq!(
-        page.label_entry("main.ts#function:start/return[0]")
-            .map(|entry| entry.label.text.as_str()),
-        Some("Hand back first")
-    );
-    assert!(
-        repair(
-            &mut repaired,
-            &updated,
-            &Repair::Reconnect {
-                from: "a".to_owned(),
-                to: "main.ts#nope".to_owned()
-            }
-        )
-        .is_err()
-    );
-    repair(&mut repaired, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
-    assert!(repaired.pages[0].cards.is_empty());
-}
-
-#[test]
-fn reconnecting_onto_a_member_never_repeats_it() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].groups.push(group(&[FIRST, IF0]));
-    board.pages[0].labels.push(label(FIRST, "From"));
-    board.pages[0].labels.push(label(IF0, "To"));
-    repair(
-        &mut board,
-        &graph,
-        &Repair::Reconnect {
-            from: FIRST.to_owned(),
-            to: IF0.to_owned(),
-        },
-    )
-    .unwrap();
-    assert_eq!(board.pages[0].groups[0].members, [Key::from_text(IF0)]);
-    assert_eq!(board.pages[0].labels.len(), 1, "labels stay unique per key");
-    assert_eq!(
-        board.pages[0]
-            .label_entry(IF0)
-            .map(|entry| entry.label.text.as_str()),
-        Some("From")
-    );
-    assert_eq!(
-        parse(&serialize(&board)).unwrap(),
-        board,
-        "the board still reads back"
-    );
-}
-
-#[test]
-fn saving_signs_restores_dropped_guards_and_drops_unused_ones() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].cards[0].description = Some(unsigned("Unsigned until saved"));
-    board.pages[0].groups.push(group(&[FIRST, IF0]));
-    board.pages[0].groups[0].description = Some(unsigned("Set up"));
-    let (saved, report) = save(board, None, &graph).unwrap();
-    assert!(report.is_healthy());
-    let page = &saved.pages[0];
-    assert_eq!(
-        page.cards[0].description.as_ref().unwrap().signature,
-        graph.signature(RUN)
-    );
-    assert_eq!(
-        page.groups[0].description.as_ref().unwrap().signature,
-        graph.span_signature(FIRST, IF0)
-    );
+    let mut board = run_board_with(|page| page.names.push(name(IF0, "Is it there?")));
+    board.pages.push(Page::new("page-2", "Second"));
+    let (saved, health) = save(board, None, &graph).unwrap();
     let mut edited = saved.clone();
     edited.pages[0].guards = vec![GuardEntry {
-        key: Key::from_text("main.ts#unused"),
-        kind: "if".to_owned(),
+        key: key("main.ts#unused"),
+        kind: "call".to_owned(),
         owner: String::new(),
         signature: Signature::of(b"x"),
     }];
     edited.pages[0].title = "Retitled".to_owned();
-    let (again, _) = save(edited, Some((&saved, &report)), &graph).unwrap();
+    let (again, _) = save(edited, Some((&saved, &health)), &graph).unwrap();
     assert_eq!(again.pages[0].guards, saved.pages[0].guards);
     assert_eq!(
         serialize(&again),
         serialize(&saved).replace("\"Page 1\"", "\"Retitled\"")
     );
-}
 
-#[test]
-fn saving_carries_new_items_and_never_writes_a_dangling_reference() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    let page = &mut board.pages[0];
-    page.resources.push(Resource {
-        id: "store".to_owned(),
-        kind: ResourceKind::Storage,
-        name: "uploads".to_owned(),
-        type_key: None,
-        columns: Vec::new(),
-        anchors: vec![Anchor::Key {
-            key: Key::from_text(RUN),
-        }],
-        at: [400.0, 0.0],
-        description: Some(unsigned("Where uploads go")),
-        author: Author::person("tester").unwrap(),
-        signature: None,
-    });
-    page.frames.push(Frame {
-        id: "unit".to_owned(),
-        title: "Unit".to_owned(),
-        description: Some(unsigned("The runner")),
-        members: vec!["run".to_owned()],
-        look: FrameLook::Box,
-        icon: None,
-        direction: None,
-        collapsed: false,
-        author: author(),
-    });
-    page.links.push(Link {
-        kind: Some(LinkKind::Writes),
-        author: Some(author()),
-        ..link("writes", "run", "store", Some("uploads"))
-    });
-    page.links.push(link("to-unit", "store", "unit", None));
-    let (saved, health) = save(board.clone(), None, &graph).unwrap();
-    assert!(
-        health.is_healthy(),
-        "links to resources and frames aren't broken: {health:?}"
-    );
-    let page = &saved.pages[0];
-    // The claims are signed: the resource card and its description over its anchor's bytes, the
-    // frame's description over its member card's signature.
-    let run_bytes = format!(
-        "{}\n",
-        &SOURCE[SOURCE.find("function").unwrap()..SOURCE.rfind('}').unwrap() + 1]
-    );
-    let resource = Signature::of(run_bytes.as_bytes());
-    assert_eq!(page.resources[0].signature, Some(resource));
-    assert_eq!(
-        page.resources[0].description.as_ref().unwrap().signature,
-        Some(resource)
-    );
-    let members = graph.signature(RUN).unwrap().0.to_string();
-    assert_eq!(
-        page.frames[0].description.as_ref().unwrap().signature,
-        Some(Signature::of(members.as_bytes()))
-    );
-    assert_eq!(
-        page.link("writes").unwrap().label.as_ref().unwrap().signature,
-        None,
-        "a label with a resource end stays unsigned"
-    );
-
-    // Rust's own edits are checked like a parsed file before anything is written.
-    let mut dangling = saved.clone();
-    dangling.pages[0].cards.clear();
-    dangling.pages[0].groups.clear();
-    assert_eq!(
-        save(dangling, Some((&saved, &health)), &graph).unwrap_err(),
-        BoardError::Invalid {
-            path: "/pages/0/frames/0/members/0".to_owned(),
-            message: "refers to an unknown item `run`".to_owned()
-        }
-    );
-}
-
-#[test]
-fn saving_reuses_unchanged_pages() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages.push(Page::new("page-2", "Second"));
-    let (saved, report) = save(board, None, &graph).unwrap();
     // An unchanged page is not checked again: its health (even a stale one) is kept as is.
-    let mut stale = report;
+    let mut stale = health;
     stale.append(Health {
         items: vec![HealthItem {
             page: "page-1".to_owned(),
@@ -1573,105 +1120,628 @@ fn saving_reuses_unchanged_pages() {
             target: Target::Card("run".to_owned()),
             key: None,
             anchor: None,
+            reconnect: None,
             message: "kept".to_owned(),
             repairs: Vec::new(),
         }],
         ..Health::default()
     });
     let mut edited = saved.clone();
-    edited.pages[1].title = "Second, retitled".to_owned();
-    edited.pages[1].cards.push(run_card("again"));
-    let (again, again_report) = save(edited, Some((&saved, &stale)), &graph).unwrap();
-    assert_eq!(again_report.outdated, 1, "page-1's health was reused");
-    assert!(
-        again.pages[1].guard(RUN).is_some(),
-        "page-2 was checked and guarded"
-    );
-    assert!(again_report.of_page("page-2").is_healthy());
-    assert_eq!(again_report.label().as_deref(), Some("1 outdated"));
+    edited.pages[1].cards.push(block_card("again", RUN));
+    let (again, again_health) = save(edited, Some((&saved, &stale)), &graph).unwrap();
+    assert_eq!(again_health.label().as_deref(), Some("1 outdated"));
+    assert!(again.pages[1].guard(RUN).is_some(), "page-2 was checked");
 }
 
 #[test]
-fn drawn_links_are_signed_over_their_ends_and_break_with_them() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    let page = &mut board.pages[0];
-    page.default_view = View::Code;
-    page.cards.push(run_card("again"));
-    page.frames.push(Frame {
-        id: "box".to_owned(),
-        title: "Box".to_owned(),
-        description: None,
-        members: vec!["run".to_owned()],
-        look: FrameLook::Box,
-        icon: None,
-        direction: None,
-        collapsed: false,
-        author: author(),
-    });
-    page.links
-        .push(link("calls", "again", "run", Some("calls over HTTP")));
-    page.links.push(link("plain", "run", "again", None));
-    page.links.push(link("to-box", "again", "box", Some("hands off")));
-    let (saved, report) = save(board, None, &graph).unwrap();
-    assert!(report.is_healthy(), "{:#?}", report.items);
-    let page = &saved.pages[0];
-    let hex = page.guard(RUN).unwrap().signature.0;
-    let expected = Signature::of(format!("{hex}\n{hex}").as_bytes());
-    assert_eq!(
-        page.link("calls").unwrap().label.as_ref().unwrap().signature,
-        Some(expected)
-    );
-    assert_eq!(
-        page.link("to-box").unwrap().label.as_ref().unwrap().signature,
+fn combined_steps_follow_the_overlay_rules_on_save() {
+    let (_dir, graph) = folder(SOURCE);
+    let with = |steps: Vec<Combined>| run_board_with(|page| page.combined = steps);
+    // Consecutive steps of one body, or one whole control block.
+    for members in [
+        vec![LOAD_CALL, IF0],
+        vec![IF0, LOG, RETURN0],
+        vec![IF0],
+        vec![INNER_LOG],
+    ] {
+        let (_, health) = save(with(vec![combined("s", &members)]), None, &graph).unwrap();
+        assert!(health.is_healthy(), "{members:?}: {health:#?}");
+    }
+    // Two combined steps side by side, page-wide.
+    let (_, health) = save(
+        with(vec![
+            combined("a", &[LOAD_CALL]),
+            combined("b", &[LOG, RETURN0]),
+            combined("c", &["main.ts#load/return[0]"]),
+        ]),
         None,
-        "an end without a guard leaves the label unsigned"
-    );
-
-    // A code change never outdates a link label; a missing end breaks the link.
-    let renamed = recompiled(dir.path(), &SOURCE.replace("function run", "function start"));
-    let report = health(page, &renamed);
-    assert_eq!(
-        (report.missing, report.broken_links, report.outdated),
-        (2, 3, 0),
-        "{:#?}",
-        report.items
-    );
-    let broken = report
-        .items
-        .iter()
-        .find(|item| item.target == Target::Link("calls".to_owned()))
-        .unwrap();
-    assert_eq!(broken.message, "Linked card again is missing");
-    assert_eq!(broken.repairs, [RepairKind::RemoveLink]);
-    assert_eq!(report.label().as_deref(), Some("2 missing · 3 broken links"));
-    // A new link to the missing card is refused; carried broken links are kept.
-    let mut edited = saved.clone();
-    edited.pages[0].links.push(link("more", "again", "run", None));
-    assert!(matches!(
-        save(edited, Some((&saved, &report)), &renamed),
-        Err(BoardError::Problem { target: Target::Link(id), .. }) if id == "more"
-    ));
-    let mut moved = saved.clone();
-    moved.pages[0].cards[0].at = [5.0, 5.0];
-    assert!(save(moved, Some((&saved, &report)), &renamed).is_ok());
-    // Link repairs.
-    let mut page = saved.pages[0].clone();
-    apply_repair(&mut page, &renamed, &Repair::RemoveLink("calls".to_owned())).unwrap();
-    apply_repair(
-        &mut page,
-        &renamed,
-        &Repair::RemoveDescription(Target::Link("to-box".to_owned())),
+        &graph,
     )
     .unwrap();
-    assert_eq!(page.link("to-box").unwrap().label, None);
-    apply_repair(&mut page, &renamed, &Repair::RemoveCard("again".to_owned())).unwrap();
-    assert!(page.links.is_empty(), "{:?}", page.links);
-    let mut resigned = saved.pages[0].clone();
-    resigned.links[0].label.as_mut().unwrap().signature = None;
-    let target = Target::Link(resigned.links[0].id.clone());
-    apply_repair(&mut resigned, &graph, &Repair::Resign(target)).unwrap();
-    assert_eq!(resigned, saved.pages[0]);
+    assert!(health.is_healthy());
+
+    let refused = |steps: Vec<Combined>, expected: &str| {
+        let (target, message) = refusal(with(steps), &graph);
+        assert!(matches!(target, Target::Combined(_)), "{target:?}");
+        assert!(message.contains(expected), "{expected:?} in {message:?}");
+    };
+    refused(vec![combined("s", &[LOAD_CALL, LOG])], "doesn't come right after");
+    refused(vec![combined("s", &[LOG, IF0])], "doesn't come right after");
+    refused(vec![combined("s", &[INNER_LOG, LOG])], "is not in the body of");
+    refused(vec![combined("s", &[THEN])], "can't be combined");
+    refused(vec![combined("s", &[MODULE])], "can't be combined");
+    refused(
+        vec![combined("s", &["main.ts#run/call:gone"])],
+        "is not a block in the graph",
+    );
+    // Never nested: a block inside another combined step's block.
+    refused(
+        vec![combined("outer", &[IF0]), combined("inner", &[INNER_LOG])],
+        "never nest",
+    );
+}
+
+#[test]
+fn proposals_go_after_a_block_or_at_the_start_of_a_body() {
+    let (_dir, graph) = folder(SOURCE);
+    let with = |place: Place| run_board_with(|page| page.proposals.push(proposal("p", place)));
+    for place in [
+        after(LOAD_CALL),
+        after(IF0),
+        after(INNER_LOG),
+        after(RETURN0),
+        after(RUN),
+        start(RUN),
+        start(THEN),
+        start(MODULE),
+    ] {
+        let (saved, health) = save(with(place.clone()), None, &graph).unwrap();
+        assert!(health.is_healthy(), "{place:?}");
+        assert!(
+            saved.pages[0].guard(place.key().as_str()).is_some(),
+            "its place is guarded"
+        );
+    }
+    for (place, expected) in [
+        (after(THEN), "can't go after"),
+        (start(LOAD_CALL), "can't go at the start of"),
+        (start(IF0), "can't go at the start of"),
+    ] {
+        let (target, message) = refusal(with(place), &graph);
+        assert_eq!(target, Target::Proposal("p".to_owned()));
+        assert!(message.contains(expected), "{expected:?} in {message:?}");
+    }
+    let (_, message) = refusal(with(after("main.ts#run/call:gone")), &graph);
+    assert!(message.contains("is missing"), "{message}");
+
+    // A proposal is never signed.
+    let (saved, health) = save(with(after(LOG)), None, &graph).unwrap();
+    let mut board = saved.clone();
+    assert!(matches!(
+        repair(
+            &mut board,
+            &graph,
+            &Repair::Resign(Target::Proposal("p".to_owned()))
+        ),
+        Err(BoardError::Problem { .. })
+    ));
+    // Moving it is a new placement, checked again; one placed as before isn't.
+    let mut moved = saved.clone();
+    moved.pages[0].proposals[0].place = after(THEN);
+    assert!(save(moved, Some((&saved, &health)), &graph).is_err());
+}
+
+#[test]
+fn cards_show_definitions_and_open_project_calls_and_callbacks() {
+    let (_dir, graph) = folder(SOURCE);
+    let with = |card: Card| {
+        let mut board = Board::new("B");
+        board.pages[0].cards.push(card);
+        board
+    };
+    let opening = |paths: &[&[&str]]| Card {
+        open: paths
+            .iter()
+            .map(|path| path.iter().map(|step| key(step)).collect())
+            .collect(),
+        ..block_card("run", RUN)
+    };
+    for card in [
+        block_card("m", MODULE),
+        block_card("h", HELPER),
+        start_card("e", RUN_IT),
+        start_card("a", "entrance:shop"),
+        opening(&[&[LOAD_CALL], &[LOAD_CALL, HELPER_CALL]]),
+    ] {
+        let (_, health) = save(with(card.clone()), None, &graph).unwrap();
+        assert!(health.is_healthy(), "{card:?}");
+    }
+    let refused = |card: Card, expected: &str| {
+        let (target, message) = refusal(with(card), &graph);
+        assert_eq!(target, Target::Card("run".to_owned()));
+        assert!(message.contains(expected), "{expected:?} in {message:?}");
+    };
+    refused(
+        block_card("run", LOAD_CALL),
+        "is a call: a card shows a module, a class, a function, or a type",
+    );
+    refused(opening(&[&[LOG]]), "can't open in place");
+    refused(opening(&[&[HELPER_CALL]]), "is not drawn in `main.ts#run`");
+    refused(
+        opening(&[&[LOAD_CALL, HELPER_CALL, FETCH]]),
+        "`main.ts#helper/return[0]/call:dep.fetch` can't open in place",
+    );
+    refused(opening(&[&["main.ts#run/call:gone"]]), "is not a block");
+
+    // Open paths are never guarded.
+    let (saved, _) = save(with(opening(&[&[LOAD_CALL]])), None, &graph).unwrap();
+    assert!(saved.pages[0].guard(LOAD_CALL).is_none());
+}
+
+#[test]
+fn health_reports_outdated_text_after_the_code_changes() {
+    let (dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.cards[0].description = Some(unsigned("Runs it"));
+        page.names.push(name(LOG, "Say it's done"));
+        page.names.push(name(LOAD_CALL, "Load the value"));
+        let mut steps = combined("steps", &[IF0, LOG]);
+        steps.description = Some(unsigned("Log it"));
+        page.combined.push(steps);
+    });
+    let (saved, health) = save(board, None, &graph).unwrap();
+    assert!(health.is_healthy());
+
+    let edited = recompiled(dir.path(), &SOURCE.replace("'done'", "'finished'"));
+    let health = board_health(&saved, &edited);
+    use RepairKind::{Remove, RemoveDescription, Resign};
+    assert_eq!(
+        items(&health),
+        [
+            (
+                HealthKind::Outdated,
+                Target::Card("run".to_owned()),
+                None,
+                &[Resign, RemoveDescription][..]
+            ),
+            (
+                HealthKind::Outdated,
+                Target::Name(LOG.to_owned()),
+                None,
+                &[Resign, Remove][..]
+            ),
+            (
+                HealthKind::Outdated,
+                Target::Combined("steps".to_owned()),
+                None,
+                &[Resign, RemoveDescription, Remove][..]
+            ),
+        ]
+    );
+    assert_eq!(health.label().as_deref(), Some("3 outdated"));
+
+    // Outdated text never refuses a save, and resigning keeps the words.
+    let mut board = saved.clone();
+    let (_, kept) = save(board.clone(), None, &edited).unwrap();
+    assert_eq!(kept.outdated, 3);
+    for target in [
+        Target::Card("run".to_owned()),
+        Target::Name(LOG.to_owned()),
+        Target::Combined("steps".to_owned()),
+    ] {
+        repair(&mut board, &edited, &Repair::Resign(target)).unwrap();
+    }
+    assert!(board_health(&board, &edited).is_healthy());
+    assert_eq!(board.pages[0].names, {
+        let mut names = saved.pages[0].names.clone();
+        names[0].name.signature = edited.signature(LOG);
+        names
+    });
+
+    // Or the description goes.
+    let mut board = saved;
+    repair(
+        &mut board,
+        &edited,
+        &Repair::RemoveDescription(Target::Card("run".to_owned())),
+    )
+    .unwrap();
+    assert!(board.pages[0].cards[0].description.is_none());
+}
+
+const INSERTED_IF: &str = "  if (ready) { console.log(ready); }\n";
+
+#[test]
+fn position_based_references_whose_code_changed_are_held_for_review() {
+    let (dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.names.push(name(IF0, "Is it there?"));
+        page.names.push(name(LOG, "Say it's done"));
+        page.proposals.push(proposal("p", after(IF0)));
+        page.combined.push(combined("steps", &[LOAD_CALL, IF0]));
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+
+    // A new `if` before the old one takes its key, `if[0]`.
+    let text = SOURCE.replace("  if (first)", &format!("{INSERTED_IF}  if (first)"));
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    use RepairKind::{Accept, Reconnect, Remove};
+    let held = &[Accept, Reconnect, Remove][..];
+    assert_eq!(
+        items(&health),
+        [
+            (HealthKind::Review, Target::Name(IF0.to_owned()), None, held),
+            (
+                HealthKind::Review,
+                Target::Combined("steps".to_owned()),
+                Some(IF0),
+                held
+            ),
+            (
+                HealthKind::Outdated,
+                Target::Combined("steps".to_owned()),
+                None,
+                &[RepairKind::Resign, Remove][..]
+            ),
+            (
+                HealthKind::Review,
+                Target::Proposal("p".to_owned()),
+                Some(IF0),
+                held
+            ),
+        ],
+        "a key without a position (the second log) follows its code"
+    );
+    assert_eq!(health.review, 3);
+
+    // Text can't be signed against a held reference; accepting the current code releases it.
+    let mut board = saved.clone();
+    assert!(repair(&mut board, &edited, &Repair::Resign(Target::Name(IF0.to_owned()))).is_err());
+    repair(&mut board, &edited, &Repair::Accept(IF0.to_owned())).unwrap();
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Resign(Target::Combined("steps".to_owned())),
+    )
+    .unwrap();
+    let health = board_health(&board, &edited);
+    assert_eq!(
+        items(&health),
+        [(
+            HealthKind::Outdated,
+            Target::Name(IF0.to_owned()),
+            None,
+            &[RepairKind::Resign, Remove][..]
+        )]
+    );
+
+    // A guarded reference whose kind or owner changed is held too.
+    let mut board = saved;
+    board.pages[0]
+        .guards
+        .iter_mut()
+        .find(|guard| guard.key.as_str() == LOG)
+        .unwrap()
+        .kind = "exit".to_owned();
+    let health = board_health(&board, &graph);
+    assert!(health.has("page-1", HealthKind::Review, &Target::Name(LOG.to_owned())));
+    assert_eq!(
+        health.items[0].message,
+        "Saved reference kind or owner changed; needs review"
+    );
+}
+
+#[test]
+fn combined_steps_break_when_their_blocks_stop_following_the_rules() {
+    let (dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.combined.push(combined("pair", &[LOAD_CALL, IF0]));
+        page.combined.push(combined("tail", &[RETURN0]));
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+
+    // A call written between the two members: they are no longer consecutive.
+    let text = SOURCE.replace("  if (first)", "  record(first);\n  if (first)");
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    let broken = health
+        .items
+        .iter()
+        .find(|item| item.kind == HealthKind::BrokenCombined)
+        .unwrap();
+    assert_eq!(broken.target, Target::Combined("pair".to_owned()));
+    assert!(
+        broken.message.contains("doesn't come right after"),
+        "{}",
+        broken.message
+    );
+    assert_eq!(broken.repairs, [RepairKind::Remove]);
+    assert_eq!(health.label().as_deref(), Some("1 broken combined step"));
+    // Removing it keeps its blocks.
+    let mut board = saved.clone();
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Remove(Target::Combined("pair".to_owned())),
+    )
+    .unwrap();
+    assert_eq!(board.pages[0].combined.len(), 1);
+    assert!(board_health(&board, &edited).is_healthy());
+
+    // A member that is gone breaks it too, and Reconnect is offered for that member.
+    let text = SOURCE.replace(
+        "  return first;\n}\nexport function load",
+        "  console.log(first);\n}\nexport function load",
+    );
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    let broken = health
+        .items
+        .iter()
+        .find(|item| item.target == Target::Combined("tail".to_owned()))
+        .unwrap();
+    assert_eq!(
+        (broken.kind, broken.key.as_deref(), broken.repairs.as_slice()),
+        (
+            HealthKind::BrokenCombined,
+            Some(RETURN0),
+            &[RepairKind::Reconnect, RepairKind::Remove][..]
+        )
+    );
+}
+
+#[test]
+fn missing_references_wait_for_reconnect_or_removal() {
+    let (dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.cards[0].description = Some(unsigned("Runs it"));
+        page.cards.push(block_card("load", LOAD));
+        page.names.push(name(LOG, "Say it's done"));
+        page.combined.push(combined("tail", &[LOG, RETURN0]));
+        page.proposals.push(proposal("p", start(RUN)));
+        page.links.push(Connection {
+            label: Some(unsigned("feeds")),
+            ..Connection::new("feeds", ConnectionKind::Other, "load", "run", person())
+        });
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+
+    let text = SOURCE.replace("function run()", "function runAll()");
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    use RepairKind::{Reconnect, Remove};
+    assert_eq!(
+        items(&health),
+        [
+            (
+                HealthKind::Missing,
+                Target::Card("run".to_owned()),
+                None,
+                &[Reconnect, Remove][..]
+            ),
+            (
+                HealthKind::Missing,
+                Target::Name(LOG.to_owned()),
+                None,
+                &[Reconnect, Remove][..]
+            ),
+            (
+                HealthKind::BrokenCombined,
+                Target::Combined("tail".to_owned()),
+                Some(LOG),
+                &[Reconnect, Remove][..]
+            ),
+            (
+                HealthKind::BrokenLink,
+                Target::Connection("feeds".to_owned()),
+                None,
+                &[Remove][..]
+            ),
+            (
+                HealthKind::Missing,
+                Target::Proposal("p".to_owned()),
+                Some(RUN),
+                &[Reconnect, Remove][..]
+            ),
+        ]
+    );
+    assert_eq!(health.items[0].reconnect, None, "a block offers no key");
+    assert_eq!(
+        health.label().as_deref(),
+        Some("3 missing · 1 broken combined step · 1 broken link")
+    );
+
+    // A page with a missing reference can still be edited and saved; a new one can't.
+    let mut retitled = saved.clone();
+    retitled.pages[0].title = "Retitled".to_owned();
+    assert!(save(retitled, Some((&saved, &health)), &edited).is_ok());
+    let mut more = saved.clone();
+    more.pages[0].names.push(name(IF0, "Is it there?"));
+    assert!(matches!(
+        save(more, Some((&saved, &health)), &edited),
+        Err(BoardError::Problem { .. })
+    ));
+
+    // Reconnect moves the key itself, with a fresh guard; keys inside it are references of
+    // their own.
+    const RUN_ALL: &str = "main.ts#runAll";
+    let mut board = saved.clone();
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Reconnect {
+            from: RUN.to_owned(),
+            to: RUN_ALL.to_owned(),
+        },
+    )
+    .unwrap();
+    let page = &board.pages[0];
+    assert_eq!(page.cards[0].reference, CardRef::block(key(RUN_ALL)));
+    assert_eq!(page.proposals[0].place, start(RUN_ALL));
+    assert!(page.guard(RUN).is_none());
+    assert_eq!(page.guard(RUN_ALL), current_guard(&edited, RUN_ALL).as_ref());
+    let health = board_health(&board, &edited);
+    assert!(health.has("page-1", HealthKind::Missing, &Target::Name(LOG.to_owned())));
+    assert!(!health.has("page-1", HealthKind::Missing, &Target::Card("run".to_owned())));
+    for (from, to) in [
+        (LOG, "main.ts#runAll/call:console.log"),
+        (RETURN0, "main.ts#runAll/return[0]"),
+    ] {
+        repair(
+            &mut board,
+            &edited,
+            &Repair::Reconnect {
+                from: from.to_owned(),
+                to: to.to_owned(),
+            },
+        )
+        .unwrap();
+    }
+    let health = board_health(&board, &edited);
+    assert_eq!(
+        items(&health),
+        [(
+            HealthKind::Outdated,
+            Target::Card("run".to_owned()),
+            None,
+            &[RepairKind::Resign, RepairKind::RemoveDescription][..]
+        )]
+    );
+
+    // Reconnecting to a missing key, or a block card to an entrance, is refused.
+    for to in ["main.ts#absent", RUN_IT] {
+        let mut board = saved.clone();
+        assert!(matches!(
+            repair(
+                &mut board,
+                &edited,
+                &Repair::Reconnect {
+                    from: RUN.to_owned(),
+                    to: to.to_owned()
+                }
+            ),
+            Err(BoardError::Problem { .. })
+        ));
+    }
+
+    // Removing the card takes its connections; its name, combined step, and proposal stay,
+    // since they apply page-wide.
+    let mut board = saved;
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Remove(Target::Card("run".to_owned())),
+    )
+    .unwrap();
+    let page = &board.pages[0];
+    assert!(page.links.is_empty());
+    assert_eq!(
+        (page.names.len(), page.combined.len(), page.proposals.len()),
+        (1, 1, 1)
+    );
+    for target in [
+        Target::Name(LOG.to_owned()),
+        Target::Combined("tail".to_owned()),
+        Target::Proposal("p".to_owned()),
+    ] {
+        repair(&mut board, &edited, &Repair::Remove(target)).unwrap();
+    }
+    assert!(board_health(&board, &edited).is_healthy());
+}
+
+#[test]
+fn a_missing_entrance_offers_the_one_with_the_same_code() {
+    let (_dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        page.cards.push(start_card("run-it", RUN_IT));
+        page.cards.push(start_card("load-it", LOAD_IT));
+    });
+    let (mut saved, _) = save(board, None, &graph).unwrap();
+    // The entrances were renamed in unfold.toml: the board still holds the old keys, and their
+    // guards record the old entrances' code.
+    let page = &mut saved.pages[0];
+    for (card, old) in [(1, "entrance:shop/run"), (2, "entrance:shop/load")] {
+        let current = page.cards[card].reference.key().clone();
+        page.cards[card].reference = CardRef::entrance(key(old));
+        page.guards
+            .iter_mut()
+            .find(|guard| guard.key == current)
+            .unwrap()
+            .key = key(old);
+    }
+    let health = board_health(&saved, &graph);
+    let missing: Vec<(&Target, Option<&str>)> = health
+        .items
+        .iter()
+        .map(|item| (&item.target, item.reconnect.as_deref()))
+        .collect();
+    assert_eq!(
+        missing,
+        [
+            (&Target::Card("run-it".to_owned()), Some(RUN_IT)),
+            (&Target::Card("load-it".to_owned()), None),
+        ],
+        "two entrances have `load` as their code, so neither is offered"
+    );
+    let mut board = saved;
+    repair(
+        &mut board,
+        &graph,
+        &Repair::Reconnect {
+            from: "entrance:shop/run".to_owned(),
+            to: RUN_IT.to_owned(),
+        },
+    )
+    .unwrap();
+    assert_eq!(board.pages[0].cards[1].reference, CardRef::entrance(key(RUN_IT)));
+    // An entrance card reconnects only to an app or entrance.
+    assert!(
+        repair(
+            &mut board,
+            &graph,
+            &Repair::Reconnect {
+                from: "entrance:shop/load".to_owned(),
+                to: LOAD.to_owned(),
+            },
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn health_labels_name_every_kind() {
+    let mut health = Health::default();
+    assert_eq!(health.label(), None);
+    for (kind, count) in [
+        (HealthKind::Missing, 1),
+        (HealthKind::Outdated, 2),
+        (HealthKind::Review, 3),
+        (HealthKind::BrokenCombined, 1),
+        (HealthKind::BrokenLink, 2),
+    ] {
+        for index in 0..count {
+            health.append(Health {
+                items: vec![HealthItem {
+                    page: "p".to_owned(),
+                    kind,
+                    target: Target::Card(format!("{kind:?}-{index}")),
+                    key: None,
+                    anchor: None,
+                    reconnect: None,
+                    message: String::new(),
+                    repairs: Vec::new(),
+                }],
+                ..Health::default()
+            });
+        }
+    }
+    assert_eq!(
+        health.label().as_deref(),
+        Some("1 missing · 2 outdated · 3 to review · 1 broken combined step · 2 broken links")
+    );
+    assert_eq!(health.of_page("p"), health);
+    assert!(health.of_page("q").is_healthy());
 }
 
 #[test]
@@ -1796,8 +1866,7 @@ fn free_names_stay_valid_and_bounded() {
     let dir = tempfile::tempdir().unwrap();
     let dirs = BoardDirs::new(dir.path());
     let text = serialize(&parse(MINIMAL).unwrap());
-    // A taken name at the length limit still gets a valid alternative (this used to loop
-    // forever, because every suffixed candidate was too long).
+    // A taken name at the length limit still gets a valid alternative.
     let long = BoardFile::new(&"a".repeat(100)).unwrap();
     dirs.create(&long, &text).unwrap();
     match dirs.create(&long, &text) {
@@ -1822,618 +1891,4 @@ fn oversized_board_files_are_refused_before_reading() {
         .unwrap();
     handle.set_len(MAX_BOARD_BYTES + 1).unwrap();
     assert!(matches!(dirs.load(&file), Err(BoardError::Io { .. })));
-}
-
-#[test]
-fn health_labels_name_every_kind() {
-    let mut health = Health::default();
-    assert_eq!(health.label(), None);
-    for (kind, count) in [
-        (HealthKind::Missing, 1),
-        (HealthKind::Outdated, 2),
-        (HealthKind::BrokenGroup, 1),
-        (HealthKind::Review, 3),
-        (HealthKind::BrokenLink, 1),
-    ] {
-        for index in 0..count {
-            health.append(Health {
-                items: vec![HealthItem {
-                    page: "p".to_owned(),
-                    kind,
-                    target: Target::Card(format!("{kind:?}-{index}")),
-                    key: None,
-                    anchor: None,
-                    message: String::new(),
-                    repairs: Vec::new(),
-                }],
-                ..Health::default()
-            });
-        }
-    }
-    assert_eq!(
-        health.label().as_deref(),
-        Some("1 missing · 2 outdated · 1 broken group · 3 to review · 1 broken link")
-    );
-    assert_eq!(health.of_page("p"), health);
-    assert!(health.of_page("q").is_healthy());
-}
-
-/// The call of the `console.log('done');` statement in `SOURCE`.
-const LOG_CALL: &str = "main.ts#function:run/expression_statement[0]/call[0]";
-
-/// A proposed step on card `run`, going after `after`.
-fn proposal(id: &str, after: &str) -> Proposal {
-    Proposal {
-        id: id.to_owned(),
-        card: "run".to_owned(),
-        after: Key::from_text(after),
-        path: None,
-        title: "Email a confirmation".to_owned(),
-        reason: None,
-        author: author(),
-    }
-}
-
-/// Proposed step `email` on card `run`, going after `if (first)` on its yes path.
-fn email() -> Proposal {
-    Proposal {
-        path: Some(ProposalPath::Yes),
-        ..proposal("email", IF0)
-    }
-}
-
-/// Saving `board` over `previous` refuses proposal `id` with a message containing `expected`.
-fn refuses_proposal(
-    board: Board,
-    previous: Option<(&Board, &Health)>,
-    graph: &BoardGraph,
-    id: &str,
-    expected: &str,
-) {
-    match save(board, previous, graph) {
-        Err(BoardError::Problem { target, message, .. }) => {
-            assert_eq!(target, Target::Proposal(id.to_owned()), "{message}");
-            assert!(message.contains(expected), "{expected:?} in {message:?}");
-        }
-        other => panic!("expected `{expected}`, got {other:?}"),
-    }
-}
-
-#[test]
-fn old_boards_read_as_before_and_new_pages_show_diagram() {
-    // A board without expanded calls or proposals reads and writes out exactly as before.
-    let canonical = serialize(&parse(MINIMAL).unwrap());
-    assert!(!canonical.contains("expanded") && !canonical.contains("proposals"));
-    assert_eq!(serialize(&parse(&canonical).unwrap()), canonical);
-    // A saved default view is kept as written; only new pages start in Diagram.
-    for view in ["code", "flow", "diagram"] {
-        let text = MINIMAL.replace("\"defaultView\":\"code\"", &format!("\"defaultView\":\"{view}\""));
-        let board = parse(&text).unwrap();
-        assert_eq!(board.pages[0].default_view.as_str(), view);
-        assert!(serialize(&board).contains(&format!("\"defaultView\": \"{view}\"")));
-    }
-    assert_eq!(Page::new("p", "P").default_view, View::Diagram);
-    assert_eq!(Board::new("B").pages[0].default_view, View::Diagram);
-}
-
-#[test]
-fn expanded_calls_and_proposals_round_trip() {
-    let mut board = sample_board();
-    let page = &mut board.pages[0];
-    page.cards[0].expanded = vec![
-        vec![Key::from_text(LOG_CALL)],
-        vec![
-            Key::from_text("main.ts#function:run/if[0]/expression_statement[0]/call[0]"),
-            Key::from_text("lib.ts#function:log/call[0]"),
-        ],
-    ];
-    page.proposals.push(Proposal {
-        path: Some(ProposalPath::No),
-        reason: Some("Direct orders get no confirmation \"yet\"".to_owned()),
-        ..proposal("email", IF0)
-    });
-    page.proposals.push(proposal("audit", LOG0));
-    let text = serialize(&board);
-    let card = r#"
-        {
-          "at": [
-            10,
-            20
-          ],
-          "expanded": [
-            [
-              "main.ts#function:run/expression_statement[0]/call[0]"
-            ],
-            [
-              "main.ts#function:run/if[0]/expression_statement[0]/call[0]",
-              "lib.ts#function:log/call[0]"
-            ]
-          ],
-          "id": "run",
-          "ref": {
-            "block": "main.ts#function:run"
-          }
-        }"#;
-    let proposals = r#"
-      "proposals": [
-        {
-          "after": "main.ts#function:run/expression_statement[0]",
-          "author": "agent:test",
-          "card": "run",
-          "id": "audit",
-          "title": "Email a confirmation"
-        },
-        {
-          "after": "main.ts#function:run/if[0]",
-          "author": "agent:test",
-          "card": "run",
-          "id": "email",
-          "path": "no",
-          "reason": "Direct orders get no confirmation \"yet\"",
-          "title": "Email a confirmation"
-        }
-      ],
-      "title": "Page 1""#;
-    assert!(text.contains(card), "{text}");
-    assert!(text.contains(proposals), "{text}");
-    let reparsed = parse(&text).unwrap();
-    let mut sorted = board.clone();
-    sorted.pages[0].proposals.reverse();
-    assert_eq!(reparsed, sorted, "proposals read back in id order");
-    assert_eq!(serialize(&reparsed), text);
-    // What the window receives has the file's shape.
-    let ipc = serde_json::to_value(&board.pages[0]).unwrap();
-    let file: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(
-        ipc["cards"][0]["expanded"],
-        file["pages"][0]["cards"][0]["expanded"]
-    );
-    let mut by_id = ipc["proposals"].as_array().unwrap().clone();
-    by_id.reverse();
-    assert_eq!(serde_json::Value::Array(by_id), file["pages"][0]["proposals"]);
-    // Neither is a reference the page keeps a guard for, except each proposal's anchor.
-    assert_eq!(board.pages[0].references().keys, [RUN, IF0, LOG0]);
-}
-
-/// `MINIMAL` with entrance card `door` before card `run`, `card` added to `run`'s fields, and
-/// the page's `proposals`.
-fn with_proposals(card: &str, proposals: &str) -> String {
-    MINIMAL
-        .replace("\"id\":\"run\"", &format!("\"id\":\"run\"{card}"))
-        .replace(
-            "\"cards\":[",
-            r#""cards":[{"at":[0,0],"id":"door","ref":{"entrance":"entrance:x"}},"#,
-        )
-        .replace(
-            "\"groups\":[]",
-            &format!("\"groups\":[],\"proposals\":[{proposals}]"),
-        )
-}
-
-#[test]
-fn parsing_refuses_bad_expanded_calls_and_proposals() {
-    let proposal = serde_json::json!({
-        "after": IF0, "author": "agent:x", "card": "run", "id": "p", "path": "yes", "reason": "R", "title": "T"
-    });
-    let good = proposal.to_string();
-    let with = |field: &str, value: &str| {
-        let mut changed = proposal.clone();
-        changed[field] = value.into();
-        changed.to_string()
-    };
-    let key = |index: usize| format!("\"main.ts#function:run/call[{index}]\"");
-    let paths = |count: usize| {
-        let items: Vec<String> = (0..count).map(|index| format!("[{}]", key(index))).collect();
-        format!(",\"expanded\":[{}]", items.join(","))
-    };
-    let proposals = |count: usize| {
-        let items: Vec<String> = (0..count)
-            .map(|index| good.replace("\"id\":\"p\"", &format!("\"id\":\"p{index}\"")))
-            .collect();
-        items.join(",")
-    };
-    // The limits themselves are allowed.
-    let three = format!(",\"expanded\":[[{},{},{}]]", key(0), key(1), key(2));
-    for text in [
-        with_proposals(&three, &good),
-        with_proposals(&paths(MAX_EXPANDED_CALLS), &proposals(MAX_PROPOSALS)),
-        with_proposals("", &with("title", &"t".repeat(MAX_PROPOSAL_TITLE))),
-        with_proposals("", &with("reason", &"r\n".repeat(MAX_PROPOSAL_REASON / 2))),
-        with_proposals(",\"expanded\":[]", "").replace("\"id\":\"door\"", "\"expanded\":[],\"id\":\"door\""),
-    ] {
-        assert!(parse(&text).is_ok(), "{text}");
-    }
-    let four = format!(",\"expanded\":[[{},{},{},{}]]", key(0), key(1), key(2), key(3));
-    let repeated = format!(",\"expanded\":[[{}],[{}]]", key(0), key(0));
-    let at_door = with_proposals("", "").replace(
-        "\"id\":\"door\"",
-        &format!("\"expanded\":[[{}]],\"id\":\"door\"", key(0)),
-    );
-    let cases = [
-        (
-            with_proposals(&four, ""),
-            "/pages/0/cards/1/expanded/0",
-            "must list 1 to 3 keys",
-        ),
-        (
-            with_proposals(",\"expanded\":[[]]", ""),
-            "/pages/0/cards/1/expanded/0",
-            "must list 1 to 3 keys",
-        ),
-        (
-            with_proposals(&repeated, ""),
-            "/pages/0/cards/1/expanded/1",
-            "repeats an earlier expanded call",
-        ),
-        (
-            with_proposals(&paths(MAX_EXPANDED_CALLS + 1), ""),
-            "/pages/0/cards/1/expanded",
-            "at most 64 expanded calls",
-        ),
-        (
-            with_proposals(",\"expanded\":[[\"entrance:x\"]]", ""),
-            "/pages/0/cards/1/expanded/0/0",
-            "must be a block key",
-        ),
-        (
-            with_proposals(&format!(",\"expanded\":[{}]", key(0)), ""),
-            "/pages/0/cards/1/expanded/0",
-            "must be an array",
-        ),
-        (
-            at_door,
-            "/pages/0/cards/0/expanded",
-            "only a block card expands calls in place",
-        ),
-        (
-            with_proposals("", &with("card", "door")),
-            "/pages/0/proposals/0/card",
-            "`door` is an entrance card; a proposed step goes after a step of a block card",
-        ),
-        (
-            with_proposals("", &with("card", "ghost")),
-            "/pages/0/proposals/0/card",
-            "refers to an unknown item `ghost`",
-        ),
-        (
-            with_proposals("", &with("title", "  ")),
-            "/pages/0/proposals/0/title",
-            "must not be empty",
-        ),
-        (
-            with_proposals("", &with("title", "two\nlines")),
-            "/pages/0/proposals/0/title",
-            "must be one line, without control characters",
-        ),
-        (
-            with_proposals("", &with("title", &"t".repeat(MAX_PROPOSAL_TITLE + 1))),
-            "/pages/0/proposals/0/title",
-            "must be at most 120 characters",
-        ),
-        (
-            with_proposals("", &with("reason", &"r".repeat(MAX_PROPOSAL_REASON + 1))),
-            "/pages/0/proposals/0/reason",
-            "must be at most 400 characters",
-        ),
-        (
-            with_proposals("", &with("reason", " ")),
-            "/pages/0/proposals/0/reason",
-            "must not be empty",
-        ),
-        (
-            with_proposals("", &with("path", "maybe")),
-            "/pages/0/proposals/0/path",
-            r#"must be "yes", "no", "each", or "done""#,
-        ),
-        (
-            with_proposals("", &with("id", "run")),
-            "/pages/0/proposals/0/id",
-            "duplicate id `run`",
-        ),
-        (
-            with_proposals("", &format!("{good},{good}")),
-            "/pages/0/proposals/1/id",
-            "duplicate id `p`",
-        ),
-        (
-            with_proposals("", &with("after", "entrance:x")),
-            "/pages/0/proposals/0/after",
-            "must be a block key",
-        ),
-        (
-            with_proposals("", &with("author", "robot:x")),
-            "/pages/0/proposals/0/author",
-            "must be `person:<name>` or `agent:<name>`",
-        ),
-        (
-            with_proposals("", &good.replace("\"author\":\"agent:x\",", "")),
-            "/pages/0/proposals/0",
-            "missing field `author`",
-        ),
-        (
-            with_proposals("", &good.replace("\"id\"", "\"status\":\"built\",\"id\"")),
-            "/pages/0/proposals/0/status",
-            "unknown field",
-        ),
-        (
-            with_proposals("", &proposals(MAX_PROPOSALS + 1)),
-            "/pages/0/proposals",
-            "must hold at most 200 proposed steps",
-        ),
-    ];
-    for (text, path, message) in cases {
-        let (found_path, found_message) = invalid(&text);
-        assert_eq!(found_path, path, "{text}");
-        assert!(
-            found_message.contains(message),
-            "{path}: {message:?} in {found_message:?}"
-        );
-    }
-}
-
-#[test]
-fn proposals_go_after_a_step_inside_their_card_and_are_never_signed() {
-    let (_dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].proposals.push(email());
-    let (saved, report) = save(board, None, &graph).unwrap();
-    assert!(report.is_healthy());
-    let page = &saved.pages[0];
-    assert_eq!(page.proposals, [email()], "saved as written");
-    let guard = page.guard(IF0).expect("the anchor is guarded");
-    assert_eq!((guard.kind.as_str(), guard.owner.as_str()), ("if", RUN));
-    assert!(
-        repair(
-            &mut saved.clone(),
-            &graph,
-            &Repair::Resign(Target::Proposal("email".to_owned()))
-        )
-        .is_err(),
-        "a proposal has nothing to sign"
-    );
-
-    // A proposal placed elsewhere must go after a step of its card's Flow that something runs
-    // after, on one of that step's paths when it has several (the UI's placement rule).
-    for (after, path, expected) in [
-        (RUN, None, "Can't place it after its card itself"),
-        (
-            "main.ts#function:runner/if[0]",
-            None,
-            "that is not inside its card's block. Choose a statement or call under main.ts#function:run/",
-        ),
-        (
-            "main.ts#function:run/if[7]",
-            None,
-            "that step is not in the graph",
-        ),
-        (LOG_CALL, None, "that is not a step of its card's Flow"),
-        (RETURN0, None, "nothing runs after it on its path"),
-        (IF0, None, "that step has 2 paths: choose yes or no"),
-        (
-            IF0,
-            Some(ProposalPath::Each),
-            "that step has no each path: choose yes or no",
-        ),
-        (LOG0, Some(ProposalPath::Yes), "that step has one way on"),
-    ] {
-        let mut moved = saved.clone();
-        moved.pages[0].proposals[0].after = Key::from_text(after);
-        moved.pages[0].proposals[0].path = path;
-        refuses_proposal(moved, Some((&saved, &report)), &graph, "email", expected);
-        let mut added = saved.clone();
-        added.pages[0].proposals.push(Proposal {
-            path,
-            ..proposal("new", after)
-        });
-        refuses_proposal(added, Some((&saved, &report)), &graph, "new", expected);
-    }
-    // Its words change freely; a path-only edit is a new placement, checked again.
-    let mut retitled = saved.clone();
-    retitled.pages[0].proposals[0].title = "Send a receipt".to_owned();
-    retitled.pages[0].proposals[0].path = Some(ProposalPath::No);
-    assert!(save(retitled, Some((&saved, &report)), &graph).is_ok());
-    for (path, expected) in [
-        (None, "that step has 2 paths"),
-        (Some(ProposalPath::Done), "that step has no done path"),
-    ] {
-        let mut rerouted = saved.clone();
-        rerouted.pages[0].proposals[0].path = path;
-        refuses_proposal(rerouted, Some((&saved, &report)), &graph, "email", expected);
-    }
-    let mut after_log = saved.clone();
-    after_log.pages[0].proposals.push(proposal("log", LOG0));
-    assert!(save(after_log, Some((&saved, &report)), &graph).is_ok());
-    // One saved before this rule, placed as before, still reads and saves: only a new placement
-    // is checked.
-    let mut older = saved.clone();
-    older.pages[0].proposals.push(proposal("older", IF0));
-    let older = parse(&serialize(&older)).unwrap();
-    let older_report = page_health(&older, &graph);
-    assert!(older_report.is_healthy(), "{:#?}", older_report.items);
-    let mut reworded = older.clone();
-    reworded.pages[0].proposals[1].title = "Send a receipt".to_owned();
-    assert!(save(reworded, Some((&older, &older_report)), &graph).is_ok());
-}
-
-#[test]
-fn a_proposal_whose_step_is_gone_waits_for_an_explicit_repair() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].proposals.push(email());
-    board.pages[0].proposals.push(proposal("log", LOG0));
-    let (saved, _) = save(board, None, &graph).unwrap();
-    let updated = recompiled(dir.path(), &SOURCE.replace("  console.log('done');\n", ""));
-    let report = page_health(&saved, &updated);
-    assert_eq!((report.missing, report.review), (1, 0), "{:#?}", report.items);
-    let item = &report.items[0];
-    assert_eq!(
-        (&item.target, item.kind, item.key.as_deref()),
-        (
-            &Target::Proposal("log".to_owned()),
-            HealthKind::Missing,
-            Some(LOG0)
-        )
-    );
-    assert_eq!(item.repairs, [RepairKind::Reconnect, RepairKind::RemoveProposal]);
-    assert!(
-        item.message
-            .starts_with("The step this proposal goes after is missing: ")
-    );
-    assert_eq!(
-        saved.pages[0].proposal("log"),
-        Some(&proposal("log", LOG0)),
-        "kept as written"
-    );
-
-    // Placed as before, it never refuses a save, even retitled.
-    let mut moved = saved.clone();
-    moved.pages[0].cards[0].at = [5.0, 5.0];
-    moved.pages[0].proposals[1].title = "Log the result".to_owned();
-    let (moved, moved_report) = save(moved, Some((&saved, &report)), &updated).unwrap();
-    assert_eq!(moved_report.missing, 1);
-    assert_eq!(
-        moved.pages[0].proposals[1].after.as_str(),
-        LOG0,
-        "never reattached"
-    );
-
-    // Reconnect is explicit and must stay inside the card's block.
-    for (to, expected) in [
-        (RUN, "after its card itself"),
-        ("main.ts#", "not inside its card's block"),
-        (RETURN0, "nothing runs after it"),
-        (IF0, "that step has 2 paths"),
-    ] {
-        let mut wrong = saved.clone();
-        match repair(
-            &mut wrong,
-            &updated,
-            &Repair::Reconnect {
-                from: LOG0.to_owned(),
-                to: to.to_owned(),
-            },
-        ) {
-            Err(BoardError::Problem { target, message, .. }) => {
-                assert_eq!(target, Target::Proposal("log".to_owned()));
-                assert!(message.contains(expected), "{message}");
-            }
-            other => panic!("{to}: {other:?}"),
-        }
-        assert_eq!(wrong, saved, "a refused repair changes nothing");
-    }
-    let mut repaired = saved.clone();
-    repair(
-        &mut repaired,
-        &updated,
-        &Repair::Reconnect {
-            from: LOG0.to_owned(),
-            to: FIRST.to_owned(),
-        },
-    )
-    .unwrap();
-    let page = &repaired.pages[0];
-    assert_eq!(page.proposal("log").unwrap().after.as_str(), FIRST);
-    assert!(page.guard(FIRST).is_some() && page.guard(LOG0).is_none());
-    assert!(page_health(&repaired, &updated).is_healthy());
-    assert!(save(repaired, Some((&saved, &report)), &updated).is_ok());
-
-    let mut removed = saved;
-    repair(&mut removed, &updated, &Repair::RemoveProposal("log".to_owned())).unwrap();
-    assert_eq!(removed.pages[0].proposals, [email()]);
-    assert!(page_health(&removed, &updated).is_healthy());
-}
-
-#[test]
-fn a_proposal_whose_step_changed_is_held_for_review() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].proposals.push(email());
-    let (saved, _) = save(board, None, &graph).unwrap();
-    let inserted = SOURCE.replace(
-        "  if (first)",
-        "  if (!first) { console.log('inserted'); }\n  if (first)",
-    );
-    let updated = recompiled(dir.path(), &inserted);
-    let report = page_health(&saved, &updated);
-    assert_eq!((report.review, report.missing), (1, 0), "{:#?}", report.items);
-    let item = &report.items[0];
-    assert_eq!(
-        (&item.target, item.kind, item.key.as_deref()),
-        (
-            &Target::Proposal("email".to_owned()),
-            HealthKind::Review,
-            Some(IF0)
-        )
-    );
-    assert_eq!(
-        item.repairs,
-        [
-            RepairKind::Accept,
-            RepairKind::Reconnect,
-            RepairKind::RemoveProposal
-        ]
-    );
-    assert!(
-        item.message
-            .contains("position-based and its code changed; check where it goes")
-    );
-
-    // Accepting keeps it where it is, after the code now at that position.
-    let mut accepted = saved.clone();
-    repair(&mut accepted, &updated, &Repair::Accept(IF0.to_owned())).unwrap();
-    assert!(page_health(&accepted, &updated).is_healthy());
-    assert_eq!(accepted.pages[0].proposals, saved.pages[0].proposals);
-    // Reconnecting moves it after the step it meant.
-    let moved_if = "main.ts#function:run/if[1]";
-    let mut reconnected = saved;
-    repair(
-        &mut reconnected,
-        &updated,
-        &Repair::Reconnect {
-            from: IF0.to_owned(),
-            to: moved_if.to_owned(),
-        },
-    )
-    .unwrap();
-    assert_eq!(reconnected.pages[0].proposals[0].after.as_str(), moved_if);
-    assert!(page_health(&reconnected, &updated).is_healthy());
-}
-
-#[test]
-fn reconnecting_a_card_carries_its_proposals_and_removing_it_removes_them() {
-    let (dir, graph) = folder(SOURCE);
-    let mut board = sample_board();
-    board.pages[0].proposals.push(Proposal {
-        path: Some(ProposalPath::Yes),
-        ..proposal("email", IF0)
-    });
-    let (saved, _) = save(board, None, &graph).unwrap();
-    let updated = recompiled(dir.path(), &SOURCE.replace("function run", "function start"));
-    let report = page_health(&saved, &updated);
-    assert!(report.has(
-        "page-1",
-        HealthKind::Missing,
-        &Target::Proposal("email".to_owned())
-    ));
-    let mut repaired = saved.clone();
-    repair(
-        &mut repaired,
-        &updated,
-        &Repair::Reconnect {
-            from: RUN.to_owned(),
-            to: "main.ts#function:start".to_owned(),
-        },
-    )
-    .unwrap();
-    let page = &repaired.pages[0];
-    let moved = "main.ts#function:start/if[0]";
-    assert_eq!(page.proposals[0].after.as_str(), moved);
-    assert_eq!(page.proposals[0].path, Some(ProposalPath::Yes));
-    assert!(page.guard(moved).is_some() && page.guard(IF0).is_none());
-    assert!(page_health(&repaired, &updated).is_healthy());
-    let (repaired, _) = save(repaired, Some((&saved, &report)), &updated).unwrap();
-
-    let mut removed = repaired;
-    repair(&mut removed, &updated, &Repair::RemoveCard("run".to_owned())).unwrap();
-    assert!(removed.pages[0].cards.is_empty() && removed.pages[0].proposals.is_empty());
 }

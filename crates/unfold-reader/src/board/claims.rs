@@ -1,10 +1,10 @@
-//! Authored claims: resource cards and connections (links with a `kind`) cite code, and frame
-//! descriptions describe their members. This module says what each claim is signed over, checks
-//! what it cites against the graph (health), and grounds the claims an agent adds or changes
-//! (at save).
+//! Authored claims: resource cards and connections cite code, and frame descriptions describe
+//! their members. This module says what each claim is signed over, checks what it cites against
+//! the graph (health), and grounds the claims that are added or changed (at save).
 //!
 //! A claim cites **parts**: a resource card its table's type, then its anchors; a connection its
-//! step, then its anchors. An anchor is a block or entrance key, or lines of an evidence file.
+//! step, then its anchors. An anchor is a block, app, or entrance key, or lines of an evidence
+//! file.
 //!
 //! | Claim | Signed over |
 //! | --- | --- |
@@ -12,46 +12,49 @@
 //! | Connection | Its step's block range, then each anchor's bytes, each followed by `\n` |
 //! | Frame description | Its member cards' signatures (direct and nested, sorted by card id), hex, joined with `\n` |
 //!
-//! An anchor's bytes are a block's range, an entrance's evidence, or an evidence file's lines
-//! (from the start of the first through the end of the last), always verified against the hash
-//! the graph recorded. A resource card's description and a connection's description and label
-//! are signed over the claim's bytes; a claim that cites nothing is not signed.
+//! An anchor's bytes are a block's range, the source of an app's or entrance's code, or an
+//! evidence file's lines (from the start of the first through the end of the last), always
+//! verified against the hash the graph recorded. A resource card's description and a
+//! connection's description and label are signed over the claim's bytes; a claim that cites
+//! nothing is not signed.
 //!
 //! **Grounding.** A save checks every claim that is new or changed (in what it says or cites,
-//! not its position or text): a table backed by a type marks only the type's fields (inherited
-//! ones included), and a `relates` connection joins only columns its tables have. A claim an
-//! agent wrote must also be grounded in the code it cites:
+//! not its position or text), whoever wrote it:
 //!
-//! - a resource card other than an `actor` has an anchor, and so does an `http`, `rpc`, `queue`,
-//!   `event`, or `calls` connection;
+//! - a table backed by a type marks only the type's fields (inherited ones included), and a
+//!   `relates` connection joins only columns its tables have;
+//! - a connection's step is a call;
+//! - a `calls` connection starts at an unknown call.
+//!
+//! A claim an agent wrote must also cite what it names (people's claims need no citations):
+//!
+//! - a resource card other than an `actor` has an anchor; an `http`, `queue`, or `calls`
+//!   connection has an anchor, and a `reads` or `writes` connection a step or an anchor;
 //! - a resource card's name and the columns a table lists itself appear in its cited bytes;
 //! - a connection's channel appears in its step's or anchors' bytes, unless its `to` end is an
-//!   entrance, whose channel the save fills in (a route's `METHOD path`, a worker's queue);
-//! - a carried type is used (by a type link) inside the step's function or an anchor's block;
-//! - a `calls` connection leaves from a call Unfold can't follow (unresolved or external).
+//!   entrance, whose `on` the save fills in;
+//! - a carried type is used (by a type link) inside the step's function or an anchor's block.
 //!
 //! A refusal says what failed, why, and what to do instead.
 
 use rustc_hash::FxHashSet;
-use unfold_core::RepoPath;
-use unfold_core::vocab::{BlockKind, EntranceKind, Resolution};
+use unfold_core::vocab::NodeKind;
+use unfold_core::{LinkTarget, RepoPath};
 
 use super::BoardError;
 use super::check::{HealthItem, HealthKind, RepairKind, Target, guard_problem};
 use super::graph::{BoardGraph, Lines};
 use super::model::{
-    Anchor, AuthorKind, Card, CardRef, Frame, Link, LinkKind, Page, Resource, ResourceKind, Signature,
+    Anchor, AuthorKind, Card, CardRef, Connection, ConnectionKind, Frame, Page, Resource, ResourceKind,
+    Signature,
 };
-use crate::catalog::entrance_title;
 
-/// The connection kinds that need an anchor for their receiving side when an agent draws them.
-const ANCHORED: &[LinkKind] = &[
-    LinkKind::Http,
-    LinkKind::Rpc,
-    LinkKind::Queue,
-    LinkKind::Event,
-    LinkKind::Calls,
-];
+/// The connection kinds that need an anchor when an agent draws them: the receiving side, or
+/// why an unknown call goes where it does.
+const ANCHORED: &[ConnectionKind] = &[ConnectionKind::Http, ConnectionKind::Queue, ConnectionKind::Calls];
+
+/// The connection kinds whose step is their evidence: an agent's cites a step or an anchor.
+const STEPPED: &[ConnectionKind] = &[ConnectionKind::Reads, ConnectionKind::Writes];
 
 /// The most field names a refusal lists.
 const LISTED_FIELDS: usize = 12;
@@ -80,24 +83,15 @@ fn resource_parts(resource: &Resource) -> Vec<Part<'_>> {
     table.chain(resource.anchors.iter().map(Part::of)).collect()
 }
 
-/// What connection `link` cites: its step, then its anchors (nothing for a drawn link).
-fn connection_parts(link: &Link) -> Vec<Part<'_>> {
-    if link.kind.is_none() {
-        return Vec::new();
-    }
-    let step = link.step.iter().map(|key| Part::Key(key.as_str()));
-    step.chain(link.anchors.iter().map(Part::of)).collect()
-}
-
-/// Whether link `link` is a connection that cites code (a step or anchors): its texts are signed
-/// over that code, not over its ends.
-pub(crate) fn cites(link: &Link) -> bool {
-    !connection_parts(link).is_empty()
+/// What connection `connection` cites: its step, then its anchors.
+fn connection_parts(connection: &Connection) -> Vec<Part<'_>> {
+    let step = connection.step.iter().map(|key| Part::Key(key.as_str()));
+    step.chain(connection.anchors.iter().map(Part::of)).collect()
 }
 
 /// What one part's bytes are now.
 enum Found<'g> {
-    Bytes(&'g [u8]),
+    Bytes(Vec<&'g [u8]>),
     Missing,
     Unverified,
 }
@@ -105,9 +99,9 @@ enum Found<'g> {
 fn found<'g>(graph: &'g BoardGraph, part: Part<'_>) -> Found<'g> {
     match part {
         Part::Key(key) if !graph.exists(key) => Found::Missing,
-        Part::Key(key) => graph.key_bytes(key).map_or(Found::Unverified, Found::Bytes),
+        Part::Key(key) => graph.sources(key).map_or(Found::Unverified, Found::Bytes),
         Part::Lines(file, lines) => match graph.lines(file, lines) {
-            Lines::Bytes(bytes) => Found::Bytes(bytes),
+            Lines::Bytes(bytes) => Found::Bytes(vec![bytes]),
             Lines::Unverified => Found::Unverified,
             Lines::NotRecorded | Lines::PastEnd => Found::Missing,
         },
@@ -146,8 +140,10 @@ fn signed(graph: &BoardGraph, parts: &[Part<'_>]) -> Signed {
     for part in parts {
         match found(graph, *part) {
             Found::Bytes(found) => {
-                bytes.extend_from_slice(found);
-                bytes.push(b'\n');
+                for source in found {
+                    bytes.extend_from_slice(source);
+                    bytes.push(b'\n');
+                }
             }
             Found::Missing => problem = Some(Signed::Missing),
             Found::Unverified => problem = problem.or(Some(Signed::Unverified)),
@@ -161,9 +157,9 @@ pub(crate) fn resource_signed(graph: &BoardGraph, resource: &Resource) -> Signed
     signed(graph, &resource_parts(resource))
 }
 
-/// Connection `link`'s signature now ([`Signed::Nothing`] for a drawn link).
-pub(crate) fn connection_signed(graph: &BoardGraph, link: &Link) -> Signed {
-    signed(graph, &connection_parts(link))
+/// Connection `connection`'s signature now ([`Signed::Nothing`] when it cites nothing).
+pub(crate) fn connection_signed(graph: &BoardGraph, connection: &Connection) -> Signed {
+    signed(graph, &connection_parts(connection))
 }
 
 /// The cards of frame `frame`, directly and in the frames it holds, sorted by id.
@@ -203,23 +199,16 @@ pub(crate) fn frame_signed(page: &Page, graph: &BoardGraph, frame: &Frame) -> Si
     problem.unwrap_or_else(|| Signed::Signature(Signature::of(hexes.join("\n").as_bytes())))
 }
 
-/// The channel a save fills in for connection `link`: its `to` end's route (`METHOD path`) for
-/// an `http` connection, or its worker's queue for a `queue` connection, when that end is such
-/// an entrance card.
-pub(crate) fn entrance_channel(page: &Page, graph: &BoardGraph, link: &Link) -> Option<String> {
-    let card = page.card(&link.to)?;
+/// The channel a save fills in for connection `connection`: what starts its `to` end (the
+/// entrance's `on`, such as `POST /orders`) for an `http` or `queue` connection, when that end
+/// is an entrance card.
+pub(crate) fn entrance_channel(page: &Page, graph: &BoardGraph, connection: &Connection) -> Option<String> {
+    let card = page.card(&connection.to)?;
     let CardRef::Entrance { entrance: key } = &card.reference else {
         return None;
     };
-    let entrance = graph.entrance(key.as_str())?;
-    let trigger = entrance.trigger.as_deref()?;
-    match (link.kind?, entrance.kind) {
-        (LinkKind::Http, EntranceKind::Http) => entrance
-            .method
-            .map(|method| format!("{} {trigger}", method.as_str())),
-        (LinkKind::Queue, EntranceKind::Worker) => Some(trigger.to_owned()),
-        _ => None,
-    }
+    let on = graph.entrance(key.as_str())?.on()?;
+    matches!(connection.kind, ConnectionKind::Http | ConnectionKind::Queue).then(|| on.to_owned())
 }
 
 /// A health item about a claim.
@@ -238,6 +227,7 @@ fn item(
         target: target.clone(),
         key: key.map(str::to_owned),
         anchor: anchor.and_then(|index| u32::try_from(index).ok()),
+        reconnect: None,
         message,
         repairs: repairs.to_vec(),
     }
@@ -274,7 +264,7 @@ fn type_gone(graph: &BoardGraph, key: &str, role: &str, claim: &str) -> Option<S
         None => Some(format!(
             "Type {key} is not in the graph: it was renamed, moved, or removed. Reconnect the {role} to the type's new key, or remove the {claim}"
         )),
-        Some(block) if !block.block().kind.is_type_declaration() => Some(format!(
+        Some(block) if !matches!(block.kind(), NodeKind::Class | NodeKind::Type) => Some(format!(
             "{key} is not a type declaration or class: the {role} is the interface, type, enum, or class the code writes"
         )),
         Some(_) => None,
@@ -282,15 +272,15 @@ fn type_gone(graph: &BoardGraph, key: &str, role: &str, claim: &str) -> Option<S
 }
 
 /// The health items of the page's claims: resource cards (missing, held, outdated), connections
-/// (broken, held, outdated; a missing end is reported with every link), and frame descriptions
-/// (outdated).
+/// (broken, held, outdated; a missing end is reported by [`super::health`]), and frame
+/// descriptions (outdated).
 pub(super) fn health(page: &Page, graph: &BoardGraph) -> Vec<HealthItem> {
     let mut items = Vec::new();
     for resource in &page.resources {
         resource_health(page, graph, resource, &mut items);
     }
-    for link in page.links.iter().filter(|link| link.kind.is_some()) {
-        connection_health(page, graph, link, &mut items);
+    for connection in &page.links {
+        connection_health(page, graph, connection, &mut items);
     }
     for frame in &page.frames {
         let Some(description) = &frame.description else {
@@ -315,13 +305,11 @@ fn outdated(saved: Option<Signature>, current: Signed) -> bool {
     saved.is_some() && current.signature() != saved
 }
 
-/// How a claim's problems are reported: the kind of a gone part, the claim in words, and the
-/// repair that removes it.
+/// How a claim's problems are reported: the kind of a gone part, and the claim in words.
 #[derive(Clone, Copy)]
 struct Claim<'w> {
     gone: HealthKind,
     word: &'w str,
-    remove: RepairKind,
 }
 
 /// Items about the claim's anchors that are gone and the keys (its other keys, then its key
@@ -340,7 +328,7 @@ fn parts_health(
         if let Some(message) = anchor_gone(graph, anchor, claim.word) {
             broken = true;
             let key = anchor.key().map(|key| key.as_str());
-            let repairs = [RepairKind::Reconnect, claim.remove];
+            let repairs = [RepairKind::Reconnect, RepairKind::Remove];
             items.push(item(
                 page,
                 claim.gone,
@@ -352,7 +340,7 @@ fn parts_health(
             ));
         }
     }
-    let held = [RepairKind::Accept, RepairKind::Reconnect, claim.remove];
+    let held = [RepairKind::Accept, RepairKind::Reconnect, RepairKind::Remove];
     let anchor_keys = anchors
         .iter()
         .filter_map(|anchor| anchor.key().map(|key| key.as_str()));
@@ -381,9 +369,8 @@ fn resource_health(page: &Page, graph: &BoardGraph, resource: &Resource, items: 
     let claim = Claim {
         gone: HealthKind::Missing,
         word: "resource card",
-        remove: RepairKind::RemoveResource,
     };
-    let remove = [RepairKind::Reconnect, claim.remove];
+    let remove = [RepairKind::Reconnect, RepairKind::Remove];
     let mut broken = false;
     let mut keys = Vec::new();
     if let Some(table) = &resource.type_key {
@@ -412,7 +399,7 @@ fn resource_health(page: &Page, graph: &BoardGraph, resource: &Resource, items: 
     {
         let mut repairs = vec![RepairKind::Resign];
         repairs.extend(description.map(|_| RepairKind::RemoveDescription));
-        repairs.push(RepairKind::RemoveResource);
+        repairs.push(RepairKind::Remove);
         items.push(item(
             page,
             HealthKind::Outdated,
@@ -425,26 +412,25 @@ fn resource_health(page: &Page, graph: &BoardGraph, resource: &Resource, items: 
     }
 }
 
-fn connection_health(page: &Page, graph: &BoardGraph, link: &Link, items: &mut Vec<HealthItem>) {
-    let target = Target::Link(link.id.clone());
+fn connection_health(page: &Page, graph: &BoardGraph, connection: &Connection, items: &mut Vec<HealthItem>) {
+    let target = Target::Connection(connection.id.clone());
     let claim = Claim {
         gone: HealthKind::BrokenLink,
         word: "connection",
-        remove: RepairKind::RemoveLink,
     };
-    let remove = [RepairKind::Reconnect, claim.remove];
+    let remove = [RepairKind::Reconnect, RepairKind::Remove];
     let mut broken = false;
     let mut keys = Vec::new();
-    if let Some(step) = &link.step {
+    if let Some(step) = &connection.step {
         let card = page
-            .card(&link.from)
+            .card(&connection.from)
             .and_then(|card| graph.block(card.reference.key().as_str()));
         let message = match (graph.block(step.as_str()), card) {
             (None, _) => Some(format!(
-                "Step {step} is not in the graph: the code changed. Reconnect it to the statement's new key, or remove the connection"
+                "Step {step} is not in the graph: the code changed. Reconnect it to the call's new key, or remove the connection"
             )),
-            (Some(block), Some(card)) if !block.within(&card) => Some(format!(
-                "Step {step} is not inside its card's block: a connection leaves from a statement or call of its `from` card. Reconnect the step, or remove the connection"
+            (Some(block), Some(card)) if !card.contains(&block) => Some(format!(
+                "Step {step} is not inside its card's block: a connection leaves from a call of its `from` card. Reconnect the step, or remove the connection"
             )),
             _ => None,
         };
@@ -462,7 +448,7 @@ fn connection_health(page: &Page, graph: &BoardGraph, link: &Link, items: &mut V
         }
         keys.push(step.as_str());
     }
-    if let Some(carries) = &link.carries {
+    if let Some(carries) = &connection.carries {
         if let Some(message) = type_gone(graph, carries.as_str(), "carried type", "connection") {
             broken = true;
             items.push(item(
@@ -477,23 +463,23 @@ fn connection_health(page: &Page, graph: &BoardGraph, link: &Link, items: &mut V
         }
         keys.push(carries.as_str());
     }
-    broken |= parts_health(page, graph, &target, claim, &link.anchors, &keys, items);
-    let current = connection_signed(graph, link);
+    broken |= parts_health(page, graph, &target, claim, &connection.anchors, &keys, items);
+    let current = connection_signed(graph, connection);
     if broken || current == Signed::Nothing {
         return;
     }
-    let texts = [link.description.as_ref(), link.label.as_ref()];
-    if outdated(link.signature, current)
+    let texts = [connection.description.as_ref(), connection.label.as_ref()];
+    if outdated(connection.signature, current)
         || texts
             .iter()
             .flatten()
             .any(|text| outdated(text.signature, current))
     {
         let mut repairs = vec![RepairKind::Resign];
-        if texts.iter().any(Option::is_some) {
+        if connection.description.is_some() {
             repairs.push(RepairKind::RemoveDescription);
         }
-        repairs.push(RepairKind::RemoveLink);
+        repairs.push(RepairKind::Remove);
         items.push(item(
             page,
             HealthKind::Outdated,
@@ -521,7 +507,7 @@ fn resource_changed(old: Option<&Resource>, new: &Resource) -> bool {
 
 /// Whether connection `new` says or cites something else than `old` (its kind, ends, step,
 /// columns, channel, carried type, cardinality, anchors, or author), or is new.
-fn connection_changed(old: Option<&Link>, new: &Link) -> bool {
+fn connection_changed(old: Option<&Connection>, new: &Connection) -> bool {
     old.is_none_or(|old| {
         old.kind != new.kind
             || (&old.from, &old.to) != (&new.from, &new.to)
@@ -537,8 +523,8 @@ fn connection_changed(old: Option<&Link>, new: &Link) -> bool {
 
 /// Sets the unsigned ones of a claim's `slots` (its signature, its texts' signatures) to
 /// `current`. Nothing to sign, or a missing part (which the save then refuses), leaves them as
-/// they are; a source that changed since the graph was built can't
-/// be signed (`what` names the claim).
+/// they are; a source that changed since the graph was built can't be signed (`what` names the
+/// claim).
 fn put<'s>(
     current: Signed,
     slots: impl IntoIterator<Item = &'s mut Option<Signature>>,
@@ -562,13 +548,13 @@ fn put<'s>(
 /// verified source: resource cards with their descriptions, connections that cite code with
 /// their descriptions and labels, and frame descriptions. A resource card or connection whose
 /// parts changed since `previous` is signed again; signed text stays as it is (it goes outdated
-/// when its code changed), except a link label signed over its ends before the link cited code.
+/// when its code changed).
 pub(super) fn sign(page: &mut Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
     let channels: Vec<(usize, String)> = page
         .links
         .iter()
         .enumerate()
-        .filter_map(|(index, link)| Some((index, entrance_channel(page, graph, link)?)))
+        .filter_map(|(index, connection)| Some((index, entrance_channel(page, graph, connection)?)))
         .collect();
     for (index, channel) in channels {
         page.links[index].channel = Some(channel);
@@ -592,31 +578,31 @@ pub(super) fn sign(page: &mut Page, previous: Option<&Page>, graph: &BoardGraph)
         )?;
     }
     for index in 0..page.links.len() {
-        let link = &page.links[index];
-        let old = previous.and_then(|old| old.link(&link.id));
-        let moved = old.is_some_and(|old| {
-            (&old.from, &old.step, &old.anchors) != (&link.from, &link.step, &link.anchors)
-        });
-        // A link that cited no code had its label signed over its ends: it is signed over the
-        // code it cites now, not reported outdated.
-        let rebased = old.is_some_and(|old| !cites(old));
-        let current = connection_signed(graph, link);
+        let connection = &page.links[index];
+        let moved = previous
+            .and_then(|old| old.connection(&connection.id))
+            .is_some_and(|old| {
+                (&old.from, &old.step, &old.anchors)
+                    != (&connection.from, &connection.step, &connection.anchors)
+            });
+        let current = connection_signed(graph, connection);
         if current == Signed::Nothing {
             continue;
         }
-        let link = &mut page.links[index];
+        let connection = &mut page.links[index];
         if moved {
-            link.signature = None;
+            connection.signature = None;
         }
-        if let Some(label) = link.label.as_mut().filter(|_| rebased) {
-            label.signature = None;
-        }
-        let what = format!("connection `{}`", link.id);
-        let texts = [link.description.as_mut(), link.label.as_mut()]
+        let what = format!("connection `{}`", connection.id);
+        let texts = [connection.description.as_mut(), connection.label.as_mut()]
             .into_iter()
             .flatten()
             .map(|text| &mut text.signature);
-        put(current, std::iter::once(&mut link.signature).chain(texts), &what)?;
+        put(
+            current,
+            std::iter::once(&mut connection.signature).chain(texts),
+            &what,
+        )?;
     }
     for index in 0..page.frames.len() {
         let current = frame_signed(page, graph, &page.frames[index]);
@@ -637,14 +623,14 @@ fn refuse(page: &Page, target: Target, message: String) -> BoardError {
     }
 }
 
-/// How a page item reads in a message: a card's qualified name or entrance, a resource card's
-/// kind and name, or a frame's title.
+/// How a page item reads in a message: a card's qualified name or app or entrance, a resource
+/// card's kind and name, or a frame's title.
 fn item_name(page: &Page, graph: &BoardGraph, id: &str) -> String {
     if let Some(card) = page.card(id) {
         let key = card.reference.key().as_str();
         let name = match &card.reference {
             CardRef::Block { .. } => graph.qualified_name(key),
-            CardRef::Entrance { .. } => graph.entrance(key).map(entrance_title),
+            CardRef::Entrance { .. } => graph.entrance(key).map(|start| start.name().to_owned()),
         };
         return name.unwrap_or_else(|| key.to_owned());
     }
@@ -655,27 +641,26 @@ fn item_name(page: &Page, graph: &BoardGraph, id: &str) -> String {
         .map_or_else(|| id.to_owned(), |frame| format!("the frame \"{}\"", frame.title))
 }
 
-/// How a part reads in a message: a block's name and file, an entrance, or an evidence file's
-/// lines.
+/// How a part reads in a message: a block's name and file, an app or entrance, or an evidence
+/// file's lines.
 fn part_name(graph: &BoardGraph, part: Part<'_>) -> String {
     match part {
         Part::Key(key) => {
             if let Some(block) = graph.block(key) {
-                let path = &block.file().file.path;
-                let kind = block.block().kind;
-                let name = if kind.is_function_like() || kind.is_type_declaration() {
+                let path = block.tree.path();
+                let name = if block.kind().is_definition() {
                     graph.qualified_name(key)
                 } else {
-                    block.block().name.as_deref().map(str::to_owned)
+                    block.node().name.as_deref().map(str::to_owned)
                 };
                 return match name {
                     Some(name) => format!("{name} in {path}"),
-                    None => format!("{path}:{}", block.block().lines.start),
+                    None => format!("{path}:{}", block.node().lines.start),
                 };
             }
             graph.entrance(key).map_or_else(
                 || key.to_owned(),
-                |entrance| format!("the {} entrance", entrance_title(entrance)),
+                |start| format!("the {} entrance", start.name()),
             )
         }
         Part::Lines(file, [first, last]) => format!("{file} lines {first}–{last}"),
@@ -699,7 +684,7 @@ fn cited<'g>(graph: &'g BoardGraph, parts: &[Part<'_>], what: &str) -> Result<Ve
     let mut bytes = Vec::with_capacity(parts.len());
     for part in parts {
         match found(graph, *part) {
-            Found::Bytes(found) => bytes.push(found),
+            Found::Bytes(found) => bytes.extend(found),
             Found::Missing => {}
             Found::Unverified => {
                 return Err(BoardError::Unverified {
@@ -725,7 +710,7 @@ fn type_name(graph: &BoardGraph, key: &str) -> String {
     match graph.block(key) {
         Some(block) => {
             let name = graph.qualified_name(key).unwrap_or_else(|| key.to_owned());
-            format!("{name} ({})", block.file().file.path)
+            format!("{name} ({})", block.tree.path())
         }
         None => key.to_owned(),
     }
@@ -751,9 +736,12 @@ pub(super) fn ground(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -
             ground_resource(page, graph, resource)?;
         }
     }
-    for link in page.links.iter().filter(|link| link.kind.is_some()) {
-        if connection_changed(previous.and_then(|old| old.link(&link.id)), link) {
-            ground_connection(page, graph, link)?;
+    for connection in &page.links {
+        if connection_changed(
+            previous.and_then(|old| old.connection(&connection.id)),
+            connection,
+        ) {
+            ground_connection(page, graph, connection)?;
         }
     }
     Ok(())
@@ -791,7 +779,7 @@ fn ground_resource(page: &Page, graph: &BoardGraph, resource: &Resource) -> Resu
             page,
             target,
             format!(
-                "Can't add {what}: it has no anchors. Anchor it to the code that defines or uses it (a block or entrance key), or to lines of an evidence file"
+                "Can't add {what}: it has no anchors. Anchor it to the code that defines or uses it (a block, app, or entrance key), or to lines of an evidence file"
             ),
         ));
     }
@@ -827,42 +815,52 @@ fn ground_resource(page: &Page, graph: &BoardGraph, resource: &Resource) -> Resu
     Ok(())
 }
 
-fn ground_connection(page: &Page, graph: &BoardGraph, link: &Link) -> Result<(), BoardError> {
-    let target = Target::Link(link.id.clone());
-    let kind = link.kind.unwrap_or(LinkKind::Other);
+fn ground_connection(page: &Page, graph: &BoardGraph, connection: &Connection) -> Result<(), BoardError> {
+    let target = Target::Connection(connection.id.clone());
+    let kind = connection.kind;
     let what = format!(
         "{} to {} ({})",
-        item_name(page, graph, &link.from),
-        item_name(page, graph, &link.to),
+        item_name(page, graph, &connection.from),
+        item_name(page, graph, &connection.to),
         kind.as_str()
     );
-    if link.relates() {
-        relates_columns(page, graph, link, &target, &what)?;
+    if kind == ConnectionKind::Relates {
+        relates_columns(page, graph, connection, &target, &what)?;
     }
-    if link
-        .author
-        .as_ref()
-        .is_none_or(|author| author.kind() != AuthorKind::Agent)
-    {
+    step_is_a_call(page, graph, connection, &target, &what)?;
+    if connection.author.kind() != AuthorKind::Agent {
         return Ok(());
     }
-    if ANCHORED.contains(&kind) && link.anchors.is_empty() {
+    if ANCHORED.contains(&kind) && connection.anchors.is_empty() {
+        let cites = if kind == ConnectionKind::Calls {
+            "why the call goes where it does, such as the factory or the injection"
+        } else {
+            "its receiving side: the entrance, the handler's registration, or where the queue is created"
+        };
         return Err(refuse(
             page,
             target,
             format!(
-                "Can't connect {what}: it has no anchors. A {} connection cites its receiving side: anchor it to the code or entrance that receives it",
+                "Can't connect {what}: it has no anchors. A {} connection cites {cites}",
                 kind.as_str()
             ),
         ));
     }
-    let parts = connection_parts(link);
-    let bytes = cited(graph, &parts, &format!("the connection {what}"))?;
-    if kind == LinkKind::Calls {
-        calls_step(page, graph, link, &target, &what)?;
+    let parts = connection_parts(connection);
+    if STEPPED.contains(&kind) && parts.is_empty() {
+        return Err(refuse(
+            page,
+            target,
+            format!(
+                "Can't connect {what}: it cites nothing. A {} connection leaves from the call that {} as its step; give that call, or an anchor",
+                kind.as_str(),
+                kind.as_str()
+            ),
+        ));
     }
-    if let Some(channel) = &link.channel
-        && entrance_channel(page, graph, link).is_none()
+    let bytes = cited(graph, &parts, &format!("the connection {what}"))?;
+    if let Some(channel) = &connection.channel
+        && entrance_channel(page, graph, connection).is_none()
         && !appears(&bytes, channel)
     {
         return Err(refuse(
@@ -874,8 +872,8 @@ fn ground_connection(page: &Page, graph: &BoardGraph, link: &Link) -> Result<(),
             ),
         ));
     }
-    if let Some(carries) = &link.carries {
-        carried(page, graph, link, carries.as_str(), &target, &what)?;
+    if let Some(carries) = &connection.carries {
+        carried(page, graph, connection, carries.as_str(), &target, &what)?;
     }
     Ok(())
 }
@@ -884,11 +882,15 @@ fn ground_connection(page: &Page, graph: &BoardGraph, link: &Link) -> Result<(),
 fn relates_columns(
     page: &Page,
     graph: &BoardGraph,
-    link: &Link,
+    connection: &Connection,
     target: &Target,
     what: &str,
 ) -> Result<(), BoardError> {
-    for (end, column) in [(&link.from, &link.from_column), (&link.to, &link.to_column)] {
+    let ends = [
+        (&connection.from, &connection.from_column),
+        (&connection.to, &connection.to_column),
+    ];
+    for (end, column) in ends {
         let (Some(table), Some(column)) = (page.resource(end), column) else {
             continue;
         };
@@ -913,79 +915,89 @@ fn relates_columns(
     Ok(())
 }
 
-/// Refuses a `calls` connection whose step isn't a call Unfold can't follow.
-fn calls_step(
+/// Refuses a connection whose step isn't a call, and a `calls` connection that doesn't start at
+/// an unknown call.
+fn step_is_a_call(
     page: &Page,
     graph: &BoardGraph,
-    link: &Link,
+    connection: &Connection,
     target: &Target,
     what: &str,
 ) -> Result<(), BoardError> {
     let fail = |message: String| Err(refuse(page, target.clone(), message));
-    let Some(step) = &link.step else {
-        return fail(format!(
-            "Can't connect {what}: it has no step. A calls connection leaves from the call Unfold can't follow; give that call as its step"
-        ));
+    let calls = connection.kind == ConnectionKind::Calls;
+    let Some(step) = &connection.step else {
+        if calls {
+            return fail(format!(
+                "Can't connect {what}: it has no step. A calls connection leaves from the unknown call itself; give that call as its step"
+            ));
+        }
+        return Ok(());
     };
     let Some(block) = graph.block(step.as_str()) else {
         return Ok(());
     };
-    let line = block.block().lines.start;
-    if !matches!(block.block().kind, BlockKind::Call | BlockKind::New) {
+    let line = block.node().lines.start;
+    if block.kind() != NodeKind::Call {
         return fail(format!(
-            "Can't connect {what}: its step (line {line}) isn't a call. Give the call itself as the step, such as {step}/call[0]"
+            "Can't connect {what}: its step (line {line}) is a {}, not a call. A connection leaves from a call: give the call's key as the step",
+            block.kind().as_str()
         ));
     }
-    match block.occurrence() {
-        Some(edge) if edge.resolution == Resolution::Resolved => {
-            let callee = edge.target.as_ref().map_or_else(String::new, |key| {
-                graph
-                    .qualified_name(key.as_str())
-                    .unwrap_or_else(|| key.to_string())
-            });
-            fail(format!(
-                "Can't connect {what}: the call {} (line {line}) resolves to {callee}, so Unfold already draws it. A calls connection is for a call Unfold can't follow; open the call's arrow instead",
-                edge.text
-            ))
-        }
-        _ => Ok(()),
+    let edge = block.tree.calls_link(block.id);
+    if !calls || edge.is_some_and(|edge| matches!(edge.to, LinkTarget::Unknown(_))) {
+        return Ok(());
     }
+    let resolved = match edge.map(|edge| (&*edge.text, &edge.to)) {
+        Some((text, LinkTarget::Project(key))) => {
+            let callee = graph
+                .qualified_name(key.as_str())
+                .unwrap_or_else(|| key.to_string());
+            format!("the call {text} (line {line}) resolves to {callee}, so Unfold already draws it")
+        }
+        Some((text, to)) => format!(
+            "the call {text} (line {line}) is a {} call, not an unknown one",
+            to.outcome().as_str()
+        ),
+        None => format!("the call on line {line} has no target to follow"),
+    };
+    fail(format!(
+        "Can't connect {what}: {resolved}. A calls connection starts at a call Unfold can't follow"
+    ))
 }
 
 /// Refuses a carried type that neither the step's function nor an anchor's block uses.
 fn carried(
     page: &Page,
     graph: &BoardGraph,
-    link: &Link,
+    connection: &Connection,
     carries: &str,
     target: &Target,
     what: &str,
 ) -> Result<(), BoardError> {
-    let owner = link
+    let owner = connection
         .step
         .as_ref()
         .and_then(|step| graph.block(step.as_str()))
-        .and_then(|step| graph.block(step.owner().as_str()));
-    let anchors = link.anchors.iter().filter_map(|anchor| {
-        let key = anchor.key()?.as_str();
-        match graph.block(key) {
-            Some(block) => Some(block),
-            None => graph
-                .entrance(key)
-                .and_then(|entrance| entrance.evidence.block.as_ref())
-                .and_then(|evidence| graph.block(evidence.as_str())),
-        }
+        .and_then(|step| step.owner());
+    let anchors = connection.anchors.iter().flat_map(|anchor| {
+        let key = anchor.key().map_or("", |key| key.as_str());
+        let blocks: Vec<_> = match (graph.block(key), graph.entrance(key)) {
+            (Some(block), _) => vec![block],
+            (None, Some(start)) => graph.code_blocks(&start).collect(),
+            (None, None) => Vec::new(),
+        };
+        blocks
     });
     if owner
-        .iter()
-        .copied()
+        .into_iter()
         .chain(anchors)
-        .any(|block| block.uses_type(carries))
+        .any(|block| graph.uses_type(&block, carries))
     {
         return Ok(());
     }
     let owner_name = owner
-        .and_then(|block| graph.qualified_name(block.block().key.as_str()))
+        .and_then(|block| graph.qualified_name(block.key().as_str()))
         .unwrap_or_else(|| "its step's function".to_owned());
     Err(refuse(
         page,

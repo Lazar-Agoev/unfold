@@ -1,102 +1,102 @@
-//! Type definitions and their uses.
+//! Classes and types, and where they are named.
 //!
-//! - **A definition** is an `interface`, `type_alias`, `enum`, or `class` block: its name, place,
-//!   written members (each with its own type text, or an enum member's value), and how many type
-//!   links resolve to it. A type alias with no members (its aliased type isn't an object type)
-//!   also shows the aliased type: the text of its `type` slot from the verified source (no
-//!   record stores it), with the type links inside it; absent when the file changed.
-//! - **Inherited members** follow the heritage links that name a base the definition extends
-//!   (TypeScript `extends`, Python class bases; not `implements`, whose members a class writes
-//!   itself), depth first in written order: each base is a group with its members, then the
-//!   groups of its own bases. Each type is listed once (a cycle or a diamond stops at a type
-//!   already listed, the definition itself included), and bases more than
-//!   [`MAX_INHERITED_DEPTH`] levels down are left out. An external or unresolved base is a group
-//!   without members, saying where it comes from or why it has no declaration. Members are as
-//!   written: generic arguments aren't substituted, and a member a type writes again isn't
-//!   hidden.
-//! - **Uses** are one page of the type links that resolve to a declaration, read from the
-//!   store's reverse index. Each names its owner: the block the link is sourced at when that is a
-//!   definition or type declaration (a parameter's type belongs to its function), else that
-//!   block's owner (a variable annotation belongs to its function or file). Its line comes from
-//!   the verified source, else the block's first line. A place in a heritage clause says whether
-//!   its owner extends or implements the type.
+//! - **A definition** is a class or a type (`interface`, `type_alias`, `enum`): its name, place,
+//!   written members (each with its own type text, or an enum member's value), and how many
+//!   `types` and `extends` links name it. A type alias with no members (its aliased type isn't an
+//!   object type) also shows the aliased type: the text of its `body` from the verified source,
+//!   with the type names inside it; absent when the file changed.
+//! - **Inherited members** follow the `extends` links that name a base the definition extends
+//!   (not `implements`, whose members a class writes itself), depth first in written order: each
+//!   base is a group with its members, then the groups of its own bases. Each type is listed once
+//!   (a cycle or a diamond stops at a type already listed, the definition itself included), and
+//!   bases more than [`MAX_INHERITED_DEPTH`] levels down are left out. A library, builtin, or
+//!   unknown base is a group without members, saying where it comes from or why it has no
+//!   definition. Members are as written: generic arguments aren't substituted, and a member a type
+//!   writes again isn't hidden.
+//! - **Uses** are one page of the `types` and `extends` links that reach a class or type, from the
+//!   store's reverse index. Each names its owner: the definition the link starts at, or the
+//!   definition an `except` part belongs to. Its line comes from the verified source, else the
+//!   owner's first line.
+
+use std::path::Path;
 
 use rustc_hash::FxHashSet;
 use unfold_core::text::short_label;
-use unfold_core::vocab::{BlockKind, Resolution, SlotName};
-use unfold_core::{Block, Key, LineIndex, RepoPath, TypeLink, WrittenType};
+use unfold_core::vocab::{Form, LinkKind, NodeKind};
+use unfold_core::{Key, LinkTarget, WrittenType};
+use unfold_store::{Cursor, Reader};
 
-use super::facts::{Facts, FileFacts};
-use super::text::{outcome_span, whole_text};
-use super::{InheritedGroup, TypeDefinition, TypeKind, TypeMember, TypeText, TypeUsePlace, TypeUses};
+use super::facts::Facts;
+use super::text::{type_text, whole_text};
+use super::{InheritedGroup, TypeDefinition, TypeKind, TypeMember, TypeUsePlace, TypeUses, UseKind};
 use crate::error::Result;
+use crate::tree::FileTree;
 
 /// How many levels of bases a definition's inherited members reach.
 pub const MAX_INHERITED_DEPTH: u32 = 8;
 
 impl TypeKind {
-    /// The kind of a type declaration or class block, or `None` for any other block.
-    pub fn of(kind: BlockKind) -> Option<Self> {
-        match kind {
-            BlockKind::Interface => Some(Self::Interface),
-            BlockKind::TypeAlias => Some(Self::TypeAlias),
-            BlockKind::Enum => Some(Self::Enum),
-            BlockKind::Class => Some(Self::Class),
+    /// The kind of a class or type of `form`; `None` for any other form.
+    pub fn of(form: Form) -> Option<Self> {
+        match form {
+            Form::Interface => Some(Self::Interface),
+            Form::TypeAlias => Some(Self::TypeAlias),
+            Form::Enum => Some(Self::Enum),
+            Form::Class => Some(Self::Class),
             _ => None,
         }
     }
 }
 
-/// The definition of the type declaration or class with `key`; `None` when no block has that
-/// key or it is no type declaration.
+/// Whether node `id` of `file` is a class or a type.
+fn is_type(file: &FileTree, id: u32) -> bool {
+    matches!(file.kind(id), NodeKind::Class | NodeKind::Type)
+}
+
+/// The definition of the class or type with `key`; `None` when no class or type has that key.
 pub fn type_definition(facts: &mut Facts<'_>, key: &str) -> Result<Option<TypeDefinition>> {
-    let Some((file, local)) = facts.locate(key)? else {
+    let Some((file, id)) = facts.locate(key)? else {
         return Ok(None);
     };
-    let Some((block, kind)) = file
-        .block(local)
-        .and_then(|block| TypeKind::of(block.kind).map(|kind| (block, kind)))
-    else {
+    let node = file.node(id);
+    let Some(kind) = TypeKind::of(node.form) else {
         return Ok(None);
     };
-    let members = members(&file, local);
-    let aliased = match file.slot(local, SlotName::Type, None) {
-        Some(slot) if kind == TypeKind::TypeAlias && members.is_empty() => {
-            facts.text(&file).and_then(|snapshot| {
-                let text = snapshot.text().get(slot.range.as_usize())?;
-                Some(file.type_text(&WrittenType {
+    let members = members(&file, id);
+    let aliased = match node.body {
+        Some(body) if kind == TypeKind::TypeAlias && members.is_empty() => {
+            facts.text(&file).and_then(|source| {
+                let text = source.slice(body).ok()?;
+                let written = WrittenType {
                     text: short_label(text).into(),
-                    range: slot.range,
-                }))
+                    range: body,
+                };
+                Some(type_text(&written, file.type_links_in(body)))
             })
         }
         _ => None,
     };
     let mut inherited = Vec::new();
     let mut listed: FxHashSet<Key> = FxHashSet::default();
-    listed.insert(block.key.clone());
-    inherit(facts, &file, local, 1, &mut listed, &mut inherited)?;
-    let uses = facts.source().type_use_count(key)?;
+    listed.insert(node.key.clone());
+    inherit(facts, &file, id, 1, &mut listed, &mut inherited)?;
     Ok(Some(TypeDefinition {
-        key: block.key.clone(),
+        key: node.key.clone(),
         kind,
-        name: block
-            .name
-            .as_deref()
-            .map_or_else(|| file.label(local), str::to_owned),
+        name: file.label(id),
         path: file.path().clone(),
-        line: block.lines.start,
-        language: file.graph().file.language,
+        line: node.lines.start,
+        language: file.language(),
         members,
         inherited,
         aliased,
-        uses: u32::try_from(uses).unwrap_or(u32::MAX),
+        uses: facts.source().type_use_count(key)?,
     }))
 }
 
-/// The written members of type declaration or class `local` of `file`.
-fn members(file: &FileFacts, local: u32) -> Vec<TypeMember> {
-    file.members(local)
+/// The written members of class or type `id` of `file`.
+fn members(file: &FileTree, id: u32) -> Vec<TypeMember> {
+    file.members(id)
         .iter()
         .map(|member| TypeMember {
             name: member.name.as_deref().map(str::to_owned),
@@ -104,30 +104,33 @@ fn members(file: &FileFacts, local: u32) -> Vec<TypeMember> {
             optional: member.optional,
             readonly: member.readonly,
             default: member.default,
-            ty: member.ty.as_ref().map(|ty| file.type_text(ty)),
+            ty: member
+                .ty
+                .as_ref()
+                .map(|ty| type_text(ty, file.type_links_in(ty.range))),
             value: member.value.as_deref().map(str::to_owned),
         })
         .collect()
 }
 
-/// Adds a group for each base block `local` of `file` extends (at `depth`, 1 for the
-/// definition's own bases), each followed by its own bases' groups. `listed` holds the declared
-/// types already listed.
+/// Adds a group for each base that `id` of `file` extends (at `depth`, 1 for the definition's
+/// own bases), each followed by its own bases' groups. `listed` holds the project types already
+/// listed.
 fn inherit(
     facts: &mut Facts<'_>,
-    file: &FileFacts,
-    local: u32,
+    file: &FileTree,
+    id: u32,
     depth: u32,
     listed: &mut FxHashSet<Key>,
     groups: &mut Vec<InheritedGroup>,
 ) -> Result<()> {
-    for link in file.bases(local) {
-        let from = base_text(link);
-        let Some(target) = link
-            .target
-            .as_ref()
-            .filter(|_| link.resolution == Resolution::Resolved)
-        else {
+    let bases = file
+        .links(id)
+        .iter()
+        .filter(|link| link.kind == LinkKind::Extends && !link.implements);
+    for link in bases {
+        let from = whole_text(&link.text, &link.to);
+        let LinkTarget::Project(target) = &link.to else {
             if !groups
                 .iter()
                 .any(|group| group.from == from && group.members.is_empty())
@@ -142,10 +145,9 @@ fn inherit(
         if !listed.insert(target.clone()) {
             continue;
         }
-        let base = facts.locate(target.as_str())?.filter(|(base, at)| {
-            base.block(*at)
-                .is_some_and(|block| block.kind.is_type_declaration())
-        });
+        let base = facts
+            .locate(target.as_str())?
+            .filter(|(base, at)| is_type(base, *at));
         groups.push(InheritedGroup {
             from,
             members: base
@@ -161,75 +163,61 @@ fn inherit(
     Ok(())
 }
 
-/// A base's name as its heritage link writes it, with one span for its outcome.
-fn base_text(link: &TypeLink) -> TypeText {
-    whole_text(&link.text, |end| {
-        outcome_span(
-            0,
-            end,
-            link.resolution,
-            link.target.as_ref(),
-            link.reason,
-            link.module.as_ref(),
-        )
-    })
+/// One page of the places the class or type with `key` is named, after `after` (the previous
+/// page's `next`), at most `limit`, with sources verified under `root`; `None` when no class or
+/// type has that key.
+pub fn type_uses(
+    reader: &Reader,
+    root: &Path,
+    key: &str,
+    after: Option<&Cursor>,
+    limit: usize,
+) -> Result<Option<TypeUses>> {
+    reader.snapshot(|reader| Ok(uses(reader, root, key, after, limit)))?
 }
 
-/// Whether a type link sourced at `block` belongs to the block itself (a definition or type
-/// declaration) rather than to its owner.
-fn owns_annotations(block: &Block) -> bool {
-    block.kind.is_function_like() || block.kind.is_type_declaration()
-}
-
-/// One page of the places the type declaration or class with `key` is written, skipping
-/// `offset` and listing at most `limit`; `None` when no block has that key or it is no type
-/// declaration.
-pub fn type_uses(facts: &mut Facts<'_>, key: &str, offset: usize, limit: usize) -> Result<Option<TypeUses>> {
-    let declared = facts.locate(key)?.is_some_and(|(file, local)| {
-        file.block(local)
-            .is_some_and(|block| block.kind.is_type_declaration())
-    });
-    if !declared {
+fn uses(
+    reader: &Reader,
+    root: &Path,
+    key: &str,
+    after: Option<&Cursor>,
+    limit: usize,
+) -> Result<Option<TypeUses>> {
+    let mut facts = Facts::new(reader, root);
+    if !facts.locate(key)?.is_some_and(|(file, id)| is_type(&file, id)) {
         return Ok(None);
     }
-    let source = facts.source();
-    let total = source.type_use_count(key)?;
-    let mut places = Vec::new();
-    // Sites come by path: index each file's verified lines once.
-    let mut lines: Option<(RepoPath, Option<LineIndex>)> = None;
-    for site in source.type_uses(key, offset, limit)? {
-        let Some(file) = facts.file(&site.path)? else {
+    let page = reader.type_uses(key, after, limit)?;
+    let mut places = Vec::with_capacity(page.items.len());
+    for incoming in page.items {
+        let Some(file) = facts.file(&incoming.path)? else {
             continue;
         };
-        let Some(block) = file.block(site.block) else {
+        let from = incoming.link.from;
+        let (owner, kind) = match incoming.link.kind {
+            LinkKind::Extends if incoming.link.implements => (Some(from), UseKind::Implements),
+            LinkKind::Extends => (Some(from), UseKind::Extends),
+            _ if file.kind(from).is_definition() => (Some(from), UseKind::Annotation),
+            _ => (file.owner(from), UseKind::Handler),
+        };
+        let Some(owner) = owner else {
             continue;
         };
-        let owner = if owns_annotations(block) {
-            site.block
-        } else {
-            file.owner(site.block)
+        let line = match facts.text(&file) {
+            Some(source) => source.lines().line_of(incoming.link.range.start),
+            None => file.node(owner).lines.start,
         };
-        let Some(owner_block) = file.block(owner) else {
-            continue;
-        };
-        if lines.as_ref().is_none_or(|(path, _)| *path != site.path) {
-            let index = facts.text(&file).map(|snapshot| snapshot.line_index());
-            lines = Some((site.path.clone(), index));
-        }
-        let line = lines
-            .as_ref()
-            .and_then(|(_, index)| index.as_ref())
-            .map_or(block.lines.start, |index| index.line_of(site.range.start));
         places.push(TypeUsePlace {
-            owner: owner_block.key.clone(),
+            owner: file.key(owner).clone(),
             label: file.label(owner),
-            path: site.path,
+            path: incoming.path,
             line,
-            heritage: site.heritage,
+            kind,
         });
     }
     Ok(Some(TypeUses {
-        total: u32::try_from(total).unwrap_or(u32::MAX),
+        total: reader.type_use_count(key)?,
         places,
+        next: page.next,
     }))
 }

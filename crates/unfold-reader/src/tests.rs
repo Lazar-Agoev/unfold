@@ -1,957 +1,329 @@
-//! Derived views on small hand-written graphs.
+//! The reader's views on the playgrounds' golden graphs: owners, the catalog, callers, outgoing
+//! links, closures, Reached from, and verified source.
 
-use unfold_core::testkit::{BlockRef, GraphBuilder, Outcome};
-use unfold_core::vocab::{
-    BlockKind as K, DetectorId, EdgeKind, EntranceKind, HttpMethod, InputRole, Language, Reason, Role,
-};
-use unfold_core::{ByteRange, DeclaredApplication, DeclaredMember, Graph, Key, Launch, Launches};
-use unfold_store::{
-    Basis, Category, DiskStamp, EntranceChanges, FileChange, Membership, Store, StoreConfig, Update,
-};
+use unfold_core::vocab::{LinkKind, NodeKind, Outcome};
+use unfold_core::{FileGraph, Key};
 
-use crate::catalog::label;
-use crate::relations::outgoing;
-use crate::{GraphIndex, ReaderCache, ReaderIndex, project};
+use crate::catalog;
+use crate::relations::{callers, outgoing};
+use crate::source::{SourceState, verify_file};
+use crate::testing::Playground;
+use crate::tree::{Blocks, FileTree};
 
-const APP_TS: &str = r#"import { route } from "./routes";
-app.get("/orders", route);
-class Service {
-  run() {
-    helper();
-  }
-}
-function helper() {}
-"#;
+const PLAYGROUNDS: [&str; 2] = ["ts-orders", "py-orders"];
 
-const ROUTES_TS: &str = r#"export function route(req) {
-  const svc = new Service();
-  svc.run();
-  items.forEach((item) => {
-    log(item);
-  });
-  if (req) {
-    audit();
-  }
-  return fetch(req);
-}
-function audit() {}
-function orphan() {}
-"#;
-
-const CLI_PY: &str = "@command\ndef main():\n    run()\n\ndef run():\n    pass\n";
-
-/// Keys of the blocks tests refer to.
-struct Sample {
-    graph: Graph,
-    app: Key,
-    routes: Key,
-    service: Key,
-    run: Key,
-    helper: Key,
-    helper_call: Key,
-    route: Key,
-    callback: Key,
-    branch: Key,
-    audit: Key,
-    orphan: Key,
-    cli: Key,
-    main: Key,
-    run_py: Key,
-    decorator_call: Key,
-}
-
-fn add(
-    g: &mut GraphBuilder,
-    parent: BlockRef,
-    kind: K,
-    role: Role,
-    name: Option<&str>,
-    needle: &str,
-) -> BlockRef {
-    let range = g.find(parent, needle);
-    g.block(parent, kind, Some(role), name, range)
-}
-
-fn sample() -> Sample {
-    let mut g = GraphBuilder::new();
-    g.input(
-        "package.json",
-        InputRole::Package,
-        "{\"scripts\":{\"start\":\"node app.ts\"}}",
-    );
-    g.input(
-        "pyproject.toml",
-        InputRole::Pyproject,
-        "[project.scripts]\ncli = \"cli:main\"\n",
-    );
-    g.input(
-        "unfold.toml",
-        InputRole::UnfoldConfig,
-        "[[entrance]]\nkind = \"command\"\n[[entrance]]\nkind = \"worker\"\n",
-    );
-
-    let app = g.file("src/app.ts", Language::TypeScript, APP_TS);
-    let routes = g.file("src/routes.ts", Language::TypeScript, ROUTES_TS);
-
-    let import = add(
-        &mut g,
-        app,
-        K::Import,
-        Role::Body,
-        None,
-        "import { route } from \"./routes\";",
-    );
-    g.edge(
-        import,
-        EdgeKind::Imports,
-        Outcome::Resolved(g.key(routes)),
-        "./routes",
-        None,
-    );
-    let register = add(
-        &mut g,
-        app,
-        K::ExpressionStatement,
-        Role::Body,
-        None,
-        "app.get(\"/orders\", route);",
-    );
-    let register_call = add(
-        &mut g,
-        register,
-        K::Call,
-        Role::Expression,
-        None,
-        "app.get(\"/orders\", route)",
-    );
-    let service = add(
-        &mut g,
-        app,
-        K::Class,
-        Role::Body,
-        Some("Service"),
-        "class Service {\n  run() {\n    helper();\n  }\n}",
-    );
-    let run = add(
-        &mut g,
-        service,
-        K::Method,
-        Role::Body,
-        Some("run"),
-        "run() {\n    helper();\n  }",
-    );
-    let helper_statement = add(&mut g, run, K::ExpressionStatement, Role::Body, None, "helper();");
-    let helper_call = add(
-        &mut g,
-        helper_statement,
-        K::Call,
-        Role::Expression,
-        None,
-        "helper()",
-    );
-    let helper = add(
-        &mut g,
-        app,
-        K::Function,
-        Role::Body,
-        Some("helper"),
-        "function helper() {}",
-    );
-    g.edge(
-        helper_call,
-        EdgeKind::Calls,
-        Outcome::Resolved(g.key(helper)),
-        "helper",
-        None,
-    );
-
-    let route_range = ByteRange::new(
-        g.find(routes, "export function route").start,
-        g.find(routes, "return fetch(req);\n}").end,
-    )
-    .unwrap();
-    let route = g.block(routes, K::Function, Some(Role::Body), Some("route"), route_range);
-    let svc = add(
-        &mut g,
-        route,
-        K::Variable,
-        Role::Body,
-        Some("svc"),
-        "const svc = new Service();",
-    );
-    let construct = add(&mut g, svc, K::New, Role::Initializer, None, "new Service()");
-    g.edge(
-        construct,
-        EdgeKind::Constructs,
-        Outcome::Resolved(g.key(service)),
-        "Service",
-        None,
-    );
-    let run_statement = add(
-        &mut g,
-        route,
-        K::ExpressionStatement,
-        Role::Body,
-        None,
-        "svc.run();",
-    );
-    let run_call = add(
-        &mut g,
-        run_statement,
-        K::Call,
-        Role::Expression,
-        None,
-        "svc.run()",
-    );
-    g.edge(
-        run_call,
-        EdgeKind::Calls,
-        Outcome::Resolved(g.key(run)),
-        "svc.run",
-        None,
-    );
-    let each_statement = add(
-        &mut g,
-        route,
-        K::ExpressionStatement,
-        Role::Body,
-        None,
-        "items.forEach((item) => {\n    log(item);\n  });",
-    );
-    let each_call = add(
-        &mut g,
-        each_statement,
-        K::Call,
-        Role::Expression,
-        None,
-        "items.forEach((item) => {\n    log(item);\n  })",
-    );
-    g.edge(
-        each_call,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownReceiver),
-        "items.forEach",
-        None,
-    );
-    let callback = add(
-        &mut g,
-        each_call,
-        K::Function,
-        Role::Argument,
-        None,
-        "(item) => {\n    log(item);\n  }",
-    );
-    let log_statement = add(
-        &mut g,
-        callback,
-        K::ExpressionStatement,
-        Role::Body,
-        None,
-        "log(item);",
-    );
-    let log_call = add(
-        &mut g,
-        log_statement,
-        K::Call,
-        Role::Expression,
-        None,
-        "log(item)",
-    );
-    g.edge(
-        log_call,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownName),
-        "log",
-        None,
-    );
-    let branch = add(
-        &mut g,
-        route,
-        K::If,
-        Role::Body,
-        None,
-        "if (req) {\n    audit();\n  }",
-    );
-    let audit_statement = add(
-        &mut g,
-        branch,
-        K::ExpressionStatement,
-        Role::Then,
-        None,
-        "audit();",
-    );
-    let audit_call = add(
-        &mut g,
-        audit_statement,
-        K::Call,
-        Role::Expression,
-        None,
-        "audit()",
-    );
-    let fetch_return = add(&mut g, route, K::Return, Role::Body, None, "return fetch(req);");
-    let fetch_call = add(
-        &mut g,
-        fetch_return,
-        K::Call,
-        Role::Expression,
-        None,
-        "fetch(req)",
-    );
-    g.edge(
-        fetch_call,
-        EdgeKind::Calls,
-        Outcome::external("global"),
-        "fetch",
-        None,
-    );
-    let audit = add(
-        &mut g,
-        routes,
-        K::Function,
-        Role::Body,
-        Some("audit"),
-        "function audit() {}",
-    );
-    g.edge(
-        audit_call,
-        EdgeKind::Calls,
-        Outcome::Resolved(g.key(audit)),
-        "audit",
-        None,
-    );
-    let orphan = add(
-        &mut g,
-        routes,
-        K::Function,
-        Role::Body,
-        Some("orphan"),
-        "function orphan() {}",
-    );
-    // The registration passes `route` (a reference) after its external occurrence.
-    g.edge(
-        register_call,
-        EdgeKind::Calls,
-        Outcome::external("express"),
-        "app.get",
-        None,
-    );
-    g.edge(
-        register_call,
-        EdgeKind::References,
-        Outcome::Resolved(g.key(route)),
-        "route",
-        Some(1),
-    );
-
-    let cli = g.file("cli.py", Language::Python, CLI_PY);
-    let main = add(
-        &mut g,
-        cli,
-        K::Function,
-        Role::Body,
-        Some("main"),
-        "@command\ndef main():\n    run()",
-    );
-    let decorator_call = add(&mut g, main, K::Call, Role::Decorator, None, "command");
-    g.edge(
-        decorator_call,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownName),
-        "command",
-        None,
-    );
-    let run_py_statement = add(&mut g, main, K::ExpressionStatement, Role::Body, None, "run()");
-    let run_py_call = add(&mut g, run_py_statement, K::Call, Role::Expression, None, "run()");
-    let run_py = add(
-        &mut g,
-        cli,
-        K::Function,
-        Role::Body,
-        Some("run"),
-        "def run():\n    pass",
-    );
-    g.edge(
-        run_py_call,
-        EdgeKind::Calls,
-        Outcome::Resolved(g.key(run_py)),
-        "run",
-        None,
-    );
-
-    let start = g.entrance(
-        DetectorId::PackageScript,
-        EntranceKind::Process,
-        None,
-        Some("start"),
-        g.config_evidence("package.json", "\"start\":\"node app.ts\"", "/scripts/start"),
-    );
-    g.target(start, Outcome::Resolved(g.key(app)), "app.ts");
-    let console = g.entrance(
-        DetectorId::PyprojectScript,
-        EntranceKind::Process,
-        None,
-        Some("cli"),
-        g.config_evidence("pyproject.toml", "cli = \"cli:main\"", "/project/scripts/cli"),
-    );
-    g.target(console, Outcome::Resolved(g.key(main)), "cli:main");
-    let http = g.entrance(
-        DetectorId::ExpressRoute,
-        EntranceKind::Http,
-        Some(HttpMethod::Get),
-        Some("/orders"),
-        g.source_evidence(register_call),
-    );
-    g.target(http, Outcome::Resolved(g.key(route)), "route");
-    let command = g.entrance(
-        DetectorId::Manual,
-        EntranceKind::Command,
-        None,
-        Some("audit"),
-        g.config_evidence("unfold.toml", "kind = \"command\"", "/entrance/0"),
-    );
-    g.target(command, Outcome::Resolved(g.key(branch)), "src/routes.ts:7");
-    let worker = g.entrance(
-        DetectorId::Manual,
-        EntranceKind::Worker,
-        None,
-        Some("orphans"),
-        g.config_evidence("unfold.toml", "kind = \"worker\"", "/entrance/1"),
-    );
-    g.target(worker, Outcome::Resolved(g.key(orphan)), "src/routes.ts#orphan");
-
-    Sample {
-        app: g.key(app),
-        routes: g.key(routes),
-        service: g.key(service),
-        run: g.key(run),
-        helper: g.key(helper),
-        helper_call: g.key(helper_call),
-        route: g.key(route),
-        callback: g.key(callback),
-        branch: g.key(branch),
-        audit: g.key(audit),
-        orphan: g.key(orphan),
-        cli: g.key(cli),
-        main: g.key(main),
-        run_py: g.key(run_py),
-        decorator_call: g.key(decorator_call),
-        graph: sorted_edges(g.build()),
+/// The nearest definition above node `id`, found by walking parents.
+fn nearest_definition(file: &FileGraph, id: u32) -> Option<u32> {
+    let mut parent = file.nodes[id as usize].parent;
+    while let Some(ancestor) = parent {
+        if file.nodes[ancestor as usize].kind().is_definition() {
+            return Some(ancestor);
+        }
+        parent = file.nodes[ancestor as usize].parent;
     }
-}
-
-/// The graph with each file's edges in model order (by source, then sequence); the builder keeps
-/// insertion order, and the sample adds some edges after later sources.
-fn sorted_edges(mut graph: Graph) -> Graph {
-    for file in &mut graph.files {
-        file.edges.sort_by_key(|edge| (edge.source, edge.seq));
-    }
-    graph
-}
-
-fn entrance_key(graph: &Graph, trigger: &str) -> Key {
-    graph
-        .entrances
-        .iter()
-        .find(|entrance| entrance.trigger.as_deref() == Some(trigger))
-        .map(|entrance| entrance.key.clone())
-        .expect("the sample declares the entrance")
-}
-
-fn strings(keys: &[Key]) -> Vec<&str> {
-    keys.iter().map(Key::as_str).collect()
+    None
 }
 
 #[test]
-fn owners_follow_activation_scopes() {
-    let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
-    let owner = |key: &Key| index.owner(key.as_str()).cloned();
-    // A nested callback owns its own calls; the call it is passed to belongs to the function.
-    let log_call = format!("{}/expression_statement[0]/call[0]", s.callback);
-    assert_eq!(index.owner(&log_call), Some(&s.callback));
-    assert_eq!(owner(&s.callback), Some(s.route.clone()));
-    // A method's calls belong to the method, and the method to its class.
-    assert_eq!(owner(&s.helper_call), Some(s.run.clone()));
-    assert_eq!(owner(&s.run), Some(s.service.clone()));
-    // A decorator belongs to the enclosing scope, not the decorated function.
-    assert_eq!(owner(&s.decorator_call), Some(s.cli.clone()));
-    assert_eq!(index.owner("src/absent.ts#"), None);
+fn every_node_belongs_to_the_nearest_definition_above_it() {
+    for name in PLAYGROUNDS {
+        let playground = Playground::load(name);
+        let index = playground.index();
+        let mut checked = 0;
+        for file in &playground.graph.files {
+            let tree = FileTree::new(file.clone());
+            for (id, node) in file.nodes.iter().enumerate() {
+                let id = u32::try_from(id).unwrap();
+                let expected = nearest_definition(file, id);
+                assert_eq!(tree.owner(id), expected, "{}", node.key);
+                let owner = expected.map(|owner| &file.nodes[owner as usize].key);
+                assert_eq!(index.owner(node.key.as_str()), owner, "{}", node.key);
+                checked += 1;
+            }
+        }
+        assert!(checked > 400, "{name}: {checked} nodes");
+    }
 }
 
 #[test]
-fn the_catalog_names_and_qualifies_definitions() {
-    let s = sample();
-    let projections = project(&s.graph, &Launches::default());
-    let all: Vec<(&str, &str, &str)> = projections
-        .definitions
-        .iter()
-        .flatten()
-        .map(|definition| {
-            (
-                definition.key.as_str(),
-                &*definition.qualified_name,
-                &*definition.label,
-            )
-        })
-        .collect();
-    assert!(all.contains(&(s.run.as_str(), "Service.run", "run")));
-    assert!(all.contains(&(s.service.as_str(), "Service", "Service")));
-    // The unnamed callback is neither named nor targeted, so it is not a definition.
-    assert!(!all.iter().any(|(key, _, _)| *key == s.callback.as_str()));
-    let routes = s.graph.file("src/routes.ts").expect("the sample has routes.ts");
-    let callback_local = routes
-        .blocks
-        .iter()
-        .position(|block| block.key == s.callback)
-        .expect("the callback is in routes.ts");
+fn a_callback_owns_its_calls_and_a_method_belongs_to_its_class() {
+    let playground = Playground::load("ts-orders");
+    let index = playground.index();
+    let callback = "src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]";
     assert_eq!(
-        label(routes, u32::try_from(callback_local).unwrap()).as_deref(),
-        Some("callback to items.forEach")
+        index.owner(callback).map(Key::as_str),
+        Some("src/routes/health.ts#")
     );
-    // Definitions are per file, in preorder, aligned with the graph's files.
-    let app_index = s
+    let (tree, id) = playground.block(callback);
+    assert!(tree.owned(id).count() > 0);
+    assert!(tree.owned(id).all(|owned| tree.owner(owned) == Some(id)));
+    assert_eq!(
+        index
+            .owner("src/services/order-service.ts#OrderService.place")
+            .map(Key::as_str),
+        Some("src/services/order-service.ts#OrderService")
+    );
+    assert_eq!(index.owner("src/cli.ts#"), None);
+    assert!(!index.contains("src/cli.ts#absent"));
+}
+
+#[test]
+fn the_catalog_lists_every_definition_with_its_label() {
+    let ts = Playground::load("ts-orders");
+    let entries: Vec<_> = ts.graph.files.iter().flat_map(catalog::definitions).collect();
+    let definitions = ts
         .graph
         .files
         .iter()
-        .position(|file| file.file.path.as_str() == "src/app.ts")
+        .flat_map(|file| &file.nodes)
+        .filter(|node| node.kind().is_definition())
+        .count();
+    assert_eq!(entries.len(), definitions);
+    let entry = |key: &str| {
+        entries
+            .iter()
+            .find(|entry| entry.key.as_str() == key)
+            .unwrap_or_else(|| panic!("{key} is in the catalog"))
+    };
+    let label = |key: &str| (&*entry(key).label, &*entry(key).qualified_name);
+    assert_eq!(
+        label("src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]"),
+        ("callback to healthRouter.get", "callback to healthRouter.get")
+    );
+    assert_eq!(
+        label("src/cli.ts#/call:main().catch/callback[0]"),
+        ("callback to main().catch", "callback to main().catch")
+    );
+    assert_eq!(
+        label("src/jobs/report.ts#printReport/call:orderService.list().map/callback[0]"),
+        (
+            "callback to orderService.list().map",
+            "printReport.callback to orderService.list().map"
+        )
+    );
+    assert_eq!(
+        label("src/services/order-service.ts#OrderService.place"),
+        ("place", "OrderService.place")
+    );
+    assert_eq!(
+        label("src/lib/logger.ts#logger.info"),
+        ("logger.info", "logger.info")
+    );
+    assert_eq!(label("src/types.ts#OrderStatus"), ("OrderStatus", "OrderStatus"));
+    assert_eq!(label("src/cli.ts#"), ("src/cli.ts", "src/cli.ts"));
+    assert_eq!(entry("src/types.ts#OrderStatus").kind, NodeKind::Type);
+
+    // The store keeps the catalog the reader computes.
+    let reader = ts.reader();
+    let stored = reader
+        .definition("src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]")
+        .unwrap()
         .unwrap();
-    let app_keys: Vec<&str> = projections
-        .file_definitions(app_index)
-        .iter()
-        .map(|d| d.key.as_str())
-        .collect();
-    assert_eq!(app_keys, [s.service.as_str(), s.run.as_str(), s.helper.as_str()]);
+    assert_eq!(&*stored.label, "callback to healthRouter.get");
+
+    let py = Playground::load("py-orders");
+    let tree = py.tree("src/orders_playground/queues/email_worker.py");
+    let callback = tree
+        .id("src/orders_playground/queues/email_worker.py#email_task/call:with_retry/callback[0]")
+        .unwrap();
+    assert_eq!(tree.label(callback), "callback to with_retry");
+    assert_eq!(tree.qualified_name(callback), "email_task.callback to with_retry");
 }
 
 #[test]
-fn targeted_unnamed_callables_join_the_catalog_with_their_labels() {
-    let mut g = GraphBuilder::new();
-    let file = g.file(
-        "src/a.ts",
-        Language::TypeScript,
-        "const handler = function () {};\nrun(handler);\n",
-    );
-    let variable = add(
-        &mut g,
-        file,
-        K::Variable,
-        Role::Body,
-        Some("handler"),
-        "const handler = function () {};",
-    );
-    let callable = add(
-        &mut g,
-        variable,
-        K::Function,
-        Role::Initializer,
-        None,
-        "function () {}",
-    );
-    let statement = add(
-        &mut g,
-        file,
-        K::ExpressionStatement,
-        Role::Body,
-        None,
-        "run(handler);",
-    );
-    let call = add(&mut g, statement, K::Call, Role::Expression, None, "run(handler)");
-    g.edge(
-        call,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownName),
-        "run",
-        None,
-    );
-    g.edge(
-        call,
-        EdgeKind::References,
-        Outcome::Resolved(g.key(callable)),
-        "handler",
-        Some(0),
-    );
-    let projections = project(&g.build(), &Launches::default());
-    let definitions = &projections.definitions[0];
-    assert_eq!(definitions.len(), 1);
-    assert_eq!(definitions[0].key, g.key(callable));
-    assert_eq!(&*definitions[0].label, "anonymous function");
-    assert_eq!(&*definitions[0].qualified_name, "handler.anonymous function");
-}
-
-#[test]
-fn type_declarations_join_the_catalog_without_naming_what_they_hold() {
-    let mut g = GraphBuilder::new();
-    let file = g.file(
-        "src/t.ts",
-        Language::TypeScript,
-        "function f() {\n  interface Local { a: string }\n}\nenum E { A = register(() => 1) }\n",
-    );
-    let function = add(
-        &mut g,
-        file,
-        K::Function,
-        Role::Body,
-        Some("f"),
-        "function f() {\n  interface Local { a: string }\n}",
-    );
-    let local = add(
-        &mut g,
-        function,
-        K::Interface,
-        Role::Body,
-        Some("Local"),
-        "interface Local { a: string }",
-    );
-    let enumeration = add(
-        &mut g,
-        file,
-        K::Enum,
-        Role::Body,
-        Some("E"),
-        "enum E { A = register(() => 1) }",
-    );
-    let call = add(
-        &mut g,
-        enumeration,
-        K::Call,
-        Role::Body,
-        None,
-        "register(() => 1)",
-    );
-    let callback = add(&mut g, call, K::Function, Role::Argument, None, "() => 1");
-    g.edge(
-        call,
-        EdgeKind::Calls,
-        Outcome::Unresolved(Reason::UnknownName),
-        "register",
-        None,
-    );
-    g.edge(
-        call,
-        EdgeKind::References,
-        Outcome::Resolved(g.key(callback)),
-        "() => 1",
-        Some(0),
-    );
-    let projections = project(&g.build(), &Launches::default());
-    let found: Vec<(&str, K, &str, &str)> = projections.definitions[0]
+fn callers_come_a_page_at_a_time_from_the_reverse_index() {
+    let playground = Playground::load("ts-orders");
+    let reader = playground.reader();
+    let index = playground.index();
+    let key = "src/lib/validate.ts#validateOrder";
+    let first = callers(&reader, &index, key, None, 2).unwrap();
+    assert_eq!(first.total, 4);
+    assert_eq!(first.callers.len(), 2);
+    let second = callers(&reader, &index, key, first.next.as_ref(), 2).unwrap();
+    assert!(second.next.is_none());
+    let all: Vec<(&str, &str, u32)> = first
+        .callers
         .iter()
-        .map(|definition| {
-            (
-                definition.key.as_str(),
-                definition.kind,
-                &*definition.qualified_name,
-                &*definition.label,
-            )
-        })
+        .chain(&second.callers)
+        .map(|caller| (caller.owner.as_str(), caller.path.as_str(), caller.line))
         .collect();
     assert_eq!(
-        found,
+        all,
         [
-            (g.key(function).as_str(), K::Function, "f", "f"),
-            (g.key(local).as_str(), K::Interface, "f.Local", "Local"),
-            (g.key(enumeration).as_str(), K::Enum, "E", "E"),
             (
-                g.key(callback).as_str(),
-                K::Function,
-                "callback to register",
-                "callback to register"
+                "src/jobs/import-orders.ts#importOrders",
+                "src/jobs/import-orders.ts",
+                13
+            ),
+            (
+                "src/jobs/process-order.ts#processOrder",
+                "src/jobs/process-order.ts",
+                8
+            ),
+            (
+                "src/routes/middleware.ts#validateBody",
+                "src/routes/middleware.ts",
+                14
+            ),
+            (
+                "src/services/order-service.ts#OrderService.place",
+                "src/services/order-service.ts",
+                14
             ),
         ]
     );
-}
+    assert!(first.callers.iter().all(|caller| caller.kind == LinkKind::Calls));
 
-#[test]
-fn closures_follow_resolved_edges_and_owned_classes() {
-    let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
-    let reached = index.closure(&[s.app.as_str()]);
-    let mut expected = vec![
-        s.app.as_str(),
-        s.service.as_str(),
-        s.run.as_str(),
-        s.helper.as_str(),
-        s.routes.as_str(),
-        s.route.as_str(),
-        s.audit.as_str(),
-    ];
-    expected.sort_unstable();
-    let mut actual = strings(&reached);
-    actual.sort_unstable();
-    // The callback is never targeted, so its calls are not followed; external and unresolved
-    // edges stop the walk; `orphan` is never reached.
-    assert_eq!(actual, expected);
-    // A branch seed considers only the occurrences inside the branch.
-    assert_eq!(
-        strings(&index.closure(&[s.branch.as_str()])),
-        [s.branch.as_str(), s.audit.as_str()]
-    );
-    // Unknown seeds are ignored.
-    assert!(index.closure(&["src/absent.ts#"]).is_empty());
-}
-
-/// A launch record for the sample's entrance with `trigger`.
-fn record(graph: &Graph, trigger: &str, seeds: &[&Key]) -> Launch {
-    Launch {
-        entrance: entrance_key(graph, trigger),
-        application: None,
-        label: None,
-        description: None,
-        schedule: None,
-        folder: ".".into(),
-        command: Some(trigger.into()),
-        mode: None,
-        line: 1,
-        target_set_by_hand: false,
-        import_paths: Vec::new(),
-        problem: None,
-        seeds: seeds.iter().map(|&key| key.clone()).collect(),
-    }
-}
-
-#[test]
-fn applications_and_memberships() {
-    let s = sample();
-    // The console script runs its callable's module first.
-    let launches = Launches {
-        launches: vec![record(&s.graph, "cli", &[&s.cli])],
-        ..Launches::default()
+    // A definition passed as a value is called by the call that passes it.
+    let passed = callers(&reader, &index, "src/routes/orders.ts#createOrder", None, 10).unwrap();
+    let [caller] = passed.callers.as_slice() else {
+        panic!("one caller: {passed:?}");
     };
-    let projections = project(&s.graph, &launches);
-    let applications: Vec<(&str, &str, Category)> = projections
-        .applications
-        .iter()
-        .map(|application| (&*application.id, &*application.name, application.category))
-        .collect();
+    assert_eq!(caller.kind, LinkKind::Passes);
+    assert_eq!(caller.owner.as_str(), "src/routes/orders.ts#");
     assert_eq!(
-        applications,
+        caller.call.as_str(),
+        "src/routes/orders.ts#/call:ordersRouter.post"
+    );
+}
+
+#[test]
+fn outgoing_links_are_the_calls_a_definition_owns() {
+    let playground = Playground::load("ts-orders");
+    let (tree, id) = playground.block("src/routes/orders.ts#createOrder");
+    let links = outgoing(&tree, id);
+    assert!(links.iter().all(|link| link.kind == LinkKind::Calls));
+    assert_eq!(
+        links.iter().map(|link| &*link.text).collect::<Vec<_>>(),
         [
-            (s.main.as_str(), "cli#main", Category::Workers),
-            (s.app.as_str(), "app", Category::Services)
+            "req.header",
+            "ordersQueue.add",
+            "res.status().json",
+            "res.status",
+            "orderService.place",
+            "slack.post",
+            "res.status().json",
+            "res.status"
         ]
     );
-    let route = entrance_key(&s.graph, "/orders");
-    let command = entrance_key(&s.graph, "audit");
-    // Each launch belongs to its application. The route's evidence is a top-level registration
-    // (owner: the file); the command's branch target anchors to its owner, `route`. The orphan
-    // worker belongs to no application.
-    let member = |entrance: Key, application: &Key| Membership {
-        entrance,
-        application: application.as_str().into(),
-        basis: Basis::Proven,
+    let place = outgoing(&tree, id)
+        .into_iter()
+        .find(|link| &*link.text == "orderService.place")
+        .unwrap();
+    assert_eq!(place.to.outcome, Outcome::Project);
+    assert_eq!(
+        place.to.key.as_ref().map(Key::as_str),
+        Some("src/services/order-service.ts#OrderService.place")
+    );
+    let add = outgoing(&tree, id)
+        .into_iter()
+        .find(|link| &*link.text == "ordersQueue.add")
+        .unwrap();
+    assert_eq!(add.to.note.as_deref(), Some("bullmq"));
+    // The module's own calls aren't the function's.
+    let module = tree.id("src/routes/orders.ts#").unwrap();
+    assert!(
+        outgoing(&tree, module)
+            .iter()
+            .all(|link| link.call.as_str() != "src/routes/orders.ts#createOrder/call:slack.post")
+    );
+    assert!(
+        outgoing(&tree, module)
+            .iter()
+            .any(|link| link.kind == LinkKind::Passes)
+    );
+}
+
+#[test]
+fn entrances_reach_what_their_code_runs() {
+    let playground = Playground::load("ts-orders");
+    let index = playground.index();
+    let reached = |key: &str| -> Vec<String> {
+        index
+            .reached_from(key)
+            .unwrap()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     };
-    let mut expected = vec![
-        member(entrance_key(&s.graph, "cli"), &s.main),
-        member(entrance_key(&s.graph, "start"), &s.app),
-        member(route, &s.app),
-        member(command, &s.app),
+    let orders = [
+        "entrance:server/place-an-order",
+        "entrance:worker/process-an-order",
+        "entrance:orders-cli/import-orders",
     ];
-    expected.sort();
-    assert_eq!(projections.memberships, expected);
-    let index = ReaderIndex::from_graph(&s.graph, &launches);
-    let closure = index
-        .entrance_closure(entrance_key(&s.graph, "cli").as_str())
-        .unwrap();
+    assert_eq!(reached("src/lib/validate.ts#validateOrder"), orders);
+    // A block stands for the definition it belongs to.
     assert_eq!(
-        strings(&closure),
-        [s.cli.as_str(), s.main.as_str(), s.run_py.as_str()]
+        reached("src/services/order-service.ts#OrderService.place/call:validateOrder"),
+        orders
     );
-}
-
-#[test]
-fn declared_applications_group_launches_and_members() {
-    let s = sample();
-    let worker = entrance_key(&s.graph, "orphans");
-    let launches = Launches {
-        applications: vec![
-            DeclaredApplication {
-                id: "orders".into(),
-                name: "Orders".into(),
-                description: None,
-            },
-            DeclaredApplication {
-                id: "later".into(),
-                name: "Later".into(),
-                description: None,
-            },
-        ],
-        launches: vec![Launch {
-            application: Some("orders".into()),
-            schedule: Some("30 7 * * *".into()),
-            ..record(&s.graph, "start", &[])
-        }],
-        members: vec![DeclaredMember {
-            entrance: worker.clone(),
-            application: "orders".into(),
-        }],
-    };
-    let projections = project(&s.graph, &launches);
-    let applications: Vec<(&str, bool, Category)> = projections
-        .applications
-        .iter()
-        .map(|application| (&*application.id, application.declared, application.category))
-        .collect();
-    // A declared application without launches stays; routes make a service of a scheduled one.
-    assert!(applications.contains(&("later", true, Category::Workers)));
-    assert!(applications.contains(&("orders", true, Category::Services)));
-    let orders: Vec<(&str, Basis)> = projections
-        .memberships
-        .iter()
-        .filter(|membership| &*membership.application == "orders")
-        .map(|membership| (membership.entrance.as_str(), membership.basis))
-        .collect();
-    assert!(orders.contains(&(entrance_key(&s.graph, "start").as_str(), Basis::Declared)));
-    assert!(orders.contains(&(entrance_key(&s.graph, "/orders").as_str(), Basis::Proven)));
-    assert!(orders.contains(&(worker.as_str(), Basis::Declared)));
-}
-
-#[test]
-fn relations_callers_outgoing_and_reached_from() {
-    let s = sample();
-    let index = ReaderIndex::from_graph(&s.graph, &Launches::default());
-    let callers = index.callers(s.helper.as_str()).unwrap();
-    assert_eq!(callers.len(), 1);
-    assert_eq!(callers[0].owner, s.run);
-    assert_eq!(callers[0].source, s.helper_call);
-    assert_eq!(callers[0].kind, EdgeKind::Calls);
-    assert!(index.callers("src/absent.ts#").is_none());
-
-    let routes = s.graph.file("src/routes.ts").unwrap();
-    let route_local = routes
-        .blocks
-        .iter()
-        .position(|block| block.key == s.route)
-        .unwrap();
-    let grouped = outgoing(routes, u32::try_from(route_local).unwrap(), |key| {
-        key == s.run.as_str()
-    })
-    .unwrap();
-    let texts = |calls: &[crate::relations::OutgoingCall]| {
-        calls.iter().map(|call| call.text.to_string()).collect::<Vec<_>>()
-    };
-    assert_eq!(texts(&grouped.on_board), ["svc.run"]);
-    assert_eq!(texts(&grouped.openable), ["Service", "audit"]);
-    assert_eq!(texts(&grouped.external_or_unresolved), ["items.forEach", "fetch"]);
-    let notes: Vec<Option<&str>> = grouped
-        .external_or_unresolved
-        .iter()
-        .map(|call| call.note.as_deref())
-        .collect();
-    assert_eq!(notes, [Some("receiver type unknown"), Some("global")]);
-    assert_eq!(grouped.openable[1].line, 8);
-
-    let reached = index.reached_from(s.audit.as_str()).unwrap();
-    let mut expected = vec![entrance_key(&s.graph, "/orders"), entrance_key(&s.graph, "audit")];
-    expected.sort();
-    let mut actual = reached;
-    actual.sort();
-    assert_eq!(actual, expected);
     assert_eq!(
-        index.reached_from(s.orphan.as_str()).unwrap(),
-        [entrance_key(&s.graph, "orphans")]
+        reached("src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]"),
+        ["entrance:server/liveness"]
     );
-    assert_eq!(index.non_process_entrances().len(), 3);
-}
+    assert!(index.reached_from("src/absent.ts#").is_none());
 
-fn commit(store: &mut Store, graph: &Graph) {
-    let projections = project(graph, &Launches::default());
-    let files = graph
-        .files
+    let place = index.start_closure("entrance:server/place-an-order").unwrap();
+    assert_eq!(place.len(), 10);
+    assert!(
+        place
+            .iter()
+            .any(|key| key.as_str() == "src/lib/validate.ts#validateOrder")
+    );
+    // An app's start reaches the whole process.
+    assert_eq!(index.start_closure("entrance:server").unwrap().len(), 61);
+    assert!(
+        index
+            .start_closure("entrance:server/admin-stats")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(index.start_closure("entrance:absent").is_none());
+    assert_eq!(
+        index.closure(&["src/routes/orders.ts#createOrder"]),
+        index.closure(&["src/routes/orders.ts#createOrder/call:slack.post"])
+    );
+
+    let py = Playground::load("py-orders");
+    let index = py.index();
+    let reached: Vec<String> = index
+        .reached_from("src/orders_playground/lib/validate.py#validate_order")
+        .unwrap()
         .iter()
-        .enumerate()
-        .map(|(index, file)| FileChange {
-            definitions: Some(projections.file_definitions(index)),
-            ..FileChange::full(file, DiskStamp::default())
-        })
+        .map(ToString::to_string)
         .collect();
-    store
-        .writer
-        .commit(&Update {
-            files,
-            inputs: Some(&graph.inputs),
-            entrances: EntranceChanges::all(&graph.entrances),
-            applications: Some(&projections.applications),
-            memberships: Some(&projections.memberships),
-            ..Update::default()
-        })
-        .unwrap();
+    assert_eq!(reached, orders);
 }
 
 #[test]
-fn the_index_loaded_from_the_store_matches_the_in_memory_one() {
-    let s = sample();
+fn source_is_shown_only_while_it_matches_the_facts() {
+    let playground = Playground::load("py-orders");
+    let path = "src/orders_playground/lib/validate.py";
+    let file = playground.graph.file(path).unwrap();
+    let verified = verify_file(&playground.root, &file.file.path, file.file.hash);
+    let source = verified.source().expect("the playground matches its golden");
+    let tree = playground.trees();
+    let function = tree
+        .block("src/orders_playground/lib/validate.py#validate_order")
+        .unwrap();
+    assert!(
+        source
+            .slice(function.node().range)
+            .unwrap()
+            .starts_with("def validate_order(value: object) -> OrderDraft:")
+    );
+
+    // A copy of the file, then an edit: the same facts no longer show it.
     let dir = tempfile::tempdir().unwrap();
-    let mut store = Store::open(&dir.path().join("graph.sqlite"), &StoreConfig::new("test")).unwrap();
-    commit(&mut store, &s.graph);
-    let loaded = ReaderIndex::load(&store.readers.get().unwrap()).unwrap();
+    let copy = dir.path().join(path);
+    std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    std::fs::write(&copy, source.text()).unwrap();
     assert_eq!(
-        loaded.index(),
-        &GraphIndex::from_graph(&s.graph, &Launches::default())
+        verify_file(dir.path(), &file.file.path, file.file.hash).state(),
+        SourceState::Current
     );
-    let reader = store.readers.get().unwrap();
-    assert_eq!(
-        reader.applications().unwrap(),
-        project(&s.graph, &Launches::default()).applications
-    );
-
-    // The cache loads once and reloads after invalidation.
-    let cache = ReaderCache::new();
-    let first = cache.get(&store.readers).unwrap();
-    let again = cache.get(&store.readers).unwrap();
-    assert!(std::sync::Arc::ptr_eq(&first, &again));
-    cache.invalidate();
-    let reloaded = cache.get(&store.readers).unwrap();
-    assert!(!std::sync::Arc::ptr_eq(&first, &reloaded));
-    let installed = cache.install(ReaderIndex::from_graph(&s.graph, &Launches::default()));
-    assert!(std::sync::Arc::ptr_eq(
-        &installed,
-        &cache.get(&store.readers).unwrap()
-    ));
-
-    // Requests that miss together share one load.
-    cache.invalidate();
-    let barrier = std::sync::Barrier::new(8);
-    let loaded: Vec<_> = std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..8)
-            .map(|_| {
-                scope.spawn(|| {
-                    barrier.wait();
-                    cache.get(&store.readers).unwrap()
-                })
-            })
-            .collect();
-        workers.into_iter().map(|worker| worker.join().unwrap()).collect()
-    });
-    assert!(
-        loaded
-            .iter()
-            .all(|index| std::sync::Arc::ptr_eq(index, &loaded[0]))
-    );
-}
-
-#[test]
-fn projections_are_deterministic_and_tolerate_broken_targets() {
-    let s = sample();
-    assert_eq!(
-        project(&s.graph, &Launches::default()),
-        project(&s.graph.clone(), &Launches::default())
-    );
-    // A resolved edge whose target is not indexed stops the walk instead of failing.
-    let mut graph = s.graph.clone();
-    for file in &mut graph.files {
-        for edge in &mut file.edges {
-            if edge.target.as_ref() == Some(&s.helper) {
-                edge.target = Some(Key::from_text("src/gone.ts#function:gone"));
-            }
-        }
-    }
-    let index = ReaderIndex::from_graph(&graph, &Launches::default());
-    assert!(!index.closure(&[s.run.as_str()]).contains(&s.helper));
-    assert!(
-        project(&graph, &Launches::default())
-            .definitions
-            .iter()
-            .flatten()
-            .any(|d| d.key == s.helper)
-    );
+    std::fs::write(&copy, source.text().replace("nonempty", "non-empty")).unwrap();
+    let changed = verify_file(dir.path(), &file.file.path, file.file.hash);
+    assert_eq!(changed.state(), SourceState::Changed);
+    assert!(changed.source().is_none());
 }

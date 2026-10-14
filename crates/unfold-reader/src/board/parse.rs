@@ -1,9 +1,10 @@
 //! Strict board parsing: the text must be one JSON object in the `unfold-board` version 1
 //! shape. Unknown fields, duplicate keys, wrong types, and malformed values are rejected with
 //! the JSON pointer of the offending value (`/pages/0/cards/2/ref`), so a person or agent
-//! editing the file can find the problem. Parsing checks shape and the references between the
-//! items of one page ([`super::items`]); whether keys exist in the current graph is
-//! [`super::health`]'s job.
+//! editing the file can find the problem; an old board file fails the same way. Parsing checks
+//! shape (a key field holds a block key, or an app's or entrance's key, as
+//! [`unfold_core::Key::parse`] reads it) and the references between the items of one page
+//! ([`super::items`]); whether keys exist in the current graph is [`super::health`]'s job.
 //!
 //! Two framings share the page rules: a board file ([`parse`]) and the edit the UI saves
 //! ([`parse_edit`]: only `title` and `pages`).
@@ -14,17 +15,19 @@ use std::str::FromStr;
 use rustc_hash::FxHashSet;
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
-use unfold_core::vocab::{BlockKind, EntranceKind};
+use unfold_core::key::ParsedKey;
+use unfold_core::vocab::NodeKind;
 use unfold_core::{Key, RepoPath};
 
 use super::BoardError;
 use super::items::check_items;
 use super::model::{
-    Anchor, Author, Board, Card, CardRef, Cardinality, Column, ColumnKey, Description, FORMAT, Frame,
-    FrameDirection, FrameIcon, FrameLook, Group, GuardEntry, LabelEntry, Link, LinkKind, MAX_EXPANDED_CALLS,
-    MAX_EXPANSION_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, Note,
-    Page, Proposal, ProposalPath, Resource, ResourceKind, Signature, VERSION, View, is_folder_name, is_id,
+    Anchor, Author, Board, Card, CardRef, Cardinality, Column, ColumnKey, Combined, Connection,
+    ConnectionKind, Description, FORMAT, Frame, FrameDirection, FrameIcon, FrameLook, GuardEntry,
+    MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, NameEntry, Note, Page,
+    Place, Proposal, Resource, ResourceKind, Signature, VERSION, View, is_folder_name, is_id,
 };
+use crate::overlay::{MAX_OPEN_DEPTH, MAX_OPEN_PATHS};
 
 /// A JSON value read with duplicate keys rejected.
 struct Strict(Value);
@@ -265,37 +268,52 @@ fn description(value: &Value, path: &Path) -> Parsed<Description> {
     authored(map, path)
 }
 
-fn block_key(value: &Value, path: &Path) -> Parsed<Key> {
-    let key = nonblank(value, path)?;
-    if key.starts_with("entrance:") || !key.contains('#') {
-        return Err(path.fail("must be a block key (`path#…`)"));
+/// A key field: nonblank text that reads as a key and that `fits` accepts, else `what` in
+/// the refusal.
+fn key_of(value: &Value, path: &Path, fits: fn(&ParsedKey) -> bool, what: &str) -> Parsed<Key> {
+    let key = Key::from_text(nonblank(value, path)?);
+    if !key.parse().is_ok_and(|parsed| fits(&parsed)) {
+        return Err(path.fail(format!("must be {what}")));
     }
-    Ok(Key::from_text(key))
+    Ok(key)
+}
+
+fn block_key(value: &Value, path: &Path) -> Parsed<Key> {
+    key_of(
+        value,
+        path,
+        |parsed| matches!(parsed, ParsedKey::Block(_)),
+        "a block key (`path#…`)",
+    )
+}
+
+/// An app's key (`entrance:<app>`) or an entrance's (`entrance:<app>/<entrance>`).
+fn start_key(value: &Value, path: &Path) -> Parsed<Key> {
+    key_of(
+        value,
+        path,
+        |parsed| !matches!(parsed, ParsedKey::Block(_)),
+        "an app's or entrance's key (`entrance:<app>` or `entrance:<app>/<entrance>`)",
+    )
+}
+
+/// A block key, or an app's or entrance's key.
+fn any_key(value: &Value, path: &Path) -> Parsed<Key> {
+    key_of(
+        value,
+        path,
+        |_| true,
+        "a block key (`path#…`) or an app's or entrance's key (`entrance:…`)",
+    )
 }
 
 fn reference(value: &Value, path: &Path) -> Parsed<CardRef> {
     let map = object(value, path, &["block", "entrance"], &[])?;
     match (map.get("block"), map.get("entrance")) {
         (Some(block), None) => Ok(CardRef::block(block_key(block, &path.join("block"))?)),
-        (None, Some(entrance)) => {
-            let entrance_path = path.join("entrance");
-            let key = nonblank(entrance, &entrance_path)?;
-            if !key.starts_with("entrance:") {
-                return Err(entrance_path.fail("must be an entrance key (`entrance:[…]`)"));
-            }
-            Ok(CardRef::entrance(Key::from_text(key)))
-        }
+        (None, Some(entrance)) => Ok(CardRef::entrance(start_key(entrance, &path.join("entrance"))?)),
         _ => Err(path.fail("must have exactly one of `block` or `entrance`")),
     }
-}
-
-/// A block key or an entrance key.
-fn any_key(value: &Value, path: &Path) -> Parsed<Key> {
-    let key = nonblank(value, path)?;
-    if !key.starts_with("entrance:") && !key.contains('#') {
-        return Err(path.fail("must be a block key (`path#…`) or an entrance key (`entrance:[…]`)"));
-    }
-    Ok(Key::from_text(key))
 }
 
 fn position(value: &Value, path: &Path) -> Parsed<[f64; 2]> {
@@ -313,21 +331,21 @@ fn position(value: &Value, path: &Path) -> Parsed<[f64; 2]> {
     }
 }
 
-/// A card's calls expanded in place: at most [`MAX_EXPANDED_CALLS`] different paths of 1 to
-/// [`MAX_EXPANSION_DEPTH`] block keys each.
-fn expanded(value: &Value, path: &Path) -> Parsed<Vec<Vec<Key>>> {
+/// The calls a card opens in place: at most [`MAX_OPEN_PATHS`] different paths of 1 to
+/// [`MAX_OPEN_DEPTH`] block keys each.
+fn open(value: &Value, path: &Path) -> Parsed<Vec<Vec<Key>>> {
     let items = array(value, path)?;
-    if items.len() > MAX_EXPANDED_CALLS {
-        return Err(path.fail(format!("must hold at most {MAX_EXPANDED_CALLS} expanded calls")));
+    if items.len() > MAX_OPEN_PATHS {
+        return Err(path.fail(format!("must hold at most {MAX_OPEN_PATHS} open paths")));
     }
     let mut paths: Vec<Vec<Key>> = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         let item_path = path.join(index);
         let keys = array(item, &item_path)?;
-        if keys.is_empty() || keys.len() > MAX_EXPANSION_DEPTH {
+        if keys.is_empty() || keys.len() > MAX_OPEN_DEPTH {
             return Err(item_path.fail(format!(
-                "must list 1 to {MAX_EXPANSION_DEPTH} keys: a call or callback of the card's block, \
-                 then of each callee expanded inside it, outermost first"
+                "must list 1 to {MAX_OPEN_DEPTH} keys: a project call or callback of the card's block, \
+                 then of each callee opened inside it, outermost first"
             )));
         }
         let keys = keys
@@ -336,7 +354,7 @@ fn expanded(value: &Value, path: &Path) -> Parsed<Vec<Vec<Key>>> {
             .map(|(level, key)| block_key(key, &item_path.join(level)))
             .collect::<Parsed<Vec<Key>>>()?;
         if paths.contains(&keys) {
-            return Err(item_path.fail("repeats an earlier expanded call"));
+            return Err(item_path.fail("repeats an earlier open path"));
         }
         paths.push(keys);
     }
@@ -347,7 +365,7 @@ fn card(value: &Value, path: &Path) -> Parsed<Card> {
     let map = object(
         value,
         path,
-        &["at", "description", "expanded", "id", "ref", "view"],
+        &["at", "description", "id", "open", "ref", "view"],
         &["at", "id", "ref"],
     )?;
     let card = Card {
@@ -356,76 +374,77 @@ fn card(value: &Value, path: &Path) -> Parsed<Card> {
         at: position(field(map, "at"), &path.join("at"))?,
         view: optional(map, "view", path, view)?,
         description: optional(map, "description", path, description)?,
-        expanded: optional(map, "expanded", path, expanded)?.unwrap_or_default(),
+        open: optional(map, "open", path, open)?.unwrap_or_default(),
     };
-    if !card.expanded.is_empty() && card.reference.block_key().is_none() {
-        return Err(path.join("expanded").fail(
-            "only a block card expands calls in place; an entrance card's targets open as their own cards",
-        ));
+    if !card.open.is_empty() && card.reference.block_key().is_none() {
+        return Err(path
+            .join("open")
+            .fail("only a block card opens calls in place; an entrance card's code opens as its own cards"));
     }
     Ok(card)
 }
 
-fn group(value: &Value, path: &Path) -> Parsed<Group> {
-    let map = object(
-        value,
-        path,
-        &[
-            "author",
-            "card",
-            "collapsed",
-            "description",
-            "id",
-            "members",
-            "title",
-        ],
-        &["card", "collapsed", "id", "members", "title"],
-    )?;
-    let members_path = path.join("members");
-    let items = array(field(map, "members"), &members_path)?;
+/// The block keys of a combined step: at least one, none repeated.
+fn members(value: &Value, path: &Path) -> Parsed<Vec<Key>> {
+    let items = array(value, path)?;
     if items.is_empty() {
-        return Err(members_path.fail("must list at least one block key"));
+        return Err(path.fail("must list at least one block key"));
     }
     let mut seen = FxHashSet::default();
     let mut members = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
-        let item_path = members_path.join(index);
+        let item_path = path.join(index);
         let key = block_key(item, &item_path)?;
         if !seen.insert(key.clone()) {
             return Err(item_path.fail("repeats an earlier member"));
         }
         members.push(key);
     }
-    Ok(Group {
+    Ok(members)
+}
+
+fn combined(value: &Value, path: &Path) -> Parsed<Combined> {
+    let map = object(
+        value,
+        path,
+        &[
+            "author",
+            "collapsed",
+            "description",
+            "id",
+            "members",
+            "signature",
+            "title",
+        ],
+        &["author", "collapsed", "id", "members", "title"],
+    )?;
+    Ok(Combined {
         id: id(field(map, "id"), &path.join("id"))?,
-        card: id(field(map, "card"), &path.join("card"))?,
-        title: nonblank(field(map, "title"), &path.join("title"))?.to_owned(),
-        members,
+        title: owned_text(field(map, "title"), &path.join("title"))?,
+        members: members(field(map, "members"), &path.join("members"))?,
         collapsed: boolean(field(map, "collapsed"), &path.join("collapsed"))?,
         description: optional(map, "description", path, description)?,
-        author: optional(map, "author", path, author)?,
+        author: author(field(map, "author"), &path.join("author"))?,
+        signature: optional_signature(map, path)?,
     })
 }
 
-fn label(value: &Value, path: &Path) -> Parsed<LabelEntry> {
+fn name(value: &Value, path: &Path) -> Parsed<NameEntry> {
     let map = object(
         value,
         path,
         &["author", "key", "signature", "text"],
         &["author", "key", "text"],
     )?;
-    Ok(LabelEntry {
+    Ok(NameEntry {
         key: block_key(field(map, "key"), &path.join("key"))?,
-        label: authored(map, path)?,
+        name: authored(map, path)?,
     })
 }
 
-/// Whether `kind` is a block kind or `entrance:<entrance kind>`.
+/// Whether `kind` is a node kind or `entrance` (an app or entrance).
 fn valid_guard_kind(kind: &str) -> bool {
-    match kind.strip_prefix("entrance:") {
-        Some(entrance) => EntranceKind::from_str(entrance).is_ok(),
-        None => BlockKind::from_str(kind).is_ok(),
-    }
+    kind == "entrance" || NodeKind::from_str(kind).is_ok()
 }
 
 fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
@@ -438,10 +457,10 @@ fn guard(value: &Value, path: &Path) -> Parsed<GuardEntry> {
     let kind_path = path.join("kind");
     let kind = string(field(map, "kind"), &kind_path)?;
     if !valid_guard_kind(kind) {
-        return Err(kind_path.fail("must be a block kind or `entrance:<kind>`"));
+        return Err(kind_path.fail("must be a node kind or `entrance`"));
     }
     Ok(GuardEntry {
-        key: Key::from_text(nonblank(field(map, "key"), &path.join("key"))?),
+        key: any_key(field(map, "key"), &path.join("key"))?,
         kind: kind.to_owned(),
         owner: string(field(map, "owner"), &path.join("owner"))?.to_owned(),
         signature: signature(field(map, "signature"), &path.join("signature"))?,
@@ -503,7 +522,7 @@ fn anchors(value: &Value, path: &Path) -> Parsed<Vec<Anchor>> {
         .collect()
 }
 
-fn link(value: &Value, path: &Path) -> Parsed<Link> {
+fn connection(value: &Value, path: &Path) -> Parsed<Connection> {
     let map = object(
         value,
         path,
@@ -524,18 +543,15 @@ fn link(value: &Value, path: &Path) -> Parsed<Link> {
             "to",
             "toColumn",
         ],
-        &["from", "id", "to"],
+        &["author", "from", "id", "kind", "to"],
     )?;
-    let mut link = Link::new(
-        &id(field(map, "id"), &path.join("id"))?,
-        &id(field(map, "from"), &path.join("from"))?,
-        &id(field(map, "to"), &path.join("to"))?,
-    );
-    link.label = optional(map, "label", path, description)?;
-    link.kind = optional(map, "kind", path, |value, path| {
-        word(value, path, LinkKind::parse, LinkKind::WORDS)
-    })?;
-    if !link.relates()
+    let kind = word(
+        field(map, "kind"),
+        &path.join("kind"),
+        ConnectionKind::parse,
+        ConnectionKind::WORDS,
+    )?;
+    if kind != ConnectionKind::Relates
         && let Some(name) = ["fromColumn", "toColumn", "cardinality"]
             .into_iter()
             .find(|name| map.contains_key(*name))
@@ -544,33 +560,29 @@ fn link(value: &Value, path: &Path) -> Parsed<Link> {
             .join(name)
             .fail("only a `relates` connection joins columns and has a cardinality"));
     }
-    link.author = optional(map, "author", path, author)?;
-    if link.kind.is_some() && link.author.is_none() {
-        return Err(path.fail("missing field `author`: a connection (a link with `kind`) names who drew it"));
+    let mut connection = Connection::new(
+        &id(field(map, "id"), &path.join("id"))?,
+        kind,
+        &id(field(map, "from"), &path.join("from"))?,
+        &id(field(map, "to"), &path.join("to"))?,
+        author(field(map, "author"), &path.join("author"))?,
+    );
+    connection.label = optional(map, "label", path, description)?;
+    if kind == ConnectionKind::Other && connection.label.is_none() {
+        return Err(path.fail("missing field `label`: an `other` connection says what it is"));
     }
-    link.step = optional(map, "step", path, block_key)?;
-    link.from_column = optional(map, "fromColumn", path, owned_text)?;
-    link.to_column = optional(map, "toColumn", path, owned_text)?;
-    link.channel = optional(map, "channel", path, owned_text)?;
-    link.carries = optional(map, "carries", path, block_key)?;
-    link.cardinality = optional(map, "cardinality", path, |value, path| {
+    connection.step = optional(map, "step", path, block_key)?;
+    connection.from_column = optional(map, "fromColumn", path, owned_text)?;
+    connection.to_column = optional(map, "toColumn", path, owned_text)?;
+    connection.channel = optional(map, "channel", path, owned_text)?;
+    connection.carries = optional(map, "carries", path, block_key)?;
+    connection.cardinality = optional(map, "cardinality", path, |value, path| {
         word(value, path, Cardinality::parse, Cardinality::WORDS)
     })?;
-    link.anchors = optional(map, "anchors", path, anchors)?.unwrap_or_default();
-    link.description = optional(map, "description", path, description)?;
-    link.signature = optional_signature(map, path)?;
-    // An empty `anchors` is the default, as everywhere.
-    if link.kind.is_none()
-        && let Some(name) = ["carries", "channel", "description", "signature", "step"]
-            .into_iter()
-            .find(|name| map.contains_key(*name))
-            .or_else(|| (!link.anchors.is_empty()).then_some("anchors"))
-    {
-        return Err(path.join(name).fail(
-            "only a connection (a link with `kind`) cites code and has a description; a drawn link has a label",
-        ));
-    }
-    Ok(link)
+    connection.anchors = optional(map, "anchors", path, anchors)?.unwrap_or_default();
+    connection.description = optional(map, "description", path, description)?;
+    connection.signature = optional_signature(map, path)?;
+    Ok(connection)
 }
 
 fn frame(value: &Value, path: &Path) -> Parsed<Frame> {
@@ -742,12 +754,19 @@ fn proposal(value: &Value, path: &Path) -> Parsed<Proposal> {
     let map = object(
         value,
         path,
-        &["after", "author", "card", "id", "path", "reason", "title"],
-        &["after", "author", "card", "id", "title"],
+        &["after", "author", "id", "reason", "start", "title"],
+        &["author", "id", "title"],
     )?;
     let proposal_id = id(field(map, "id"), &path.join("id"))?;
-    let card = id(field(map, "card"), &path.join("card"))?;
-    let after = block_key(field(map, "after"), &path.join("after"))?;
+    let place = match (map.get("after"), map.get("start")) {
+        (Some(after), None) => Place::After {
+            after: block_key(after, &path.join("after"))?,
+        },
+        (None, Some(start)) => Place::Start {
+            start: block_key(start, &path.join("start"))?,
+        },
+        _ => return Err(path.fail("must have exactly one of `after` or `start`")),
+    };
     let title_path = path.join("title");
     let title = limited_text(field(map, "title"), &title_path, MAX_PROPOSAL_TITLE)?;
     if title.chars().any(char::is_control) {
@@ -755,11 +774,7 @@ fn proposal(value: &Value, path: &Path) -> Parsed<Proposal> {
     }
     Ok(Proposal {
         id: proposal_id,
-        card,
-        after,
-        path: optional(map, "path", path, |value, path| {
-            word(value, path, ProposalPath::parse, ProposalPath::WORDS)
-        })?,
+        place,
         title,
         reason: optional(map, "reason", path, |value, path| {
             limited_text(value, path, MAX_PROPOSAL_REASON)
@@ -789,31 +804,30 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
         path,
         &[
             "cards",
+            "combined",
             "defaultView",
             "frames",
-            "groups",
             "guards",
             "id",
-            "labels",
             "links",
+            "names",
             "notes",
             "proposals",
             "resources",
             "title",
         ],
-        &["cards", "defaultView", "groups", "id", "title"],
+        &["cards", "defaultView", "id", "title"],
     )?;
     let mut page = Page::new(
         &id(field(map, "id"), &path.join("id"))?,
         nonblank(field(map, "title"), &path.join("title"))?,
     );
     page.default_view = view(field(map, "defaultView"), &path.join("defaultView"))?;
-    // `cards` and `groups` are required (checked above); the other arrays may be absent.
     page.cards = items(map, "cards", path, card)?;
-    page.groups = items(map, "groups", path, group)?;
+    page.combined = items(map, "combined", path, combined)?;
     page.frames = items(map, "frames", path, frame)?;
     page.resources = items(map, "resources", path, resource)?;
-    page.links = items(map, "links", path, link)?;
+    page.links = items(map, "links", path, connection)?;
     page.notes = items(map, "notes", path, note)?;
     if optional_array(map, "proposals", path)?.len() > MAX_PROPOSALS {
         return Err(path
@@ -822,14 +836,14 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
     }
     page.proposals = items(map, "proposals", path, proposal)?;
 
-    let mut labeled = FxHashSet::default();
-    for (index, item) in optional_array(map, "labels", path)?.iter().enumerate() {
-        let item_path = path.join("labels").join(index);
-        let entry = label(item, &item_path)?;
-        if !labeled.insert(entry.key.clone()) {
-            return Err(item_path.fail(format!("repeats the label of `{}`", entry.key)));
+    let mut named = FxHashSet::default();
+    for (index, item) in optional_array(map, "names", path)?.iter().enumerate() {
+        let item_path = path.join("names").join(index);
+        let entry = name(item, &item_path)?;
+        if !named.insert(entry.key.clone()) {
+            return Err(item_path.fail(format!("repeats the name of `{}`", entry.key)));
         }
-        page.labels.push(entry);
+        page.names.push(entry);
     }
     let mut guarded = FxHashSet::default();
     for (index, item) in optional_array(map, "guards", path)?.iter().enumerate() {

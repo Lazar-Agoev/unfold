@@ -1,13 +1,13 @@
 //! Claim tests: what resource cards, connections, and frame descriptions are signed over, their
-//! health and repairs, and the grounding a save checks for agent-authored claims, on a small
-//! hand-built orders system (types, a queue, a route, a worker, a repository, and an evidence
+//! health and repairs, and the grounding a save checks (for everyone, and for agents' claims),
+//! on a small hand-built orders system (types, a queue, a route, a worker, a repository, and an evidence
 //! file) whose sources are written to a temporary folder.
 
 use std::path::Path;
 
-use unfold_core::testkit::{BlockRef, GraphBuilder, Outcome};
-use unfold_core::vocab::{BlockKind, DetectorId, EdgeKind, EntranceKind, Heritage, HttpMethod, InputRole};
-use unfold_core::vocab::{Language, MemberKind, Reason, Role};
+use unfold_core::key::Callee;
+use unfold_core::testkit::{GraphBuilder, NodeRef, library, project, target, unknown};
+use unfold_core::vocab::{Form, InputRole, Language, LinkKind as GraphLink, MemberKind, Reason, TargetState};
 use unfold_core::{Graph, Key, Member, RepoPath};
 
 use super::*;
@@ -20,23 +20,23 @@ const WORKER: &str = "export const worker = new Worker(\"orders\", createOrder);
 const SERVER: &str = "app.post(\"/orders\", createOrder);\n";
 const SCHEMA: &str = "create table orders (\n  id text primary key,\n  customer_id text\n);\n";
 
-const DRAFT: &str = "types.ts#interface:Draft";
-const ORDER: &str = "types.ts#interface:Order";
-const JOB: &str = "types.ts#interface:Job";
-const HELPER: &str = "types.ts#function:helper";
-const QUEUE: &str = "queues.ts#variable:ordersQueue";
-const CREATE: &str = "routes.ts#function:createOrder";
-const ADD: &str = "routes.ts#function:createOrder/expression_statement[0]/call[0]";
-const INSERT: &str = "routes.ts#function:createOrder/expression_statement[1]/call[0]";
-const CHARGE_CALL: &str = "routes.ts#function:createOrder/expression_statement[2]/call[0]";
-const CHARGE: &str = "routes.ts#function:charge";
-const REPOSITORY_CLASS: &str = "repository.ts#class:Repository";
+const DRAFT: &str = "types.ts#Draft";
+const ORDER: &str = "types.ts#Order";
+const JOB: &str = "types.ts#Job";
+const HELPER: &str = "types.ts#helper";
+const QUEUE: &str = "queues.ts#/call:Queue";
+const CREATE: &str = "routes.ts#createOrder";
+const ADD: &str = "routes.ts#createOrder/call:ordersQueue.add";
+const INSERT: &str = "routes.ts#createOrder/call:repo.insert";
+const CHARGE_CALL: &str = "routes.ts#createOrder/call:charge";
+const CHARGE: &str = "routes.ts#charge";
+const REPOSITORY_CLASS: &str = "repository.ts#Repository";
 const SCHEMA_FILE: &str = "db/schema.sql";
 
-/// A written property of a type declaration.
-fn member(builder: &mut GraphBuilder, block: BlockRef, index: u32, name: &str) {
-    builder.types(block).members.push(Member {
-        block: block.local_id(),
+/// A written property of a type or class.
+fn member(builder: &mut GraphBuilder, node: NodeRef, index: u32, name: &str) {
+    builder.types(node).members.push(Member {
+        node: node.local_id(),
         index,
         kind: MemberKind::Property,
         name: Some(name.into()),
@@ -48,191 +48,199 @@ fn member(builder: &mut GraphBuilder, block: BlockRef, index: u32, name: &str) {
     });
 }
 
-/// A top-level block whose range is `text`'s first occurrence in its file.
-fn declare(
-    builder: &mut GraphBuilder,
-    parent: BlockRef,
-    kind: BlockKind,
-    name: Option<&str>,
-    text: &str,
-) -> BlockRef {
-    let range = builder.find(parent, text);
-    let role = if kind == BlockKind::New {
-        Role::Initializer
-    } else {
-        Role::Body
-    };
-    builder.block(parent, kind, Some(role), name, range)
+/// A `types` link from `from` naming the type written as `name` (at or after `from`'s start).
+fn type_link(builder: &mut GraphBuilder, from: NodeRef, name: &str, target: &str) {
+    let range = builder.find_in(from, name);
+    builder.link(
+        from,
+        GraphLink::Types,
+        range,
+        name,
+        project(&Key::from_text(target)),
+    );
 }
 
-/// A statement `call;` of `function` whose call's occurrence edge has `outcome`.
-fn call(builder: &mut GraphBuilder, function: BlockRef, call: &str, outcome: Outcome) {
-    let statement = declare(
-        builder,
-        function,
-        BlockKind::ExpressionStatement,
-        None,
-        &format!("{call};"),
-    );
-    let range = builder.find(statement, call);
-    let block = builder.block(statement, BlockKind::Call, Some(Role::Expression), None, range);
-    let callee = &call[..call.find('(').unwrap()];
-    builder.edge(block, EdgeKind::Calls, outcome, callee, None);
+/// A call `call` of `parent` (its callee is the text before `(`) whose `calls` link reaches
+/// `to`.
+fn call(
+    builder: &mut GraphBuilder,
+    parent: NodeRef,
+    call: &str,
+    form: Form,
+    to: unfold_core::LinkTarget,
+) -> NodeRef {
+    let range = builder.find_in(parent, call);
+    let written = call.strip_prefix("new ").unwrap_or(call);
+    let written = &written[..written.find('(').unwrap()];
+    let mut parts = written.split('.');
+    let mut callee = Callee::name(parts.next().unwrap());
+    for part in parts {
+        callee = callee.member(part);
+    }
+    let node = match form {
+        Form::New => builder.construction(parent, &callee, range),
+        _ => builder.call(parent, &callee, range),
+    };
+    let head = builder.find_in(node, written);
+    builder.link(node, GraphLink::Calls, head, written, to);
+    node
 }
 
 /// The orders system's graph, with its `schema.sql` (an evidence file) as `schema`.
 fn orders_graph(schema: &str) -> Graph {
     let mut g = GraphBuilder::new();
     let types = g.file("types.ts", Language::TypeScript, TYPES);
-    let draft = declare(
-        &mut g,
+    let draft = g.def(
         types,
-        BlockKind::Interface,
-        Some("Draft"),
-        "interface Draft {\n  customerId: string;\n}",
+        Form::Interface,
+        "Draft",
+        g.find(types, "interface Draft {\n  customerId: string;\n}"),
     );
     member(&mut g, draft, 0, "customerId");
-    let order = declare(
-        &mut g,
+    let order = g.def(
         types,
-        BlockKind::Interface,
-        Some("Order"),
-        "interface Order extends Draft {\n  id: string;\n}",
+        Form::Interface,
+        "Order",
+        g.find(types, "interface Order extends Draft {\n  id: string;\n}"),
     );
     member(&mut g, order, 0, "id");
-    let from = g.range(order).start;
-    g.heritage_link(
+    let base = g.find_in(order, "Draft");
+    g.link(
         order,
+        GraphLink::Extends,
+        base,
         "Draft",
-        from,
-        Outcome::Resolved(Key::from_text(DRAFT)),
-        Heritage::Extends,
+        project(&Key::from_text(DRAFT)),
     );
-    let job = declare(
-        &mut g,
+    let job = g.def(
         types,
-        BlockKind::Interface,
-        Some("Job"),
-        "interface Job { order: Draft }",
+        Form::Interface,
+        "Job",
+        g.find(types, "interface Job { order: Draft }"),
     );
     member(&mut g, job, 0, "order");
-    declare(
-        &mut g,
+    g.def(
         types,
-        BlockKind::Function,
-        Some("helper"),
-        "function helper() {}",
+        Form::Function,
+        "helper",
+        g.find(types, "function helper() {}"),
     );
 
     let queues = g.file("queues.ts", Language::TypeScript, QUEUES);
-    let queue = declare(
+    type_link(&mut g, queues, "Job", JOB);
+    call(
         &mut g,
         queues,
-        BlockKind::Variable,
-        Some("ordersQueue"),
-        "ordersQueue: Queue<Job> = new Queue(\"orders\")",
+        "new Queue(\"orders\")",
+        Form::New,
+        library("bullmq"),
     );
-    g.type_link(queue, "Job", 0, Outcome::Resolved(Key::from_text(JOB)));
 
     let routes = g.file("routes.ts", Language::TypeScript, ROUTES);
-    let create = declare(
-        &mut g,
+    let create = g.def(
         routes,
-        BlockKind::Function,
-        Some("createOrder"),
-        &ROUTES[7..ROUTES.find("}\n").unwrap() + 1],
+        Form::Function,
+        "createOrder",
+        g.find(routes, &ROUTES[7..ROUTES.find("}\n").unwrap() + 1]),
     );
-    g.type_link(create, "Draft", 0, Outcome::Resolved(Key::from_text(DRAFT)));
+    type_link(&mut g, create, "Draft", DRAFT);
     call(
         &mut g,
         create,
         "ordersQueue.add(\"place\", draft)",
-        Outcome::external("bullmq"),
+        Form::Call,
+        library("bullmq"),
     );
     call(
         &mut g,
         create,
         "repo.insert(draft)",
-        Outcome::Unresolved(Reason::UnknownReceiver),
+        Form::Call,
+        unknown(Reason::UnknownReceiver),
     );
     call(
         &mut g,
         create,
         "charge(draft)",
-        Outcome::Resolved(Key::from_text(CHARGE)),
+        Form::Call,
+        project(&Key::from_text(CHARGE)),
     );
-    declare(
-        &mut g,
+    let charge = g.def(
         routes,
-        BlockKind::Function,
-        Some("charge"),
-        "function charge(draft: Draft) {}",
+        Form::Function,
+        "charge",
+        g.find(routes, "function charge(draft: Draft) {}"),
     );
+    type_link(&mut g, charge, "Draft", DRAFT);
 
     let repository = g.file("repository.ts", Language::TypeScript, REPOSITORY);
-    declare(
-        &mut g,
+    let class = g.def(
         repository,
-        BlockKind::Class,
-        Some("Repository"),
-        &REPOSITORY[7..REPOSITORY.len() - 1],
+        Form::Class,
+        "Repository",
+        g.find(repository, &REPOSITORY[7..REPOSITORY.len() - 1]),
     );
+    call(&mut g, class, "new Map()", Form::New, library("global"));
 
     let worker = g.file("worker.ts", Language::TypeScript, WORKER);
-    let variable = declare(
+    let construction = call(
         &mut g,
         worker,
-        BlockKind::Variable,
-        Some("worker"),
-        "worker = new Worker(\"orders\", createOrder)",
-    );
-    let construction = declare(
-        &mut g,
-        variable,
-        BlockKind::New,
-        None,
         "new Worker(\"orders\", createOrder)",
+        Form::New,
+        library("bullmq"),
     );
-    let evidence = g.source_evidence(construction);
-    let entrance = g.entrance(
-        DetectorId::BullmqWorker,
-        EntranceKind::Worker,
-        None,
-        Some("orders"),
-        evidence,
+    let passed = g.find_in(construction, "createOrder");
+    g.link(
+        construction,
+        GraphLink::Passes,
+        passed,
+        "createOrder",
+        project(&Key::from_text(CREATE)),
     );
-    g.target(entrance, Outcome::Resolved(Key::from_text(CREATE)), "createOrder");
 
     let server = g.file("server.ts", Language::TypeScript, SERVER);
-    let statement = declare(
+    let post = call(
         &mut g,
         server,
-        BlockKind::ExpressionStatement,
-        None,
-        SERVER.trim_end(),
+        "app.post(\"/orders\", createOrder)",
+        Form::Call,
+        unknown(Reason::UnknownName),
     );
-    let range = g.find(statement, "app.post(\"/orders\", createOrder)");
-    let post = g.block(statement, BlockKind::Call, Some(Role::Expression), None, range);
-    let evidence = g.source_evidence(post);
-    let route = g.entrance(
-        DetectorId::ExpressRoute,
-        EntranceKind::Http,
-        Some(HttpMethod::Post),
-        Some("/orders"),
-        evidence,
+    let passed = g.find_in(post, "createOrder");
+    g.link(
+        post,
+        GraphLink::Passes,
+        passed,
+        "createOrder",
+        project(&Key::from_text(CREATE)),
     );
-    g.target(route, Outcome::Resolved(Key::from_text(CREATE)), "createOrder");
+
+    let app = g.app("Orders", Some("npm start"), None);
+    g.entrance(
+        app,
+        "Worker",
+        Some("orders"),
+        vec![target(CREATE, TargetState::Found)],
+    );
+    g.entrance(
+        app,
+        "Route",
+        Some("POST /orders"),
+        vec![target(CREATE, TargetState::Found)],
+    );
 
     g.input(SCHEMA_FILE, InputRole::Evidence, schema);
     g.build()
 }
 
-/// The entrance key of `kind` in `graph`.
-fn entrance_key(graph: &Graph, kind: EntranceKind) -> String {
+/// The key of the entrance named `name` in `graph`.
+fn entrance_key(graph: &Graph, name: &str) -> String {
     let entrance = graph
-        .entrances
+        .apps
         .iter()
-        .find(|entrance| entrance.kind == kind)
+        .flat_map(|app| &app.entrances)
+        .find(|entrance| &*entrance.name == name)
         .unwrap();
     entrance.key.to_string()
 }
@@ -292,20 +300,23 @@ fn lines(first: u32, last: u32) -> Anchor {
     }
 }
 
-fn card(id: &str, key: &str) -> Card {
-    let reference = if key.starts_with("entrance:") {
-        CardRef::entrance(Key::from_text(key))
-    } else {
-        CardRef::block(Key::from_text(key))
-    };
+fn card(id: &str, reference: CardRef) -> Card {
     Card {
         id: id.to_owned(),
         reference,
         at: [0.0, 0.0],
         view: None,
         description: None,
-        expanded: Vec::new(),
+        open: Vec::new(),
     }
+}
+
+fn block_card(id: &str, key: &str) -> Card {
+    card(id, CardRef::block(Key::from_text(key)))
+}
+
+fn start_card(id: &str, key: &str) -> Card {
+    card(id, CardRef::entrance(Key::from_text(key)))
 }
 
 fn resource(id: &str, kind: ResourceKind, name: &str, anchors: Vec<Anchor>) -> Resource {
@@ -341,24 +352,20 @@ fn column(name: &str) -> Column {
     }
 }
 
-fn connection(id: &str, kind: LinkKind, from: &str, to: &str) -> Link {
-    Link {
-        kind: Some(kind),
-        author: Some(agent()),
-        ..Link::new(id, from, to)
-    }
+fn connection(id: &str, kind: ConnectionKind, from: &str, to: &str) -> Connection {
+    Connection::new(id, kind, from, to, agent())
 }
 
 /// A board whose one page shows `createOrder`, `charge`, the worker, and the route.
 fn board(graph: &Graph) -> Board {
     let mut board = Board::new("Orders");
     let page = &mut board.pages[0];
-    page.cards.push(card("create", CREATE));
-    page.cards.push(card("charge", CHARGE));
+    page.cards.push(block_card("create", CREATE));
+    page.cards.push(block_card("charge", CHARGE));
     page.cards
-        .push(card("worker", &entrance_key(graph, EntranceKind::Worker)));
+        .push(start_card("worker", &entrance_key(graph, "Worker")));
     page.cards
-        .push(card("route", &entrance_key(graph, EntranceKind::Http)));
+        .push(start_card("route", &entrance_key(graph, "Route")));
     board
 }
 
@@ -391,19 +398,15 @@ fn claims_are_signed_over_the_code_they_cite() {
     let mut orders = table(ORDER, &["id"], vec![key(REPOSITORY_CLASS), lines(1, 2)]);
     orders.description = Some(text("Orders by id"));
     page.resources.push(orders);
-    let mut enqueue = Link {
+    let mut enqueue = Connection {
         step: Some(Key::from_text(ADD)),
         anchors: vec![key(QUEUE)],
         description: Some(text("Queues the order")),
         label: Some(text("place job")),
-        ..connection("enqueue", LinkKind::Queue, "create", "worker")
+        ..connection("enqueue", ConnectionKind::Queue, "create", "worker")
     };
     enqueue.channel = Some("typed by hand".to_owned());
     page.links.push(enqueue);
-    page.links.push(Link {
-        label: Some(text("calls")),
-        ..Link::new("drawn", "create", "charge")
-    });
     page.frames.push(Frame {
         id: "api".to_owned(),
         title: "API".to_owned(),
@@ -435,29 +438,16 @@ fn claims_are_signed_over_the_code_they_cite() {
     // A connection: its step's range, then its anchors'. Its texts are signed the same, and an
     // entrance at its `to` end gives its channel.
     let step = bytes_of(ROUTES, "ordersQueue.add(\"place\", draft)");
-    let queue = bytes_of(QUEUES, "ordersQueue: Queue<Job> = new Queue(\"orders\")");
+    let queue = bytes_of(QUEUES, "new Queue(\"orders\")");
     let signature = Signature::of(format!("{step}\n{queue}\n").as_bytes());
-    let enqueue = page.link("enqueue").unwrap();
+    let enqueue = page.connection("enqueue").unwrap();
     assert_eq!(enqueue.signature, Some(signature));
     assert_eq!(enqueue.description.as_ref().unwrap().signature, Some(signature));
     assert_eq!(enqueue.label.as_ref().unwrap().signature, Some(signature));
     assert_eq!(enqueue.channel.as_deref(), Some("orders"));
 
-    // A drawn link's label is still signed over its ends' guards.
-    let ends = |id: &str| {
-        page.guard(page.card(id).unwrap().reference.key().as_str())
-            .unwrap()
-            .signature
-            .0
-    };
-    let drawn = Signature::of(format!("{}\n{}", ends("create"), ends("charge")).as_bytes());
-    assert_eq!(
-        page.link("drawn").unwrap().label.as_ref().unwrap().signature,
-        Some(drawn)
-    );
-
     // A frame's description: its member cards' signatures, by card id, joined with line breaks.
-    let members = [CREATE, &entrance_key(&graph, EntranceKind::Http)]
+    let members = [CREATE, &entrance_key(&graph, "Route")]
         .map(|key| loaded.signature(key).unwrap().0.to_string())
         .join("\n");
     assert_eq!(
@@ -472,22 +462,6 @@ fn claims_are_signed_over_the_code_they_cite() {
     let references = saved.references();
     assert_eq!(references.tables, [ORDER]);
     assert_eq!(references.files, [&RepoPath::new(SCHEMA_FILE).unwrap()]);
-
-    // A drawn link given a kind and a step cites code: its label, signed over its ends before,
-    // is signed over that code, not reported outdated.
-    let mut cited = saved.clone();
-    let link = cited.pages[0]
-        .links
-        .iter_mut()
-        .find(|link| link.id == "drawn")
-        .unwrap();
-    link.kind = Some(LinkKind::Calls);
-    link.author = Some(person());
-    link.step = Some(Key::from_text(INSERT));
-    let (resaved, health) = save(cited, Some((&saved, &health)), &loaded).unwrap();
-    assert!(health.is_healthy(), "{:#?}", health.items);
-    let link = resaved.pages[0].link("drawn").unwrap();
-    assert_eq!(link.label.as_ref().unwrap().signature, link.signature);
 }
 
 #[test]
@@ -515,7 +489,7 @@ fn evidence_anchors_go_outdated_when_their_file_changes() {
             "Code changed since this resource card was drawn"
         )
     );
-    assert_eq!(outdated.repairs, [RepairKind::Resign, RepairKind::RemoveResource]);
+    assert_eq!(outdated.repairs, [RepairKind::Resign, RepairKind::Remove]);
     assert_eq!(health.label().as_deref(), Some("1 outdated"));
 
     // After a compile records the new bytes, re-signing accepts them.
@@ -577,16 +551,13 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
     let (_dir, graph, loaded) = orders(SCHEMA);
     let mut board = board(&graph);
     let page = &mut board.pages[0];
-    page.resources.push(table(
-        "types.ts#interface:Gone",
-        &[],
-        vec![key("queues.ts#variable:gone")],
-    ));
-    page.links.push(Link {
-        step: Some(Key::from_text("routes.ts#function:createOrder/return[0]")),
+    page.resources
+        .push(table("types.ts#Gone", &[], vec![key("queues.ts#gone")]));
+    page.links.push(Connection {
+        step: Some(Key::from_text("routes.ts#createOrder/call:gone")),
         carries: Some(Key::from_text(HELPER)),
-        anchors: vec![key(QUEUE), key("queues.ts#variable:gone")],
-        ..connection("enqueue", LinkKind::Queue, "create", "worker")
+        anchors: vec![key(QUEUE), key("queues.ts#gone")],
+        ..connection("enqueue", ConnectionKind::Queue, "create", "worker")
     });
     let page = &board.pages[0];
     let health = health_of(page, &loaded);
@@ -604,30 +575,30 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
         })
         .collect();
     let table = Target::Resource("orders".to_owned());
-    let link = Target::Link("enqueue".to_owned());
-    let missing = [RepairKind::Reconnect, RepairKind::RemoveResource];
-    let broken = [RepairKind::Reconnect, RepairKind::RemoveLink];
+    let link = Target::Connection("enqueue".to_owned());
+    let missing = [RepairKind::Reconnect, RepairKind::Remove];
+    let broken = missing;
     assert_eq!(
         items,
         [
             (
                 HealthKind::Missing,
                 &table,
-                Some("types.ts#interface:Gone"),
+                Some("types.ts#Gone"),
                 None,
                 &missing[..]
             ),
             (
                 HealthKind::Missing,
                 &table,
-                Some("queues.ts#variable:gone"),
+                Some("queues.ts#gone"),
                 Some(0),
                 &missing[..]
             ),
             (
                 HealthKind::BrokenLink,
                 &link,
-                Some("routes.ts#function:createOrder/return[0]"),
+                Some("routes.ts#createOrder/call:gone"),
                 None,
                 &broken[..]
             ),
@@ -635,7 +606,7 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
             (
                 HealthKind::BrokenLink,
                 &link,
-                Some("queues.ts#variable:gone"),
+                Some("queues.ts#gone"),
                 Some(1),
                 &broken[..]
             ),
@@ -649,7 +620,7 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
     );
     assert_eq!(health.label().as_deref(), Some("2 missing · 3 broken links"));
     // A save refuses them as new problems, saying what to do.
-    assert!(refusal(board.clone(), &loaded).starts_with("Type types.ts#interface:Gone is not in the graph"),);
+    assert!(refusal(board.clone(), &loaded).starts_with("Type types.ts#Gone is not in the graph"));
 
     // A cited key whose kind changed is held for review, like a card's.
     let mut held = board.clone();
@@ -674,62 +645,61 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
         (
             HealthKind::Review,
             Some(0),
-            &[
-                RepairKind::Accept,
-                RepairKind::Reconnect,
-                RepairKind::RemoveResource
-            ][..]
+            &[RepairKind::Accept, RepairKind::Reconnect, RepairKind::Remove][..]
         )
     );
 }
 
 #[test]
-fn reconnecting_a_card_carries_its_connections_steps_along() {
+fn reconnecting_moves_each_key_on_its_own() {
     let (_dir, graph, loaded) = orders(SCHEMA);
     let mut board = board(&graph);
     let page = &mut board.pages[0];
-    page.cards[0] = card("create", "routes.ts#function:placeOrder");
-    page.links.push(Link {
-        step: Some(Key::from_text(
-            "routes.ts#function:placeOrder/expression_statement[0]/call[0]",
-        )),
-        anchors: vec![key("queues.ts#variable:queue")],
-        ..connection("enqueue", LinkKind::Queue, "create", "worker")
+    page.cards[0] = block_card("create", "routes.ts#placeOrder");
+    page.links.push(Connection {
+        step: Some(Key::from_text("routes.ts#placeOrder/call:ordersQueue.add")),
+        anchors: vec![key("queues.ts#queue")],
+        ..connection("enqueue", ConnectionKind::Queue, "create", "worker")
     });
     page.resources.push(resource(
         "queue",
         ResourceKind::Queue,
         "orders",
-        vec![key("queues.ts#variable:queue")],
+        vec![key("queues.ts#queue")],
     ));
     let mut page = board.pages[0].clone();
     let reconnect = |from: &str, to: &str| Repair::Reconnect {
         from: from.to_owned(),
         to: to.to_owned(),
     };
+    apply_repair(&mut page, &loaded, &reconnect("routes.ts#placeOrder", CREATE)).unwrap();
+    // The card moves; the step inside the old key is a reference of its own, still broken.
+    assert_eq!(page.cards[0].reference, CardRef::block(Key::from_text(CREATE)));
+    let health = health_of(&page, &loaded);
+    assert!(health.has(
+        "page-1",
+        HealthKind::BrokenLink,
+        &Target::Connection("enqueue".to_owned())
+    ));
     apply_repair(
         &mut page,
         &loaded,
-        &reconnect("routes.ts#function:placeOrder", CREATE),
+        &reconnect("routes.ts#placeOrder/call:ordersQueue.add", ADD),
     )
     .unwrap();
-    // The step moves to the same statement under the new key, and gets a fresh guard.
-    let link = page.link("enqueue").unwrap();
-    assert_eq!(link.step.as_ref().map(Key::as_str), Some(ADD));
+    assert_eq!(
+        page.connection("enqueue").unwrap().step.as_ref().map(Key::as_str),
+        Some(ADD)
+    );
     assert!(page.guard(ADD).is_some());
     // Reconnecting an anchor's key points every claim citing it at the new key.
-    apply_repair(&mut page, &loaded, &reconnect("queues.ts#variable:queue", QUEUE)).unwrap();
-    assert_eq!(page.link("enqueue").unwrap().anchors, [key(QUEUE)]);
+    apply_repair(&mut page, &loaded, &reconnect("queues.ts#queue", QUEUE)).unwrap();
+    assert_eq!(page.connection("enqueue").unwrap().anchors, [key(QUEUE)]);
     assert_eq!(page.resource("queue").unwrap().anchors, [key(QUEUE)]);
     assert!(health_of(&page, &loaded).is_healthy());
     // A key that isn't in the graph is refused, naming the claim that cites it.
     assert_eq!(
-        apply_repair(
-            &mut page,
-            &loaded,
-            &reconnect(QUEUE, "queues.ts#variable:nowhere")
-        )
-        .unwrap_err(),
+        apply_repair(&mut page, &loaded, &reconnect(QUEUE, "queues.ts#nowhere")).unwrap_err(),
         BoardError::Problem {
             page: "page-1".to_owned(),
             target: Target::Resource("queue".to_owned()),
@@ -749,11 +719,11 @@ fn claims_are_repaired_by_anchor_resigned_or_removed() {
         "orders",
         vec![lines(1, 1)],
     ));
-    page.links.push(Link {
+    page.links.push(Connection {
         anchors: vec![key(QUEUE)],
         description: Some(text("Queues the order")),
         label: Some(text("job")),
-        ..connection("enqueue", LinkKind::Queue, "create", "schema")
+        ..connection("enqueue", ConnectionKind::Queue, "create", "schema")
     });
     page.notes.push(Note {
         id: "note".to_owned(),
@@ -782,32 +752,31 @@ fn claims_are_repaired_by_anchor_resigned_or_removed() {
     apply_repair(
         &mut page,
         &loaded,
-        &Repair::Resign(Target::Link("enqueue".to_owned())),
+        &Repair::Resign(Target::Connection("enqueue".to_owned())),
     )
     .unwrap();
-    let signature = Signature::of(
-        format!(
-            "{}\n",
-            bytes_of(QUEUES, "ordersQueue: Queue<Job> = new Queue(\"orders\")")
-        )
-        .as_bytes(),
-    );
-    let link = page.link("enqueue").unwrap();
+    let signature = Signature::of(format!("{}\n", bytes_of(QUEUES, "new Queue(\"orders\")")).as_bytes());
+    let link = page.connection("enqueue").unwrap();
     assert_eq!(
         [link.signature, link.label.as_ref().unwrap().signature],
         [Some(signature); 2]
     );
-    // A connection's description repair removes its description and label.
+    // A connection's description repair removes its description; its label is the line's.
     apply_repair(
         &mut page,
         &loaded,
-        &Repair::RemoveDescription(Target::Link("enqueue".to_owned())),
+        &Repair::RemoveDescription(Target::Connection("enqueue".to_owned())),
     )
     .unwrap();
-    let link = page.link("enqueue").unwrap();
-    assert!(link.description.is_none() && link.label.is_none());
-    // Removing a resource card removes the links to it; its note stays where it was.
-    apply_repair(&mut page, &loaded, &Repair::RemoveResource("schema".to_owned())).unwrap();
+    let link = page.connection("enqueue").unwrap();
+    assert!(link.description.is_none() && link.label.is_some());
+    // Removing a resource card removes the connections to it; its note stays where it was.
+    apply_repair(
+        &mut page,
+        &loaded,
+        &Repair::Remove(Target::Resource("schema".to_owned())),
+    )
+    .unwrap();
     assert!(page.resources.is_empty() && page.links.is_empty());
     let note = page.note("note").unwrap();
     assert_eq!((note.attach.as_deref(), note.at), (None, [400.0, 10.0]));
@@ -826,7 +795,7 @@ fn agents_anchor_resource_cards_and_requests() {
             with(resource("queue", ResourceKind::Queue, "orders", Vec::new())),
             &loaded
         ),
-        "Can't add the queue \"orders\": it has no anchors. Anchor it to the code that defines or uses it (a block or entrance key), or to lines of an evidence file"
+        "Can't add the queue \"orders\": it has no anchors. Anchor it to the code that defines or uses it (a block, app, or entrance key), or to lines of an evidence file"
     );
     // An actor needs none, and neither does a person's resource card.
     save(
@@ -839,26 +808,65 @@ fn agents_anchor_resource_cards_and_requests() {
     theirs.author = person();
     save(with(theirs), None, &loaded).unwrap();
 
-    let link = |link: Link| {
+    let link = |link: Connection| {
         let mut board = board(&graph);
         board.pages[0].links.push(link);
         board
     };
     assert_eq!(
         refusal(
-            link(connection("enqueue", LinkKind::Queue, "create", "worker")),
+            link(connection("enqueue", ConnectionKind::Queue, "create", "worker")),
             &loaded
         ),
-        "Can't connect createOrder to worker orders (queue): it has no anchors. A queue connection cites its receiving side: anchor it to the code or entrance that receives it"
+        "Can't connect createOrder to Worker (queue): it has no anchors. A queue connection cites its receiving side: the entrance, the handler's registration, or where the queue is created"
     );
-    let anchored = Link {
-        anchors: vec![key(&entrance_key(&graph, EntranceKind::Worker))],
-        ..connection("enqueue", LinkKind::Queue, "create", "worker")
+    assert_eq!(
+        refusal(
+            link(Connection {
+                step: Some(Key::from_text(INSERT)),
+                ..connection("runtime", ConnectionKind::Calls, "create", "charge")
+            }),
+            &loaded
+        ),
+        "Can't connect createOrder to charge (calls): it has no anchors. A calls connection cites why the call goes where it does, such as the factory or the injection"
+    );
+    let anchored = Connection {
+        anchors: vec![key(&entrance_key(&graph, "Worker"))],
+        ..connection("enqueue", ConnectionKind::Queue, "create", "worker")
     };
     save(link(anchored), None, &loaded).unwrap();
-    // `writes`, `reads`, `relates`, and `other` connections need no anchors.
+    // A `writes` or `reads` connection cites its step: the call that writes or reads.
+    assert_eq!(
+        refusal(
+            link(connection("writes", ConnectionKind::Writes, "create", "charge")),
+            &loaded
+        ),
+        "Can't connect createOrder to charge (writes): it cites nothing. A writes connection leaves from the call that writes as its step; give that call, or an anchor"
+    );
     save(
-        link(connection("writes", LinkKind::Writes, "create", "charge")),
+        link(Connection {
+            step: Some(Key::from_text(INSERT)),
+            ..connection("writes", ConnectionKind::Reads, "create", "charge")
+        }),
+        None,
+        &loaded,
+    )
+    .unwrap();
+    // An `other` connection needs no citation, and people's connections need none.
+    save(
+        link(Connection {
+            label: Some(text("posts to Slack")),
+            ..connection("other", ConnectionKind::Other, "create", "charge")
+        }),
+        None,
+        &loaded,
+    )
+    .unwrap();
+    save(
+        link(Connection {
+            author: person(),
+            ..connection("writes", ConnectionKind::Writes, "create", "charge")
+        }),
         None,
         &loaded,
     )
@@ -889,7 +897,7 @@ fn names_columns_and_channels_appear_in_the_cited_code() {
             )),
             &loaded
         ),
-        "Can't add the queue \"payments\": \"payments\" doesn't appear in its anchors (ordersQueue in queues.ts). Use the name the code writes, or anchor it where the name is written"
+        "Can't add the queue \"payments\": \"payments\" doesn't appear in its anchors (Queue in queues.ts). Use the name the code writes, or anchor it where the name is written"
     );
     let mut listed = resource("orders", ResourceKind::Table, "orders", vec![lines(1, 4)]);
     listed.columns = vec![column("id"), column("customer_id")];
@@ -906,36 +914,36 @@ fn names_columns_and_channels_appear_in_the_cited_code() {
         board.pages[0]
             .resources
             .push(resource("queue", ResourceKind::Queue, "orders", vec![key(QUEUE)]));
-        board.pages[0].links.push(Link {
+        board.pages[0].links.push(Connection {
             step: Some(Key::from_text(ADD)),
             anchors: vec![key(QUEUE)],
             channel: Some(channel.to_owned()),
-            ..connection("enqueue", LinkKind::Queue, "create", to)
+            ..connection("enqueue", ConnectionKind::Queue, "create", to)
         });
         board
     };
     save(link("orders", "queue"), None, &loaded).unwrap();
     assert_eq!(
         refusal(link("emails", "queue"), &loaded),
-        "Can't connect createOrder to the queue \"orders\" (queue): the channel \"emails\" doesn't appear in its step or anchors (routes.ts:2 and ordersQueue in queues.ts). Anchor it where the channel is named, or leave the channel out"
+        "Can't connect createOrder to the queue \"orders\" (queue): the channel \"emails\" doesn't appear in its step or anchors (ordersQueue.add in routes.ts and Queue in queues.ts). Anchor it where the channel is named, or leave the channel out"
     );
     // An entrance at the `to` end gives the channel, whatever was typed.
     let (saved, _) = save(link("emails", "worker"), None, &loaded).unwrap();
     assert_eq!(
-        saved.pages[0].link("enqueue").unwrap().channel.as_deref(),
+        saved.pages[0].connection("enqueue").unwrap().channel.as_deref(),
         Some("orders")
     );
     let mut route = board(&graph);
     route.pages[0]
         .resources
         .push(resource("customer", ResourceKind::Actor, "Customer", Vec::new()));
-    route.pages[0].links.push(Link {
-        anchors: vec![key(&entrance_key(&graph, EntranceKind::Http))],
-        ..connection("posts", LinkKind::Http, "customer", "route")
+    route.pages[0].links.push(Connection {
+        anchors: vec![key(&entrance_key(&graph, "Route"))],
+        ..connection("posts", ConnectionKind::Http, "customer", "route")
     });
     let (saved, _) = save(route, None, &loaded).unwrap();
     assert_eq!(
-        saved.pages[0].link("posts").unwrap().channel.as_deref(),
+        saved.pages[0].connection("posts").unwrap().channel.as_deref(),
         Some("POST /orders")
     );
 }
@@ -943,7 +951,7 @@ fn names_columns_and_channels_appear_in_the_cited_code() {
 #[test]
 fn tables_backed_by_a_type_mark_its_fields() {
     let (_dir, graph, loaded) = orders(SCHEMA);
-    let with = |orders: Resource, link: Option<Link>| {
+    let with = |orders: Resource, link: Option<Connection>| {
         let mut board = board(&graph);
         let page = &mut board.pages[0];
         page.resources.push(orders);
@@ -968,11 +976,11 @@ fn tables_backed_by_a_type_mark_its_fields() {
         "a person's marks name fields too"
     );
     // A relationship joins columns its tables have.
-    let relates = |column: &str| Link {
+    let relates = |column: &str| Connection {
         from_column: Some(column.to_owned()),
         to_column: Some("id".to_owned()),
         cardinality: Some(Cardinality::ManyToOne),
-        ..connection("customer", LinkKind::Relates, "orders", "customers")
+        ..connection("customer", ConnectionKind::Relates, "orders", "customers")
     };
     save(with(orders.clone(), Some(relates("customerId"))), None, &loaded).unwrap();
     assert_eq!(
@@ -986,56 +994,67 @@ fn carried_types_are_used_where_the_connection_leaves_or_in_its_anchors() {
     let (_dir, graph, loaded) = orders(SCHEMA);
     let carrying = |carries: &str, step: Option<&str>| {
         let mut board = board(&graph);
-        board.pages[0].links.push(Link {
+        board.pages[0].links.push(Connection {
             step: step.map(Key::from_text),
-            anchors: vec![key(QUEUE)],
+            anchors: vec![key("queues.ts#")],
             carries: Some(Key::from_text(carries)),
-            ..connection("enqueue", LinkKind::Queue, "create", "worker")
+            ..connection("enqueue", ConnectionKind::Queue, "create", "worker")
         });
         board
     };
-    // `Job` is written in the anchor; `Draft` in the step's function.
+    // `Job` is written in the anchor (the queues module); `Draft` in the step's function.
     save(carrying(JOB, None), None, &loaded).unwrap();
     save(carrying(DRAFT, Some(ADD)), None, &loaded).unwrap();
     assert_eq!(
         refusal(carrying(DRAFT, None), &loaded),
-        "Can't connect createOrder to worker orders (queue): Draft (types.ts) isn't used in its step's function or in its anchors. Carry a type the sending code or an anchor writes, or leave carries out"
+        "Can't connect createOrder to Worker (queue): Draft (types.ts) isn't used in its step's function or in its anchors. Carry a type the sending code or an anchor writes, or leave carries out"
     );
     assert_eq!(
         refusal(carrying(ORDER, Some(ADD)), &loaded),
-        "Can't connect createOrder to worker orders (queue): Order (types.ts) isn't used in createOrder or in its anchors. Carry a type the sending code or an anchor writes, or leave carries out"
+        "Can't connect createOrder to Worker (queue): Order (types.ts) isn't used in createOrder or in its anchors. Carry a type the sending code or an anchor writes, or leave carries out"
     );
 }
 
 #[test]
-fn runtime_calls_leave_from_calls_unfold_cant_follow() {
+fn steps_are_calls_and_runtime_calls_start_at_unknown_calls() {
     let (_dir, graph, loaded) = orders(SCHEMA);
-    let calling = |step: Option<&str>| {
+    let calling = |step: Option<&str>, author: Author| {
         let mut board = board(&graph);
-        board.pages[0].links.push(Link {
+        board.pages[0].links.push(Connection {
             step: step.map(Key::from_text),
             anchors: vec![key(CHARGE)],
-            ..connection("runtime", LinkKind::Calls, "create", "charge")
+            author,
+            ..connection("runtime", ConnectionKind::Calls, "create", "charge")
         });
         board
     };
-    // Unresolved and external calls are what a runtime call explains.
-    save(calling(Some(INSERT)), None, &loaded).unwrap();
-    save(calling(Some(ADD)), None, &loaded).unwrap();
+    // An unknown call is what a runtime call explains.
+    save(calling(Some(INSERT), agent()), None, &loaded).unwrap();
+    // A resolved or library call isn't, whoever draws it.
+    for author in [agent(), person()] {
+        assert_eq!(
+            refusal(calling(Some(CHARGE_CALL), author.clone()), &loaded),
+            "Can't connect createOrder to charge (calls): the call charge (line 4) resolves to charge, so Unfold already draws it. A calls connection starts at a call Unfold can't follow"
+        );
+        assert_eq!(
+            refusal(calling(Some(ADD), author.clone()), &loaded),
+            "Can't connect createOrder to charge (calls): the call ordersQueue.add (line 2) is a library call, not an unknown one. A calls connection starts at a call Unfold can't follow"
+        );
+        assert_eq!(
+            refusal(calling(None, author), &loaded),
+            "Can't connect createOrder to charge (calls): it has no step. A calls connection leaves from the unknown call itself; give that call as its step"
+        );
+    }
+    // Any connection's step is a call.
+    let mut writes = board(&graph);
+    writes.pages[0].links.push(Connection {
+        step: Some(Key::from_text(CREATE)),
+        author: person(),
+        ..connection("writes", ConnectionKind::Writes, "create", "charge")
+    });
     assert_eq!(
-        refusal(calling(Some(CHARGE_CALL)), &loaded),
-        "Can't connect createOrder to charge (calls): the call charge (line 4) resolves to charge, so Unfold already draws it. A calls connection is for a call Unfold can't follow; open the call's arrow instead"
-    );
-    assert_eq!(
-        refusal(
-            calling(Some("routes.ts#function:createOrder/expression_statement[1]")),
-            &loaded
-        ),
-        "Can't connect createOrder to charge (calls): its step (line 3) isn't a call. Give the call itself as the step, such as routes.ts#function:createOrder/expression_statement[1]/call[0]"
-    );
-    assert_eq!(
-        refusal(calling(None), &loaded),
-        "Can't connect createOrder to charge (calls): it has no step. A calls connection leaves from the call Unfold can't follow; give that call as its step"
+        refusal(writes, &loaded),
+        "Can't connect createOrder to charge (writes): its step (line 1) is a function, not a call. A connection leaves from a call: give the call's key as the step"
     );
 }
 

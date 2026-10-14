@@ -1,248 +1,347 @@
-//! The contract of one selected line: a resolved call or construction (`seq` 0).
+//! A call's contract, by its block key.
 //!
 //! - **Sends**: each argument in written order, with its written text (from the caller's
-//!   verified source), expansion, keyword, and the parameter it fills or why it fills none. Then
-//!   each parameter no argument filled, when the pairings prove which ones were filled (not when
-//!   an argument is expanded or its receiver binding is unknown) and the call's bound count is
-//!   proven: the first `bound` parameters, which the call binds itself (a Python method's `self`
-//!   reached through an instance), are left out. Without a proven bound count no unfilled
-//!   parameter is listed.
-//! - **Returns**: where the value lands (the variable's name, or the outer call's written callee),
-//!   whether it is awaited, and the callee's return type (a constructed class's name).
-//! - **Throws**: the callee's direct throws ([`direct_throws`]).
-//! - **Caught**: the call sits in the `body` of a `try` that has a `catch` handler, in the
-//!   caller's own function.
-//! - **Callee lines**: the lines of the callee's parameter and return-type slots (read from its
-//!   verified source; none when it changed) and each listed throw's line.
+//!   verified source), expansion, keyword, and the parameter it fills (with that parameter's
+//!   written type) or why it fills none. Then each parameter no argument filled, when the
+//!   pairings prove which ones were filled (no argument is expanded or of unknown binding) and
+//!   the call's bound count is proven: the first `bound` parameters, which the call binds itself
+//!   (a Python method's `self` reached through an instance), are left out.
+//! - **Returns**: the callee's written return type, or, for a construction, the class it
+//!   constructs; whether the call is awaited; and where the value lands: what it `binds`, the
+//!   exit whose value it is, the outer call it is an argument or receiver of, or nowhere.
+//! - **Raises**: every `raise` and `throw` exit that belongs to a project callee (a class's
+//!   `constructor`, for a class) and that the callee doesn't catch itself, with its value and, when the value is exactly a construction,
+//!   what it constructs.
+//! - **Caught**: for each raise, the first enclosing `except` or `catch` part of the caller
+//!   (inside the caller's own definition, around the `body` of its `try`) that catches it.
+//!
+//! **What a handler catches**, by written facts only: a TypeScript `catch`, or an `except`
+//! whose clause names nothing (no `types` link and no call), catches everything. Otherwise a
+//! handler catches a raise when one of its `types` links reaches the raised class, or a class it
+//! extends through project `extends` links, or (for a library or builtin class, such as
+//! `ValueError`) names the same module and the same written name. A raise whose class is
+//! unknown is caught only by a handler that catches everything.
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
+use rustc_hash::FxHashSet;
 use unfold_core::text::short_label;
-use unfold_core::vocab::{BlockKind, EdgeKind, PairingReason, Resolution, ResultBinding, Role, SlotName};
-use unfold_core::{Edge, Key, Pairing, Parameter};
+use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome, PairingReason};
+use unfold_core::{Key, Link, LinkTarget, ModuleLabel, Pairing, Parameter};
 
-use super::facts::{Facts, FileFacts};
-use super::text::{outcome_span, whole_text};
+use super::facts::Facts;
+use super::text::{type_text, whole_text};
 use super::{
-    CallContract, ContractParameter, ContractReturn, ContractSend, ContractThrow, SentArgument, TypeText,
-    UnpairedArgument,
+    CallContract, ContractParameter, ContractRaise, ContractReturn, ContractSend, Landing, SentArgument,
+    TypeText, UnpairedArgument,
 };
 use crate::error::Result;
-use crate::notes::pairing_text;
+use crate::notes::{LinkEnd, pairing_text};
+use crate::tree::FileTree;
 
-/// A resolved edge's callee, located in its file.
-struct Callee {
-    file: Rc<FileFacts>,
-    local: u32,
-    key: Key,
+/// How many `extends` links a catch follows up from a raised class.
+const MAX_BASE_DEPTH: usize = 8;
+
+/// What a raise raises, for matching it against handlers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Raised {
+    /// A project class.
+    Class(Key),
+    /// A library or builtin class: its outcome, module, and written name.
+    Outside(Outcome, ModuleLabel, Box<str>),
+    /// Nothing proven: a raise of a value, a bare `raise`, or an unknown construction.
+    Unknown,
 }
 
-impl Callee {
-    /// The callee of `edge`, when it resolved to a block that exists.
-    fn of(facts: &mut Facts<'_>, edge: &Edge) -> Result<Option<Self>> {
-        let Some(key) = edge
-            .target
-            .as_ref()
-            .filter(|_| edge.resolution == Resolution::Resolved)
-        else {
-            return Ok(None);
-        };
-        Ok(facts.locate(key.as_str())?.map(|(file, local)| Self {
-            file,
-            local,
-            key: key.clone(),
-        }))
-    }
-
-    /// The class an edge of `kind` to this callee constructs: a class target itself, or the
-    /// class of a constructor (or of the method a Python construction reaches, `__init__`).
-    fn constructed_class(&self, kind: EdgeKind) -> Option<u32> {
-        class_of(&self.file, self.local, kind)
-    }
-
-    /// What a call of kind `kind` gives back: the constructed class's name, else the written
-    /// return type.
-    fn output(&self, kind: EdgeKind) -> Option<TypeText> {
-        match self.constructed_class(kind) {
-            Some(class) => Some(class_name(&self.file, class)),
-            None => self
-                .file
-                .signature(self.local)
-                .and_then(|signature| signature.returns.as_ref())
-                .map(|returns| self.file.type_text(returns)),
-        }
-    }
-}
-
-/// The class block `local` of `file` stands for when reached by an edge of `kind`: itself for a
-/// class, its parent class for a constructor, or for a method reached by a construction.
-fn class_of(file: &FileFacts, local: u32, kind: EdgeKind) -> Option<u32> {
-    let block = file.block(local)?;
-    let parent_class = || {
-        file.parent(local).filter(|&parent| {
-            file.block(parent)
-                .is_some_and(|parent| parent.kind == BlockKind::Class)
-        })
-    };
-    match block.kind {
-        BlockKind::Class => Some(local),
-        BlockKind::Constructor => parent_class(),
-        BlockKind::Method if kind == EdgeKind::Constructs => parent_class(),
+/// The class a construction of `target` (a class, or a constructor or `__init__` method)
+/// builds, located: the target itself when it is a class, else its parent when that is a class.
+fn constructed(file: &FileTree, target: u32) -> Option<u32> {
+    match file.kind(target) {
+        NodeKind::Class => Some(target),
+        NodeKind::Function => file
+            .parent(target)
+            .filter(|&parent| file.kind(parent) == NodeKind::Class),
         _ => None,
     }
 }
 
-/// The name of class `class` as a `declared` type.
-fn class_name(file: &FileFacts, class: u32) -> TypeText {
-    let key = file.block(class).map(|block| block.key.clone());
-    whole_text(&file.label(class), |end| {
-        outcome_span(0, end, Resolution::Resolved, key.as_ref(), None, None)
+/// The class `link` (a construction's `calls` link) constructs, as a raise to match.
+fn raised(facts: &mut Facts<'_>, link: &Link) -> Result<Raised> {
+    Ok(match &link.to {
+        LinkTarget::Project(key) => match facts.locate(key.as_str())? {
+            Some((file, target)) => match constructed(&file, target) {
+                Some(class) => Raised::Class(file.key(class).clone()),
+                None => Raised::Unknown,
+            },
+            None => Raised::Unknown,
+        },
+        LinkTarget::Library(module) => Raised::Outside(Outcome::Library, module.clone(), link.text.clone()),
+        LinkTarget::Builtin(module) => Raised::Outside(Outcome::Builtin, module.clone(), link.text.clone()),
+        LinkTarget::Unknown(_) => Raised::Unknown,
     })
 }
 
-/// Whether block `local` of `file` sits in the `body` of a `try` that has a `catch` handler,
-/// below `scope` (an ancestor: the function whose throws or calls are asked about).
-pub(super) fn guarded(file: &FileFacts, local: u32, scope: u32) -> bool {
-    let mut child = local;
+/// Whether a handler's `types` link names `raised` exactly.
+fn names(link: &Link, raised: &Raised) -> bool {
+    match (&link.to, raised) {
+        (LinkTarget::Project(key), Raised::Class(class)) => key == class,
+        (LinkTarget::Library(module), Raised::Outside(Outcome::Library, raised, text))
+        | (LinkTarget::Builtin(module), Raised::Outside(Outcome::Builtin, raised, text)) => {
+            module == raised && link.text == *text
+        }
+        _ => false,
+    }
+}
+
+/// `raised` and what it extends through project `extends` links (each class's own `extends`
+/// links, which name its bases), breadth first, at most [`MAX_BASE_DEPTH`] levels up.
+fn lineage(facts: &mut Facts<'_>, raised: Raised) -> Result<Vec<Raised>> {
+    let mut lineage = vec![raised];
+    let mut seen: FxHashSet<Key> = FxHashSet::default();
+    let mut level = 0..lineage.len();
+    for _ in 0..MAX_BASE_DEPTH {
+        let mut next = Vec::new();
+        for index in level.clone() {
+            let Raised::Class(class) = &lineage[index] else {
+                continue;
+            };
+            if !seen.insert(class.clone()) {
+                continue;
+            }
+            let Some((file, id)) = facts.locate(class.as_str())? else {
+                continue;
+            };
+            for link in file
+                .links(id)
+                .iter()
+                .filter(|link| link.kind == LinkKind::Extends)
+            {
+                next.push(match &link.to {
+                    LinkTarget::Project(base) => Raised::Class(base.clone()),
+                    LinkTarget::Library(module) => {
+                        Raised::Outside(Outcome::Library, module.clone(), link.text.clone())
+                    }
+                    LinkTarget::Builtin(module) => {
+                        Raised::Outside(Outcome::Builtin, module.clone(), link.text.clone())
+                    }
+                    LinkTarget::Unknown(_) => continue,
+                });
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        let start = lineage.len();
+        lineage.extend(next);
+        level = start..lineage.len();
+    }
+    Ok(lineage)
+}
+
+/// Whether handler part `handler` of `file` catches a raise whose lineage is `lineage`.
+fn catches(file: &FileTree, handler: u32, lineage: &[Raised]) -> bool {
+    let types: Vec<&Link> = file
+        .links(handler)
+        .iter()
+        .filter(|link| link.kind == LinkKind::Types)
+        .collect();
+    let names_nothing = types.is_empty()
+        && !file
+            .children(handler)
+            .iter()
+            .any(|&child| file.node(child).role == Some(CallRole::Test));
+    match file.node(handler).form {
+        Form::Catch => true,
+        Form::Except if names_nothing => true,
+        Form::Except => types
+            .iter()
+            .any(|link| lineage.iter().any(|raised| names(link, raised))),
+        _ => false,
+    }
+}
+
+/// The first `except` or `catch` part that catches a raise of `lineage` at node `id` of
+/// `file`: walking up to `scope` (the definition the code belongs to), around the `body` of
+/// each enclosing `try`, handlers in written order.
+fn handler_for(file: &FileTree, id: u32, scope: u32, lineage: &[Raised]) -> Option<u32> {
+    let mut child = id;
     while let Some(parent) = file.parent(child) {
         if parent == scope {
             break;
         }
-        let in_body = file
-            .block(child)
-            .is_some_and(|block| block.role == Some(Role::Body));
-        let handled = file
-            .block(parent)
-            .is_some_and(|block| block.kind == BlockKind::Try)
-            && file.children(parent).any(|handler| {
-                file.block(handler)
-                    .is_some_and(|block| block.kind == BlockKind::Catch)
-            });
-        if in_body && handled {
-            return true;
+        let in_body = file.node(child).form == Form::Body && file.kind(parent) == NodeKind::Try;
+        if in_body
+            && let Some(&handler) = file
+                .children(parent)
+                .iter()
+                .find(|&&part| catches(file, part, lineage))
+        {
+            return Some(handler);
         }
         child = parent;
     }
-    false
+    None
 }
 
-/// The direct throws of function-like block `function` of `file`: every `throw` it owns (not
-/// one inside a nested callable) whose expression is exactly a construction with a `constructs`
-/// edge (`throw new X(…)`, `raise X(…)`), and which isn't in the body of a `try` with a `catch`
-/// handler in the same function. A resolved construction names its class (a constructor's
-/// parent); an external or unresolved one keeps its written text and its module or reason. Bare
-/// `throw error`, `raise`, and `raise Name` construct nothing and are not listed.
-pub(super) fn direct_throws(
-    facts: &mut Facts<'_>,
-    file: &FileFacts,
-    function: u32,
-) -> Result<Vec<ContractThrow>> {
-    if !file
-        .block(function)
-        .is_some_and(|block| block.kind.is_function_like())
-    {
-        return Ok(Vec::new());
-    }
-    let mut throws = Vec::new();
-    for local in file.descendants(function) {
-        let Some(block) = file.block(local) else {
-            continue;
+/// The value expression of exit `exit`, when it is exactly a call: its child flagged
+/// `exit_value`.
+fn exit_call(file: &FileTree, exit: u32) -> Option<u32> {
+    file.children(exit)
+        .iter()
+        .copied()
+        .find(|&child| file.kind(child) == NodeKind::Call && file.node(child).flags.contains(Flag::ExitValue))
+}
+
+/// A raise as it reads: what it constructs, and its value as written.
+struct Raise {
+    exit: u32,
+    lineage: Vec<Raised>,
+    ty: Option<TypeText>,
+    value: Option<String>,
+}
+
+/// The raises of function `function` of `callee` that it doesn't catch itself.
+fn raises(facts: &mut Facts<'_>, callee: &Rc<FileTree>, function: u32) -> Result<Vec<Raise>> {
+    let text = facts.text(callee);
+    let mut found = Vec::new();
+    let exits: Vec<u32> = callee
+        .owned(function)
+        .filter(|&id| matches!(callee.node(id).form, Form::Raise | Form::Throw))
+        .collect();
+    for exit in exits {
+        let construction = exit_call(callee, exit).and_then(|call| callee.calls_link(call));
+        let (raise, ty) = match construction {
+            Some(link) => {
+                let raise = raised(facts, link)?;
+                let ty = match &raise {
+                    Raised::Class(class) => {
+                        let label = match facts.locate(class.as_str())? {
+                            Some((file, id)) => file.label(id),
+                            None => class.to_string(),
+                        };
+                        whole_text(&label, &LinkTarget::Project(class.clone()))
+                    }
+                    Raised::Outside(..) | Raised::Unknown => whole_text(&link.text, &link.to),
+                };
+                (raise, Some(ty))
+            }
+            None => (Raised::Unknown, None),
         };
-        if block.kind != BlockKind::Throw || file.owner(local) != function || guarded(file, local, function) {
+        let lineage = lineage(facts, raise)?;
+        if handler_for(callee, exit, function, &lineage).is_some() {
             continue;
         }
-        let Some(expression) = file.slot(local, SlotName::Expression, None) else {
-            continue;
-        };
-        let construction = file.children(local).find(|&child| {
-            file.block(child).is_some_and(|child| {
-                matches!(child.kind, BlockKind::New | BlockKind::Call)
-                    && child.role == Some(Role::Expression)
-                    && child.range == expression.range
-            })
+        let value = callee.node(exit).value.and_then(|range| {
+            let text = text.as_ref()?;
+            text.slice(range).ok().map(|value| short_label(value).to_owned())
         });
-        let Some(edge) = construction
-            .and_then(|construction| file.edge(construction, 0))
-            .filter(|edge| edge.kind == EdgeKind::Constructs)
-        else {
-            continue;
-        };
-        let class = match Callee::of(facts, edge)? {
-            Some(callee) => class_of(&callee.file, callee.local, EdgeKind::Constructs)
-                .map(|class| class_name(&callee.file, class)),
-            None => None,
-        };
-        let ty = class.unwrap_or_else(|| {
-            whole_text(&edge.text, |end| {
-                outcome_span(0, end, edge.resolution, None, edge.reason, edge.module.as_ref())
-            })
-        });
-        throws.push(ContractThrow {
+        found.push(Raise {
+            exit,
+            lineage,
             ty,
-            line: block.lines.start,
+            value,
         });
     }
-    Ok(throws)
+    Ok(found)
+}
+
+/// The function whose raises a call of `target` meets: a function itself, or a class's
+/// `constructor`.
+fn raising(file: &FileTree, target: u32) -> Option<u32> {
+    match file.kind(target) {
+        NodeKind::Function => Some(target),
+        NodeKind::Class => file
+            .children(target)
+            .iter()
+            .copied()
+            .find(|&child| file.node(child).form == Form::Constructor),
+        _ => None,
+    }
 }
 
 /// A callee parameter as the contract shows it.
-fn contract_parameter(file: &FileFacts, parameter: &Parameter) -> ContractParameter {
+fn contract_parameter(file: &FileTree, parameter: &Parameter) -> ContractParameter {
     ContractParameter {
         index: parameter.index,
         name: parameter.name.as_deref().map(str::to_owned),
         kind: parameter.kind,
         optional: parameter.optional,
         default: parameter.default,
-        ty: parameter.ty.as_ref().map(|ty| file.type_text(ty)),
+        ty: parameter
+            .ty
+            .as_ref()
+            .map(|ty| type_text(ty, file.type_links_in(ty.range))),
     }
 }
 
-/// How many leading parameters the call at `call` binds itself, when linking proved it.
-fn bound_count(caller: &FileFacts, call: u32) -> Option<u32> {
-    caller.result(call)?.bound
+/// Where the value of call `call` of `file` lands.
+fn landing(file: &FileTree, call: u32) -> Landing {
+    let node = file.node(call);
+    if let Some(target) = &node.binds {
+        return Landing::Binds {
+            target: target.to_string(),
+        };
+    }
+    let Some(parent) = file.parent(call) else {
+        return Landing::Nowhere;
+    };
+    match file.kind(parent) {
+        NodeKind::Exit if node.flags.contains(Flag::ExitValue) => Landing::Exit {
+            exit: file.key(parent).clone(),
+            form: file.node(parent).form,
+        },
+        NodeKind::Call => {
+            let outer = file.key(parent).clone();
+            match file
+                .arguments(parent)
+                .iter()
+                .find(|argument| argument.range.contains(node.range))
+            {
+                Some(argument) => Landing::Argument {
+                    call: outer,
+                    index: argument.index,
+                },
+                None => Landing::Receiver { call: outer },
+            }
+        }
+        _ => Landing::Nowhere,
+    }
 }
 
-/// The contract of the arrow for edge `seq` of occurrence `source`. `None` when the occurrence
-/// doesn't exist or the edge isn't a resolved call or construction (`seq` 0) of a block that
-/// exists.
-pub fn call_contract(facts: &mut Facts<'_>, source: &str, seq: u32) -> Result<Option<CallContract>> {
-    let Some((caller, call)) = facts.locate(source)? else {
+/// The contract of the call with block key `key`. `None` when no call has that key.
+pub fn call_contract(facts: &mut Facts<'_>, key: &str) -> Result<Option<CallContract>> {
+    let Some((caller, call)) = facts.locate(key)? else {
         return Ok(None);
     };
-    let Some(edge) = caller
-        .edge(call, seq)
-        .filter(|edge| seq == 0 && matches!(edge.kind, EdgeKind::Calls | EdgeKind::Constructs))
-    else {
+    let Some(link) = caller.calls_link(call).cloned() else {
         return Ok(None);
     };
-    let Some(callee) = Callee::of(facts, edge)? else {
-        return Ok(None);
-    };
-    let Some(occurrence) = caller.block(call) else {
-        return Ok(None);
+    let node = caller.node(call).clone();
+    let callee = match &link.to {
+        LinkTarget::Project(target) => facts.locate(target.as_str())?,
+        _ => None,
     };
     let caller_text = facts.text(&caller);
 
     let arguments = caller.arguments(call);
+    let parameter = |index: u32| {
+        let (file, function) = callee.as_ref()?;
+        let parameter = file
+            .parameters(*function)
+            .iter()
+            .find(|parameter| parameter.index == index)?;
+        Some(contract_parameter(file, parameter))
+    };
     let mut sends: Vec<ContractSend> = arguments
         .iter()
         .map(|argument| {
-            let text = caller_text.as_ref().and_then(|snapshot| {
-                let slot = caller.slot(call, SlotName::Argument, Some(argument.index))?;
-                snapshot
-                    .text()
-                    .get(slot.range.as_usize())
-                    .map(|text| short_label(text).to_owned())
+            let text = caller_text.as_ref().and_then(|source| {
+                let text = source.slice(argument.range).ok()?;
+                Some(short_label(text).to_owned())
             });
             let (parameter, unpaired) = match argument.pairing {
-                Some(Pairing::Parameter(index)) => (
-                    callee
-                        .file
-                        .parameter(callee.local, index)
-                        .map(|parameter| contract_parameter(&callee.file, parameter)),
-                    None,
-                ),
+                Some(Pairing::Parameter(index)) => (parameter(index), None),
                 Some(Pairing::Unpaired(reason)) => (
                     None,
                     Some(UnpairedArgument {
@@ -272,7 +371,10 @@ pub fn call_contract(facts: &mut Facts<'_>, source: &str, seq: u32) -> Result<Op
             Some(Pairing::Parameter(_) | Pairing::Unpaired(PairingReason::NoParameter))
         )
     });
-    if known && let Some(bound) = bound_count(&caller, call) {
+    if known
+        && let (Some(bound), Some((file, function))) = (link.bound, callee.as_ref())
+        && file.kind(*function) == NodeKind::Function
+    {
         let filled: BTreeSet<u32> = arguments
             .iter()
             .filter_map(|argument| match argument.pairing {
@@ -281,9 +383,7 @@ pub fn call_contract(facts: &mut Facts<'_>, source: &str, seq: u32) -> Result<Op
             })
             .collect();
         sends.extend(
-            callee
-                .file
-                .parameters(callee.local)
+            file.parameters(*function)
                 .iter()
                 .filter(|parameter| {
                     parameter.kind.takes_argument()
@@ -292,50 +392,57 @@ pub fn call_contract(facts: &mut Facts<'_>, source: &str, seq: u32) -> Result<Op
                 })
                 .map(|parameter| ContractSend {
                     argument: None,
-                    parameter: Some(contract_parameter(&callee.file, parameter)),
+                    parameter: Some(contract_parameter(file, parameter)),
                     unpaired: None,
                 }),
         );
     }
 
-    let result = caller.result(call);
-    let binding = result.map_or(ResultBinding::Other, |result| result.binding);
-    let text = result.and_then(|result| {
-        let target = result.target?;
-        match binding {
-            ResultBinding::Variable => caller.block(target)?.name.as_deref().map(str::to_owned),
-            ResultBinding::Argument => caller.edge(target, 0).map(|edge| edge.text.to_string()),
-            ResultBinding::Return | ResultBinding::Discard | ResultBinding::Other => None,
+    let ty = callee.as_ref().and_then(|(file, target)| {
+        let class = (node.form == Form::New || file.kind(*target) == NodeKind::Class)
+            .then(|| constructed(file, *target))
+            .flatten();
+        match class {
+            Some(class) => Some(whole_text(
+                &file.label(class),
+                &LinkTarget::Project(file.key(class).clone()),
+            )),
+            None => file
+                .signature(*target)
+                .and_then(|signature| signature.returns.as_ref())
+                .map(|returns| type_text(returns, file.type_links_in(returns.range))),
         }
     });
     let returns = ContractReturn {
-        binding,
-        text,
-        awaited: result.is_some_and(|result| result.awaited),
-        ty: callee.output(edge.kind),
+        ty,
+        awaited: node.flags.contains(Flag::Awaited),
+        lands: landing(&caller, call),
     };
 
-    let throws = direct_throws(facts, &callee.file, callee.local)?;
-    let mut lines: BTreeSet<u32> = throws.iter().map(|thrown| thrown.line).collect();
-    if let Some(snapshot) = facts.text(&callee.file) {
-        let index = snapshot.line_index();
-        for slot in callee.file.slots(callee.local) {
-            if matches!(slot.slot, SlotName::Parameter | SlotName::ReturnType) {
-                let span = index.span(slot.range);
-                lines.extend(span.start..=span.end);
-            }
+    let mut contract_raises = Vec::new();
+    if let Some((file, target)) = &callee
+        && let Some(function) = raising(file, *target)
+    {
+        let scope = caller.owner(call).unwrap_or(0);
+        for raise in raises(facts, file, function)? {
+            contract_raises.push(ContractRaise {
+                exit: file.key(raise.exit).clone(),
+                line: file.node(raise.exit).lines.start,
+                ty: raise.ty,
+                value: raise.value,
+                caught_by: handler_for(&caller, call, scope, &raise.lineage)
+                    .map(|part| caller.key(part).clone()),
+            });
         }
     }
 
     Ok(Some(CallContract {
-        source: occurrence.key.clone(),
-        seq,
-        target: callee.key.clone(),
-        caller_line: occurrence.lines.start,
+        call: node.key.clone(),
+        line: node.lines.start,
+        text: link.text.clone(),
+        callee: LinkEnd::of(&link.to),
         sends,
         returns,
-        throws,
-        caught: guarded(&caller, call, caller.owner(call)),
-        callee_lines: lines.into_iter().collect(),
+        raises: contract_raises,
     }))
 }

@@ -1,0 +1,779 @@
+=== src/cli.ts#
+( src/cli.ts )   key=src/cli.ts#
+  imports · ./jobs/import-orders.ts, ./jobs/retry-failed.ts, ./lib/logger.ts
+  ▸ main · into main().catch(…)   key=src/cli.ts#/call:main().catch/call:main
+  □ main().catch   key=src/cli.ts#/call:main().catch
+      ↳ callback (error: unknown) =>   key=src/cli.ts#/call:main().catch/callback[0]
+( End )
+
+=== src/cli.ts#main
+( main )   key=src/cli.ts#main
+  ⋯ 1 line
+  SWITCH switch (command)   key=src/cli.ts#main/switch[0]
+  CASE "import"   key=src/cli.ts#main/switch[0]/case[0]
+      ▸ importOrders · AWAIT   key=src/cli.ts#main/switch[0]/case[0]/call:importOrders
+  CASE "report"   key=src/cli.ts#main/switch[0]/case[1]
+      · import ? → { printReport }   key=src/cli.ts#main/switch[0]/case[1]/call:import
+      ▸ printReport   key=src/cli.ts#main/switch[0]/case[1]/call:printReport
+  CASE "replay" → falls into the next case   key=src/cli.ts#main/switch[0]/case[2]
+  CASE "retry"   key=src/cli.ts#main/switch[0]/case[3]
+      ▸ retryFailed · AWAIT   key=src/cli.ts#main/switch[0]/case[3]/call:retryFailed
+  CASE undefined → falls into the next case   key=src/cli.ts#main/switch[0]/case[4]
+  CASE "--help"   key=src/cli.ts#main/switch[0]/case[5]
+      ▸ logger.info   key=src/cli.ts#main/switch[0]/case[5]/call:logger.info
+  DEFAULT   key=src/cli.ts#main/switch[0]/default
+      THROW Error → the caller   key=src/cli.ts#main/switch[0]/default/throw[0]
+( End )
+
+=== src/cli.ts#/call:main().catch/callback[0]
+( callback to main().catch )   key=src/cli.ts#/call:main().catch/callback[0]
+  ▸ logger.error   key=src/cli.ts#/call:main().catch/callback[0]/call:logger.error
+  ⋯ 1 line
+( End )
+
+=== src/config.ts#
+( src/config.ts )   key=src/config.ts#
+  · Number → PORT, Number   2 calls   key=src/config.ts#/call:Number src/config.ts#/call:Number[1]
+( End )
+
+=== src/db/connection.ts#
+( src/db/connection.ts )   key=src/db/connection.ts#
+  imports · ./repository.ts
+  ▸ OrderRepository → repository · new   key=src/db/connection.ts#/call:OrderRepository
+( End )
+
+=== src/db/connection.ts#connect
+( connect )   key=src/db/connection.ts#connect
+  RETURN repository → End   key=src/db/connection.ts#connect/return[0]
+( End )
+
+=== src/db/index.ts#
+( src/db/index.ts )   key=src/db/index.ts#
+  imports · ./repository.ts, ./connection.ts
+( End )
+
+=== src/db/repository.ts#
+( src/db/repository.ts )   key=src/db/repository.ts#
+( End )
+
+=== src/db/repository.ts#OrderRepository
+( OrderRepository )   key=src/db/repository.ts#OrderRepository
+  · Map → orders   key=src/db/repository.ts#OrderRepository/call:Map
+( End )
+
+=== src/db/repository.ts#OrderRepository.insert
+( insert )   key=src/db/repository.ts#OrderRepository.insert
+  IF this.orders.has(order.id)   key=src/db/repository.ts#OrderRepository.insert/if[0] src/db/repository.ts#OrderRepository.insert/if[0]/then
+      THROW Error → the caller   key=src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0]
+  · this.orders.set   key=src/db/repository.ts#OrderRepository.insert/call:this.orders.set
+  RETURN order → End   key=src/db/repository.ts#OrderRepository.insert/return[0]
+( End )
+
+=== src/db/repository.ts#OrderRepository.find
+( find )   key=src/db/repository.ts#OrderRepository.find
+  RETURN this.orders.get → End   key=src/db/repository.ts#OrderRepository.find/return[0]
+( End )
+
+=== src/db/repository.ts#OrderRepository.list
+( list )   key=src/db/repository.ts#OrderRepository.list
+  RETURN Array.from → End   key=src/db/repository.ts#OrderRepository.list/return[0]
+( End )
+
+=== src/db/repository.ts#OrderRepository.remove
+( remove )   key=src/db/repository.ts#OrderRepository.remove
+  RETURN this.orders.delete → End   key=src/db/repository.ts#OrderRepository.remove/return[0]
+( End )
+
+=== src/db/repository.ts#OrderRepository.cancel
+( cancel )   key=src/db/repository.ts#OrderRepository.cancel
+  ▸ this.find → order   key=src/db/repository.ts#OrderRepository.cancel/call:this.find
+  ⋯ 1 line · if
+  RETURN order → End   key=src/db/repository.ts#OrderRepository.cancel/return[0]
+( End )
+
+=== src/jobs/cleanup.ts#
+( src/jobs/cleanup.ts )   key=src/jobs/cleanup.ts#
+  imports · ../services/order-service.ts, ../lib/logger.ts
+( End )
+
+=== src/jobs/cleanup.ts#cleanupExpiredOrders
+( cleanupExpiredOrders )   key=src/jobs/cleanup.ts#cleanupExpiredOrders
+  ▸ orderService.list → orders   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:orderService.list
+  · Date.now   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:Date.now
+  ⋯ 2 lines
+  LOOP for (let index = 0; index < orders.length; index++)   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body
+      ⋯ 1 line
+      · Date.parse → createdAt   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/call:Date.parse
+      IF order.status === "pending" && createdAt < expiresBefore   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0]/then
+          ▸ orderService.cancel   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0]/then/call:orderService.cancel
+      IF order.status !== "paid" && createdAt < purgeBefore   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1]/then
+          · expired.push   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1]/then/call:expired.push
+  ⋯ 1 line
+  IF expired.length > 0   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then
+      LOOP while (expired.length > 0)   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body
+          · expired.pop → id   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/call:expired.pop
+          IF orderService.remove(id) · ▸ orderService.remove   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then
+  ▸ logger.info   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:logger.info
+( End )
+
+=== src/jobs/import-orders.ts#
+( src/jobs/import-orders.ts )   key=src/jobs/import-orders.ts#
+  imports · node:fs/promises, ../services/order-service.ts, ../lib/validate.ts, ../lib/logger.ts
+( End )
+
+=== src/jobs/import-orders.ts#importOrders
+( importOrders )   key=src/jobs/import-orders.ts#importOrders
+  · JSON.parse → input + readFile   key=src/jobs/import-orders.ts#importOrders/call:JSON.parse
+  IF !Array.isArray(input)   key=src/jobs/import-orders.ts#importOrders/if[0] src/jobs/import-orders.ts#importOrders/if[0]/then
+      THROW Error → the caller   key=src/jobs/import-orders.ts#importOrders/if[0]/then/throw[0]
+  ⋯ 2 lines
+  LOOP for (const [index, value] of input.entries())   key=src/jobs/import-orders.ts#importOrders/for[0] src/jobs/import-orders.ts#importOrders/for[0]/body
+      TRY   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0] src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body
+          ▸ validateOrder → draft   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body/call:validateOrder
+          ▸ orderService.place   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body/call:orderService.place
+          ⋯ 1 line
+      ON ERROR → catch (error)   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch
+          ▸ logger.error   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch/call:logger.error
+          · failures.push   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch/call:failures.push
+  ▸ logger.info   key=src/jobs/import-orders.ts#importOrders/call:logger.info
+  IF failures.length > 0   key=src/jobs/import-orders.ts#importOrders/if[1] src/jobs/import-orders.ts#importOrders/if[1]/then
+      THROW AggregateError → the caller   key=src/jobs/import-orders.ts#importOrders/if[1]/then/throw[0]
+( End )
+
+=== src/jobs/process-order.ts#
+( src/jobs/process-order.ts )   key=src/jobs/process-order.ts#
+  imports · ../lib/validate.ts, ../queues/queues.ts, ../services/order-service.ts
+( End )
+
+=== src/jobs/process-order.ts#processOrder
+( processOrder )   key=src/jobs/process-order.ts#processOrder
+  ▸ validateOrder → draft   key=src/jobs/process-order.ts#processOrder/call:validateOrder
+  ▸ orderService.place → order   key=src/jobs/process-order.ts#processOrder/call:orderService.place
+  · emailQueue.add   key=src/jobs/process-order.ts#processOrder/call:emailQueue.add
+( End )
+
+=== src/jobs/report.ts#
+( src/jobs/report.ts )   key=src/jobs/report.ts#
+  imports · ../services/order-service.ts, ../lib/logger.ts
+( End )
+
+=== src/jobs/report.ts#printReport
+( printReport )   key=src/jobs/report.ts#printReport
+  ▸ orderService.list · into orderService.list().map(…)   key=src/jobs/report.ts#printReport/call:orderService.list().map/call:orderService.list
+  □ orderService.list().map → orders   key=src/jobs/report.ts#printReport/call:orderService.list().map
+      ↳ callback ({ id, customerId, status, createdAt }) =>   key=src/jobs/report.ts#printReport/call:orderService.list().map/callback[0]
+  ▸ logger.info   key=src/jobs/report.ts#printReport/call:logger.info
+( End )
+
+=== src/jobs/report.ts#printReport/call:orderService.list().map/callback[0]
+( callback to orderService.list().map )   key=src/jobs/report.ts#printReport/call:orderService.list().map/callback[0]
+  ⋯ 1 line
+( End )
+
+=== src/jobs/report.ts#reportMetrics
+( reportMetrics )   key=src/jobs/report.ts#reportMetrics
+  ▸ orderService.list → orders   key=src/jobs/report.ts#reportMetrics/call:orderService.list
+  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter
+      ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
+  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]
+      ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
+  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]
+      ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
+  ▸ logger.info   key=src/jobs/report.ts#reportMetrics/call:logger.info
+( End )
+
+=== src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
+( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
+( End )
+
+=== src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
+( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
+( End )
+
+=== src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
+( callback to orders.filter )   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
+( End )
+
+=== src/jobs/retry-failed.ts#
+( src/jobs/retry-failed.ts )   key=src/jobs/retry-failed.ts#
+  imports · ../lib/retry.ts, ./send-email.ts
+( End )
+
+=== src/jobs/retry-failed.ts#retryFailed
+( retryFailed )   key=src/jobs/retry-failed.ts#retryFailed
+  ▸ withRetry · AWAIT   key=src/jobs/retry-failed.ts#retryFailed/call:withRetry
+( End )
+
+=== src/jobs/send-email.ts#
+( src/jobs/send-email.ts )   key=src/jobs/send-email.ts#
+  imports · ../lib/logger.ts
+  · Set → outbox   key=src/jobs/send-email.ts#/call:Set
+( End )
+
+=== src/jobs/send-email.ts#sendEmail
+( sendEmail )   key=src/jobs/send-email.ts#sendEmail
+  IF !payload.to.includes("@")   key=src/jobs/send-email.ts#sendEmail/if[0] src/jobs/send-email.ts#sendEmail/if[0]/then
+      THROW Error → the caller   key=src/jobs/send-email.ts#sendEmail/if[0]/then/throw[0]
+  · outbox.add   key=src/jobs/send-email.ts#sendEmail/call:outbox.add
+  □ Promise · AWAIT · new   key=src/jobs/send-email.ts#sendEmail/call:Promise
+      ↳ callback (resolve) =>   key=src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
+  ▸ logger.info   key=src/jobs/send-email.ts#sendEmail/call:logger.info
+  · outbox.delete   key=src/jobs/send-email.ts#sendEmail/call:outbox.delete
+( End )
+
+=== src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
+( callback to Promise )   key=src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
+  · setTimeout   key=src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]/call:setTimeout
+( End )
+
+=== src/jobs/send-email.ts#flushOutbox
+( flushOutbox )   key=src/jobs/send-email.ts#flushOutbox
+  LOOP for (const payload of [...outbox])   key=src/jobs/send-email.ts#flushOutbox/for[0] src/jobs/send-email.ts#flushOutbox/for[0]/body
+      ▸ sendEmail · AWAIT   key=src/jobs/send-email.ts#flushOutbox/for[0]/body/call:sendEmail
+( End )
+
+=== src/lib/async-handler.ts#
+( src/lib/async-handler.ts )   key=src/lib/async-handler.ts#
+( End )
+
+=== src/lib/async-handler.ts#asyncHandler
+( asyncHandler )   key=src/lib/async-handler.ts#asyncHandler
+  RETURN (req, res, next) => { void handler(req, res, next).catch(next); } → End   key=src/lib/async-handler.ts#asyncHandler/return[0]
+( End )
+
+=== src/lib/async-handler.ts#asyncHandler/return[0]/lambda[0]
+( anonymous function )   key=src/lib/async-handler.ts#asyncHandler/return[0]/lambda[0]
+  · handler().catch ?   key=src/lib/async-handler.ts#asyncHandler/return[0]/lambda[0]/call:handler().catch
+( End )
+
+=== src/lib/calendar.ts#
+( src/lib/calendar.ts )   key=src/lib/calendar.ts#
+  imports · ./logger.ts
+( End )
+
+=== src/lib/calendar.ts#schedule
+( schedule )   key=src/lib/calendar.ts#schedule
+  □ setImmediate   key=src/lib/calendar.ts#schedule/call:setImmediate
+      ↳ callback () =>   key=src/lib/calendar.ts#schedule/call:setImmediate/callback[0]
+( End )
+
+=== src/lib/calendar.ts#schedule/call:setImmediate/callback[0]
+( callback to setImmediate )   key=src/lib/calendar.ts#schedule/call:setImmediate/callback[0]
+  ▸ logger.info   key=src/lib/calendar.ts#schedule/call:setImmediate/callback[0]/call:logger.info
+  · task ?   key=src/lib/calendar.ts#schedule/call:setImmediate/callback[0]/call:task
+( End )
+
+=== src/lib/logger.ts#
+( src/lib/logger.ts )   key=src/lib/logger.ts#
+( End )
+
+=== src/lib/logger.ts#setLogSink
+( setLogSink )   key=src/lib/logger.ts#setLogSink
+  ⋯ 1 line
+( End )
+
+=== src/lib/logger.ts#logger.info
+( logger.info )   key=src/lib/logger.ts#logger.info
+  · JSON.stringify → line, sink ?   2 calls, 1 unknown   key=src/lib/logger.ts#logger.info/call:JSON.stringify src/lib/logger.ts#logger.info/call:sink
+( End )
+
+=== src/lib/logger.ts#logger.error
+( logger.error )   key=src/lib/logger.ts#logger.error
+  ⋯ 1 line
+  · JSON.stringify → line, sink ?   2 calls, 1 unknown   key=src/lib/logger.ts#logger.error/call:JSON.stringify src/lib/logger.ts#logger.error/call:sink
+( End )
+
+=== src/lib/pool.ts#
+( src/lib/pool.ts )   key=src/lib/pool.ts#
+  imports · ./logger.ts
+( End )
+
+=== src/lib/pool.ts#Worker
+( Worker )   key=src/lib/pool.ts#Worker
+( End )
+
+=== src/lib/pool.ts#Worker.constructor
+( constructor )   key=src/lib/pool.ts#Worker.constructor
+( End )
+
+=== src/lib/pool.ts#Worker.run
+( run )   key=src/lib/pool.ts#Worker.run
+  ▸ logger.info   key=src/lib/pool.ts#Worker.run/call:logger.info
+  · this.task ?   key=src/lib/pool.ts#Worker.run/call:this.task
+( End )
+
+=== src/lib/retry.ts#
+( src/lib/retry.ts )   key=src/lib/retry.ts#
+  imports · ./logger.ts
+( End )
+
+=== src/lib/retry.ts#withRetry
+( withRetry )   key=src/lib/retry.ts#withRetry
+  IF !Number.isInteger(attempts) || attempts < 1   key=src/lib/retry.ts#withRetry/if[0] src/lib/retry.ts#withRetry/if[0]/then
+      THROW RangeError → the caller   key=src/lib/retry.ts#withRetry/if[0]/then/throw[0]
+  ⋯ 1 line
+  LOOP while (attempt < attempts)   key=src/lib/retry.ts#withRetry/while[0] src/lib/retry.ts#withRetry/while[0]/body
+      TRY   key=src/lib/retry.ts#withRetry/while[0]/body/try[0] src/lib/retry.ts#withRetry/while[0]/body/try[0]/body
+          RETURN fn ? → finally → End   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/body/return[0]
+      ON ERROR → catch (error)   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch
+          IF attempt + 1 === attempts   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0] src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0]/then
+              THROW error → finally → the caller   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0]/then/throw[0]
+          ▸ logger.error   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/call:logger.error
+      FINALLY   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/finally
+          ⋯ 1 line
+  THROW Error → the caller   key=src/lib/retry.ts#withRetry/throw[0]
+( End )
+
+=== src/lib/slack.ts#
+( src/lib/slack.ts )   key=src/lib/slack.ts#
+  imports · ./logger.ts
+( End )
+
+=== src/lib/slack.ts#slack.post
+( slack.post )   key=src/lib/slack.ts#slack.post
+  ▸ logger.info   key=src/lib/slack.ts#slack.post/call:logger.info
+( End )
+
+=== src/lib/validate.ts#
+( src/lib/validate.ts )   key=src/lib/validate.ts#
+( End )
+
+=== src/lib/validate.ts#validateOrder
+( validateOrder )   key=src/lib/validate.ts#validateOrder
+  IF input === null || typeof input !== "object"   key=src/lib/validate.ts#validateOrder/if[0] src/lib/validate.ts#validateOrder/if[0]/then
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[0]/then/throw[0]
+  ⋯ 1 line
+  IF typeof customerId !== "string" || customerId.trim() === ""   key=src/lib/validate.ts#validateOrder/if[1] src/lib/validate.ts#validateOrder/if[1]/then
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/then/throw[0]
+  ELIF typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]/throw[0]
+  ELIF !Array.isArray(items) || items.length === 0   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]/throw[0]
+  □ items.map ? → validatedItems   key=src/lib/validate.ts#validateOrder/call:items.map
+      ↳ callback (item: unknown): OrderItem =>   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]
+  · customerId.trim ?, email.trim ?   2 calls, 2 unknown   key=src/lib/validate.ts#validateOrder/return[0]/call:customerId.trim src/lib/validate.ts#validateOrder/return[0]/call:email.trim
+  RETURN { customerId: customerId.trim(), email: email.trim(), items: validatedItems } → End   key=src/lib/validate.ts#validateOrder/return[0]
+( End )
+
+=== src/lib/validate.ts#validateOrder/call:items.map/callback[0]
+( callback to items.map )   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]
+  IF item === null || typeof item !== "object"   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then/throw[0]
+  ⋯ 1 line
+  IF typeof sku !== "string" || sku.trim() === ""   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/throw[0]
+  ELIF typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]/throw[0]
+  ELIF typeof price !== "number" || !Number.isFinite(price) || price <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]/throw[0]
+  · sku.trim ?   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]/call:sku.trim
+  RETURN { sku: sku.trim(), quantity, price } → End   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]
+( End )
+
+=== src/queues/email-worker.ts#
+( src/queues/email-worker.ts )   key=src/queues/email-worker.ts#
+  imports · bullmq, ../config.ts, ../jobs/send-email.ts, ../lib/logger.ts, ../lib/retry.ts
+  □ Worker → emailWorker · new   key=src/queues/email-worker.ts#/call:Worker("emails")
+      ↳ callback async (job) =>   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]
+  □ emailWorker.on   key=src/queues/email-worker.ts#/call:emailWorker.on("error")
+      ↳ callback (error) =>   key=src/queues/email-worker.ts#/call:emailWorker.on("error")/callback[0]
+( End )
+
+=== src/queues/email-worker.ts#/call:Worker("emails")/callback[0]
+( callback to Worker )   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]
+  ▸ withRetry · AWAIT   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]/call:withRetry
+      ↳ callback () =>   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]/call:withRetry/callback[0]
+  ⋯ 1 line
+( End )
+
+=== src/queues/email-worker.ts#/call:Worker("emails")/callback[0]/call:withRetry/callback[0]
+( callback to withRetry )   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]/call:withRetry/callback[0]
+  ▸ sendEmail   key=src/queues/email-worker.ts#/call:Worker("emails")/callback[0]/call:withRetry/callback[0]/call:sendEmail
+( End )
+
+=== src/queues/email-worker.ts#/call:emailWorker.on("error")/callback[0]
+( callback to emailWorker.on )   key=src/queues/email-worker.ts#/call:emailWorker.on("error")/callback[0]
+  ▸ logger.error   key=src/queues/email-worker.ts#/call:emailWorker.on("error")/callback[0]/call:logger.error
+( End )
+
+=== src/queues/orders-worker.ts#
+( src/queues/orders-worker.ts )   key=src/queues/orders-worker.ts#
+  imports · bullmq, ../config.ts, ../jobs/process-order.ts, ../lib/logger.ts
+  · Worker → ordersWorker   key=src/queues/orders-worker.ts#/call:Worker
+  □ ordersWorker.on   key=src/queues/orders-worker.ts#/call:ordersWorker.on("error")
+      ↳ callback (error) =>   key=src/queues/orders-worker.ts#/call:ordersWorker.on("error")/callback[0]
+( End )
+
+=== src/queues/orders-worker.ts#/call:ordersWorker.on("error")/callback[0]
+( callback to ordersWorker.on )   key=src/queues/orders-worker.ts#/call:ordersWorker.on("error")/callback[0]
+  ▸ logger.error   key=src/queues/orders-worker.ts#/call:ordersWorker.on("error")/callback[0]/call:logger.error
+( End )
+
+=== src/queues/queues.ts#
+( src/queues/queues.ts )   key=src/queues/queues.ts#
+  imports · bullmq, ../config.ts
+  · Queue → ordersQueue, Queue → emailQueue   2 calls   key=src/queues/queues.ts#/call:Queue src/queues/queues.ts#/call:Queue[1]
+( End )
+
+=== src/queues/report-worker.ts#
+( src/queues/report-worker.ts )   key=src/queues/report-worker.ts#
+  imports · bullmq, node:url, ../config.ts, ../lib/logger.ts
+  · Worker → reportWorker + URL   key=src/queues/report-worker.ts#/call:Worker
+  □ reportWorker.on   key=src/queues/report-worker.ts#/call:reportWorker.on("error")
+      ↳ callback (error) =>   key=src/queues/report-worker.ts#/call:reportWorker.on("error")/callback[0]
+( End )
+
+=== src/queues/report-worker.ts#/call:reportWorker.on("error")/callback[0]
+( callback to reportWorker.on )   key=src/queues/report-worker.ts#/call:reportWorker.on("error")/callback[0]
+  ▸ logger.error   key=src/queues/report-worker.ts#/call:reportWorker.on("error")/callback[0]/call:logger.error
+( End )
+
+=== src/routes/admin.ts#
+( src/routes/admin.ts )   key=src/routes/admin.ts#
+  imports · ../services/order-service.ts
+( End )
+
+=== src/routes/admin.ts#adminStats
+( adminStats )   key=src/routes/admin.ts#adminStats
+  ▸ orderService.list → orders   key=src/routes/admin.ts#adminStats/call:orderService.list
+  □ orders.filter ? · into res.json(…)   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter
+      ↳ callback order =>   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
+  · res.json   key=src/routes/admin.ts#adminStats/call:res.json
+( End )
+
+=== src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
+( callback to orders.filter )   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
+( End )
+
+=== src/routes/admin.ts#registerAdminRoutes
+( registerAdminRoutes )   key=src/routes/admin.ts#registerAdminRoutes
+  · app.get   key=src/routes/admin.ts#registerAdminRoutes/call:app.get
+( End )
+
+=== src/routes/health.ts#
+( src/routes/health.ts )   key=src/routes/health.ts#
+  imports · express
+  · Router → healthRouter   key=src/routes/health.ts#/call:Router
+  □ healthRouter.get   key=src/routes/health.ts#/call:healthRouter.get("/live")
+      ↳ callback (_req, res) =>   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]
+( End )
+
+=== src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]
+( callback to healthRouter.get )   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]
+  · res.json ? + process.uptime   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]/call:res.json
+( End )
+
+=== src/routes/middleware.ts#
+( src/routes/middleware.ts )   key=src/routes/middleware.ts#
+  imports · ../lib/validate.ts
+( End )
+
+=== src/routes/middleware.ts#requireUser
+( requireUser )   key=src/routes/middleware.ts#requireUser
+  IF !req.header("x-user-id")   key=src/routes/middleware.ts#requireUser/if[0] src/routes/middleware.ts#requireUser/if[0]/then
+      · res.status().json ?   key=src/routes/middleware.ts#requireUser/if[0]/then/call:res.status().json
+      RETURN → End   key=src/routes/middleware.ts#requireUser/if[0]/then/return[0]
+  · next ?   key=src/routes/middleware.ts#requireUser/call:next
+( End )
+
+=== src/routes/middleware.ts#validateBody
+( validateBody )   key=src/routes/middleware.ts#validateBody
+  TRY   key=src/routes/middleware.ts#validateBody/try[0] src/routes/middleware.ts#validateBody/try[0]/body
+      ▸ validateOrder → req.body   key=src/routes/middleware.ts#validateBody/try[0]/body/call:validateOrder
+  ON ERROR → catch (error)   key=src/routes/middleware.ts#validateBody/try[0]/catch
+      ⋯ 1 line
+      · res.status().json ?   key=src/routes/middleware.ts#validateBody/try[0]/catch/call:res.status().json
+      RETURN → End   key=src/routes/middleware.ts#validateBody/try[0]/catch/return[0]
+  · next ?   key=src/routes/middleware.ts#validateBody/call:next
+( End )
+
+=== src/routes/orders.ts#
+( src/routes/orders.ts )   key=src/routes/orders.ts#
+  imports · express, ../lib/async-handler.ts, ../lib/slack.ts, ../queues/queues.ts, ../services/order-service.ts, ./middleware.ts
+  · express.Router → ordersRouter, ordersRouter.get   2 calls   key=src/routes/orders.ts#/call:express.Router src/routes/orders.ts#/call:ordersRouter.get
+  ▸ asyncHandler · into ordersRouter.get(…)   key=src/routes/orders.ts#/call:ordersRouter.get[1]/call:asyncHandler
+  · ordersRouter.get, ordersRouter.post, ordersRouter.delete   3 calls   key=src/routes/orders.ts#/call:ordersRouter.get[1] src/routes/orders.ts#/call:ordersRouter.post src/routes/orders.ts#/call:ordersRouter.delete
+( End )
+
+=== src/routes/orders.ts#listOrders
+( listOrders )   key=src/routes/orders.ts#listOrders
+  ▸ orderService.list · into res.json(…)   key=src/routes/orders.ts#listOrders/call:res.json/call:orderService.list
+  · res.json   key=src/routes/orders.ts#listOrders/call:res.json
+( End )
+
+=== src/routes/orders.ts#getOrder
+( getOrder )   key=src/routes/orders.ts#getOrder
+  ⋯ 1 line
+  TERNARY → order   key=src/routes/orders.ts#getOrder/ternary[0]
+      IF typeof id === "string"   key=src/routes/orders.ts#getOrder/ternary[0]/then
+          ▸ orderService.get   key=src/routes/orders.ts#getOrder/ternary[0]/then/call:orderService.get
+      ELSE   key=src/routes/orders.ts#getOrder/ternary[0]/else
+  IF !order   key=src/routes/orders.ts#getOrder/if[0] src/routes/orders.ts#getOrder/if[0]/then
+      · res.status().json ?   key=src/routes/orders.ts#getOrder/if[0]/then/call:res.status().json
+      RETURN → End   key=src/routes/orders.ts#getOrder/if[0]/then/return[0]
+  · res.json   key=src/routes/orders.ts#getOrder/call:res.json
+( End )
+
+=== src/routes/orders.ts#createOrder
+( createOrder )   key=src/routes/orders.ts#createOrder
+  ⋯ 1 line
+  IF req.header("prefer") === "respond-async"   key=src/routes/orders.ts#createOrder/if[0] src/routes/orders.ts#createOrder/if[0]/then
+      · ordersQueue.add → job, res.status().json ?   2 calls, 1 unknown   key=src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json
+      RETURN → End   key=src/routes/orders.ts#createOrder/if[0]/then/return[0]
+  ▸ orderService.place → order   key=src/routes/orders.ts#createOrder/call:orderService.place
+  ▸ slack.post   key=src/routes/orders.ts#createOrder/call:slack.post
+  · res.status().json ?   key=src/routes/orders.ts#createOrder/call:res.status().json
+( End )
+
+=== src/routes/orders.ts#cancelOrder
+( cancelOrder )   key=src/routes/orders.ts#cancelOrder
+  ⋯ 1 line
+  TERNARY → order   key=src/routes/orders.ts#cancelOrder/ternary[0]
+      IF typeof id === "string"   key=src/routes/orders.ts#cancelOrder/ternary[0]/then
+          ▸ orderService.cancel   key=src/routes/orders.ts#cancelOrder/ternary[0]/then/call:orderService.cancel
+      ELSE   key=src/routes/orders.ts#cancelOrder/ternary[0]/else
+  IF !order   key=src/routes/orders.ts#cancelOrder/if[0] src/routes/orders.ts#cancelOrder/if[0]/then
+      · res.status().json ?   key=src/routes/orders.ts#cancelOrder/if[0]/then/call:res.status().json
+      RETURN → End   key=src/routes/orders.ts#cancelOrder/if[0]/then/return[0]
+  · res.json   key=src/routes/orders.ts#cancelOrder/call:res.json
+( End )
+
+=== src/scheduler.ts#
+( src/scheduler.ts )   key=src/scheduler.ts#
+  imports · node-cron, ./jobs/cleanup.ts, ./jobs/report.ts, ./lib/calendar.ts
+  · cron.schedule   key=src/scheduler.ts#/call:cron.schedule
+  □ schedule   key=src/scheduler.ts#/call:schedule("*/15 * * * *")
+      ↳ callback () =>   key=src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]
+  ▸ scheduleReminder   key=src/scheduler.ts#/call:scheduleReminder
+( End )
+
+=== src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]
+( callback to schedule )   key=src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]
+  ▸ reportMetrics   key=src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]/call:reportMetrics
+( End )
+
+=== src/server.ts#
+( src/server.ts )   key=src/server.ts#
+  imports · express, ./config.ts, ./lib/logger.ts, ./queues/queues.ts, ./routes/admin.ts, ./routes/health.ts, ./routes/orders.ts, ./services/order-service.ts
+  · express → app, app.use + express.json, app.get, app.get, app.use, app.use   6 calls   key=src/server.ts#/call:express src/server.ts#/call:app.use src/server.ts#/call:app.get src/server.ts#/call:app.get[1] src/server.ts#/call:app.use[1] src/server.ts#/call:app.use[2]
+  ▸ registerAdminRoutes   key=src/server.ts#/call:registerAdminRoutes
+  □ app.listen → server   key=src/server.ts#/call:app.listen
+      ↳ callback () =>   key=src/server.ts#/call:app.listen/callback[0]
+  · process.on   key=src/server.ts#/call:process.on
+( End )
+
+=== src/server.ts#/call:app.listen/callback[0]
+( callback to app.listen )   key=src/server.ts#/call:app.listen/callback[0]
+  ▸ logger.info   key=src/server.ts#/call:app.listen/callback[0]/call:logger.info
+( End )
+
+=== src/server.ts#healthCheck
+( healthCheck )   key=src/server.ts#healthCheck
+  · res.json   key=src/server.ts#healthCheck/call:res.json
+( End )
+
+=== src/server.ts#status
+( status )   key=src/server.ts#status
+  · res.json   key=src/server.ts#status/call:res.json
+( End )
+
+=== src/server.ts#shutdown
+( shutdown )   key=src/server.ts#shutdown
+  □ server.close ?   key=src/server.ts#shutdown/call:server.close
+      ↳ callback error =>   key=src/server.ts#shutdown/call:server.close/callback[0]
+( End )
+
+=== src/server.ts#shutdown/call:server.close/callback[0]
+( callback to server.close )   key=src/server.ts#shutdown/call:server.close/callback[0]
+  IF error   key=src/server.ts#shutdown/call:server.close/callback[0]/if[0] src/server.ts#shutdown/call:server.close/callback[0]/if[0]/then
+      ▸ logger.error   key=src/server.ts#shutdown/call:server.close/callback[0]/if[0]/then/call:logger.error
+      ⋯ 1 line
+  □ Promise.all().then ? + ordersQueue.close, emailQueue.close · into Promise.all().then().catch(…)   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then
+      ↳ callback () =>   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/callback[0]
+  □ Promise.all().then().catch ?   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch
+      ↳ callback error =>   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/callback[0]
+( End )
+
+=== src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/callback[0]
+( callback to Promise.all().then )   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/callback[0]
+  ▸ logger.info   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/callback[0]/call:logger.info
+( End )
+
+=== src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/callback[0]
+( callback to Promise.all().then().catch )   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/callback[0]
+  ▸ logger.error   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/callback[0]/call:logger.error
+  ⋯ 1 line
+( End )
+
+=== src/services/events.ts#
+( src/services/events.ts )   key=src/services/events.ts#
+  · Map → subscriptions   key=src/services/events.ts#/call:Map
+( End )
+
+=== src/services/events.ts#events.on
+( events.on )   key=src/services/events.ts#events.on
+  · subscriptions.get, handlers.push ?, subscriptions.set   3 calls, 1 unknown   key=src/services/events.ts#events.on/call:subscriptions.get src/services/events.ts#events.on/call:handlers.push src/services/events.ts#events.on/call:subscriptions.set
+( End )
+
+=== src/services/events.ts#events.emit
+( events.emit )   key=src/services/events.ts#events.emit
+  · subscriptions.get   key=src/services/events.ts#events.emit/call:subscriptions.get
+  LOOP for (const handler of handlers)   key=src/services/events.ts#events.emit/for[0] src/services/events.ts#events.emit/for[0]/body
+      · handler ?   key=src/services/events.ts#events.emit/for[0]/body/call:handler
+( End )
+
+=== src/services/notifier.ts#
+( src/services/notifier.ts )   key=src/services/notifier.ts#
+  imports · ../lib/logger.ts, ./events.ts
+  ▸ ReceiptNotifier → notifier · new   key=src/services/notifier.ts#/call:ReceiptNotifier
+  ▸ events.on   key=src/services/notifier.ts#/call:events.on
+( End )
+
+=== src/services/notifier.ts#Notifier
+( Notifier )   key=src/services/notifier.ts#Notifier
+  ⋯ 1 line
+( End )
+
+=== src/services/notifier.ts#Notifier.notify
+( notify )   key=src/services/notifier.ts#Notifier.notify
+  · this.send ?   key=src/services/notifier.ts#Notifier.notify/call:this.send
+( End )
+
+=== src/services/notifier.ts#ReceiptNotifier
+( ReceiptNotifier )   key=src/services/notifier.ts#ReceiptNotifier
+( End )
+
+=== src/services/notifier.ts#ReceiptNotifier.send
+( send )   key=src/services/notifier.ts#ReceiptNotifier.send
+  ▸ logger.info   key=src/services/notifier.ts#ReceiptNotifier.send/call:logger.info
+( End )
+
+=== src/services/notifier.ts#notifyCustomer
+( notifyCustomer )   key=src/services/notifier.ts#notifyCustomer
+  ▸ notifier.notify   key=src/services/notifier.ts#notifyCustomer/call:notifier.notify
+( End )
+
+=== src/services/order-service.ts#
+( src/services/order-service.ts )   key=src/services/order-service.ts#
+  imports · node:crypto, ../db/index.ts, ../lib/validate.ts, ../types.ts, ./events.ts, ./payment.ts, ./notifier.ts
+  ▸ openDatabase · into OrderService(…)   key=src/services/order-service.ts#/call:OrderService/call:openDatabase
+  ▸ payments.createProvider · into OrderService(…)   key=src/services/order-service.ts#/call:OrderService/call:payments.createProvider
+  ▸ OrderService → orderService · new   key=src/services/order-service.ts#/call:OrderService
+( End )
+
+=== src/services/order-service.ts#OrderService
+( OrderService )   key=src/services/order-service.ts#OrderService
+( End )
+
+=== src/services/order-service.ts#OrderService.constructor
+( constructor )   key=src/services/order-service.ts#OrderService.constructor
+( End )
+
+=== src/services/order-service.ts#OrderService.place
+( place )   key=src/services/order-service.ts#OrderService.place
+  ▸ validateOrder → draft   key=src/services/order-service.ts#OrderService.place/call:validateOrder
+  · this.payments.charge ?, randomUUID, (…).toISOString   3 calls, 1 unknown   key=src/services/order-service.ts#OrderService.place/call:this.payments.charge src/services/order-service.ts#OrderService.place/call:randomUUID src/services/order-service.ts#OrderService.place/call:(…).toISOString
+  ▸ this.repo.insert   key=src/services/order-service.ts#OrderService.place/call:this.repo.insert
+  ▸ events.emit   key=src/services/order-service.ts#OrderService.place/call:events.emit
+  RETURN order → End   key=src/services/order-service.ts#OrderService.place/return[0]
+( End )
+
+=== src/services/order-service.ts#OrderService.list
+( list )   key=src/services/order-service.ts#OrderService.list
+  RETURN ▸ this.repo.list → End   key=src/services/order-service.ts#OrderService.list/return[0]
+( End )
+
+=== src/services/order-service.ts#OrderService.get
+( get )   key=src/services/order-service.ts#OrderService.get
+  RETURN ▸ this.repo.find → End   key=src/services/order-service.ts#OrderService.get/return[0]
+( End )
+
+=== src/services/order-service.ts#OrderService.cancel
+( cancel )   key=src/services/order-service.ts#OrderService.cancel
+  RETURN ▸ this.repo.cancel → End   key=src/services/order-service.ts#OrderService.cancel/return[0]
+( End )
+
+=== src/services/order-service.ts#OrderService.remove
+( remove )   key=src/services/order-service.ts#OrderService.remove
+  RETURN ▸ this.repo.remove → End   key=src/services/order-service.ts#OrderService.remove/return[0]
+( End )
+
+=== src/services/order-service.ts#OrderService.count
+( count )   key=src/services/order-service.ts#OrderService.count
+  ▸ this.repo.list   key=src/services/order-service.ts#OrderService.count/return[0]/call:this.repo.list
+  RETURN this.repo.list().length → End   key=src/services/order-service.ts#OrderService.count/return[0]
+( End )
+
+=== src/services/payment.ts#
+( src/services/payment.ts )   key=src/services/payment.ts#
+  imports · ../lib/logger.ts
+( End )
+
+=== src/services/payment.ts#PaymentProvider
+( PaymentProvider )   key=src/services/payment.ts#PaymentProvider
+( End )
+
+=== src/services/payment.ts#PaymentProvider.charge
+( charge )   key=src/services/payment.ts#PaymentProvider.charge
+  □ order.items.reduce ? → total   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce
+      ↳ callback (sum, item) =>   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
+  IF !Number.isFinite(total) || total <= 0   key=src/services/payment.ts#PaymentProvider.charge/if[0] src/services/payment.ts#PaymentProvider.charge/if[0]/then
+      THROW Error → the caller   key=src/services/payment.ts#PaymentProvider.charge/if[0]/then/throw[0]
+  ▸ logger.info   key=src/services/payment.ts#PaymentProvider.charge/call:logger.info
+( End )
+
+=== src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
+( callback to order.items.reduce )   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
+( End )
+
+=== src/services/payment.ts#StripeProvider
+( StripeProvider )   key=src/services/payment.ts#StripeProvider
+( End )
+
+=== src/services/payment.ts#StripeProvider.charge
+( charge )   key=src/services/payment.ts#StripeProvider.charge
+  ▸ super.charge   key=src/services/payment.ts#StripeProvider.charge/call:super.charge
+  ▸ logger.info   key=src/services/payment.ts#StripeProvider.charge/call:logger.info
+( End )
+
+=== src/services/payment.ts#createProvider
+( createProvider )   key=src/services/payment.ts#createProvider
+  RETURN ▸ StripeProvider → End   key=src/services/payment.ts#createProvider/return[0]
+( End )
+
+=== src/types.ts#
+( src/types.ts )   key=src/types.ts#
+( End )
+
+=== src/types.ts#OrderStatus
+( OrderStatus )   key=src/types.ts#OrderStatus
+
+=== src/types.ts#OrderItem
+( OrderItem )   key=src/types.ts#OrderItem
+
+=== src/types.ts#OrderDraft
+( OrderDraft )   key=src/types.ts#OrderDraft
+
+=== src/types.ts#Order
+( Order )   key=src/types.ts#Order
+
+=== src/types.ts#OrderJob
+( OrderJob )   key=src/types.ts#OrderJob
+
+=== src/types.ts#EmailJob
+( EmailJob )   key=src/types.ts#EmailJob
+
+=== src/worker.ts#
+( src/worker.ts )   key=src/worker.ts#
+  imports · ./queues/orders-worker.ts, ./queues/email-worker.ts, ./queues/report-worker.ts, ./lib/pool.ts, ./services/order-service.ts
+  ▸ Worker → maintenance · new   key=src/worker.ts#/call:Worker
+  ▸ maintenance.run   key=src/worker.ts#/call:maintenance.run
+( End )
+
+=== src/worker.ts#purge
+( purge )   key=src/worker.ts#purge
+  LOOP for (const order of orderService.list()) · ▸ orderService.list   key=src/worker.ts#purge/for[0] src/worker.ts#purge/for[0]/body
+      IF order.status === "cancelled"   key=src/worker.ts#purge/for[0]/body/if[0] src/worker.ts#purge/for[0]/body/if[0]/then
+          ▸ orderService.remove   key=src/worker.ts#purge/for[0]/body/if[0]/then/call:orderService.remove
+( End )
+

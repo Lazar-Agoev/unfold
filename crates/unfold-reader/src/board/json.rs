@@ -1,19 +1,18 @@
 //! Deterministic board serialization: object keys sorted by UTF-16 code units, two-space
 //! indentation, numbers and string escapes exactly as JavaScript's `JSON.stringify(value, null,
-//! 2)` writes them, and a final newline. Pages keep their order; cards, groups, links, frames,
-//! resources, notes, and proposals are sorted by id; labels and guards by key. Optional fields
-//! are omitted when absent,
-//! and a card's `expanded` and the page arrays `frames`, `resources`, `notes`, and `proposals`
-//! when empty, so boards without them read as they always did. One board has exactly one serialization, so a file written by Unfold, or by
-//! an agent using `JSON.stringify` with sorted keys and arrays, reads back and writes out byte
-//! for byte.
+//! 2)` writes them, and a final newline. Pages keep their order; cards, combined steps,
+//! connections, frames, resources, notes, and proposals are sorted by id; names and guards by
+//! key. Optional fields are omitted when absent, and a card's `open` and the page arrays
+//! `frames`, `resources`, `notes`, and `proposals` when empty. One board has exactly one
+//! serialization, so a file written by Unfold, or by an agent using `JSON.stringify` with sorted
+//! keys and arrays, reads back and writes out byte for byte.
 
 use std::cmp::Ordering;
 use std::fmt::Write as _;
 
 use super::model::{
-    Anchor, Board, Card, CardRef, Column, Description, FORMAT, Frame, Group, GuardEntry, LabelEntry, Link,
-    Note, Page, Proposal, Resource, VERSION,
+    Anchor, Board, Card, CardRef, Column, Combined, Connection, Description, FORMAT, Frame, GuardEntry,
+    NameEntry, Note, Page, Place, Proposal, Resource, Signature, VERSION,
 };
 
 /// A JSON value to write.
@@ -57,25 +56,26 @@ fn optional<T>(
     }
 }
 
-/// The fields of a description, label, or link label.
+/// A signature, or `""` before a save signs it.
+fn signature_or_empty(value: Option<Signature>) -> Out {
+    Out::Text(value.map(|signature| signature.to_string()).unwrap_or_default())
+}
+
+/// The fields of a description, name, or label.
 fn authored(value: &Description) -> Vec<(&'static str, Out)> {
     vec![
         ("author", Out::Text(value.author.to_string())),
-        (
-            "signature",
-            Out::Text(
-                value
-                    .signature
-                    .map(|signature| signature.to_string())
-                    .unwrap_or_default(),
-            ),
-        ),
+        ("signature", signature_or_empty(value.signature)),
         ("text", text(&value.text)),
     ]
 }
 
 fn description(value: &Description) -> Out {
     Out::Object(authored(value))
+}
+
+fn keys(path: &[unfold_core::Key]) -> Out {
+    Out::Array(path.iter().map(|key| text(key.as_str())).collect())
 }
 
 fn card(value: &Card) -> Out {
@@ -87,14 +87,13 @@ fn card(value: &Card) -> Out {
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
     }
-    if !value.expanded.is_empty() {
-        let paths = value
-            .expanded
-            .iter()
-            .map(|path| Out::Array(path.iter().map(|key| text(key.as_str())).collect()));
-        fields.push(("expanded", Out::Array(paths.collect())));
-    }
     fields.push(("id", text(&value.id)));
+    if !value.open.is_empty() {
+        fields.push((
+            "open",
+            Out::Array(value.open.iter().map(|path| keys(path)).collect()),
+        ));
+    }
     fields.push(("ref", Out::Object(reference)));
     if let Some(view) = value.view {
         fields.push(("view", text(view.as_str())));
@@ -102,28 +101,23 @@ fn card(value: &Card) -> Out {
     Out::Object(fields)
 }
 
-fn group(value: &Group) -> Out {
+fn combined(value: &Combined) -> Out {
     let mut fields = vec![
-        ("card", text(&value.card)),
+        ("author", Out::Text(value.author.to_string())),
         ("collapsed", Out::Bool(value.collapsed)),
     ];
     if let Some(item) = &value.description {
         fields.push(("description", description(item)));
     }
-    optional(&mut fields, "author", value.author.as_ref(), |author| {
-        Out::Text(author.to_string())
-    });
     fields.push(("id", text(&value.id)));
-    fields.push((
-        "members",
-        Out::Array(value.members.iter().map(|key| text(key.as_str())).collect()),
-    ));
+    fields.push(("members", keys(&value.members)));
+    fields.push(("signature", signature_or_empty(value.signature)));
     fields.push(("title", text(&value.title)));
     Out::Object(fields)
 }
 
-fn label(value: &LabelEntry) -> Out {
-    let mut fields = authored(&value.label);
+fn name(value: &NameEntry) -> Out {
+    let mut fields = authored(&value.name);
     fields.push(("key", text(value.key.as_str())));
     Out::Object(fields)
 }
@@ -154,14 +148,16 @@ fn anchors(values: &[Anchor]) -> Out {
     Out::Array(values.iter().map(anchor).collect())
 }
 
-fn link(value: &Link) -> Out {
-    let mut fields = vec![("from", text(&value.from)), ("id", text(&value.id))];
+fn connection(value: &Connection) -> Out {
+    let mut fields = vec![
+        ("author", Out::Text(value.author.to_string())),
+        ("from", text(&value.from)),
+        ("id", text(&value.id)),
+        ("kind", text(value.kind.as_str())),
+    ];
     if !value.anchors.is_empty() {
         fields.push(("anchors", anchors(&value.anchors)));
     }
-    optional(&mut fields, "author", value.author.as_ref(), |author| {
-        Out::Text(author.to_string())
-    });
     optional(&mut fields, "cardinality", value.cardinality, |cardinality| {
         text(cardinality.as_str())
     });
@@ -176,7 +172,6 @@ fn link(value: &Link) -> Out {
         description,
     );
     optional(&mut fields, "fromColumn", value.from_column.as_deref(), text);
-    optional(&mut fields, "kind", value.kind, |kind| text(kind.as_str()));
     optional(&mut fields, "label", value.label.as_ref(), description);
     optional(&mut fields, "signature", value.signature, |signature| {
         Out::Text(signature.to_string())
@@ -261,13 +256,15 @@ fn note(value: &Note) -> Out {
 }
 
 fn proposal(value: &Proposal) -> Out {
+    let place = match &value.place {
+        Place::After { after } => ("after", text(after.as_str())),
+        Place::Start { start } => ("start", text(start.as_str())),
+    };
     let mut fields = vec![
-        ("after", text(value.after.as_str())),
+        place,
         ("author", Out::Text(value.author.to_string())),
-        ("card", text(&value.card)),
         ("id", text(&value.id)),
     ];
-    optional(&mut fields, "path", value.path, |path| text(path.as_str()));
     optional(&mut fields, "reason", value.reason.as_deref(), text);
     fields.push(("title", text(&value.title)));
     Out::Object(fields)
@@ -281,18 +278,18 @@ fn by_id<T>(items: &[T], id: impl Fn(&T) -> &str, write: impl Fn(&T) -> Out) -> 
 }
 
 fn page(value: &Page) -> Out {
-    let mut labels: Vec<&LabelEntry> = value.labels.iter().collect();
-    labels.sort_by(|a, b| by_utf16(a.key.as_str(), b.key.as_str()));
+    let mut names: Vec<&NameEntry> = value.names.iter().collect();
+    names.sort_by(|a, b| by_utf16(a.key.as_str(), b.key.as_str()));
     let mut guards: Vec<&GuardEntry> = value.guards.iter().collect();
     guards.sort_by(|a, b| by_utf16(a.key.as_str(), b.key.as_str()));
     let mut fields = vec![
         ("cards", by_id(&value.cards, |item| &item.id, card)),
+        ("combined", by_id(&value.combined, |item| &item.id, combined)),
         ("defaultView", text(value.default_view.as_str())),
-        ("groups", by_id(&value.groups, |item| &item.id, group)),
         ("guards", Out::Array(guards.into_iter().map(guard).collect())),
         ("id", text(&value.id)),
-        ("labels", Out::Array(labels.into_iter().map(label).collect())),
-        ("links", by_id(&value.links, |item| &item.id, link)),
+        ("links", by_id(&value.links, |item| &item.id, connection)),
+        ("names", Out::Array(names.into_iter().map(name).collect())),
         ("title", text(&value.title)),
     ];
     if !value.frames.is_empty() {
