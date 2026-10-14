@@ -1,2 +1,0 @@
-use.cts#import[0] #0 imports `#dual` -> cjs.cts#
-use.cts#expression_statement[0]/import[0] #0 imports `#dual` -> esm.mts#

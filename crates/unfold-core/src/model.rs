@@ -85,7 +85,8 @@ pub struct Node {
     pub r#for: Option<u32>,
     /// Yes-or-no facts ([`crate::vocab::Flag`]).
     pub flags: Flags,
-    /// For `break` and `continue`: the local ID of their loop.
+    /// For `break` and `continue`: the local ID of their loop; for a TypeScript `break` that
+    /// leaves a `switch` before the end of its case, that `switch`.
     pub target: Option<u32>,
 }
 

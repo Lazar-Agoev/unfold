@@ -1,10 +1,11 @@
 //! The census validation compares Python files with: token boundaries and call sites from the
-//! payload's independent lexer scan, and the file's runtime module dependencies (the static
-//! ones extraction found, plus the named child imports linking keeps).
+//! payload's independent lexer scan, and the file's runtime module dependencies (the ones the
+//! pre-pass found, plus the named child imports linking keeps). Python's call sites name no
+//! form: only linking can prove a construction.
 
 use rustc_hash::FxHashMap;
 use unfold_core::validate::{CallSite, Census};
-use unfold_core::vocab::{BlockKind, Language};
+use unfold_core::vocab::Language;
 use unfold_core::{ByteRange, RepoPath};
 
 use crate::payload::CensusData;
@@ -35,12 +36,7 @@ impl PythonCensus {
         let calls = data
             .calls
             .iter()
-            .map(|call| CallSite {
-                range: call.range,
-                block_kind: BlockKind::Call,
-                edge_kind: None,
-                ineligible_references: call.ineligible.clone(),
-            })
+            .map(|&range| CallSite { range, form: None })
             .collect();
         let mut dependencies = data.dependencies.clone();
         dependencies.extend(children);
@@ -70,11 +66,11 @@ impl Census for PythonCensus {
         })
     }
 
-    fn call_sites(&self, path: &RepoPath) -> Option<Vec<CallSite>> {
-        self.files.get(path).map(|file| file.calls.clone())
+    fn call_sites(&self, path: &RepoPath) -> Option<&[CallSite]> {
+        self.files.get(path).map(|file| file.calls.as_slice())
     }
 
-    fn module_dependencies(&self, path: &RepoPath) -> Option<Vec<ByteRange>> {
-        self.files.get(path).map(|file| file.dependencies.clone())
+    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
+        self.files.get(path).map(|file| file.dependencies.as_slice())
     }
 }

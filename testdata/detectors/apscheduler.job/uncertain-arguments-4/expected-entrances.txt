@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/uncertain-arguments-4. Format: testdata/README.md.
-# Duplicate, expanded, excess positional, or string arguments keep uncertainty (PoC: "Duplicate expanded and excess positional arguments..."). Written: scheduler.add_job(first, None, args)
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:7
-	target	handler	unresolved	unsupported	first

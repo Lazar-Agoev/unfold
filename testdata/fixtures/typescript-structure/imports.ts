@@ -1,4 +1,4 @@
-// Runtime imports: type-only forms and empty named forms are erased (C-12), internal aliases are not modules, and dynamic imports are import blocks whose literal or non-literal first argument is the specifier.
+// Runtime imports: type-only forms and empty named forms are erased (C-12), internal aliases are not modules, and a dynamic import is a call with an `imports` link at its literal or non-literal first argument.
 import Default, { original as renamed, type Shape } from "./module.js";
 import * as namespace from "./module.js";
 import type { Other } from "./types.js";

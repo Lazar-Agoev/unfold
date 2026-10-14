@@ -1,0 +1,3 @@
+a.ts# #0 imports `pkg` → library pkg
+a.ts#/call:x #0 calls `x` → library pkg
+b.ts#/for[0]/body/call:f #0 calls `f` → unknown unknown_name

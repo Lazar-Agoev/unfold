@@ -1,2 +1,0 @@
-nonconcrete.ts#class:Abstract/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> not_concrete
-nonconcrete.ts#class:C/method:run/expression_statement[0]/call[0] #0 calls `this.value` -> accessor

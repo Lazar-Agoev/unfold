@@ -1,23 +1,21 @@
 //! The binder's answers to the shared backend, phrased with program IDs: evidence, concrete
-//! targets, declaration facts, provenance, locators, class shapes, and module dependencies.
+//! targets, declaration facts, provenance, class shapes, and module dependencies.
 //!
 //! A Python [`DeclRef`] is a declaration of the binder facts: `index` is its
 //! [`NodeId`](crate::bind::ir::NodeId) in the declaring file.
 
 use smallvec::SmallVec;
-use unfold_core::vocab::BlockKind;
 use unfold_engine::evidence::{
-    Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, ImportBinding,
-    ImportTarget, LocatorMembers, MemberFact, ModuleTarget, Origin, OriginDeclaration, ParameterFact,
-    Refusal, Stability, ValueContext,
+    Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, ExternalLocation, ImportBinding,
+    ImportTarget, MemberFact, ModuleTarget, Origin, OriginDeclaration, Refusal, Stability, ValueContext,
 };
-use unfold_engine::{BlockRef, DeclRef, FileId, ValueRef};
+use unfold_engine::{DeclRef, NodeRef as GraphNode, ValueRef};
 
 use super::binder::{Binder, Ctx, Seen, SeenKey};
 use super::modules::ModuleValue;
 use super::program::{ExprRef, NodeRef};
 use super::value::Value;
-use crate::bind::ir::{MODULE_SCOPE, NodeKind};
+use crate::bind::ir::NodeKind;
 
 pub(crate) fn node_of(declaration: DeclRef) -> NodeRef {
     NodeRef {
@@ -38,7 +36,8 @@ pub(crate) fn decl_of(node: NodeRef) -> DeclRef {
 enum Context {
     Call,
     Construct,
-    Handler,
+    /// A definition passed as a value: a class is itself.
+    Reference,
 }
 
 impl From<ValueContext> for Context {
@@ -48,7 +47,7 @@ impl From<ValueContext> for Context {
             ValueContext::Construct => Self::Construct,
             // A type is never selected through `concrete` (`Binder::concrete_target` answers it
             // first); a class is its declaration whether or not it is concrete.
-            ValueContext::Reference | ValueContext::Handler | ValueContext::Type => Self::Handler,
+            ValueContext::Reference | ValueContext::Type => Self::Reference,
         }
     }
 }
@@ -197,44 +196,17 @@ impl Binder<'_> {
             && value.binding.is_none_or(|binding| self.stable(binding, &mut ctx))
     }
 
-    fn block_of(&self, node: NodeRef) -> Option<BlockRef> {
+    /// The node of a lowered `def`, `lambda`, or `class` declaration.
+    fn graph_node(&self, node: NodeRef) -> Option<GraphNode> {
         let local = match &self.program.node(node)?.kind {
-            NodeKind::Function(function) => function.block,
-            NodeKind::Class(class) => class.block,
+            NodeKind::Function(function) => function.local?,
+            NodeKind::Class(class) => class.local?,
             _ => return None,
         };
-        Some(BlockRef {
+        Some(GraphNode {
             file: node.file,
             local,
         })
-    }
-
-    /// The block that binds a module-level name: a `def` or `class` block, or the `variable`
-    /// block of an assignment written directly in the module (`app = FastAPI()`). This is what
-    /// a `module:attribute` launch target and a FastAPI route's application binding resolve to.
-    pub(crate) fn binding_block(&self, node: NodeRef) -> Option<BlockRef> {
-        let fact = self.program.node(node)?;
-        match fact.kind {
-            NodeKind::Function(_) | NodeKind::Class(_) => self.block_of(node),
-            NodeKind::Assignment { .. } if fact.scope == MODULE_SCOPE => {
-                let binding = self.program.binding(self.program.binding_of(node)?);
-                let name = self.program.text(binding.name);
-                let blocks = self.program.facts.facts(node.file)?.graph.blocks();
-                let mut statements = blocks.iter().filter(|block| {
-                    block.parent == Some(0)
-                        && block.kind == BlockKind::Variable
-                        && block.name.as_deref() == Some(name)
-                });
-                match (statements.next(), statements.next()) {
-                    (Some(block), None) => Some(BlockRef {
-                        file: node.file,
-                        local: block.local_id,
-                    }),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
     }
 
     /// A declaration's concrete body for a context (see [`unfold_engine::Linked::concrete_target`]).
@@ -257,7 +229,7 @@ impl Binder<'_> {
                 return None;
             }
             return Some(ConcreteTarget {
-                target: self.block_of(node)?,
+                target: self.graph_node(node)?,
                 implementation: declaration,
             });
         }
@@ -269,21 +241,9 @@ impl Binder<'_> {
             &mut ctx,
         )?;
         Some(ConcreteTarget {
-            target: self.block_of(target)?,
+            target: self.graph_node(target)?,
             implementation: decl_of(target),
         })
-    }
-
-    /// The block a locator names: a concrete body in the handler context.
-    pub(crate) fn locator_block(&self, declaration: DeclRef) -> Option<BlockRef> {
-        let mut ctx = Ctx::new();
-        let target = self.concrete(
-            node_of(declaration),
-            Context::Handler,
-            &mut Seen::default(),
-            &mut ctx,
-        )?;
-        self.block_of(target)
     }
 
     fn concrete(&self, node: NodeRef, context: Context, seen: &mut Seen, ctx: &mut Ctx) -> Option<NodeRef> {
@@ -344,23 +304,12 @@ impl Binder<'_> {
         }
     }
 
-    pub(crate) fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        let node = node_of(declaration);
-        let &NodeKind::Parameter {
-            function, position, ..
-        } = &self.program.node(node)?.kind
-        else {
-            return None;
-        };
-        let owner = self.block_of(NodeRef {
-            file: node.file,
-            node: function,
-        });
-        Some(ParameterFact {
-            parameter: declaration,
-            owner,
-            position: Some(position),
-        })
+    /// Whether the declaration is a parameter.
+    pub(crate) fn is_parameter(&self, declaration: DeclRef) -> bool {
+        matches!(
+            self.program.node(node_of(declaration)).map(|fact| &fact.kind),
+            Some(NodeKind::Parameter { .. })
+        )
     }
 
     pub(crate) fn stability(&self, declaration: DeclRef) -> Stability {
@@ -446,65 +395,6 @@ impl Binder<'_> {
             file: node.file,
             expr: annotation,
         }))
-    }
-
-    /// The declarations a top-level name of `file` has (NFKC-normalized).
-    pub(crate) fn top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        self.writes_named(file, MODULE_SCOPE, name)
-    }
-
-    fn writes_named(&self, file: FileId, scope: u32, name: &str) -> Vec<DeclRef> {
-        let name: String = unicode_normalization::UnicodeNormalization::nfkc(name).collect();
-        let Some(sym) = self.program.names.get(&name) else {
-            return Vec::new();
-        };
-        self.program
-            .binding_in(file, scope, sym)
-            .map(|binding| {
-                self.program
-                    .binding(binding)
-                    .writes
-                    .iter()
-                    .map(|&write| decl_of(self.program.write(write).node))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    pub(crate) fn members_named(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        let node = node_of(owner);
-        match self.class_fact(node) {
-            Some(class) => LocatorMembers {
-                supported: true,
-                declarations: self.writes_named(node.file, class.body, name),
-            },
-            None => LocatorMembers::default(),
-        }
-    }
-
-    /// The runtime exports of a file: its module-level bindings, sorted by name.
-    pub(crate) fn exports(&self, file: FileId) -> Vec<Export> {
-        let mut exports: Vec<Export> = self
-            .program
-            .bindings_in(file, MODULE_SCOPE)
-            .iter()
-            .map(|&index| {
-                let binding = self.program.binding(index);
-                let value = self.binding_value(index, &mut Seen::default(), &mut Ctx::new());
-                let candidates = match (&value.excluded, &value.external) {
-                    (None, Some(external)) => vec![Candidate::external(ExternalLocation::Package(
-                        external.module.clone(),
-                    ))],
-                    _ => self.candidates(&value).into_vec(),
-                };
-                Export {
-                    name: self.program.text(binding.name).into(),
-                    candidates,
-                }
-            })
-            .collect();
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
-        exports
     }
 
     /// Every class with its bases and its own methods, for the override census.

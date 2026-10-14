@@ -1,0 +1,5 @@
+barrel.ts# #0 imports `./repo.js` → project repo.ts#
+use.ts#run #0 types `Store` → project repo.ts#Repo
+use.ts#run #1 types `Models.Repo` → project repo.ts#Repo
+use.ts#run/call:a.save #0 calls `a.save` → project repo.ts#Repo.save
+use.ts#run/call:b.save #0 calls `b.save` → project repo.ts#Repo.save

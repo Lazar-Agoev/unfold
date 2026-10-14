@@ -3,7 +3,7 @@
 //! instead of failures.
 
 use unfold_core::RepoPath;
-use unfold_core::vocab::{InputRole, Resolution};
+use unfold_core::vocab::{InputRole, Outcome};
 use unfold_engine::Language;
 use unfold_engine::settings::Settings;
 
@@ -246,12 +246,9 @@ fn the_default_configuration_is_nodenext() {
     // needs the extension.
     let commonjs = Project::new().source("a.ts", "import './b';").source("b.ts", "");
     assert_eq!(
-        commonjs.compile().import("a.ts", "./b").resolution,
-        Resolution::Resolved
+        commonjs.compile().import("a.ts", "./b").to.outcome(),
+        Outcome::Project
     );
     let esm = commonjs.input("package.json", r#"{"type": "module"}"#);
-    assert_eq!(
-        esm.compile().import("a.ts", "./b").resolution,
-        Resolution::Unresolved
-    );
+    assert_eq!(esm.compile().import("a.ts", "./b").to.outcome(), Outcome::Unknown);
 }

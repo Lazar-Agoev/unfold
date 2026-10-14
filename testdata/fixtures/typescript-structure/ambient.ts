@@ -1,4 +1,4 @@
-// Type syntax, ambient declarations, and overload signatures get no blocks; interfaces, type aliases, enums, and calls beneath enums and namespaces do.
+// Type syntax, ambient declarations, and overload signatures are no nodes; interfaces, type aliases, and enums are, and calls in enum initializers and namespaces are code of the enclosing body.
 type Alias = { [typeKey()]: string };
 interface Shape { method(): void; [key: string]: unknown }
 export enum Status { Ready = initialize(), Next = 2 }

@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/cross-module-reexport-mutation-1. Format: testdata/README.md.
-# The same mutation through a re-export.

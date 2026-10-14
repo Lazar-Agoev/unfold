@@ -1,6 +1,6 @@
 //! Finishing a file's binding: filling module declarations the walk never reached, looking every
-//! recorded name up, dropping the type names that bind to a type parameter, adding factory
-//! callees to the value table, dropping the expressions no root reaches, and assembling the
+//! recorded name up, dropping the type names that bind to a type parameter, finding factory
+//! callees in the value table, dropping the expressions no root reaches, and assembling the
 //! payload's tables.
 
 use rustc_hash::FxHashMap;
@@ -13,7 +13,7 @@ use crate::payload::binding::{
     Alias, Binding, ClassFacts, Decl, DeclFlags, DeclKind, Expr, Key, KeyRoot, Lookup, Meanings, NamePath,
     Namespace, Narrowing, NarrowingCall, Symbol, TypeRef,
 };
-use crate::values;
+use crate::values::Values;
 
 impl<'a> Binder<'a> {
     /// Fills the slot of every module declaration the walk never reached (none in practice),
@@ -45,11 +45,7 @@ impl<'a> Binder<'a> {
                 name: (!module.name.is_empty()).then(|| module.name.clone()),
                 flags: DeclFlags::default().with(DeclFlags::AMBIENT, module.ambient),
                 range: module.range,
-                block: if kind == DeclKind::Module {
-                    Some(0)
-                } else {
-                    module.block
-                },
+                block: (kind == DeclKind::Module).then_some(0),
                 container: 0,
                 owner: None,
                 symbol: None,
@@ -57,7 +53,6 @@ impl<'a> Binder<'a> {
                 initializer: None,
                 ty: None,
                 returns: None,
-                parameter: None,
                 inline: None,
                 object: None,
                 constructor: None,
@@ -149,11 +144,7 @@ impl<'a> Binder<'a> {
 
     /// Converts everything recorded into the payload's form, with the type names of linked
     /// types (aligned with the binding's `type_links`).
-    pub(super) fn finish(
-        mut self,
-        input: &Input<'_, 'a>,
-        values: &mut values::Table<'_, 'a>,
-    ) -> (Binding, Vec<TypeSite>) {
+    pub(super) fn finish(mut self, input: &Input<'_, 'a>, values: &Values) -> (Binding, Vec<TypeSite>) {
         self.fill_unreached(input);
         self.resolve_names();
         let sites = self.type_sites();
@@ -200,23 +191,17 @@ impl<'a> Binder<'a> {
             })
             .collect();
         for &(decl, callee) in &self.factories {
-            let Some(&node) = self.origins.get(&callee) else {
+            let Some(value) = values.index_of(callee) else {
                 continue;
             };
-            let value = values.value(node);
             if let Some(Some(found)) = self.decls.get_mut(decl as usize) {
                 found.factory = Some(value);
             }
         }
-        let by_node: FxHashMap<u32, u32> = self
-            .origins
-            .iter()
-            .filter_map(|(address, &node)| Some((node, *self.memo.get(address)?)))
-            .collect();
         let mut value_exprs: Vec<Option<u32>> = values
-            .nodes()
+            .addresses()
             .iter()
-            .map(|node| by_node.get(node).copied())
+            .map(|address| address.and_then(|address| self.memo.get(&address).copied()))
             .collect();
         let mut declarations: Vec<Decl> = std::mem::take(&mut self.decls).into_iter().flatten().collect();
         let mut classes: Vec<ClassFacts> = self

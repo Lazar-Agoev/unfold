@@ -59,7 +59,7 @@ pub enum SpecifierKind {
 pub enum Resolved {
     /// A program file with facts.
     Indexed(FileId),
-    /// A program file that has never parsed, so it has no blocks: `not_indexed`.
+    /// A program file that has never parsed, so it has no nodes: `not_indexed`.
     Failed(FileId),
     /// An existing repository file outside the program: a source excluded from the index
     /// (`excluded`), or a declaration, JavaScript, or JSON file. External, labeled with its path.

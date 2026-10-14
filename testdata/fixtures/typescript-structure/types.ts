@@ -1,4 +1,4 @@
-// Interfaces, type aliases, and enums are blocks unless ambient; calls in enum initializers are under the enum.
+// Interfaces, type aliases, and enums are type nodes unless ambient; calls in enum initializers are code of the enclosing body.
 export interface Shape<T> extends Base, Other<T> { kind: string }
 export default interface Fallback { x: number }
 declare interface Ambient { y: number }

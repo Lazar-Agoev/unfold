@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/api-mutation-2. Format: testdata/README.md.
-# Scheduler and Job class API mutations can't manufacture registrations (PoC: "Scheduler and Job class API mutations..."). Written: BlockingScheduler.add_job = fake

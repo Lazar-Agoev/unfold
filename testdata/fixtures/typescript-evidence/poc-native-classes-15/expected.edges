@@ -1,2 +1,0 @@
-generic-super.ts#class:Child/constructor:constructor/expression_statement[0]/call[0] #0 calls `super` -> generic-super.ts#class:Base/constructor:constructor
-generic-super.ts#class:Other/constructor:constructor/expression_statement[0]/call[0] #0 calls `super` -> generic-super.ts#class:Base[1]/constructor:constructor

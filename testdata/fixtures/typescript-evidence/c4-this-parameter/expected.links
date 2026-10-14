@@ -1,0 +1,6 @@
+a.ts#withThis #0 types `Window` → library global
+a.ts#withThis/call:second #0 calls `second` → unknown parameter
+a.ts#withThis/call:first #0 calls `first` → unknown parameter
+a.ts#plain/call:second #0 calls `second` → unknown parameter
+a.ts#plain/call:first #0 calls `first` → unknown parameter
+a.ts#arrow/call:only #0 calls `only` → unknown parameter

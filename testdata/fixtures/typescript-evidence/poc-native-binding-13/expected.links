@@ -1,0 +1,2 @@
+defaults.ts#outer/call:f #0 calls `f` → project defaults.ts#f
+defaults.ts#outer/call:f[1] #0 calls `f` → unknown mutable_binding

@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/ambiguous-roots.
-
-[[python.project]]
-root = "."
-source_roots = ["left", "right"]

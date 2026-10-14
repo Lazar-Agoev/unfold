@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/metaclass-callback-2. Format: testdata/README.md.
-# Immediate task callbacks share the custom-metaclass refusal (PoC: "Immediate task callbacks..."). Callback: Child.run
-entrance	celery.task	worker	-	-	unknown	src/app.py:13
-	target	handler	unresolved	unsupported	Child.run

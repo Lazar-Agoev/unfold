@@ -1,6 +1,0 @@
-returns.ts#function:make/return[0]/new[0] #0 constructs `Repo` -> returns.ts#class:Repo
-returns.ts#class:Factory/method:make/return[0]/new[0] #0 constructs `Repo` -> returns.ts#class:Repo
-returns.ts#class:Factory/method:run/expression_statement[0]/call[0] #0 calls `this.make().save` -> returns.ts#class:Repo/method:save
-returns.ts#class:Factory/method:run/expression_statement[0]/call[0]/call[0] #0 calls `this.make` -> returns.ts#class:Factory/method:make
-returns.ts#expression_statement[0]/call[0] #0 calls `make().save` -> returns.ts#class:Repo/method:save
-returns.ts#expression_statement[0]/call[0]/call[0] #0 calls `make` -> returns.ts#function:make

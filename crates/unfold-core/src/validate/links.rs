@@ -52,7 +52,10 @@ fn check_source(
     let fits = match link.kind {
         LinkKind::Calls | LinkKind::Passes => kind == NodeKind::Call,
         LinkKind::Extends => matches!(kind, NodeKind::Class | NodeKind::Type),
-        LinkKind::Imports => matches!(kind, NodeKind::Module | NodeKind::Function | NodeKind::Call),
+        LinkKind::Imports => matches!(
+            kind,
+            NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Call
+        ),
         LinkKind::Types => kind.is_definition() || matches!(source.form, Form::Except | Form::Catch),
     };
     if !fits {

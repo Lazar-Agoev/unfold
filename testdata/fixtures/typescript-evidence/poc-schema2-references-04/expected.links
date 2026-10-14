@@ -1,0 +1,14 @@
+factory.ts# #0 imports `remote-factory` → library remote-factory
+factory.ts#/call:create.Router #0 calls `create.Router` → library remote-factory
+main.ts# #0 imports `remote-factory` → library remote-factory
+main.ts# #1 imports `./factory.js` → project factory.ts#
+main.ts#/call:create #0 calls `create` → library remote-factory
+main.ts#/call:first #0 calls `first` → unknown not_concrete
+main.ts#/call:second #0 calls `second` → unknown not_concrete
+main.ts#/call:create[1] #0 calls `create` → library remote-factory
+main.ts#/call:cycleB #0 calls `cycleB` → unknown not_concrete
+main.ts#/call:cycleA #0 calls `cycleA` → unknown not_concrete
+main.ts#/call:localCreate #0 calls `localCreate` → project main.ts#localCreate
+main.ts#owner #0 types `Client` → library remote-types
+main.ts#owner #1 types `types.Client` → library remote-types
+main.ts#owner/call:inspect #0 calls `inspect` → project main.ts#inspect

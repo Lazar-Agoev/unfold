@@ -1,0 +1,4 @@
+external.ts# #0 imports `not-installed-package` → library not-installed-package
+external.ts#/call:packageValue%5B%5D.method #0 calls `packageValue[0].method` → library not-installed-package
+external.ts#run/call:values.forEach #0 calls `values.forEach` → library global
+external.ts#run/call:values%5B%5D #0 calls `values["slice"]` → library global

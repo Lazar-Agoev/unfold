@@ -1,3 +1,0 @@
-﻿project.scripts."run/tilde~😀=key" = "app:main" # omitted evidence comment
-project.scripts.'second.name' = 'app:main'
-project.scripts.number = 1_000

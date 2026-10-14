@@ -1,0 +1,5 @@
+main.ts# #0 imports `remote` → library remote
+main.ts# #1 imports `local` → project local.ts#
+main.ts#/call:express #0 calls `express` → project local.ts#express
+main.ts#owner/call:inspect #0 calls `inspect` → project main.ts#inspect
+main.ts#owner/call:inspect #1 passes `express` → project local.ts#express

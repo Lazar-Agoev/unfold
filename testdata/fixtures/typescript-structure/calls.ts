@@ -1,4 +1,4 @@
-// Calls, constructions, optional chains, and tagged templates (whose tag is the only slot).
+// Calls, constructions, optional chains, and tagged templates (a call of its tag, with no arguments).
 const first = new Constructor;
 const second = new namespace.Constructor(argument(), ...rest());
 new Factory().method();

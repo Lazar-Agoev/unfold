@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/generated-name. Format: testdata/README.md.
-# A generated task name makes the registry uncertain.
-entrance	celery.task	worker	-	-	unknown	src/app.py:6
-	target	handler	unresolved	unsupported	generated
-entrance	celery.task	worker	-	emails	exact	src/app.py:8
-	target	handler	unresolved	unsupported	second

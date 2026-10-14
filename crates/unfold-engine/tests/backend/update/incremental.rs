@@ -21,7 +21,7 @@ const PATHS: &[(&str, usize)] = &[
 
 const CONFIGS: &[Option<&str>] = &[
     None,
-    Some("[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n"),
+    Some("languages = [\"typescript\", \"python\"]\n"),
     Some("[scope]\nexclude = [\"jobs/deep/**\"]\n"),
 ];
 
@@ -62,7 +62,7 @@ fn shuffled_files_and_thread_counts_give_identical_exports() {
         assert_eq!(compile_folder(&reversed, threads), expected, "{threads} threads");
     }
     assert!(expected.contains("\"state\":\"failed\""));
-    assert!(expected.contains("express.route"));
+    assert!(expected.contains("\"to\":\"express\""));
 }
 
 /// One step of an edit sequence.

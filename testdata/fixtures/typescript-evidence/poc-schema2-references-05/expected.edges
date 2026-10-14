@@ -1,9 +1,0 @@
-main.ts#import[0] #0 imports `express` -> external express
-main.ts#import[1] #0 imports `absent-package` -> external absent-package
-main.ts#variable:app/call[0] #0 calls `express` -> external express
-main.ts#variable:router/call[0] #0 calls `express.Router` -> external express
-main.ts#expression_statement[0]/call[0] #0 calls `app.get` -> external express
-main.ts#expression_statement[1]/call[0] #0 calls `router.get` -> external express
-main.ts#expression_statement[2]/call[0] #0 calls `ambientApp.get` -> external express
-main.ts#variable:unknown/call[0] #0 calls `absent` -> external absent-package
-main.ts#expression_statement[3]/call[0] #0 calls `unknown.get` -> unknown_receiver

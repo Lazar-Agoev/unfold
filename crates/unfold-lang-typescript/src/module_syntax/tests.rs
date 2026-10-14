@@ -3,36 +3,26 @@ use unfold_core::{RepoPath, Snapshot};
 use crate::extract::{ExtractOptions, extract};
 use crate::payload::{DeclarationKind, ExportEntry, ImportSource, ModuleFacts, Payload};
 
-fn facts(path: &str, source: &str) -> ModuleFacts {
+fn payload(path: &str, source: &str) -> Payload {
     let snapshot =
         Snapshot::new(RepoPath::new(path).expect("path"), source.as_bytes().to_vec()).expect("text");
     let facts = extract(&snapshot, ExtractOptions::default()).expect("extracts");
-    Payload::from_bytes(&facts.payload).expect("payload").module
+    Payload::from_bytes(&facts.payload).expect("payload")
 }
 
-fn names(facts: &ModuleFacts) -> Vec<(String, DeclarationKind, Option<u32>, Option<u32>)> {
-    facts
-        .declarations
-        .iter()
-        .map(|declaration| {
-            (
-                declaration.name.to_string(),
-                declaration.kind,
-                declaration.block,
-                declaration.locator,
-            )
-        })
-        .collect()
+fn facts(path: &str, source: &str) -> ModuleFacts {
+    payload(path, source).module
 }
 
 #[test]
-fn module_scope_declarations_name_their_blocks() {
+fn module_scope_declarations_name_their_nodes() {
     let source = "export function f() {}\nconst g = () => 1, { a, b: [c] } = o;\nif (x) { var h = 1; let inner = 2; function nested() {} }\nfor (var i of list) {}\nclass K {}\ninterface I {}\ntype T = 1;\nenum E {}\nnamespace N { export const x = 1; }\nnamespace Types { export interface J {} }\ndeclare function d(): void;\n";
-    let facts = facts("a.ts", source);
-    let found = names(&facts);
-    let kinds: Vec<(&str, DeclarationKind)> = found
+    let payload = payload("a.ts", source);
+    let facts = &payload.module;
+    let kinds: Vec<(&str, DeclarationKind)> = facts
+        .declarations
         .iter()
-        .map(|(name, kind, _, _)| (name.as_str(), *kind))
+        .map(|declaration| (&*declaration.name, declaration.kind))
         .collect();
     assert_eq!(
         kinds,
@@ -53,16 +43,16 @@ fn module_scope_declarations_name_their_blocks() {
             ("d", DeclarationKind::Function),
         ]
     );
-    // Functions, classes, and variables find their blocks; a constant's function initializer
-    // is its locator target; an overload or ambient signature has no block.
-    assert!(found[1].2.is_some() && found[1].2 == found[1].3, "f");
+    // The binding's module declarations come first, aligned: functions with a body, classes,
+    // and type declarations have their nodes; variables and an ambient signature don't.
+    let node = |index: usize| payload.binding.declarations[index].block;
+    assert!(node(1).is_some(), "f");
+    assert!(node(2).is_none() && node(3).is_none(), "g, a");
     assert!(
-        found[2].2.is_some() && found[2].3.is_some() && found[2].2 != found[2].3,
-        "g"
+        [7, 8, 9, 10].into_iter().all(|index| node(index).is_some()),
+        "K, I, T, E"
     );
-    assert!(found[3].2.is_some() && found[3].3.is_none(), "a");
-    assert!(found[7].2.is_some(), "K");
-    assert_eq!((found[13].2, found[13].3), (None, None), "d");
+    assert_eq!(node(13), None, "d");
     assert!(facts.declarations[1].exported && !facts.declarations[2].exported);
     assert!(facts.module_syntax);
 }
@@ -156,15 +146,19 @@ fn scripts_and_jsx_are_recorded() {
     assert!(facts("a.ts", "export = 1;").module_syntax);
     assert!(facts("a.tsx", "const v = <div />;").jsx);
     assert!(!facts("a.tsx", "const v = 1;").jsx);
-    let expression = facts("a.ts", "export default (() => 1);");
+    let expression = payload("a.ts", "export default (() => 1);");
     let ExportEntry::Value {
         declaration: Some(index),
         ..
-    } = expression.exports[0]
+    } = expression.module.exports[0]
     else {
-        panic!("an expression export: {:?}", expression.exports);
+        panic!("an expression export: {:?}", expression.module.exports);
     };
-    let declaration = &expression.declarations[index as usize];
+    let declaration = &expression.module.declarations[index as usize];
     assert_eq!(declaration.kind, DeclarationKind::Expression);
-    assert!(declaration.block.is_some() && declaration.default);
+    assert!(declaration.default);
+    // The exported arrow function is the expression declaration's inline function.
+    let inline = expression.binding.declarations[index as usize].inline;
+    let function = inline.map(|inline| &expression.binding.declarations[inline as usize]);
+    assert!(function.and_then(|function| function.block).is_some());
 }

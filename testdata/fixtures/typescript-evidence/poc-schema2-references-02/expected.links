@@ -1,0 +1,12 @@
+main.ts#Base.install/call:register #0 calls `register` → project main.ts#register
+main.ts#Base.install/call:register #1 passes `this.safe` → project main.ts#Base.safe
+main.ts#Base.install/call:register #2 passes `Base.ready` → project main.ts#Base.ready
+main.ts#Derived #0 extends `Base` → project main.ts#Base
+main.ts#Derived.install/call:register #0 calls `register` → project main.ts#register
+main.ts#Derived.install/call:register #1 passes `super.run` → project main.ts#Base.run
+main.ts#owner/call:register #0 calls `register` → project main.ts#register
+main.ts#owner/call:callback #0 calls `callback` → unknown parameter
+main.ts#owner/call:(…) #0 calls `(…)` → project main.ts#owner/call:(…)/lambda[0]
+main.ts#owner/call:(…)/lambda[0]/call:callback #0 calls `callback` → unknown parameter
+main.ts#owner/call:callback[1] #0 calls `callback` → unknown parameter
+main.ts#/call:ordinary #0 calls `ordinary` → project main.ts#ordinary

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use unfold_core::vocab::InputRole;
-use unfold_core::{ContentHash, Graph, InputRecord};
+use unfold_core::{ContentHash, Graph, Input};
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{UpdateOutcome, UpdateRequest};
 
@@ -25,7 +25,7 @@ fn evidence(graph: &Graph) -> Vec<(&str, ContentHash)> {
         .inputs
         .iter()
         .filter(|input| input.role == InputRole::Evidence)
-        .map(|InputRecord { path, hash, .. }| (path.as_str(), *hash))
+        .map(|Input { path, hash, .. }| (path.as_str(), *hash))
         .collect()
 }
 
@@ -114,7 +114,7 @@ fn a_restored_graph_takes_new_evidence_without_linking_again() {
 
     let mut reopened = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
     reopened
-        .restore(graph, Default::default(), disks, Some(first.basis.clone()))
+        .restore(graph, disks, Some(first.basis.clone()))
         .expect("restore");
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
     assert!(!relinked(&outcome), "the restored graph is kept");

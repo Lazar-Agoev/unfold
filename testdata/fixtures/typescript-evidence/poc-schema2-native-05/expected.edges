@@ -1,4 +1,0 @@
-use.ts#import[0] #0 imports `./excluded.js` -> excluded.ts#
-use.ts#expression_statement[0]/call[0] #0 calls `run` -> excluded.ts#function:run
-use.ts#expression_statement[1]/call[0] #0 calls `run` -> excluded.ts#function:run
-use.ts#function:call/expression_statement[0]/call[0] #0 calls `client.send` -> excluded.ts#class:Client/method:send

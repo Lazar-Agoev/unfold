@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use unfold_core::vocab::{FileState, InputRole};
-use unfold_core::{ContentHash, Graph, InputRecord, RepoPath, Snapshot};
+use unfold_core::{ContentHash, Graph, Input, RepoPath, Snapshot};
 
 use super::build::{BuildInput, build};
 use super::cache::{CacheEntry, FactsKey, NewCacheEntry, decode_facts};
@@ -21,7 +21,6 @@ use super::{
 };
 use crate::ENGINE_VERSION;
 use crate::discovery::FileStamp;
-use crate::entrances::launches;
 use crate::language::{
     ExtractionOptions, Language, LanguageId, LanguageProblem, ProjectInput, ProjectInputs,
 };
@@ -157,7 +156,6 @@ impl<'e, 'r> Run<'e, 'r> {
             linked: true,
             restored: None,
             graph: Arc::clone(&old.graph),
-            launches: Arc::clone(&old.launches),
             project: Arc::default(),
             complete: false,
         };
@@ -180,8 +178,8 @@ impl<'e, 'r> Run<'e, 'r> {
 
         let relink = request.kind != UpdateKind::Background || !context_kept || files_differ(old, &state);
         if relink {
-            // Only current files are checked against bytes: last-good facts (and entrance
-            // evidence in them) come from earlier bytes than the ones just read.
+            // Only current files are checked against bytes: last-good facts come from earlier
+            // bytes than the ones just read.
             snapshots.retain(|path, _| {
                 state
                     .files
@@ -214,7 +212,6 @@ impl<'e, 'r> Run<'e, 'r> {
             let built = build(&input, &mut self.stats)?;
             cancel.check()?;
             state.graph = Arc::new(built.graph);
-            state.launches = Arc::new(built.launches);
             state.link_problems = link_problems(built.problems);
             state.complete = is_complete(&state);
         }
@@ -255,7 +252,6 @@ impl<'e, 'r> Run<'e, 'r> {
         let outcome = UpdateOutcome {
             previous: Arc::clone(&old.graph),
             graph: Arc::clone(&state.graph),
-            launches: Arc::clone(&state.launches),
             summary,
             stats: self.stats,
             problems,
@@ -360,9 +356,8 @@ impl<'e, 'r> Run<'e, 'r> {
         inputs
     }
 
-    /// The project inputs languages link with, after the inputs they request are read, with the
-    /// Python contexts of the configured launches; also returns every input entry for the new
-    /// state.
+    /// The project inputs languages link with, after the inputs they request are read; also
+    /// returns every input entry for the new state.
     fn project_inputs(
         &mut self,
         base: &State,
@@ -376,7 +371,6 @@ impl<'e, 'r> Run<'e, 'r> {
             unindexed: scan.unindexed.iter().cloned().collect(),
             context: scan.context.iter().cloned().collect(),
             root: Some(self.engine.root.clone()),
-            python_contexts: Vec::new(),
         };
         // Evidence files are never read by languages.
         for (path, input) in configuration(&inputs) {
@@ -430,8 +424,6 @@ impl<'e, 'r> Run<'e, 'r> {
                 inputs.insert(path, entry);
             }
         }
-        let plans = launches::plans(&project.settings, &project.inputs, &self.engine.root_text);
-        project.python_contexts = launches::contexts(&plans);
         (project, inputs)
     }
 
@@ -744,11 +736,11 @@ fn evidence(inputs: &BTreeMap<RepoPath, InputEntry>) -> impl Iterator<Item = (&R
 }
 
 /// The graph records of the evidence files of `inputs` that could be read, in path order.
-pub(super) fn evidence_records(inputs: &BTreeMap<RepoPath, InputEntry>) -> Vec<InputRecord> {
+pub(super) fn evidence_records(inputs: &BTreeMap<RepoPath, InputEntry>) -> Vec<Input> {
     evidence(inputs)
         .filter_map(|(path, input)| {
             let snapshot = input.content.as_ref().ok()?;
-            Some(InputRecord {
+            Some(Input {
                 path: path.clone(),
                 role: InputRole::Evidence,
                 hash: snapshot.hash(),
@@ -758,8 +750,8 @@ pub(super) fn evidence_records(inputs: &BTreeMap<RepoPath, InputEntry>) -> Vec<I
 }
 
 /// `graph` with its evidence input records replaced by `records`.
-fn with_evidence(graph: &Graph, records: Vec<InputRecord>) -> Graph {
-    let mut inputs: Vec<InputRecord> = graph
+fn with_evidence(graph: &Graph, records: Vec<Input>) -> Graph {
+    let mut inputs: Vec<Input> = graph
         .inputs
         .iter()
         .filter(|input| input.role != InputRole::Evidence)
@@ -770,7 +762,7 @@ fn with_evidence(graph: &Graph, records: Vec<InputRecord>) -> Graph {
     Graph {
         files: graph.files.clone(),
         inputs,
-        entrances: graph.entrances.clone(),
+        apps: graph.apps.clone(),
     }
 }
 

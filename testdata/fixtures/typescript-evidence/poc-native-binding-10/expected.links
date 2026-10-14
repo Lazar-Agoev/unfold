@@ -1,0 +1,5 @@
+globals.ts#/call:console #0 calls `console` → project globals.ts#console
+globals.ts#/call:Math #0 calls `Math` → project globals.ts#Math
+globals.ts#local/call:JSON #0 calls `JSON` → unknown parameter
+globals.ts#local/call:Promise #0 calls `Promise` → unknown parameter
+globals.ts#/call:unknownFunction #0 calls `unknownFunction` → unknown unknown_name

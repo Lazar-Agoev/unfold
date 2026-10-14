@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/job-change-09. Format: testdata/README.md.
-# Returned-Job mutations invalidate their scheduler's domain. Written: job.__setstate__(state)
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

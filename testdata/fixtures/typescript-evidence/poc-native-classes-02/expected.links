@@ -1,0 +1,7 @@
+override.ts#Base.run/call:this.m #0 calls `this.m` → unknown overridden
+override.ts#Mid #0 extends `Base` → project override.ts#Base
+override.ts#Mid.again/call:this.m #0 calls `this.m` → unknown overridden
+override.ts#Mid.again/call:super.m #0 calls `super.m` → project override.ts#Base.m
+override.ts#Leaf #0 extends `Mid` → project override.ts#Mid
+override.ts#Leaf.runLeaf/call:this.m #0 calls `this.m` → project override.ts#Leaf.m
+override.ts#Leaf.runLeaf/call:super.m #0 calls `super.m` → project override.ts#Base.m

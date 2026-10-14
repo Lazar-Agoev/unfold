@@ -1,0 +1,155 @@
+a.ts# module
+a.ts#/call:decorate call
+  range `decorate(configuration())`
+  head `decorate`
+  stmt `@decorate(configuration())`
+  name `decorate`
+  role decorator
+  for a.ts#Service
+a.ts#/call:decorate/call:configuration call
+  range `configuration()`
+  head `configuration`
+  name `configuration`
+a.ts#/call:base call
+  range `base()`
+  head `base`
+  name `base`
+  role base
+  for a.ts#Service
+a.ts#Service class
+  range `export class Service extends base() implements Shape {⏎    constructor(@inject() private dependency: Dependency = construct()) { super(argument()); }⏎    @decorateMember()⏎    [methodName()]() { return body(); }⏎    static initialized = initialize();⏎    #private = value();⏎    get field() { return getter(); }⏎    set field(value: number) { setter(value); }⏎    static { setup(); }⏎    handler = () => run();⏎    overloaded(): void;⏎    overloaded() {}⏎    #hidden() {}⏎    [index: string]: unknown;⏎}`
+  head `class Service extends base() implements Shape`
+  body `{⏎    constructor(@inject() private dependency: Dependency = construct()) { super(argument()); }⏎    @decorateMember()⏎    [methodName()]() { return body(); }⏎    static initialized = initialize();⏎    #private = value();⏎    get field() { return getter(); }⏎    set field(value: number) { setter(value); }⏎    static { setup(); }⏎    handler = () => run();⏎    overloaded(): void;⏎    overloaded() {}⏎    #hidden() {}⏎    [index: string]: unknown;⏎}`
+  name `Service`
+a.ts#Service/call:inject call
+  range `inject()`
+  head `inject`
+  stmt `@inject()`
+  name `inject`
+  role decorator
+  for a.ts#Service.constructor
+a.ts#Service.constructor constructor
+  range `constructor(@inject() private dependency: Dependency = construct()) { super(argument()); }`
+  head `constructor(@inject() private dependency: Dependency = construct())`
+  body `{ super(argument()); }`
+  name `constructor`
+a.ts#Service.constructor/call:construct call
+  range `construct()`
+  head `construct`
+  name `construct`
+  role default
+a.ts#Service.constructor/call:super call
+  range `super(argument())`
+  head `super`
+  stmt `super(argument());`
+  name `super`
+a.ts#Service.constructor/call:super/call:argument call
+  range `argument()`
+  head `argument`
+  name `argument`
+a.ts#Service/call:decorateMember call
+  range `decorateMember()`
+  head `decorateMember`
+  stmt `@decorateMember()`
+  name `decorateMember`
+  role decorator
+  for a.ts#Service/lambda[0]
+a.ts#Service/call:methodName call
+  range `methodName()`
+  head `methodName`
+  name `methodName`
+a.ts#Service/lambda[0] lambda
+  range `[methodName()]() { return body(); }`
+  head `[methodName()]()`
+  body `{ return body(); }`
+a.ts#Service/lambda[0]/return[0] return
+  range `return body();`
+  stmt `return body();`
+  value `body()`
+a.ts#Service/lambda[0]/return[0]/call:body call exit_value
+  range `body()`
+  head `body`
+  name `body`
+a.ts#Service/call:initialize call
+  range `initialize()`
+  head `initialize`
+  stmt `static initialized = initialize();`
+  name `initialize`
+  binds `initialized`
+a.ts#Service/call:value call
+  range `value()`
+  head `value`
+  stmt `#private = value();`
+  name `value`
+  binds `#private`
+a.ts#Service.field getter
+  range `get field() { return getter(); }`
+  head `get field()`
+  body `{ return getter(); }`
+  name `field`
+a.ts#Service.field/return[0] return
+  range `return getter();`
+  stmt `return getter();`
+  value `getter()`
+a.ts#Service.field/return[0]/call:getter call exit_value
+  range `getter()`
+  head `getter`
+  name `getter`
+a.ts#Service.field[1] setter
+  range `set field(value: number) { setter(value); }`
+  head `set field(value: number)`
+  body `{ setter(value); }`
+  name `field`
+a.ts#Service.field[1]/call:setter call
+  range `setter(value)`
+  head `setter`
+  stmt `setter(value);`
+  name `setter`
+a.ts#Service/call:setup call
+  range `setup()`
+  head `setup`
+  stmt `setup();`
+  name `setup`
+a.ts#Service.handler lambda
+  range `() => run()`
+  head `() =>`
+  body `run()`
+  stmt `handler = () => run();`
+  name `handler`
+a.ts#Service.handler/call:run call
+  range `run()`
+  head `run`
+  name `run`
+a.ts#Service.overloaded method
+  range `overloaded() {}`
+  head `overloaded()`
+  body `{}`
+  name `overloaded`
+a.ts#Service.%23hidden method
+  range `#hidden() {}`
+  head `#hidden()`
+  body `{}`
+  name `#hidden`
+a.ts#default class
+  range `export default class extends Base<T> {}`
+  head `class extends Base<T>`
+  body `{}`
+  stmt `export default class extends Base<T> {}`
+  name `default`
+a.ts#Abstract class
+  range `abstract class Abstract { abstract area(): number; }`
+  head `abstract class Abstract`
+  body `{ abstract area(): number; }`
+  stmt `abstract class Abstract { abstract area(): number; }`
+  name `Abstract`
+a.ts#Anonymous class
+  range `class { method() {} }`
+  head `class`
+  body `{ method() {} }`
+  stmt `const Anonymous = class { method() {} };`
+  name `Anonymous`
+a.ts#Anonymous.method method
+  range `method() {}`
+  head `method()`
+  body `{}`
+  name `method`

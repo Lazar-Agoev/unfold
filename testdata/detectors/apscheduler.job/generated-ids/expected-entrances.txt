@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/generated-ids. Format: testdata/README.md.
-# Omitted, empty, and None IDs keep the generated identity.
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:7
-	target	handler	resolved	src/app.py#function:first	first
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:8
-	target	handler	resolved	src/app.py#function:second	second
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:9
-	target	handler	resolved	src/app.py#function:first	first

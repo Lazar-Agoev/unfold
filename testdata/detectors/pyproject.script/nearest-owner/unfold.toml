@@ -1,8 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/nearest-owner.
-
-[[python.project]]
-root = "kept"
-source_roots = ["."]
-
-[scope]
-exclude = ["excluded/**"]

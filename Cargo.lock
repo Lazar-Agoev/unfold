@@ -2454,7 +2454,6 @@ dependencies = [
  "thiserror",
  "toml",
  "unfold-core",
- "unicode-id-start",
 ]
 
 [[package]]
@@ -2473,8 +2472,6 @@ dependencies = [
  "stacker",
  "tempfile",
  "thiserror",
- "toml",
- "toml_parser",
  "unfold-core",
  "unfold-engine",
  "unicode-id-start",

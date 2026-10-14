@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/callable-policy. Format: testdata/README.md.
-# Ordinary callable policy keeps aliases, methods, and lambdas (PoC: "Ordinary callable policy...").
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:11
-	target	handler	resolved	src/app.py#function:first	alias
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:12
-	target	handler	resolved	src/app.py#class:Commands/method:run	Commands.run
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:13
-	target	handler	resolved	src/app.py#expression_statement[2]/call[0]/function[0]	lambda: 1

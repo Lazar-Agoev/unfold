@@ -13,7 +13,7 @@
 //!   declared receiver.
 //! - [`assemble`]: the evidence the shared policy reads, import bindings, and annotations.
 //! - [`declarations`]: declaration semantics (concrete targets, parameters, stability,
-//!   members, overloads, provenance) and manual-locator lookups.
+//!   members, overloads, provenance).
 //!
 //! Every query starts from scratch with its own recursion guard ([`Walk`]) and reads only
 //! tables built once per link, so answers never depend on query order or thread.

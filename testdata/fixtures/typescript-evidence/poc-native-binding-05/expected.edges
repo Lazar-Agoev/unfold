@@ -1,3 +1,0 @@
-self.ts#variable:f/function:self/expression_statement[0]/call[0] #0 calls `self` -> self.ts#variable:f/function:self
-self.ts#expression_statement[0]/call[0] #0 calls `f` -> self.ts#variable:f/function:self
-self.ts#expression_statement[1]/call[0] #0 calls `self` -> self.ts#function:self

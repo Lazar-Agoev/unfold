@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/fastapi.route/decorator-stacks.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

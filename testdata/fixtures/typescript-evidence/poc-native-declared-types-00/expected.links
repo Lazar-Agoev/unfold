@@ -1,0 +1,6 @@
+annotations.ts# #0 types `Repo` → project annotations.ts#Repo
+annotations.ts#call #0 types `Repo` → project annotations.ts#Repo
+annotations.ts#call/call:repo.save #0 calls `repo.save` → project annotations.ts#Repo.save
+annotations.ts#/call:repo.save #0 calls `repo.save` → project annotations.ts#Repo.save
+annotations.ts#Holder #0 types `Repo` → project annotations.ts#Repo
+annotations.ts#Holder.run/call:this.repo.save #0 calls `this.repo.save` → project annotations.ts#Repo.save

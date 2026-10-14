@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/reserved-name. Format: testdata/README.md.
-# A reserved celery. name can't prove a fresh body.
-entrance	celery.task	worker	-	orders	exact	src/app.py:6
-	target	handler	unresolved	unsupported	first

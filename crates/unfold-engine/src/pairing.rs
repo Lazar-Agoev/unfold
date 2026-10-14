@@ -4,7 +4,7 @@
 //! Pairing is language neutral. The only language question is how many of the target's leading
 //! parameters the call binds itself ([`Linked::bound_parameters`](crate::Linked::bound_parameters));
 //! everything else follows from the written arguments (expansions and keywords) and the target's
-//! `parameter` records. The rules, applied to the arguments in written order:
+//! parameter records. The rules, applied to the arguments in written order:
 //!
 //! 1. The bound parameters and every `this` parameter are dropped; the rest are the *takers*.
 //! 2. Positional arguments fill the takers that accept positions (`positional`,
@@ -15,7 +15,7 @@
 //! 4. A keyword argument fills the taker of that name that accepts keywords (`positional`,
 //!    `keyword_only`) unless a positional argument filled it already, else the `keywords`
 //!    taker, else it is `no_parameter`.
-//! 5. A `class` target (no direct constructor) takes nothing only when its language proves it
+//! 5. A class target (no direct constructor) takes nothing only when its language proves it
 //!    ([`Linked::class_takes_no_arguments`](crate::Linked::class_takes_no_arguments): no base, no
 //!    decorator, and nothing else that supplies a constructor): every argument is then
 //!    `no_parameter`, and otherwise `no_signature`.
@@ -23,10 +23,10 @@
 //! Equal ordinals never prove anything: nothing here guesses past these rules.
 
 use unfold_core::typed::{Pairing, Parameter};
-use unfold_core::vocab::{BlockKind, Expansion, PairingReason, ParameterKind};
+use unfold_core::vocab::{Expansion, NodeKind, PairingReason, ParameterKind};
 
 use crate::facts::ArgumentFact;
-use crate::program::{BlockRef, FactsSet};
+use crate::program::{FactsSet, NodeRef};
 
 /// What a resolved call's target offers its arguments.
 #[derive(Debug, Clone, Copy)]
@@ -52,23 +52,23 @@ impl<'a> Takers<'a> {
     /// for a callable; `takes_nothing` is asked only for a class.
     pub fn of(
         program: &'a FactsSet,
-        target: BlockRef,
+        target: NodeRef,
         bound: Option<u32>,
         takes_nothing: impl FnOnce() -> bool,
     ) -> Option<Self> {
         let facts = program.facts(target.file)?;
-        let block = facts.graph.blocks().get(target.local as usize)?;
-        if block.kind == BlockKind::Class {
-            return Some(Self::Class {
-                takes_nothing: takes_nothing(),
-            });
-        }
-        if !block.kind.is_function_like() {
-            return None;
+        match facts.graph.nodes().get(target.local as usize)?.kind() {
+            NodeKind::Class => {
+                return Some(Self::Class {
+                    takes_nothing: takes_nothing(),
+                });
+            }
+            NodeKind::Function => {}
+            _ => return None,
         }
         let parameters = &facts.graph.types().parameters;
-        let start = parameters.partition_point(|parameter| parameter.block < target.local);
-        let end = parameters.partition_point(|parameter| parameter.block <= target.local);
+        let start = parameters.partition_point(|parameter| parameter.node < target.local);
+        let end = parameters.partition_point(|parameter| parameter.node <= target.local);
         Some(Self::Callable {
             parameters: &parameters[start..end],
             bound,
@@ -152,12 +152,15 @@ pub fn pair(arguments: &[ArgumentFact], takers: Takers<'_>) -> Vec<Pairing> {
 
 #[cfg(test)]
 mod tests {
+    use unfold_core::ByteRange;
+
     use super::*;
 
     fn parameter(index: u32, kind: ParameterKind, name: &str) -> Parameter {
         Parameter {
-            block: 1,
+            node: 1,
             index,
+            range: ByteRange::new(index, index + 1).unwrap(),
             kind,
             name: Some(name.into()),
             optional: false,
@@ -167,7 +170,12 @@ mod tests {
     }
 
     fn positional(position: u32) -> ArgumentFact {
-        ArgumentFact::positional(0, position, true)
+        ArgumentFact {
+            range: ByteRange::new(position, position + 1).unwrap(),
+            value: Some(0),
+            expand: None,
+            keyword: None,
+        }
     }
 
     fn keyword(position: u32, name: &str) -> ArgumentFact {
@@ -180,7 +188,7 @@ mod tests {
     fn expanded(position: u32, expand: Expansion) -> ArgumentFact {
         ArgumentFact {
             expand: Some(expand),
-            reference: false,
+            value: None,
             ..positional(position)
         }
     }

@@ -13,9 +13,9 @@
 //!
 //! Each update runs the stages of [`Stage`] in order: discover (or apply the changed paths),
 //! snapshot the changed files (read and hash once), extract their facts in parallel through the
-//! [`FactsCache`], link every enabled language over the whole program, resolve every call
-//! site, detect and assemble entrances, and validate the new graph with the core validator
-//! and each language's census. Only a successful update replaces the engine's state; a
+//! [`FactsCache`], link every enabled language over the whole program, resolve every link and
+//! pair every argument, and validate the new graph with the core validator and each language's
+//! census. Only a successful update replaces the engine's state; a
 //! cancelled or failed one leaves the previous graph, facts, and fingerprints untouched.
 //! `docs/engine.md` describes the rules.
 
@@ -30,7 +30,6 @@ mod scan;
 mod state;
 mod stats;
 mod summary;
-mod targets;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -39,7 +38,7 @@ use std::sync::Arc;
 use rayon::ThreadPool;
 use unfold_core::validate::Violation;
 use unfold_core::vocab::Language as LanguageId;
-use unfold_core::{Graph, Launches, RepoPath};
+use unfold_core::{Graph, RepoPath};
 
 pub use basis::LinkBasis;
 pub use cache::{
@@ -248,8 +247,6 @@ pub struct UpdateOutcome {
     pub previous: Arc<Graph>,
     /// The new graph, normalized and validated.
     pub graph: Arc<Graph>,
-    /// The new graph's launch records.
-    pub launches: Arc<Launches>,
     /// What changed, for `graph_updated`.
     pub summary: ChangeSummary,
     /// What the update did.
@@ -426,11 +423,6 @@ impl Engine {
     /// The current graph (empty before the first update).
     pub fn graph(&self) -> &Arc<Graph> {
         &self.state.graph
-    }
-
-    /// The current graph's launch records.
-    pub fn launches(&self) -> &Arc<Launches> {
-        &self.state.launches
     }
 
     /// The effective settings.

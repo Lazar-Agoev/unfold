@@ -1,0 +1,7 @@
+override.ts#Child #0 extends `Base` → project override.ts#Base
+override.ts#call #0 types `Base` → project override.ts#Base
+override.ts#call #1 types `Child` → project override.ts#Child
+override.ts#call/call:base.m #0 calls `base.m` → unknown overridden
+override.ts#call/call:child.m #0 calls `child.m` → project override.ts#Child.m
+override.ts#Holder.constructor #0 types `Base` → project override.ts#Base
+override.ts#Holder.run/call:this.base.m #0 calls `this.base.m` → unknown overridden

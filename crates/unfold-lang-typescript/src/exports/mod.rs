@@ -16,18 +16,18 @@
 //!
 //! Following a link: an import binding's target is the imported module's export (`*` is the
 //! module itself; `export=` falls back to the module; a missing `default` falls back to
-//! `export=` unless `allowSyntheticDefaultImports` is false). A module whose `export =` names a
-//! value exposes that value's members. A module outside the program is external (or, for a
-//! source the scope excludes or a file that failed, an excluded boundary) with its location.
-//! Type-only links, and names whose declarations are all types, are type-only and left out of
-//! [`ExportTable::exports`]. Cycles stop at the first repeated `(module, name)`.
+//! `export=` when synthetic default imports are on). A module whose `export =` names a value
+//! exposes that value's members. A module outside the program is external (or, for a source the
+//! scope excludes or a file that failed, an excluded boundary) with its location. Names are
+//! followed as values (type-only links name nothing) and as types (type-only links are
+//! followed). Cycles stop at the first repeated `(module, name)`.
 
 mod builder;
 mod index;
 
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use unfold_engine::evidence::{Export, ExternalLocation};
+use unfold_engine::evidence::ExternalLocation;
 use unfold_engine::{DeclRef, FileId};
 
 use crate::modules::{Resolved, SpecifierKind};
@@ -49,8 +49,6 @@ pub struct ExportTarget {
     pub excluded: Vec<ExternalLocation>,
     /// More than one declaration could be meant.
     pub ambiguous: bool,
-    /// Only types answer to the name.
-    pub type_only: bool,
     identities: Vec<Identity>,
 }
 
@@ -71,20 +69,11 @@ impl ExportTarget {
             ..Self::default()
         }
     }
-
-    fn type_only() -> Self {
-        Self {
-            type_only: true,
-            ..Self::default()
-        }
-    }
 }
 
 /// What makes two targets the same, for star-export conflicts.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Identity {
-    /// A module-scope name of a file (all its merged declarations).
-    Symbol(FileId, Box<str>),
     /// A bound symbol of a file (an index into its binding's symbols).
     Bound(FileId, u32),
     /// One declaration (an exported expression).
@@ -100,11 +89,10 @@ pub(crate) struct ModuleFile<'a> {
     pub(crate) facts: &'a ModuleFacts,
     /// Whether the file is a module (scripts export nothing).
     pub(crate) is_module: bool,
-    /// Whether a missing `default` import falls back to `export=`.
+    /// Whether a missing `default` import falls back to `export=`, as evidence follows imports:
+    /// `allowSyntheticDefaultImports`, else `esModuleInterop`, else whether `module` is a Node
+    /// kind or `preserve`.
     pub(crate) synthetic_default: bool,
-    /// The same, as evidence follows imports: `allowSyntheticDefaultImports`, else
-    /// `esModuleInterop`, else whether `module` is a Node kind or `preserve`.
-    pub(crate) callee_synthetic_default: bool,
     /// Each module declaration's bound symbol, aligned with `facts.declarations`.
     pub(crate) symbols: Vec<Option<u32>>,
 }
@@ -119,19 +107,14 @@ pub(crate) trait Specifiers: Sync {
     fn path(&self, file: FileId) -> Option<&str>;
 }
 
-/// Every file's export table and import-binding targets.
+/// Every file's export names and import-binding targets, followed as values and as types.
 #[derive(Debug, Default)]
 pub struct ExportTable {
-    /// By file ID: every export name (type-only ones included) and its target.
-    names: Vec<FxHashMap<Box<str>, ExportTarget>>,
-    /// By file ID: the runtime exports, sorted by name.
-    exports: Vec<Vec<Export>>,
-    /// By file ID: each import binding's target, aligned with the file's import bindings.
-    bindings: Vec<Vec<ExportTarget>>,
     /// By file ID: whether `export=` is among its explicit exports.
     export_equals: Vec<bool>,
-    /// The same names and bindings followed as values evidence follows them.
+    /// By file ID: every export name and its target, followed as evidence follows values.
     value_names: Vec<FxHashMap<Box<str>, ExportTarget>>,
+    /// By file ID: each import binding's target, aligned with the file's import bindings.
     value_bindings: Vec<Vec<ExportTarget>>,
     /// The same names and bindings followed for their types (written annotations).
     type_names: Vec<FxHashMap<Box<str>, ExportTarget>>,
@@ -186,40 +169,19 @@ impl ExportTable {
     /// modules with facts).
     pub(crate) fn build(files: &[Option<ModuleFile<'_>>], specifiers: &dyn Specifiers) -> Self {
         let indexes = indexes(files);
-        // The three modes share nothing but the indexes and the (pure) specifier resolution,
-        // so they follow in parallel; each one's results are independent of the others.
+        // The two modes share nothing but the indexes and the (pure) specifier resolution, so
+        // they follow in parallel; each one's results are independent of the other's.
         let follow_mode = |mode| follow(files, &Builder::new(files, &indexes, specifiers, mode));
-        let ((followed, exports, export_equals), (values, types)) = rayon::join(
-            || {
-                let runtime = Builder::new(files, &indexes, specifiers, Mode::Runtime);
-                let followed = follow(files, &runtime);
-                let exports = followed
-                    .names
-                    .iter()
-                    .map(|names| {
-                        let mut exports: Vec<Export> = names
-                            .iter()
-                            .filter(|(_, target)| !target.type_only)
-                            .map(|(name, target)| Export {
-                                name: name.clone(),
-                                candidates: runtime.candidates(target),
-                            })
-                            .collect();
-                        exports.sort_by(|a, b| a.name.cmp(&b.name));
-                        exports
-                    })
-                    .collect();
-                let export_equals = (0..files.len())
-                    .map(|index| runtime.has_explicit(FileId(index as u32), "export="))
-                    .collect();
-                (followed, exports, export_equals)
-            },
-            || rayon::join(|| follow_mode(Mode::Value), || follow_mode(Mode::Type)),
-        );
+        let (values, types) = rayon::join(|| follow_mode(Mode::Value), || follow_mode(Mode::Type));
+        let export_equals = indexes
+            .iter()
+            .map(|index| {
+                index
+                    .as_ref()
+                    .is_some_and(|index| index.explicit.contains_key("export="))
+            })
+            .collect();
         Self {
-            names: followed.names,
-            exports,
-            bindings: followed.bindings,
             export_equals,
             value_names: values.names,
             value_bindings: values.bindings,
@@ -228,23 +190,8 @@ impl ExportTable {
         }
     }
 
-    /// The runtime exports of `file`, sorted by name, after re-exports are followed.
-    pub fn exports(&self, file: FileId) -> &[Export] {
-        self.exports.get(file.index()).map_or(&[], Vec::as_slice)
-    }
-
-    /// The target of export `name` of `file` (type-only exports included).
-    pub fn export(&self, file: FileId, name: &str) -> Option<&ExportTarget> {
-        self.names.get(file.index())?.get(name)
-    }
-
     /// The target of import binding `binding` (an index into the file's
-    /// [`ModuleFacts::imports`]).
-    pub fn binding(&self, file: FileId, binding: u32) -> Option<&ExportTarget> {
-        self.bindings.get(file.index())?.get(binding as usize)
-    }
-
-    /// The target of import binding `binding` followed as a value, as evidence follows it.
+    /// [`ModuleFacts::imports`]) followed as a value, as evidence follows it.
     pub fn value_binding(&self, file: FileId, binding: u32) -> Option<&ExportTarget> {
         self.value_bindings.get(file.index())?.get(binding as usize)
     }
@@ -255,19 +202,14 @@ impl ExportTable {
         self.type_bindings.get(file.index())?.get(binding as usize)
     }
 
-    /// Member `name` of a target: a module's export (or, when the module has `export =`, the
-    /// member of what it assigns), or an external member. Ambiguous, excluded, and type-only
-    /// targets stay as they are; anything else has no members here.
-    pub fn member(&self, target: &ExportTarget, name: &str) -> ExportTarget {
-        self.member_in(&self.names, target, name)
-    }
-
-    /// [`ExportTable::member`] followed as a value, as evidence follows it.
+    /// Member `name` of a target, followed as a value: a module's export (or, when the module
+    /// has `export =`, the member of what it assigns), or an external member. Ambiguous and
+    /// excluded targets stay as they are; anything else has no members here.
     pub fn value_member(&self, target: &ExportTarget, name: &str) -> ExportTarget {
         self.member_in(&self.value_names, target, name)
     }
 
-    /// [`ExportTable::member`] followed for types.
+    /// [`ExportTable::value_member`] followed for types.
     pub fn type_member(&self, target: &ExportTarget, name: &str) -> ExportTarget {
         self.member_in(&self.type_names, target, name)
     }
@@ -282,7 +224,7 @@ impl ExportTable {
         let mut target = target;
         let mut hops: SmallVec<[FileId; 4]> = SmallVec::new();
         loop {
-            if target.ambiguous || !target.excluded.is_empty() || target.type_only {
+            if target.ambiguous || !target.excluded.is_empty() {
                 return target.clone();
             }
             if !target.external.is_empty() {
@@ -293,7 +235,7 @@ impl ExportTable {
             };
             let exported = names.get(module.index());
             if let Some(found) = exported.and_then(|names| names.get(name))
-                && (!found.is_empty() || found.type_only)
+                && !found.is_empty()
             {
                 return found.clone();
             }

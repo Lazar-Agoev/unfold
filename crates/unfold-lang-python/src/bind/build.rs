@@ -1,51 +1,48 @@
 //! The binder's extraction pass: one iterative walk over a parsed module that records scopes,
 //! declarations, the complete write census, star imports, the mutation passes' inputs, the type
-//! names of annotations ([`super::types`]), and which calls are awaited, then interns every
+//! names of annotations, class bases, and handler clauses ([`super::types`]), then interns every
 //! expression they mention ([`super::exprs`]) and resolves `global` and `nonlocal` redirection.
 //!
 //! Scopes follow the proof of concept's binder: a `def`'s decorators and name belong to the
 //! enclosing scope; with type parameters, its annotations, defaults, and return annotation are
 //! evaluated in the type-parameter scope, otherwise in the enclosing scope; its parameters and
 //! body are in its own scope. A class's bases and keywords are evaluated like annotations, and
-//! its positional bases are type names ([`super::types`]). A
-//! comprehension's first iterable is evaluated outside it. A write is *conditional* when an
+//! its positional bases are type names ([`super::types`]), as are the classes an `except` clause
+//! names. A comprehension's first iterable is evaluated outside it. A write is *conditional* when an
 //! `if`, `try`, `match`, `for`, or `while` inside the same function, class, or module contains
 //! it (the loop's own targets are not inside the loop).
 
 use ruff_python_ast::{Alias, ArgOrKeyword, Expr, ModModule, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_engine::facts::TypeRefFact;
 
 use super::exprs::Interner;
 use super::ir::{
     BindFacts, ClassFact, Effect, ExprId, ImportWrite, MODULE_SCOPE, ModuleSpec, NodeFact, NodeId, NodeKind,
     ScopeId, ScopeKind, StarFact, TargetKind, WriteFact, WriteKind,
 };
-use super::types::RawTypeName;
+use super::types::{RawTypeName, TypeName};
 use crate::ast::arguments;
-use crate::values::address;
+use crate::lower::address;
 
 /// What the binder pass reads besides the module.
 pub(crate) struct Inputs<'a> {
     /// The file's text.
     pub(crate) text: &'a str,
-    /// The block of every selected `def`, `class`, and `lambda`, by the node's address.
-    pub(crate) blocks: &'a FxHashMap<usize, u32>,
+    /// The node of every lowered `def`, `class`, and `lambda`, by its address.
+    pub(crate) definitions: &'a FxHashMap<usize, u32>,
     /// The expression of each value-table entry, in table order.
     pub(crate) values: &'a [&'a Expr],
-    /// For each call that is a `call` block, its callee's index in the value table, by the
-    /// call's address.
+    /// For each lowered call expression, its callee's index in the value table, by the call's
+    /// address.
     pub(crate) callees: &'a FxHashMap<usize, u32>,
 }
 
-/// The binder facts, the declaration of each `from` import name (by the alias's address), the
-/// file's written type names (aligned with [`BindFacts::types`]), and the calls an `await`
-/// applies to directly (by the call's address).
+/// The binder facts, the declaration of each `from` import name (by the alias's address), and
+/// the file's written type names (aligned with [`BindFacts::types`]).
 pub(crate) struct Built {
     pub(crate) facts: BindFacts,
     pub(crate) aliases: FxHashMap<usize, NodeId>,
-    pub(crate) type_refs: Vec<TypeRefFact>,
-    pub(crate) awaited: FxHashSet<usize>,
+    pub(crate) type_names: Vec<TypeName>,
 }
 
 /// What a node inherits from its ancestors.
@@ -106,8 +103,6 @@ pub(super) struct Builder<'a> {
     pub(super) stack: Vec<Task<'a>>,
     /// Written type names, in the order the walk met them.
     pub(super) types: Vec<RawTypeName<'a>>,
-    /// The calls an `await` applies to directly (through nested `await`s), by address.
-    pub(super) awaited: FxHashSet<usize>,
 }
 
 /// Runs the binder pass over `module`.
@@ -123,7 +118,6 @@ pub(crate) fn build<'a>(module: &'a ModModule, inputs: &'a Inputs<'a>) -> Built 
         aliases: FxHashMap::default(),
         stack: Vec::new(),
         types: Vec::new(),
-        awaited: FxHashSet::default(),
     };
     builder.scope(ScopeKind::Module, None);
     let root = Ctx {
@@ -234,7 +228,7 @@ impl<'a> Builder<'a> {
                     }
                 }
                 let kind = NodeKind::Class(ClassFact {
-                    block: self.block(stmt),
+                    local: self.local(stmt),
                     name: self.interner.name(class.name.id.as_str()),
                     decorators,
                     arguments,
@@ -396,6 +390,9 @@ impl<'a> Builder<'a> {
                         let id = self.node(NodeKind::Other, inside);
                         self.simple_write(inside, name.id.as_str(), id, WriteKind::Other);
                     }
+                    if let Some(kind) = handler.type_.as_deref() {
+                        self.handler(kind, inside.scope);
+                    }
                     self.visit(handler.type_.as_deref().map(|kind| (kind, inside)));
                 }
                 self.statements(&node.body, inside);
@@ -453,12 +450,12 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub(super) fn block(&self, node: &Stmt) -> u32 {
+    /// The node of a lowered `def` or `class` statement.
+    pub(super) fn local(&self, node: &Stmt) -> Option<u32> {
         self.inputs
-            .blocks
+            .definitions
             .get(&(std::ptr::from_ref(node) as usize))
             .copied()
-            .unwrap_or_default()
     }
 
     pub(super) fn argument(&mut self, argument: ArgOrKeyword<'a>, scope: ScopeId) -> super::ir::Argument {
@@ -478,7 +475,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// When `value` is a call block's call, its callee's index in the value table.
+    /// When `value` is a lowered call, its callee's index in the value table.
     pub(super) fn factory(&self, value: &Expr) -> Option<u32> {
         match value {
             Expr::Call(_) => self.inputs.callees.get(&address(value)).copied(),

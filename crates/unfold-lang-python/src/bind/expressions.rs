@@ -1,13 +1,12 @@
-//! The binder pass over expressions and patterns: calls (the mutation passes' inputs),
-//! awaited calls, lambdas, comprehensions and their scopes, assignment expressions, and pattern
-//! captures.
+//! The binder pass over expressions and patterns: calls (the mutation passes' inputs), lambdas,
+//! comprehensions and their scopes, assignment expressions, and pattern captures.
 
 use ruff_python_ast::{Comprehension, Expr, Pattern};
 
 use super::build::{Builder, Ctx};
 use super::ir::{Effect, FunctionFact, NodeKind, ScopeKind, TargetKind, WriteFact, WriteKind};
 use crate::ast::{arguments, expr_children};
-use crate::values::address;
+use crate::lower::address;
 
 impl<'a> Builder<'a> {
     /// Pattern captures (`case x`, `case [*rest]`, `case {**rest}`, `case P() as x`, and the
@@ -70,12 +69,7 @@ impl<'a> Builder<'a> {
                     .as_deref()
                     .and_then(|parameters| self.first_parameter(parameters));
                 let kind = NodeKind::Function(FunctionFact {
-                    block: self
-                        .inputs
-                        .blocks
-                        .get(&address(expr))
-                        .copied()
-                        .unwrap_or_default(),
+                    local: self.inputs.definitions.get(&address(expr)).copied(),
                     name: None,
                     decorators: Vec::new(),
                     parameters: Vec::new(),
@@ -137,15 +131,6 @@ impl<'a> Builder<'a> {
                 self.visit([(&*named.target, ctx), (&*named.value, ctx)]);
             }
             _ => {
-                if let Expr::Await(_) = expr {
-                    let mut awaited = expr;
-                    while let Expr::Await(inner) = awaited {
-                        awaited = &inner.value;
-                    }
-                    if let Expr::Call(_) = awaited {
-                        self.awaited.insert(address(awaited));
-                    }
-                }
                 let mut children: Vec<&'a Expr> = Vec::new();
                 expr_children(expr, &mut children);
                 self.visit(children.into_iter().map(|child| (child, ctx)));

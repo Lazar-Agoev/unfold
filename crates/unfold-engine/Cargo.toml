@@ -18,7 +18,6 @@ sha2 = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
-unicode-id-start = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

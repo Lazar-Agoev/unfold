@@ -1,2 +1,0 @@
-shadow-library.ts#function:call/expression_statement[0]/call[0] #0 calls `map.get` -> shadow-library.ts#class:Map/method:get
-shadow-library.ts#function:call/expression_statement[1]/call[0] #0 calls `text.trim` -> shadow-library.ts#class:String/method:trim

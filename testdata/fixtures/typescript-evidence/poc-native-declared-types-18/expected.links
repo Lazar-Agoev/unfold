@@ -1,0 +1,2 @@
+generic-return.ts#/call:factory().m #0 calls `factory().m` → unknown unknown_receiver
+generic-return.ts#/call:factory().m/call:factory #0 calls `factory` → project generic-return.ts#factory

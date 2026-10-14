@@ -1,0 +1,10 @@
+a.ts#/call:hidden #0 calls `hidden` → project a.ts#A.hidden
+a.ts#/call:f #0 calls `f` → project a.ts#A.f
+a.ts#/call:hidden[1] #0 calls `hidden` → unknown unknown_name
+a.ts#A.g/call:f #0 calls `f` → project a.ts#A.f
+a.ts#/call:A.f #0 calls `A.f` → project a.ts#A.f
+a.ts#/call:A.g #0 calls `A.g` → project a.ts#A.g
+a.ts#/call:C.deep #0 calls `C.deep` → project a.ts#B.C.deep
+a.ts#/call:B.C.deep #0 calls `B.C.deep` → project a.ts#B.C.deep
+a.ts#/call:merged #0 calls `merged` → project a.ts#merged
+a.ts#/call:merged.helper #0 calls `merged.helper` → project a.ts#merged.helper

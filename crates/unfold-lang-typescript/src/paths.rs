@@ -52,19 +52,6 @@ pub(crate) fn join(dir: &str, relative: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// `path` relative to `base` when `path` is `base` or lies beneath it.
-pub(crate) fn strip_dir<'a>(path: &'a str, base: &str) -> Option<&'a str> {
-    if base.is_empty() {
-        return Some(path);
-    }
-    let rest = path.strip_prefix(base)?;
-    if rest.is_empty() {
-        Some(rest)
-    } else {
-        rest.strip_prefix('/')
-    }
-}
-
 /// `base` and `name` joined with one `/` (either may be empty).
 pub(crate) fn child(base: &str, name: &str) -> String {
     match (base.is_empty(), name.is_empty()) {
@@ -90,15 +77,11 @@ mod tests {
     }
 
     #[test]
-    fn walks_ancestors_and_strips_folders() {
+    fn walks_ancestors_and_joins_names() {
         assert_eq!(ancestors("a/b").collect::<Vec<_>>(), ["a/b", "a", ""]);
         assert_eq!(ancestors("").collect::<Vec<_>>(), [""]);
         assert_eq!(dir_of("a/b.ts"), "a");
         assert_eq!(dir_of("b.ts"), "");
-        assert_eq!(strip_dir("src/a/b.ts", "src"), Some("a/b.ts"));
-        assert_eq!(strip_dir("srcx/a.ts", "src"), None);
-        assert_eq!(strip_dir("src", "src"), Some(""));
-        assert_eq!(strip_dir("a.ts", ""), Some("a.ts"));
         assert_eq!(child("", "a"), "a");
         assert_eq!(child("a", "b"), "a/b");
     }

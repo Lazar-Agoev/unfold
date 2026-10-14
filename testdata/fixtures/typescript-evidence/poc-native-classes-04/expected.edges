@@ -1,2 +1,0 @@
-unknown-base.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> ambiguous
-unknown-base.ts#class:Child/call[0] #0 calls `base` -> unknown-base.ts#function:base

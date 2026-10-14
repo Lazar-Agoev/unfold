@@ -1,0 +1,8 @@
+unknown.ts#call #0 types `Interface` → project unknown.ts#Interface
+unknown.ts#call #1 types `Abstract` → project unknown.ts#Abstract
+unknown.ts#call/call:value.m #0 calls `value.m` → unknown unknown_receiver
+unknown.ts#call/call:abstract.m #0 calls `abstract.m` → unknown not_concrete
+unknown.ts#call/call:callback #0 calls `callback` → unknown parameter
+unknown.ts#call/call:anyValue.m #0 calls `anyValue.m` → unknown unknown_receiver
+unknown.ts#call/call:unknownValue.m #0 calls `unknownValue.m` → unknown unknown_receiver
+unknown.ts#call/call:missing.m #0 calls `missing.m` → unknown unknown_receiver

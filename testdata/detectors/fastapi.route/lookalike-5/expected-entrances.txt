@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/lookalike-5. Format: testdata/README.md.
-# Local lookalikes, shadowed imports, rebound factories, unsupported subclasses, and exec do not prove APIs (PoC: "Local lookalikes..."). Written: from fastapi import FastAPI; app = FastAPI(); app = unknown

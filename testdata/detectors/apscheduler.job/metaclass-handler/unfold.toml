@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/metaclass-handler.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

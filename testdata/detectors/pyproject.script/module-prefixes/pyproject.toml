@@ -1,3 +1,0 @@
-[project.scripts]
-shallow = "pkg.worker:main"
-deep = "outer.pkg.worker:main"

@@ -1,4 +1,0 @@
-source.ts#import[0] #0 imports `express` -> external express
-source.ts#variable:router/call[0] #0 calls `express.Router` -> external express
-use.ts#import[0] #0 imports `./source.js` -> source.ts#
-use.ts#import[1] #0 imports `package/sub` -> external package

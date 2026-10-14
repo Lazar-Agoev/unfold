@@ -1,0 +1,11 @@
+array-types.ts#make #0 types `Repo` → project array-types.ts#Repo
+array-types.ts#run #0 types `Array` → library global
+array-types.ts#run #1 types `Repo` → project array-types.ts#Repo
+array-types.ts#run #2 types `ReadonlyArray` → library global
+array-types.ts#run #3 types `Repo` → project array-types.ts#Repo
+array-types.ts#run/call:a%5B%5D.save #0 calls `a[0].save` → unknown unknown_receiver
+array-types.ts#run/call:b%5B%5D.save #0 calls `b[0].save` → unknown unknown_receiver
+array-types.ts#run/call:make()%5B%5D.save #0 calls `make()[0].save` → unknown unknown_receiver
+array-types.ts#run/call:make()%5B%5D.save/call:make #0 calls `make` → project array-types.ts#make
+array-types.ts#/call:Array #0 calls `Array` → library global
+array-types.ts#/call:constructed%5B%5D.save #0 calls `constructed[0].save` → unknown unknown_receiver

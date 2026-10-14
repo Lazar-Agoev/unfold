@@ -12,9 +12,9 @@
 //! type parameters are symbols of their scopes, so a name whose lookup finds one is dropped when
 //! names are looked up ([`Binder::finish`](super::Binder)).
 //!
-//! Heritage clauses of an interface or class that is a block are walked too: each base is a
-//! name with its heritage (`extends` for an interface's or a class's `extends`, `implements`
-//! for a class's `implements`), and its type arguments are ordinary type names. A class's
+//! Heritage clauses of an interface or class that is a node are walked too: each base is a name
+//! used as a base (`extends` for an interface's or a class's `extends`, `implements` for a
+//! class's `implements`), and its type arguments are ordinary type names. A class's
 //! `extends` is an expression: only a name or a member chain names a type (`mixin(Base)` names
 //! none). A class's clauses are walked in its own scope, where its type parameters are.
 //!
@@ -28,11 +28,12 @@ use oxc_ast::ast::{
 };
 use oxc_span::{GetSpan, Span};
 use unfold_core::text::ByteRange;
-use unfold_core::vocab::Heritage;
+use unfold_engine::facts::TypeUse;
 
 use super::{Binder, TypeSite};
-use crate::build::{MAX_DEPTH, range};
+use crate::census::MAX_DEPTH;
 use crate::payload::binding::{Lookup, TypeRef};
+use crate::spans::range;
 
 impl<'a> Binder<'a> {
     /// Records the type names of `annotation` when its written type is linked (each linked
@@ -77,7 +78,7 @@ impl<'a> Binder<'a> {
     /// Records the bases of an interface's `extends` clause and their type arguments' names.
     pub(super) fn interface_heritage(&mut self, bases: &[TSInterfaceHeritage<'a>]) {
         for base in bases {
-            self.type_name(&base.type_name, Some(Heritage::Extends));
+            self.type_name(&base.type_name, TypeUse::Extends);
             self.type_arguments(base.type_arguments.as_deref(), 0);
         }
     }
@@ -87,12 +88,12 @@ impl<'a> Binder<'a> {
     pub(super) fn class_heritage(&mut self, class: &Class<'a>) {
         if let Some(heritage) = &class.heritage {
             if let Some(names) = expression_names(&heritage.expression) {
-                self.record_name(names, heritage.expression.span(), Some(Heritage::Extends));
+                self.record_name(names, heritage.expression.span(), TypeUse::Extends);
             }
             self.type_arguments(heritage.type_arguments.as_deref(), 0);
         }
         for implemented in &class.implements {
-            self.type_name(&implemented.expression, Some(Heritage::Implements));
+            self.type_name(&implemented.expression, TypeUse::Implements);
             self.type_arguments(implemented.type_arguments.as_deref(), 0);
         }
     }
@@ -195,7 +196,7 @@ impl<'a> Binder<'a> {
         let next = depth + 1;
         match ty {
             TSType::TSTypeReference(it) => {
-                self.type_name(&it.type_name, None);
+                self.type_name(&it.type_name, TypeUse::Annotation);
                 self.type_arguments(it.type_arguments.as_deref(), depth);
             }
             TSType::TSArrayType(it) => self.type_names(&it.element_type, next),
@@ -310,8 +311,8 @@ impl<'a> Binder<'a> {
         }
     }
 
-    /// Records one written type name (a base with its `heritage`), unless its root is `this`.
-    fn type_name(&mut self, name: &TSTypeName<'a>, heritage: Option<Heritage>) {
+    /// Records one written type name, used as `usage`, unless its root is `this`.
+    fn type_name(&mut self, name: &TSTypeName<'a>, usage: TypeUse) {
         let mut names: Vec<&'a str> = Vec::new();
         let mut current = name;
         loop {
@@ -325,12 +326,12 @@ impl<'a> Binder<'a> {
             }
         }
         names.reverse();
-        self.record_name(names, name.span(), heritage);
+        self.record_name(names, name.span(), usage);
     }
 
     /// Records the type name `names` (first to last) written at `span`, unless its first name
     /// is a type parameter of the enclosing type syntax.
-    fn record_name(&mut self, names: Vec<&'a str>, span: Span, heritage: Option<Heritage>) {
+    fn record_name(&mut self, names: Vec<&'a str>, span: Span, usage: TypeUse) {
         if names.first().is_none_or(|first| self.type_locals.contains(first)) {
             return;
         }
@@ -346,7 +347,7 @@ impl<'a> Binder<'a> {
         self.type_sites.push(TypeSite {
             range: range(span),
             qualified,
-            heritage,
+            usage,
             ty: index,
         });
     }

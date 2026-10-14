@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/factory-alias. Format: testdata/README.md.
-# An aliased from_crontab factory keeps the body.
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:8
-	target	handler	resolved	src/app.py#function:first	first

@@ -1,0 +1,4 @@
+use.ts#call #0 types `Client` → unknown not_indexed
+use.ts#call #1 types `NodeJS.Process` → library global
+use.ts#call/call:client.send #0 calls `client.send` → unknown not_indexed
+use.ts#call/call:process.cwd #0 calls `process.cwd` → library node

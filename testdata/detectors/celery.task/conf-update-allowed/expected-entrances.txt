@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/conf-update-allowed. Format: testdata/README.md.
-# A direct four-key conf.update keeps the body (PoC: "Only direct proved four-key conf updates...").
-entrance	celery.task	worker	-	orders	exact	src/app.py:7
-	target	handler	resolved	src/app.py#function:first	first

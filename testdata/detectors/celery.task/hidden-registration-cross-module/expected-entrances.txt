@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/hidden-registration-cross-module. Format: testdata/README.md.
-# A stored factory called from another module withholds the body.
-entrance	celery.task	worker	-	orders	exact	src/appmod.py:6
-	target	handler	unresolved	unsupported	first

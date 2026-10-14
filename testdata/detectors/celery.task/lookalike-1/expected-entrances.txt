@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/lookalike-1. Format: testdata/README.md.
-# Local, shadowed, rebound, and subclass producers can't manufacture task entrances (PoC: "Local, shadowed, rebound and subclass producers..."). Written: class Celery: pass; app = Celery()

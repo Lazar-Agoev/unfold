@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/scheduler-change-04. Format: testdata/README.md.
-# Scheduler mutations invalidate their registration domain (PoC: "Scheduler and returned-Job mutations..."). Written: change = scheduler.modify_job; change('first', func=second)
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

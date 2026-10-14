@@ -12,8 +12,8 @@ use super::forms::{asserted, awaited_import, key_name, uses_outer_scope};
 use super::ir::{factory_callee, unwrap};
 use super::scope::ScopeKind;
 use super::{AliasDraft, Binder, Frame, ModuleKey};
-use crate::build::range;
-use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Meanings, ParamInfo, VarKind};
+use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Meanings, VarKind};
+use crate::spans::range;
 
 /// Who binds the identifiers of a destructuring pattern.
 #[derive(Debug, Clone, Copy)]
@@ -25,8 +25,8 @@ pub(super) enum PatternOwner {
         exported: bool,
         catch: bool,
     },
-    /// A parameter: its declaration, the callable, and its position.
-    Parameter(ParamInfo),
+    /// A parameter.
+    Parameter,
 }
 
 impl<'a> Binder<'a> {
@@ -93,19 +93,18 @@ impl<'a> Binder<'a> {
         }
     }
 
-    /// Declares a callable's parameters in the current scope. Positions count the written
-    /// parameters, so an explicit `this` parameter (which oxc keeps apart) is skipped (C-4).
+    /// Declares a callable's parameters in the current scope.
     pub(super) fn formal_parameters(&mut self, owner: u32, parameters: &FormalParameters<'a>) {
         let constructor = self
             .decl(owner)
             .is_some_and(|decl| decl.kind == DeclKind::Constructor);
-        for (position, parameter) in parameters.items.iter().enumerate() {
+        for parameter in &parameters.items {
             let property = parameter.accessibility.is_some() || parameter.readonly || parameter.r#override;
             let (pattern, default) = match (&parameter.pattern, &parameter.initializer) {
                 (BindingPattern::AssignmentPattern(it), None) => (&it.left, Some(&it.right)),
                 (pattern, initializer) => (pattern, initializer.as_deref()),
             };
-            let index = self.parameter(owner, position as u32, pattern, parameter.span);
+            let index = self.parameter(pattern, parameter.span);
             let ty = self.annotation(parameter.type_annotation.as_deref());
             self.decl_mut(index).ty = ty;
             if let Some(default) = default {
@@ -122,38 +121,25 @@ impl<'a> Binder<'a> {
             }
         }
         if let Some(rest) = &parameters.rest {
-            let position = parameters.items.len() as u32;
-            let index = self.parameter(owner, position, &rest.rest.argument, rest.span);
+            let index = self.parameter(&rest.rest.argument, rest.span);
             let ty = self.annotation(rest.type_annotation.as_deref());
             self.decl_mut(index).ty = ty;
         }
     }
 
     /// One parameter's declaration and the identifiers its pattern binds.
-    pub(super) fn parameter(
-        &mut self,
-        owner: u32,
-        position: u32,
-        pattern: &BindingPattern<'a>,
-        span: Span,
-    ) -> u32 {
+    pub(super) fn parameter(&mut self, pattern: &BindingPattern<'a>, span: Span) -> u32 {
         let name = match pattern {
             BindingPattern::BindingIdentifier(id) => Some(id.name.as_str()),
             _ => None,
         };
         let decl = self.blank(DeclKind::Parameter, name, range(span));
         let index = self.add(decl, None);
-        let info = ParamInfo {
-            parameter: index,
-            owner,
-            position,
-        };
-        self.decl_mut(index).parameter = Some(info);
         match pattern {
             BindingPattern::BindingIdentifier(id) => {
                 self.declare(self.scope, id.name.as_str(), index, Meanings::VALUE, false);
             }
-            other => self.pattern(other, PatternOwner::Parameter(info)),
+            other => self.pattern(other, PatternOwner::Parameter),
         }
         index
     }
@@ -207,9 +193,8 @@ impl<'a> Binder<'a> {
                 decl.flags = decl.flags.with(DeclFlags::CATCH, catch);
                 (scope, exported)
             }
-            PatternOwner::Parameter(info) => {
+            PatternOwner::Parameter => {
                 decl.flags = decl.flags.with(DeclFlags::IN_PARAMETER, true);
-                decl.parameter = Some(info);
                 (self.scope, false)
             }
         };
@@ -263,7 +248,6 @@ impl<'a> Binder<'a> {
         &mut self,
         declarator: &VariableDeclarator<'a>,
         var_kind: VarKind,
-        top: bool,
         exported: bool,
     ) {
         let scope = if var_kind == VarKind::Var {
@@ -298,7 +282,6 @@ impl<'a> Binder<'a> {
         let name = id.name.as_str();
         let mut decl = self.blank(DeclKind::Variable, Some(name), range(declarator.span));
         decl.var_kind = Some(var_kind);
-        decl.flags = decl.flags.with(DeclFlags::TOP_LEVEL, top);
         let index = self.add(decl, Some(ModuleKey::Variable));
         self.declare(scope, name, index, Meanings::VALUE, exported);
         let ty = self.annotation(declarator.type_annotation.as_deref());

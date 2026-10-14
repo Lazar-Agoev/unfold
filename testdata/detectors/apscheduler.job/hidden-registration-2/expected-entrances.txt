@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/hidden-registration-2. Format: testdata/README.md.
-# Hidden and historical registration aliases keep negative domain evidence (PoC: "Hidden and historical registration aliases..."). Written: @scheduler.scheduled_job('cron', id='first'); def hidden(): pass
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

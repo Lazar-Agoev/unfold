@@ -1,20 +1,15 @@
-//! The Python front end: the Ruff parser adapter, the binder, imports and source roots, C3
-//! linearization and receivers, decorators, the Python entrance detectors (pyproject scripts,
-//! FastAPI, Celery, APScheduler), and syntax highlighting for the reader.
-//!
-//! See `docs/languages/python.md`:
+//! The Python front end: the Ruff parser adapter, lowering to nodes, the binder, imports and
+//! source roots, C3 linearization and receivers, decorators, and syntax highlighting for the
+//! reader.
 //!
 //! - [`extract`]: parsing with Ruff under the configured grammar version (3.12–3.14), the
-//!   compile-time checks the proof of concept's grammar made, block selection through the
-//!   engine's shared selector with the Python mapping, the value table, call and import
-//!   occurrences, the typed facts (signatures, parameters, members, call results, and the type
-//!   names of annotations), the binder's per-file facts, the payload, and the independent
-//!   census;
-//! - [`link::PythonLinked`]: the whole-program binder (source roots and imports, the write
+//!   compile-time checks the proof of concept's grammar made, lowering the parse tree straight
+//!   to nodes (`lower`, one rule per syntax form), the value table and call facts, the imports
+//!   and written type names that become links, the typed records (signatures, parameters, and
+//!   members), the binder's per-file facts, the payload, and the independent census;
+//! - `link::PythonLinked`: the whole-program binder (source roots and imports, the write
 //!   census, reflection, C3 and receivers, decorators) and its answers to the shared backend;
-//! - the entrance detectors (`detect`): `pyproject.script`, `fastapi.route`, `celery.task`, and
-//!   `apscheduler.job`, which [`link::PythonLinked`] returns from `Linked::detectors`;
-//! - [`PythonHighlighter`]: colors for the Code view from Ruff's lexer;
+//! - [`PythonHighlighter`]: colors for the code panel from Ruff's lexer;
 //! - [`Python`]: the [`Language`] implementation.
 
 #![forbid(unsafe_code)]
@@ -23,15 +18,13 @@ mod analysis;
 mod ast;
 mod bind;
 mod census;
-mod detect;
 mod extract;
 mod highlight;
 mod link;
-mod mapping;
+mod lower;
 mod parse;
 mod payload;
 mod stdlib;
-mod syntax;
 mod tokens;
 mod typed;
 mod values;
@@ -50,7 +43,7 @@ pub use highlight::PythonHighlighter;
 pub const PRODUCER_NAME: &str = "unfold-lang-python";
 
 /// The front end's version: the crate, the pinned Ruff parser, and the payload format.
-pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.5");
+pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.7");
 
 /// The Python language.
 #[derive(Debug, Default, Clone, Copy)]

@@ -1,0 +1,2 @@
+self-parameter.ts#fn/call:self #0 calls `self` → unknown ambiguous
+self-parameter.ts#/call:fn #0 calls `fn` → project self-parameter.ts#fn

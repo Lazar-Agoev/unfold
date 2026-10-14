@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/container-9. Format: testdata/README.md.
-# Called container aliases keep negative domain evidence (PoC: "Called container aliases and stored Jobs..."). Written: {'change': scheduler.modify_job}['change']('first', func=second)
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

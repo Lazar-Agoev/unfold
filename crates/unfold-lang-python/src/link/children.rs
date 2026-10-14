@@ -2,7 +2,7 @@
 //! (the proof of concept's `collectChildImportMutations` and `importedChild`).
 //!
 //! Python first asks the package for an existing attribute; only an attribute proven absent
-//! makes the import machinery load the child module. So a child import is an occurrence of its
+//! makes the import machinery load the child module. So a child import is an `imports` link of its
 //! own only when the package is an indexed package or namespace whose `__init__.py` binds
 //! nothing of that name and defines no hook that could (`__getattr__`, `__path__`, `__name__`,
 //! `__class__`, `__dict__`), holds no unknown star import or `exec`, and no code anywhere may

@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/wrapped-class-callback. Format: testdata/README.md.
-# A wrapped class keeps wrapper.
-entrance	celery.task	worker	-	-	unknown	src/app.py:12
-	target	handler	unresolved	wrapper	Commands.run

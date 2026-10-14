@@ -1,0 +1,7 @@
+module.ts#/call:globalHelper #0 calls `globalHelper` → project one.ts#globalHelper
+module.ts#/call:Shared.fromTwo #0 calls `Shared.fromTwo` → project two.ts#Shared.fromTwo
+module.ts#/call:augmented #0 calls `augmented` → unknown not_concrete
+two.ts#/call:globalHelper #0 calls `globalHelper` → project one.ts#globalHelper
+two.ts#Shared.fromTwo/call:fromOne #0 calls `fromOne` → project one.ts#Shared.fromOne
+two.ts#/call:Shared.fromOne #0 calls `Shared.fromOne` → project one.ts#Shared.fromOne
+two.ts#/call:Shared.fromTwo #0 calls `Shared.fromTwo` → project two.ts#Shared.fromTwo

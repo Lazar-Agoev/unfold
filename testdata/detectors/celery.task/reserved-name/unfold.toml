@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/celery.task/reserved-name.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

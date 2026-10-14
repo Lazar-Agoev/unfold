@@ -470,23 +470,32 @@ fn check_target(checker: &mut Checker<'_>, file: &FileGraph, id: u32, node: &Nod
             subject(),
             format!("{} exits need their loop as their target", node.form),
         ),
-        (Some(target), true) if !encloses(&file.nodes, target, id) => checker.report(
+        (Some(target), true) if !encloses(&file.nodes, target, id, node.form) => checker.report(
             subject(),
-            format!("target {target} is not a loop enclosing it in the same definition"),
+            format!(
+                "target {target} is not a loop{} enclosing it in the same definition",
+                if node.form == Form::Break {
+                    " or switch"
+                } else {
+                    ""
+                }
+            ),
         ),
         _ => {}
     }
 }
 
-/// Whether node `target` is a loop above node `id`, with no definition between them.
-fn encloses(nodes: &[Node], target: u32, id: u32) -> bool {
+/// Whether node `target` is a loop above node `id` (or, for a `break`, a `switch`), with no
+/// definition between them.
+fn encloses(nodes: &[Node], target: u32, id: u32, form: Form) -> bool {
     let mut current = id;
     while let Some(parent) = nodes.get(current as usize).and_then(|node| node.parent) {
         let Some(ancestor) = nodes.get(parent as usize).filter(|_| parent < current) else {
             return false;
         };
         if parent == target {
-            return ancestor.kind() == NodeKind::Loop;
+            return ancestor.kind() == NodeKind::Loop
+                || (form == Form::Break && ancestor.form == Form::Switch);
         }
         if ancestor.kind().is_definition() {
             return false;

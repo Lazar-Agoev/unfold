@@ -90,15 +90,15 @@ fn a_settings_change_re_extracts_exactly_the_files_it_touches() {
     assert_eq!(changed.graph.inputs.len(), 1);
     assert!(changed.summary.inputs_changed);
 
-    // A manual entrance changes no file's settings hash.
+    // Naming the languages changes the settings, but no file's settings hash.
     folder.write(
         "unfold.toml",
-        "[[python.project]]\nroot = \"pkg\"\n\n[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
+        "languages = [\"typescript\", \"python\"]\n\n[[python.project]]\nroot = \"pkg\"\n",
     );
-    let entrance = background(&mut engine, &["unfold.toml"]);
+    let languages = background(&mut engine, &["unfold.toml"]);
     assert_eq!(language.count(), 0);
-    assert_eq!(entrance.graph.entrances.len(), 1);
-    assert_eq!(entrance.summary.changed_entrances.len(), 1);
+    assert!(languages.stats.relinked);
+    assert!(languages.summary.inputs_changed);
 
     // Removing the settings brings back the first hashes. The cache keeps only each path's
     // current entry, so those four files are extracted again.
@@ -126,9 +126,7 @@ fn reopening_restores_facts_and_checks_stamps() {
     folder.write("lib/util.ts", &template(2, 1));
 
     let mut reopened = engine_with(&folder, Arc::clone(&language), cache, 2);
-    let restored = reopened
-        .restore(graph, Default::default(), disks, None)
-        .expect("restore");
+    let restored = reopened.restore(graph, disks, None).expect("restore");
     assert_eq!((restored.files, restored.restored, restored.missing), (6, 6, 0));
     assert_eq!(reopened.graph().files.len(), 6);
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
@@ -158,9 +156,7 @@ fn restored(
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
         .collect();
     let mut reopened = engine_with(folder, Counting::new(), Arc::clone(cache), 2);
-    reopened
-        .restore(graph, Default::default(), disks, basis)
-        .expect("restore");
+    reopened.restore(graph, disks, basis).expect("restore");
     reopened
 }
 
@@ -202,7 +198,7 @@ fn a_restored_graph_without_its_basis_is_linked_again() {
     assert!(!again.stats.relinked, "later unchanged updates keep the graph");
 }
 
-/// A change only linking sees, made while the folder was closed (a manual entrance changes no
+/// A change only linking sees, made while the folder was closed (naming the languages changes no
 /// file's facts), links the restored graph again, which then equals a full compile.
 #[test]
 fn a_restored_graph_is_linked_again_when_what_it_was_linked_from_changed() {
@@ -211,15 +207,11 @@ fn a_restored_graph_is_linked_again_when_what_it_was_linked_from_changed() {
     let cache = Arc::new(MemoryFactsCache::new());
     let mut engine = engine_with(&folder, Counting::new(), Arc::clone(&cache), 2);
     let first = compile(&mut engine);
-    folder.write(
-        "unfold.toml",
-        "[[entrance]]\nid = \"go\"\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"main.ts#go\"\n",
-    );
+    folder.write("unfold.toml", "languages = [\"typescript\", \"python\"]\n");
     let mut reopened = restored(&folder, &cache, &engine, &first, Some(first.basis.clone()));
     let outcome = reopened.update(UpdateRequest::reopen()).expect("reopen check");
     assert_eq!(outcome.stats.files_read, 0, "no file's facts changed");
     assert!(outcome.stats.relinked);
-    assert_eq!(outcome.graph.entrances.len(), 1);
     assert_ne!(outcome.basis, first.basis);
     let mut fresh = engine_with(&folder, Counting::new(), Arc::new(MemoryFactsCache::new()), 2);
     assert_eq!(canonical(&outcome), canonical(&compile(&mut fresh)));

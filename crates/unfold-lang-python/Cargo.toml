@@ -1,6 +1,6 @@
 [package]
 name = "unfold-lang-python"
-description = "Unfold's Python front end: the Ruff parser adapter, structure, facts, highlighting, and census"
+description = "Unfold's Python front end: the Ruff parser adapter, lowering to nodes, binding, linking, highlighting, and census"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,8 +18,6 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 stacker = { workspace = true }
 thiserror = { workspace = true }
-toml = { workspace = true }
-toml_parser = { workspace = true }
 unicode-id-start = { workspace = true }
 smallvec = { workspace = true }
 unicode-normalization = { workspace = true }

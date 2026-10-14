@@ -15,21 +15,17 @@ mod hash;
 mod parse;
 mod scope;
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Serialize;
-use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
-use unfold_core::{ByteRange, RepoPath};
+use unfold_core::RepoPath;
+use unfold_core::vocab::Language;
 
 pub use evidence::Evidence;
 pub use folder::{FolderPath, FolderPathError};
 pub use hash::{SettingsHash, SettingsHasher};
 pub use parse::SettingsError;
 pub use scope::{Scope, ScopePatternError, ScopeStatus};
-
-use crate::launch::LaunchTarget;
-use crate::locator::Locator;
 
 /// Where the settings file lives, relative to the open folder.
 pub const SETTINGS_PATH: &str = "unfold.toml";
@@ -42,16 +38,8 @@ pub struct Settings {
     pub languages: Option<Vec<Language>>,
     /// Which files are graphed, on top of the default exclusions.
     pub scope: Scope,
-    /// Detectors turned off, sorted. Never contains [`DetectorId::Manual`].
-    pub disabled_detectors: Vec<DetectorId>,
     /// `[[python.project]]` tables, sorted by root (roots are distinct).
     pub python_projects: Vec<PythonProject>,
-    /// `[[application]]` tables, in file order (IDs are distinct).
-    pub applications: Vec<Application>,
-    /// `[[entrance]]` tables, in file order (IDs are distinct).
-    pub entrances: Vec<ManualEntrance>,
-    /// `[[entrance_override]]` tables, in file order (matches are distinct).
-    pub overrides: Vec<EntranceOverride>,
     /// `[evidence] files`: the files boards may cite, hashed on each update but never compiled.
     pub evidence: Evidence,
 }
@@ -104,121 +92,6 @@ impl PythonVersion {
     }
 }
 
-/// One `[[application]]` table: a declared group of launches.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Application {
-    /// The ID entrances and overrides name it by.
-    pub id: Box<str>,
-    /// The display name. Never blank.
-    pub name: Box<str>,
-    /// A description, with its line breaks. Never blank.
-    pub description: Option<Box<str>>,
-}
-
-/// One `[[entrance]]` table: an entrance the detectors can't see.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ManualEntrance {
-    /// The ID its key derives from, so the key survives edits to everything else.
-    pub id: Box<str>,
-    /// The entrance kind.
-    pub kind: EntranceKind,
-    /// The declared `[[application]]` it belongs to.
-    pub application: Option<Box<str>>,
-    /// The trigger, if known. Never empty.
-    pub trigger: Option<Box<str>>,
-    /// The HTTP method; only `http` entrances have one.
-    pub method: Option<HttpMethod>,
-    /// A display label, which may be empty.
-    pub label: Option<Box<str>>,
-    /// A description, with its line breaks. Never blank.
-    pub description: Option<Box<str>>,
-    /// The handlers, or what the process runs.
-    pub targets: ManualTargets,
-    /// The zero-based position of this `[[entrance]]` table in the file; the evidence pointer is
-    /// `/entrance/<index>` (see [`ManualEntrance::pointer`]).
-    pub index: usize,
-    /// The evidence range: from the `[[` of the table's header through the end of its last value,
-    /// token-exact (no trailing comment or whitespace). Byte offsets into the settings file.
-    /// Not part of the settings hash.
-    #[serde(skip)]
-    pub span: ByteRange,
-    /// The one-based line of the table's header, for diagnostics. Not part of the settings hash.
-    #[serde(skip)]
-    pub line: u32,
-}
-
-/// What a manual entrance points at.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub enum ManualTargets {
-    /// `handler`: one locator or a nonempty ordered list (middleware first) for every kind
-    /// except `process`.
-    Handlers(Vec<Locator>),
-    /// What a `process` entrance runs.
-    Process(Process),
-}
-
-/// The process fields of a `process` entrance. At least one of `command` and `start` is set.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Process {
-    /// `cwd`: the folder the command runs in; `.` when omitted.
-    pub cwd: FolderPath,
-    /// `command`: the command line as written. Never blank, and never run.
-    pub command: Option<Box<str>>,
-    /// `startup` or `target`: what the process starts, declared by hand.
-    pub start: Option<ProcessStart>,
-    /// `python_paths`: the import path, in search order, that replaces the inferred one.
-    pub python_paths: Option<Vec<FolderPath>>,
-    /// `env`: the declared environment, by name. The host's environment is never read.
-    pub env: BTreeMap<Box<str>, Box<str>>,
-    /// `schedule`, as written. Never blank.
-    pub schedule: Option<Box<str>>,
-}
-
-/// What a `process` entrance declares it starts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub enum ProcessStart {
-    /// `startup`: a locator.
-    Startup(Locator),
-    /// `target`: a symbolic launch target.
-    Target(LaunchTarget),
-}
-
-/// One `[[entrance_override]]` table: metadata for a detected launch.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct EntranceOverride {
-    /// `match`: the detected launch's evidence.
-    pub selector: OverrideMatch,
-    /// The declared `[[application]]` it belongs to.
-    pub application: Option<Box<str>>,
-    /// A display label.
-    pub label: Option<Box<str>>,
-    /// A description, with its line breaks. Never blank.
-    pub description: Option<Box<str>>,
-    /// A schedule, as written. Never blank.
-    pub schedule: Option<Box<str>>,
-    /// The one-based line of the table's header, for diagnostics. Not part of the settings hash.
-    #[serde(skip)]
-    pub line: u32,
-}
-
-/// The evidence an override matches: a launch detector, its input file, and the pointer into it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct OverrideMatch {
-    /// `package.script`, `package.bin`, or `pyproject.script`.
-    pub detector: DetectorId,
-    /// The input file, such as `apps/api/package.json`.
-    pub path: RepoPath,
-    /// The RFC 6901 pointer to the launch's member, such as `/scripts/start`.
-    pub pointer: Box<str>,
-}
-
-impl ManualEntrance {
-    /// The evidence pointer, `/entrance/<index>`.
-    pub fn pointer(&self) -> String {
-        format!("/entrance/{}", self.index)
-    }
-}
-
 impl Settings {
     /// Reads `unfold.toml` under `root`. An absent file means the defaults.
     pub fn load(root: &Path) -> Result<Self, SettingsError> {
@@ -249,11 +122,6 @@ impl Settings {
         self.languages
             .as_ref()
             .is_none_or(|languages| languages.contains(&language))
-    }
-
-    /// Whether `detector` runs. `manual` always does.
-    pub fn detector_enabled(&self, detector: DetectorId) -> bool {
-        detector == DetectorId::Manual || !self.disabled_detectors.contains(&detector)
     }
 
     /// The configured Python project that owns `path`: the one with the deepest root containing

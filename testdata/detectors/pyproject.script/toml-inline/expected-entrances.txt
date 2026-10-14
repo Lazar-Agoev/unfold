@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/toml-inline. Format: testdata/README.md.
-# An inline-table entry's evidence is its own assignment.
-entrance	pyproject.script	process	-	inside/key	exact	pyproject.toml:1
-	target	startup	resolved	src/app.py#function:main	app:main

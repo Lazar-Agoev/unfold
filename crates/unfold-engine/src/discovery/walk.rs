@@ -12,7 +12,7 @@ use super::classify::{FileClass, classify, is_default_excluded, is_default_exclu
 use super::{
     ContextFile, DiscoverOptions, Discovery, FileStamp, InputFile, Problem, SourceFile, UnindexedFile,
 };
-use crate::settings::{SETTINGS_PATH, ScopeStatus, Settings};
+use crate::settings::{SETTINGS_PATH, Settings};
 
 /// What one walker thread reports.
 enum Found {
@@ -121,12 +121,7 @@ fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
                 FileClass::Unindexed(reason) => {
                     discovery.unindexed.push(UnindexedFile { path, reason, stamp });
                 }
-                FileClass::Input(role, scope) => discovery.inputs.push(InputFile {
-                    path,
-                    role,
-                    scope,
-                    stamp,
-                }),
+                FileClass::Input(role) => discovery.inputs.push(InputFile { path, role, stamp }),
                 FileClass::Other => {}
             },
             Found::Problem(problem) => discovery.problems.push(problem),
@@ -155,7 +150,6 @@ fn settings_input(root: &Path) -> Option<InputFile> {
     Some(InputFile {
         path: RepoPath::new(SETTINGS_PATH).ok()?,
         role: InputRole::UnfoldConfig,
-        scope: ScopeStatus::InScope,
         stamp: FileStamp::of(&metadata),
     })
 }

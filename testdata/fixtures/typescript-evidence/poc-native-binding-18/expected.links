@@ -1,0 +1,4 @@
+scope-boundaries.ts#C.method/call:f #0 calls `f` → project scope-boundaries.ts#f
+scope-boundaries.ts#/call:f #0 calls `f` → unknown unknown_name
+scope-boundaries.ts#/call:console.log #0 calls `console.log` → unknown unknown_receiver
+scope-boundaries.ts#/call:f[1] #0 calls `f` → project scope-boundaries.ts#f

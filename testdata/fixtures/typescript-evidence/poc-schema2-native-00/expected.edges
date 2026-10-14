@@ -1,2 +1,0 @@
-use.ts#import[0] #0 imports `missing` -> external missing
-use.ts#import[1] #0 imports `re-export` -> external re-export

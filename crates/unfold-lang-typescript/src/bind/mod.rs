@@ -30,7 +30,7 @@ use oxc_ast::ast::Program;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use unfold_core::text::ByteRange;
-use unfold_core::vocab::Heritage;
+use unfold_engine::facts::TypeUse;
 
 use crate::config::BindingContext;
 use crate::payload::binding::{
@@ -38,27 +38,26 @@ use crate::payload::binding::{
     TypeRef,
 };
 use crate::payload::{DeclarationKind, ModuleFacts};
-use crate::syntax::{NONE, Syntax};
-use crate::values;
+use crate::values::Values;
 use scope::{DeclarationSpans, ScopeKind, Scopes};
 
 /// What binding reads besides oxc's tree.
 pub(crate) struct Input<'s, 'a> {
     pub(crate) program: &'s Program<'a>,
-    pub(crate) syntax: &'s Syntax<'a>,
-    /// Each normalized node's block, or [`NONE`].
-    pub(crate) block_of: &'s [u32],
+    /// The node each function, class, method, object-literal method, and type declaration was
+    /// lowered to, by its oxc arena address.
+    pub(crate) nodes: &'s FxHashMap<Address, u32>,
     pub(crate) module: &'s ModuleFacts,
     pub(crate) context: BindingContext,
 }
 
-/// Binds one parsed file. Values evidence needs that the occurrence walk didn't record (the
-/// callees of `const` factories) are added to `values`. The type names of the written types at
-/// `linked` (ranges of whole written types) are recorded: the returned sites are in source
-/// order, aligned with the binding's `type_links`.
-pub(crate) fn bind<'a>(
-    input: &Input<'_, 'a>,
-    values: &mut values::Table<'_, 'a>,
+/// Binds one parsed file. Each value of `values` gets its converted expression, and each
+/// `const` factory its callee's value. The type names of the written types at `linked` (ranges
+/// of whole written types) are recorded: the returned sites are in source order, aligned with
+/// the binding's `type_links`.
+pub(crate) fn bind(
+    input: &Input<'_, '_>,
+    values: &Values,
     linked: FxHashSet<ByteRange>,
 ) -> (Binding, Vec<TypeSite>) {
     let mut binder = Binder::new(input, linked);
@@ -67,16 +66,17 @@ pub(crate) fn bind<'a>(
 }
 
 /// A type name written in a linked type or a heritage clause: its range (a qualified name whole,
-/// without type arguments), whether it is qualified, whether it is a base its class or
-/// interface extends or implements, and its written type in the binding's `types`.
+/// without type arguments), whether it is qualified, what it is used for (an annotation, or a
+/// base its class or interface extends or implements), and its written type in the binding's
+/// `types`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TypeSite {
     /// The written name.
     pub(crate) range: ByteRange,
     /// Whether it is a qualified name (`a.B`).
     pub(crate) qualified: bool,
-    /// For a base named in a heritage clause: `extends` or `implements`.
-    pub(crate) heritage: Option<Heritage>,
+    /// What it is used for.
+    pub(crate) usage: TypeUse,
     /// Its `TypeRef::Names` in the binding's `types`.
     ty: u32,
 }
@@ -174,17 +174,14 @@ pub(crate) struct Binder<'a> {
     module_decls: FxHashMap<(ModuleKey, u32, u32), u32>,
     /// Module-scope import bindings by the start of their local name → their index.
     module_imports: FxHashMap<u32, u32>,
-    /// oxc node address → normalized node.
-    origins: FxHashMap<Address, u32>,
-    block_of: Vec<u32>,
+    /// oxc node address → its node.
+    nodes: FxHashMap<Address, u32>,
     frames: Vec<Frame>,
     classes: Vec<ClassDraft<'a>>,
     class_stack: Vec<u32>,
     /// The container overload signatures share (a statement list, class body, or object).
     container: u32,
     next_container: u32,
-    /// Declarations that are direct statements of the file (by address).
-    top_level: FxHashSet<Address>,
     /// Set while visiting the declaration of an `export` statement.
     exporting: bool,
     /// Set while inside an ambient declaration.
@@ -256,10 +253,6 @@ impl<'a> Binder<'a> {
             .enumerate()
             .map(|(index, binding)| (binding.range.start, index as u32))
             .collect();
-        let mut origins = FxHashMap::default();
-        for &(address, node) in input.syntax.origins() {
-            origins.entry(address).or_insert(node);
-        }
         let mut decls = Vec::with_capacity(input.module.declarations.len() * 4);
         decls.resize_with(input.module.declarations.len(), || None);
         Self {
@@ -271,14 +264,12 @@ impl<'a> Binder<'a> {
             decls,
             module_decls,
             module_imports,
-            origins,
-            block_of: input.block_of.to_vec(),
+            nodes: input.nodes.clone(),
             frames: vec![Frame::Boundary],
             classes: Vec::new(),
             class_stack: Vec::new(),
             container: 0,
             next_container: 1,
-            top_level: FxHashSet::default(),
             exporting: false,
             ambient: false,
             contexts: Vec::new(),
@@ -305,13 +296,9 @@ impl<'a> Binder<'a> {
         }
     }
 
-    /// The block of the normalized node converted from the oxc node at `address`.
+    /// The node lowered from the oxc node at `address`.
     fn block(&self, address: Address) -> Option<u32> {
-        let node = *self.origins.get(&address)?;
-        self.block_of
-            .get(node as usize)
-            .copied()
-            .filter(|&block| block != NONE)
+        self.nodes.get(&address).copied()
     }
 
     /// A fresh container id.
@@ -351,7 +338,6 @@ impl<'a> Binder<'a> {
             initializer: None,
             ty: None,
             returns: None,
-            parameter: None,
             inline: None,
             object: None,
             constructor: None,

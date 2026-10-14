@@ -1,0 +1,3 @@
+use.ts#C.run/switch[0]/case[0]/if[0]/then/call:unknownPredicate #0 calls `unknownPredicate` → unknown unknown_name
+use.ts#C.run/switch[0]/case[0]/if[0]/then/call:this.m #0 calls `this.m` → unknown unknown_receiver
+use.ts#C.run/call:this.m #0 calls `this.m` → unknown unknown_receiver

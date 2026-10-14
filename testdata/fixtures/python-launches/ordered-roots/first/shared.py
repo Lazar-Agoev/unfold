@@ -1,2 +1,0 @@
-def where():
-    return "first"

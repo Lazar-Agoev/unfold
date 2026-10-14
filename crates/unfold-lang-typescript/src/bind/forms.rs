@@ -1,10 +1,9 @@
-//! Reading syntactic forms: top-level declarations, property keys and literal names, awaited
-//! dynamic imports, assertions, and whether a parameter list keeps its own scope.
+//! Reading syntactic forms: property keys and literal names, awaited dynamic imports,
+//! assertions, and whether a parameter list keeps its own scope.
 
-use oxc_allocator::{Address, GetAddress};
 use oxc_ast::ast::{
-    Class, ClassElement, Declaration, ExportDefaultDeclarationKind, Expression, FormalParameters, Function,
-    LogicalExpression, PropertyKey, Statement, TSTypeAnnotation,
+    Class, ClassElement, Expression, FormalParameters, Function, LogicalExpression, PropertyKey,
+    TSTypeAnnotation,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::operator::LogicalOperator;
@@ -12,28 +11,6 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::config::BindingContext;
 use crate::number::js_number;
-
-/// The address of a statement's declaration when the statement declares a function, class, or
-/// variables directly (possibly under `export`).
-pub(super) fn top_declaration(statement: &Statement<'_>) -> Option<Address> {
-    let declaration = match statement {
-        Statement::ExportDeclaration(it) => &it.declaration,
-        Statement::ExportDefaultDeclaration(it) => {
-            return match &it.declaration {
-                ExportDefaultDeclarationKind::FunctionDeclaration(function) => Some(function.address()),
-                ExportDefaultDeclarationKind::ClassDeclaration(class) => Some(class.address()),
-                _ => None,
-            };
-        }
-        _ => statement.as_declaration()?,
-    };
-    match declaration {
-        Declaration::VariableDeclaration(it) => Some(it.address()),
-        Declaration::FunctionDeclaration(it) => Some(it.address()),
-        Declaration::ClassDeclaration(it) => Some(it.address()),
-        _ => None,
-    }
-}
 
 /// A property key's name: an identifier, a private name (with `#`), or a decoded string,
 /// numeric, or plain template literal (written directly or as a computed key).
@@ -67,8 +44,8 @@ pub(super) fn literal_name(expression: &Expression<'_>) -> Option<Box<str>> {
     }
 }
 
-/// The specifier of `await import("…")` (through parentheses) with a literal specifier, as an
-/// `import` block's specifier is read: a direct string or plain template literal.
+/// The specifier of `await import("…")` (through parentheses) with a literal specifier, as a
+/// dynamic import's `imports` link reads it: a direct string or plain template literal.
 pub(super) fn awaited_import<'e>(init: &'e Expression<'_>) -> Option<&'e str> {
     let mut expression = init;
     while let Expression::ParenthesizedExpression(it) = expression {

@@ -1,8 +1,9 @@
-//! The alien language's private facts payload: declarations, scopes, and what each recorded
-//! value is, so linking can answer evidence questions without the syntax tree.
+//! The alien language's binder payload: declarations, scopes, and what each recorded value is,
+//! so linking can answer evidence questions without the syntax tree.
 
 use serde::{Deserialize, Serialize};
 use unfold_core::ByteRange;
+use unfold_core::vocab::Form;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Payload {
@@ -10,20 +11,21 @@ pub struct Payload {
     pub scopes: Vec<Scope>,
     /// Aligned with the neutral value table.
     pub values: Vec<ValueInfo>,
-    /// Token boundaries, call sites, and module dependencies for the census.
+    /// Token boundaries, call sites, and module dependencies for the census, from the parser.
     pub boundaries: Vec<u32>,
     pub call_sites: Vec<CallSite>,
     pub dependencies: Vec<ByteRange>,
-    /// Aligned with the neutral type references: the scope each name is looked up from, and
-    /// the name.
+    /// Aligned with the neutral type names: the scope each name is looked up from, and the
+    /// name.
     pub types: Vec<(u32, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallSite {
     pub range: ByteRange,
-    pub new: bool,
-    pub ineligible: Vec<u32>,
+    /// `new` for a `new` form, `call` for a `super` form; a `call` form's is only known after
+    /// linking (a `:construct` callee makes it `new`).
+    pub form: Option<Form>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,7 +39,7 @@ pub struct Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScopeKind {
     File,
-    /// A callable's scope: arrows (`lambda`) inherit `this`; members bind it to their class.
+    /// A function's scope: arrows (`lambda`) inherit `this`; members bind it to their class.
     Function {
         arrow: bool,
         class: Option<u32>,
@@ -52,13 +54,14 @@ pub struct Decl {
     pub kind: DeclKind,
 }
 
+/// What a declaration is; `node` fields are local IDs of the declaring nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeclKind {
     Function {
-        block: u32,
+        node: u32,
     },
     Class {
-        block: u32,
+        node: u32,
         ctor: Option<u32>,
         bases: Vec<String>,
         members: Vec<u32>,
@@ -66,17 +69,17 @@ pub enum DeclKind {
         decorated: bool,
     },
     Method {
-        block: u32,
+        node: u32,
         owner: u32,
         is_static: bool,
         is_private: bool,
     },
     Ctor {
-        block: u32,
+        node: u32,
         owner: u32,
     },
     Getter {
-        block: u32,
+        node: u32,
         owner: u32,
     },
     Field {
@@ -84,15 +87,12 @@ pub enum DeclKind {
         init: Option<u32>,
     },
     Variable {
-        block: u32,
         mutable: bool,
         init: Option<u32>,
         ty: Option<String>,
     },
     Signature,
     Param {
-        owner: u32,
-        position: Option<u32>,
         ty: Option<String>,
     },
     Use {
@@ -127,9 +127,9 @@ pub enum ValueInfo {
     Call {
         callee: Option<u32>,
     },
+    /// A function written as a value: its node.
     Inline {
-        block: u32,
-        class: bool,
+        node: u32,
     },
     Literal(String),
     Other,

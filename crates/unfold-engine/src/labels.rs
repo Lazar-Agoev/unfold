@@ -38,7 +38,7 @@ pub fn external_package_binding<'e>(
 
 /// Rule 4 on its own: the label of a set of external candidates, from their locations. Every
 /// candidate needs a location.
-pub fn location_label<'c>(
+fn location_label<'c>(
     program: &FactsSet,
     linked: &dyn Linked,
     file: FileId,
@@ -65,7 +65,7 @@ pub(crate) fn external_label(
 ) -> Result<ModuleLabel, BackendError> {
     let program = resolver.program();
     let linked = resolver.linked();
-    let file = expr.file;
+    let file = expr.file();
     if let Some(binding) = external_package_binding(linked, file, evidence.import_binding.as_ref()) {
         return checked(
             program,

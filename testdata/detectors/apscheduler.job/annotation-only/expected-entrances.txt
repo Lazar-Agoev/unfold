@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/annotation-only. Format: testdata/README.md.
-# An annotation-only scheduler can't prove a body.
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:4
-	target	handler	unresolved	unsupported	first

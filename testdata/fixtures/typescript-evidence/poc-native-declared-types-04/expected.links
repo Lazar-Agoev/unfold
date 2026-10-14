@@ -1,0 +1,5 @@
+private-chain.ts#Base #0 types `Repo` → project private-chain.ts#Repo
+private-chain.ts#Base.run #0 types `Child` → project private-chain.ts#Child
+private-chain.ts#Base.run/call:value.%23repo.save #0 calls `value.#repo.save` → project private-chain.ts#Repo.save
+private-chain.ts#Child #0 extends `Base` → project private-chain.ts#Base
+private-chain.ts#Child #1 types `Other` → project private-chain.ts#Other

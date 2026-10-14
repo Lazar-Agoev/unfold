@@ -1,0 +1,3 @@
+private.ts#Base.run #0 types `Child` → project private.ts#Child
+private.ts#Base.run/call:value.%23m #0 calls `value.#m` → project private.ts#Base.%23m
+private.ts#Child #0 extends `Base` → project private.ts#Base

@@ -1,6 +1,0 @@
-a.ts#expression_statement[0]/call[0] #0 calls `over` -> a.ts#function:over
-a.ts#expression_statement[1]/call[0] #0 calls `K.m` -> a.ts#class:K/method:m
-a.ts#expression_statement[1]/call[0]/new[0] #0 constructs `K` -> a.ts#class:K/constructor:constructor
-a.ts#expression_statement[2]/new[0] #0 constructs `K` -> a.ts#class:K/constructor:constructor
-a.ts#expression_statement[3]/call[0] #0 calls `ambient` -> not_concrete
-a.ts#class:Abs/method:run/expression_statement[0]/call[0] #0 calls `this.go` -> not_concrete

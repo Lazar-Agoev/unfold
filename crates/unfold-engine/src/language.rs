@@ -4,11 +4,13 @@
 //! implements two traits:
 //!
 //! - [`Language`]: per-file extraction, which is cached, plus linking, highlighting, and the
-//!   settings that shape its files.
-//! - [`Linked`]: what the backend asks about the whole program after linking. Every question is
-//!   phrased with program IDs ([`crate::program`]) over cached facts, never syntax nodes: callee
-//!   and value evidence, declaration semantics, module dependencies and exports, class shapes,
-//!   module-label spelling, provenance facts, locator lookups, entrance detectors, and the
+//!   settings that shape its files. Extraction lowers the parse tree straight to the file's
+//!   node tree (keyed with [`unfold_core::KeyBuilder`]), its unresolved links, its typed records,
+//!   and the binder payload its linker reads back ([`crate::facts`]).
+//! - [`Linked`]: what the backend asks about the whole program after linking, to fill in each
+//!   link's outcome. Every question is phrased with program IDs ([`crate::program`]) over cached
+//!   facts, never syntax nodes: callee, value, and type-name evidence, declaration semantics,
+//!   module dependencies, class shapes, module-label spelling, provenance facts, and the
 //!   independent census validation compares the graph with.
 
 use std::any::Any;
@@ -20,17 +22,14 @@ use std::sync::Arc;
 use unfold_core::highlight::Highlighter;
 use unfold_core::validate::Census;
 use unfold_core::vocab::InputRole;
-use unfold_core::{RepoPath, Snapshot};
+use unfold_core::{ModuleLabel, RepoPath, Snapshot};
 
-use crate::entrances::EntranceDetector;
 use crate::evidence::{
-    ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, LocatorMembers, MemberFact, ModuleTarget,
-    OriginDeclaration, ParameterFact, Stability, ValueContext,
+    ClassShape, ConcreteTarget, Evidence, ExternalLocation, MemberFact, ModuleTarget, OriginDeclaration,
+    Stability, ValueContext,
 };
-use crate::facts::{FileFacts, Invocation};
-use crate::launch::{LaunchTarget, PythonContext};
-use crate::program::{BlockRef, CallRef, DeclRef, FactsSet, FileId, TypeRef, ValueRef};
-use crate::resolve::Outcome;
+use crate::facts::FileFacts;
+use crate::program::{CallRef, DeclRef, FactsSet, FileId, ImportRef, NodeRef, TypeRef, ValueRef};
 use crate::settings::{Settings, SettingsHash};
 
 /// A language's identity in the graph model (`typescript` or `python`).
@@ -86,7 +85,7 @@ pub struct ProjectInputs {
     /// `not_indexed` rather than `not_found`. Sorted by path.
     pub unindexed: Vec<RepoPath>,
     /// Context files discovery found (TypeScript declaration files: `.d.ts`, `.d.mts`, `.d.cts`),
-    /// whatever their scope status. They never get blocks; a language may resolve modules to
+    /// whatever their scope status. They never get nodes; a language may resolve modules to
     /// them. The set is part of what shapes the graph, so adding or removing one relinks.
     /// Sorted by path.
     pub context: Vec<RepoPath>,
@@ -94,10 +93,6 @@ pub struct ProjectInputs {
     /// or always-excluded folders, which are never walked); see [`ProjectInputs::exists`].
     /// `None` outside a real folder, as in tests that link in memory.
     pub root: Option<PathBuf>,
-    /// The import contexts of the folder's Python launches. Python resolves the imports of every
-    /// file a launch reaches with that launch's import path; files no launch reaches keep their
-    /// project's source roots.
-    pub python_contexts: Vec<PythonContext>,
 }
 
 impl ProjectInputs {
@@ -172,42 +167,17 @@ pub struct InputProblem {
 }
 
 /// A problem a language found while linking, such as an import several source roots could
-/// supply, or a configuration input a detector reads that isn't valid. It is listed in the
-/// Problems view with the configuration-input problems.
+/// supply. It is listed in the Problems view with the configuration-input problems.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LanguageProblem {
     /// The file or input the problem is in.
     pub path: RepoPath,
     /// What went wrong, in words.
     pub message: Box<str>,
-    /// Whether the graph lacks something because of it (an unreadable input whose entrances
-    /// are missing), rather than describing a fact about the code (an ambiguous import, whose
-    /// edges are already `ambiguous`).
+    /// Whether the graph lacks something because of it (an unreadable input), rather than
+    /// describing a fact about the code (an ambiguous import, whose links are already
+    /// `ambiguous`).
     pub incomplete: bool,
-}
-
-/// A launch target resolved in one import context ([`Linked::launch_target`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LaunchResolution {
-    /// What starts: a file's root block, a module's file (a package's `__main__.py`), or the
-    /// block of a module's top-level binding.
-    pub target: Outcome,
-    /// The root blocks of the files the launch also runs first, in import order: the packages a
-    /// module target imports on the way, and the module of a callable or ASGI target.
-    pub seeds: Vec<BlockRef>,
-}
-
-/// Where an emitted output path comes from, through a language's emit map (TypeScript's
-/// `outDir`/`rootDir` mapping: `dist/server.js` comes from `src/server.ts`).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum EmitSource {
-    /// The language has no source that emits this path.
-    #[default]
-    Unknown,
-    /// Exactly one source emits it.
-    Source(RepoPath),
-    /// Several sources emit it.
-    Ambiguous,
 }
 
 /// One source language. Extraction is per file and cached; linking sees the whole program.
@@ -225,8 +195,8 @@ pub trait Language: Send + Sync {
     /// key, so it must cover everything [`Language::extract`] reads from `settings`.
     fn settings_hash(&self, path: &RepoPath, settings: &Settings) -> SettingsHash;
 
-    /// Parses one file and extracts its facts, driving [`crate::select`] for the shared part.
-    /// It must never panic, whatever the bytes.
+    /// Parses one file and lowers it to its facts ([`crate::facts::GraphFacts::new`] and the
+    /// binder payload). It must never panic, whatever the bytes.
     fn extract(&self, file: &Snapshot, settings: &Settings) -> Result<FileFacts, SourceFailure>;
 
     /// The extraction options of `paths` (all owned by this language), in the same order, from
@@ -278,7 +248,7 @@ pub trait Language: Send + Sync {
     /// Links this language's files of the program (and nothing else), from their cached facts.
     fn link<'a>(&'a self, files: &'a FactsSet, inputs: &'a ProjectInputs) -> Box<dyn Linked + 'a>;
 
-    /// The highlighter for this language's Code view.
+    /// The highlighter for this language's code panel.
     fn highlighter(&self) -> &dyn Highlighter;
 }
 
@@ -287,7 +257,7 @@ pub trait Language: Send + Sync {
 ///
 /// Queries take IDs from the backend's [`FactsSet`]. A query about an ID of another language,
 /// or one the language doesn't recognize, should answer with empty evidence or `None`, which the
-/// policy turns into an unresolved outcome. Answers must be deterministic: the same program
+/// policy turns into an `unknown` outcome. Answers must be deterministic: the same program
 /// gives the same answers in the same order, whatever the thread.
 pub trait Linked: Send + Sync {
     /// The language these answers are for.
@@ -295,27 +265,26 @@ pub trait Linked: Send + Sync {
 
     // --- Evidence -------------------------------------------------------------------------
 
-    /// The authoritative evidence for a call site's callee.
+    /// The authoritative evidence for a call's callee, which its `calls` link resolves.
     fn callee_evidence(&self, call: CallRef) -> Evidence;
 
-    /// How a call site is invoked, when linking proves more than extraction could. Python keeps
-    /// every call a `call` block, but a callee with proven class identity makes its occurrence a
-    /// `constructs` edge resolved in the construct context. `None` (the default) keeps the
-    /// edge kind and context of the extracted [`CallFact`](crate::facts::CallFact). The answer
-    /// must fit the call's block kind (validation checks it).
-    fn invocation(&self, _call: CallRef) -> Option<Invocation> {
-        None
+    /// Whether linking proves that a call extraction recorded in the call context constructs a
+    /// class: a Python call whose callee is a proven, concrete class. The engine then gives the
+    /// call node the form `new` and resolves it in the construct context. The default proves
+    /// nothing (TypeScript, whose syntax already says `new`).
+    fn constructs(&self, _call: CallRef) -> bool {
+        false
     }
 
-    /// Evidence for a value: an identifier, a property or literal-key access, or a supported
-    /// `this`/`super` value.
+    /// Evidence for a value: an identifier, or a property or literal-key access (a passed
+    /// argument a `passes` link may reach, or a receiver provenance follows).
     fn value_evidence(&self, value: ValueRef) -> Evidence;
 
-    /// Evidence for a written type name, looked up in the type meaning: its candidate
-    /// declarations (a class, interface, type alias, or enum the language can name, through
-    /// imports, namespaces, and module members), external origins, and the root's import
-    /// binding, as [`Linked::value_evidence`] gives them for values. The default is none, which
-    /// the policy turns into an unresolved outcome.
+    /// Evidence for a written type name, which its `types` or `extends` link resolves, looked
+    /// up in the type meaning: its candidate declarations (a class, interface, type alias, or
+    /// enum the language can name, through imports, namespaces, and module members), external
+    /// origins, and the root's import binding, as [`Linked::value_evidence`] gives them for
+    /// values. The default is none, which the policy turns into an `unknown` outcome.
     fn type_evidence(&self, _reference: TypeRef) -> Evidence {
         Evidence::default()
     }
@@ -323,25 +292,27 @@ pub trait Linked: Send + Sync {
     /// How many of `target`'s leading parameters `call` binds without an argument: 1 for a
     /// Python method called through an instance, `cls`, or `super()`, or an `__init__` reached
     /// by a construction; 0 for a static method or a plain function. `None` when it can't be
-    /// proven, which leaves every argument unpaired. The default is 0 (TypeScript, where an
-    /// explicit `this` parameter has its own kind).
-    fn bound_parameters(&self, _call: CallRef, _target: BlockRef) -> Option<u32> {
+    /// proven, which leaves every argument unpaired (`receiver`). It is the `calls` link's
+    /// `bound`. The default is 0 (TypeScript, where an explicit `this` parameter has its own
+    /// kind).
+    fn bound_parameters(&self, _call: CallRef, _target: NodeRef) -> Option<u32> {
         Some(0)
     }
 
-    /// The same question for a callable passed as an argument: how many of `target`'s leading
+    /// The same question for a function passed as an argument: how many of `target`'s leading
     /// parameters the passed value binds itself (`obj.method` binds the instance;
     /// `Class.method` binds nothing; `Class.classmethod` binds the class). `None` when it can't
-    /// be proven. The default is 0, as for [`Linked::bound_parameters`].
-    fn reference_bound_parameters(&self, _value: ValueRef, _target: BlockRef) -> Option<u32> {
+    /// be proven. It is the argument's `bound`. The default is 0, as for
+    /// [`Linked::bound_parameters`].
+    fn reference_bound_parameters(&self, _value: ValueRef, _target: NodeRef) -> Option<u32> {
         Some(0)
     }
 
-    /// Whether constructing `class` (a class block without a direct constructor) is proven to
+    /// Whether constructing `class` (a class node without a direct constructor) is proven to
     /// take no arguments: it has no base, no decorator that could replace it, and nothing else
     /// that supplies a constructor (a Python `__new__`). Its arguments are then `no_parameter`
     /// rather than `no_signature`. The default proves nothing.
-    fn class_takes_no_arguments(&self, _class: BlockRef) -> bool {
+    fn class_takes_no_arguments(&self, _class: NodeRef) -> bool {
         false
     }
 
@@ -354,13 +325,14 @@ pub trait Linked: Send + Sync {
     // --- Declarations ---------------------------------------------------------------------
 
     /// The declaration's concrete body for `context`, if it has one: a non-ambient function,
-    /// method, or constructor with a body; a supported constant initializer; for a
-    /// construction, a class's direct constructor with a body or else the class; for a
-    /// reference or handler, a class itself.
+    /// method, or constructor with a body; a supported constant initializer (an inline
+    /// function's node); for a construction, a class's direct constructor with a body or else
+    /// the class; for a reference, a class itself; for a type name, a class or type.
     fn concrete_target(&self, declaration: DeclRef, context: ValueContext) -> Option<ConcreteTarget>;
 
-    /// Parameter facts, if the declaration is a parameter or is bound inside one.
-    fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact>;
+    /// Whether the declaration is a parameter or is bound inside one (a call through it is
+    /// `parameter`).
+    fn is_parameter(&self, declaration: DeclRef) -> bool;
 
     /// Whether the declaration's binding can be reassigned.
     fn binding_stability(&self, declaration: DeclRef) -> Stability;
@@ -380,40 +352,21 @@ pub trait Linked: Send + Sync {
         OriginDeclaration::default()
     }
 
-    // --- Locators (manual entrance targets) -------------------------------------------------
-
-    /// The top-level declarations of `file` named `name`.
-    fn locator_top_level(&self, file: FileId, name: &str) -> Vec<DeclRef>;
-
-    /// The block a locator names for a declaration: a function, class, method, constructor, or
-    /// accessor body, or a constant function or class initializer. Locator rules deliberately
-    /// differ from the value policy.
-    fn locator_concrete(&self, declaration: DeclRef) -> Option<BlockRef>;
-
-    /// The members named `name` of a class or constant object literal.
-    fn locator_members(&self, owner: DeclRef, name: &str) -> LocatorMembers;
-
-    /// Whether `signature` is an overload signature of `implementation`, by locator rules.
-    fn locator_overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool;
-
     // --- Modules and classes ----------------------------------------------------------------
 
-    /// How each runtime import of `file` resolved, aligned with the file's
-    /// [`ImportFact`](crate::facts::ImportFact)s (same order and length).
+    /// How each written module dependency of `file` resolved, aligned with the file's
+    /// [`ImportFact`](crate::facts::ImportFact)s (same order and length), conditional ones
+    /// included.
     fn module_dependencies(&self, file: FileId) -> &[ModuleTarget];
 
-    /// Whether the program keeps a conditional `import` block of this language's files
-    /// ([`GraphFacts::conditional`](crate::facts::GraphFacts::conditional)), such as a Python
-    /// named child import whose attribute is proven absent from its package. Unkept blocks are
-    /// dropped from the graph after resolution. The default keeps none: a language that marks
-    /// blocks conditional must say which survive. [`Linked::module_dependencies`] still answers
-    /// for every import fact, kept or not, and the census lists only kept ones.
-    fn keeps_import(&self, _block: BlockRef) -> bool {
+    /// Whether the program keeps a conditional import
+    /// ([`ImportFact::conditional`](crate::facts::ImportFact::conditional)). An unkept one gets
+    /// no `imports` link, and nothing else changes. Asked only for conditional imports; the
+    /// default keeps none, so a language that writes conditional imports must say which
+    /// survive. The census lists only kept ones.
+    fn keeps_import(&self, _import: ImportRef) -> bool {
         false
     }
-
-    /// The runtime exports of `file`, sorted by name, after re-exports are followed.
-    fn module_exports(&self, file: FileId) -> &[Export];
 
     /// Every class of this language's files, for the override census.
     fn classes(&self) -> &[ClassShape];
@@ -434,37 +387,26 @@ pub trait Linked: Send + Sync {
     /// `python:builtins`).
     fn global_label(&self, file: FileId) -> String;
 
-    // --- Inputs and launches -----------------------------------------------------------------
+    /// Whether an outside outcome with `label` is the language's own builtins, which makes the
+    /// link `builtin` rather than `library`. Python: exactly `python:builtins`. The default is
+    /// none, so every outside outcome is `library` (TypeScript, until ECMAScript's standard
+    /// objects have their own table).
+    fn is_builtin(&self, _label: &ModuleLabel) -> bool {
+        false
+    }
+
+    // --- Inputs, validation, and problems ---------------------------------------------------
 
     /// The configuration inputs (from [`ProjectInputs::inputs`]) that shaped this language's
     /// part of the graph, such as the `tsconfig.json` chains it applied. They are recorded as
-    /// the graph's inputs, with `unfold.toml` and every input an entrance cites as
-    /// evidence.
+    /// the graph's inputs, with `unfold.toml`.
     fn inputs_read(&self) -> Vec<RepoPath> {
         Vec::new()
     }
 
-    /// The source an emitted output path comes from, for launch targets such as
-    /// `node dist/server.js`.
-    fn emitted_source(&self, _output: &RepoPath) -> EmitSource {
-        EmitSource::Unknown
-    }
-
-    /// A launch target resolved with a Python import context, which need not be one of
-    /// [`ProjectInputs::python_contexts`]. `None` when the language doesn't run Python launches.
-    fn launch_target(&self, _target: &LaunchTarget, _context: &PythonContext) -> Option<LaunchResolution> {
-        None
-    }
-
-    // --- Entrances and validation -----------------------------------------------------------
-
-    /// This language's entrance detectors, in the fixed order they run.
-    fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
-        Vec::new()
-    }
-
     /// The independent census of token boundaries, call sites, and module dependencies that
-    /// validation compares this language's files with.
+    /// validation compares this language's files with: every call in the parse tree must be
+    /// exactly one call node, and every kept module dependency exactly one `imports` link.
     fn census(&self) -> Option<&dyn Census> {
         None
     }

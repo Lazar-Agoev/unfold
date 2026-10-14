@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/module-prefixes. Format: testdata/README.md.
-# Ordinary modules at dotted prefixes prevent fabricated package targets (PoC: "Ordinary modules at dotted prefixes...").
-entrance	pyproject.script	process	-	shallow	exact	pyproject.toml:2
-	target	startup	unresolved	not_found	pkg.worker:main
-entrance	pyproject.script	process	-	deep	exact	pyproject.toml:3
-	target	startup	unresolved	not_found	outer.pkg.worker:main

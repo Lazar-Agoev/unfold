@@ -1,3 +1,0 @@
-predicates.ts#class:Holder/method:run/if[0]/call[0] #0 calls `isD` -> predicates.ts#function:isD
-predicates.ts#class:Holder/method:run/if[0]/expression_statement[0]/call[0] #0 calls `this.value.m` -> unknown_receiver
-predicates.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> predicates.ts#class:Holder/method:m

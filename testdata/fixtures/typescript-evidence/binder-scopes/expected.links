@@ -1,0 +1,12 @@
+a.ts#params/call:outer #0 calls `outer` → unknown mutable_binding
+a.ts#params/call:(…) #0 calls `(…)` → project a.ts#params/call:(…)/lambda[0]
+a.ts#params/call:(…)/lambda[0]/call:inner #0 calls `inner` → project a.ts#params.inner
+a.ts#params/call:outer[1] #0 calls `outer` → unknown mutable_binding
+a.ts#/call:blockScoped #0 calls `blockScoped` → project a.ts#blockScoped
+a.ts#/call:blockScoped[1] #0 calls `blockScoped` → unknown unknown_name
+a.ts#/call:hoisted #0 calls `hoisted` → unknown mutable_binding
+a.ts#Named.make/return[0]/call:Inner.make #0 calls `Inner.make` → project a.ts#Named.make
+a.ts#/call:Named.make #0 calls `Named.make` → project a.ts#Named.make
+a.ts#/try[0]/catch/call:caught #0 calls `caught` → unknown not_concrete
+a.ts#/call:local #0 calls `local` → project a.ts#local
+a.ts#shadow/call:shadow #0 calls `shadow` → unknown parameter

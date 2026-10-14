@@ -1,0 +1,4 @@
+namespaces.ts#N.first/call:second #0 calls `second` → project namespaces.ts#N.second
+namespaces.ts#/call:N.first #0 calls `N.first` → project namespaces.ts#N.first
+namespaces.ts#/call:N.second #0 calls `N.second` → project namespaces.ts#N.second
+namespaces.ts#/call:N.privateName #0 calls `N.privateName` → unknown unknown_receiver

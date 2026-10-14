@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/callable-policy. Format: testdata/README.md.
-# Plain callable aliases, methods, and lambdas keep the shared handler policy (PoC: "Plain callable aliases and methods...").
-entrance	celery.task	worker	-	-	unknown	src/app.py:10
-	target	handler	resolved	src/app.py#function:first	alias
-entrance	celery.task	worker	-	-	unknown	src/app.py:11
-	target	handler	resolved	src/app.py#class:Commands/method:run	Commands.run
-entrance	celery.task	worker	-	-	unknown	src/app.py:12
-	target	handler	resolved	src/app.py#expression_statement[2]/call[0]/function[0]	lambda: 1

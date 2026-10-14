@@ -16,19 +16,19 @@ use std::time::{Duration, Instant, SystemTime};
 
 use tempfile::TempDir;
 use unfold_core::highlight::Highlighter;
-use unfold_core::validate::Census;
-use unfold_core::{FileGraph, RepoPath, Snapshot};
+use unfold_core::validate::{CallSite, Census};
+use unfold_core::vocab::Language as CoreLanguage;
+use unfold_core::{ByteRange, FileGraph, ModuleLabel, RepoPath, Snapshot};
 use unfold_engine::discovery::DiscoverOptions;
-use unfold_engine::entrances::EntranceDetector;
 use unfold_engine::evidence::{
-    ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, LocatorMembers, MemberFact, ModuleTarget,
-    OriginDeclaration, ParameterFact, Stability, ValueContext,
+    ClassShape, ConcreteTarget, Evidence, ExternalLocation, MemberFact, ModuleTarget, OriginDeclaration,
+    Stability, ValueContext,
 };
 use unfold_engine::settings::{Settings, SettingsHash};
 use unfold_engine::update::{MemoryFactsCache, UpdateOutcome};
 use unfold_engine::{
-    BlockRef, CallRef, CancelToken, DeclRef, EmitSource, Engine, EngineOptions, FactsSet, FileFacts, FileId,
-    Invocation, Language, LanguageId, LanguageProblem, Linked, Producer, ProjectInputs, SourceFailure, Stage,
+    CallRef, CancelToken, DeclRef, Engine, EngineOptions, FactsSet, FileFacts, FileId, ImportRef, Language,
+    LanguageId, LanguageProblem, Linked, NodeRef, Producer, ProjectInputs, SourceFailure, Stage, TypeRef,
     UpdateRequest, ValueRef,
 };
 
@@ -93,6 +93,8 @@ pub struct Counting {
     pub delay: Duration,
     /// Make linking break its contract (module dependencies that don't match the imports).
     pub break_link: AtomicBool,
+    /// Make the census report a call that no node is, as if the lowering had dropped one.
+    pub skew_census: AtomicBool,
     /// A cancellation armed for a late stage.
     pub trip: Trip,
 }
@@ -141,6 +143,7 @@ impl Language for Counting {
         Box::new(Wrapped {
             inner: Alien.link(files, inputs),
             broken: self.break_link.load(Ordering::SeqCst),
+            skewed: self.skew_census.load(Ordering::SeqCst),
             trip: &self.trip,
         })
     }
@@ -181,12 +184,14 @@ impl Trip {
     }
 }
 
-/// The alien language's linked answers, delegated in full, with two test switches: `broken`
-/// makes module dependencies never line up with the imports (a contract break the backend
-/// reports as an error), and `trip` fires when an update reaches resolve, detect, or validate.
+/// The alien language's linked answers, delegated in full, with test switches: `broken` makes
+/// module dependencies never line up with the imports (a contract break the backend reports as
+/// an error), `skewed` adds a call to the census that no node is, and `trip` fires when an
+/// update reaches resolve or validate.
 struct Wrapped<'a> {
     inner: Box<dyn Linked + 'a>,
     broken: bool,
+    skewed: bool,
     trip: &'a Trip,
 }
 
@@ -198,14 +203,23 @@ impl Linked for Wrapped<'_> {
         self.trip.fire(Stage::Resolve);
         self.inner.callee_evidence(call)
     }
+    fn constructs(&self, call: CallRef) -> bool {
+        self.inner.constructs(call)
+    }
     fn value_evidence(&self, value: ValueRef) -> Evidence {
         self.inner.value_evidence(value)
+    }
+    fn type_evidence(&self, reference: TypeRef) -> Evidence {
+        self.inner.type_evidence(reference)
+    }
+    fn class_takes_no_arguments(&self, class: NodeRef) -> bool {
+        self.inner.class_takes_no_arguments(class)
     }
     fn concrete_target(&self, declaration: DeclRef, context: ValueContext) -> Option<ConcreteTarget> {
         self.inner.concrete_target(declaration, context)
     }
-    fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        self.inner.parameter(declaration)
+    fn is_parameter(&self, declaration: DeclRef) -> bool {
+        self.inner.is_parameter(declaration)
     }
     fn binding_stability(&self, declaration: DeclRef) -> Stability {
         self.inner.binding_stability(declaration)
@@ -219,18 +233,6 @@ impl Linked for Wrapped<'_> {
     fn overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool {
         self.inner.overload_of(signature, implementation)
     }
-    fn locator_top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        self.inner.locator_top_level(file, name)
-    }
-    fn locator_concrete(&self, declaration: DeclRef) -> Option<BlockRef> {
-        self.inner.locator_concrete(declaration)
-    }
-    fn locator_members(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        self.inner.locator_members(owner, name)
-    }
-    fn locator_overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool {
-        self.inner.locator_overload_of(signature, implementation)
-    }
     fn module_dependencies(&self, file: FileId) -> &[ModuleTarget] {
         if self.broken {
             &[]
@@ -238,8 +240,8 @@ impl Linked for Wrapped<'_> {
             self.inner.module_dependencies(file)
         }
     }
-    fn module_exports(&self, file: FileId) -> &[Export] {
-        self.inner.module_exports(file)
+    fn keeps_import(&self, import: ImportRef) -> bool {
+        self.inner.keeps_import(import)
     }
     fn classes(&self) -> &[ClassShape] {
         self.inner.classes()
@@ -256,16 +258,15 @@ impl Linked for Wrapped<'_> {
     fn global_label(&self, file: FileId) -> String {
         self.inner.global_label(file)
     }
-    fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
-        self.trip.fire(Stage::Detect);
-        self.inner.detectors()
+    fn is_builtin(&self, label: &ModuleLabel) -> bool {
+        self.inner.is_builtin(label)
     }
     fn census(&self) -> Option<&dyn Census> {
         self.trip.fire(Stage::Validate);
+        if self.skewed {
+            return Some(self);
+        }
         self.inner.census()
-    }
-    fn invocation(&self, call: CallRef) -> Option<Invocation> {
-        self.inner.invocation(call)
     }
     fn annotation_evidence(&self, declaration: DeclRef) -> Option<Evidence> {
         self.inner.annotation_evidence(declaration)
@@ -273,19 +274,38 @@ impl Linked for Wrapped<'_> {
     fn origin_declaration(&self, declaration: DeclRef) -> OriginDeclaration {
         self.inner.origin_declaration(declaration)
     }
-    fn keeps_import(&self, block: BlockRef) -> bool {
-        self.inner.keeps_import(block)
-    }
     fn inputs_read(&self) -> Vec<RepoPath> {
         self.inner.inputs_read()
-    }
-    fn emitted_source(&self, output: &RepoPath) -> EmitSource {
-        self.inner.emitted_source(output)
     }
     fn problems(&self) -> Vec<LanguageProblem> {
         self.inner.problems()
     }
 }
+
+/// A skewed census: the alien census, but with one call site in every file that no call node
+/// is.
+impl Census for Wrapped<'_> {
+    fn language(&self) -> CoreLanguage {
+        self.inner.language()
+    }
+    fn is_token_range(&self, path: &RepoPath, range: ByteRange) -> bool {
+        self.inner
+            .census()
+            .is_some_and(|census| census.is_token_range(path, range))
+    }
+    fn call_sites(&self, _path: &RepoPath) -> Option<&[CallSite]> {
+        Some(SKEWED_SITES)
+    }
+    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
+        self.inner.census()?.module_dependencies(path)
+    }
+}
+
+/// The skewed census's only call site, which no node of any file is.
+const SKEWED_SITES: &[CallSite] = &[CallSite {
+    range: ByteRange { start: 0, end: 1 },
+    form: None,
+}];
 
 /// Options for deterministic tests: `threads` everywhere, no global Git excludes.
 pub fn options(threads: usize) -> EngineOptions {

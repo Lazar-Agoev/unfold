@@ -1,0 +1,5 @@
+use.ts#run #0 types `Client` → library external
+use.ts#run #1 types `Local` → project use.ts#Local
+use.ts#run #2 types `Client` → library external
+use.ts#run/call:mixed.send #0 calls `mixed.send` → unknown unknown_receiver
+use.ts#run/call:unknown.send #0 calls `unknown.send` → unknown unknown_receiver

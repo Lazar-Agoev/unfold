@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/duplicate-id-2.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

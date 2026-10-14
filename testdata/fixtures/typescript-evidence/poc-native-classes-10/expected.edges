@@ -1,4 +1,0 @@
-expressions.ts#variable:C/class:Self/method:make/return[0]/new[0] #0 constructs `Self` -> expressions.ts#variable:C/class:Self/constructor:constructor
-expressions.ts#variable:C/class:Self/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> expressions.ts#variable:C/class:Self/method:m
-expressions.ts#expression_statement[0]/new[0] #0 constructs `C` -> expressions.ts#variable:C/class:Self/constructor:constructor
-expressions.ts#expression_statement[1]/call[0] #0 calls `C.make` -> expressions.ts#variable:C/class:Self/method:make

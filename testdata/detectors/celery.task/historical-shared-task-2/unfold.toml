@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/celery.task/historical-shared-task-2.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

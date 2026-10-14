@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/historical-shared-task-2. Format: testdata/README.md.
-# Historical shared_task aliases withhold competing caches without adding entrances (PoC: "Historical shared_task imports..."). Written: from celery import shared_task as shared; shared = other; @shared(name='unique.first'); def hidden(): pass
-entrance	celery.task	worker	-	orders	exact	src/app.py:10
-	target	handler	unresolved	unsupported	first

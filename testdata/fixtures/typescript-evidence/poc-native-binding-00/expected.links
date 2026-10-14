@@ -1,0 +1,3 @@
+recursion.ts#/call:first #0 calls `first` → project recursion.ts#first
+recursion.ts#first/call:second #0 calls `second` → project recursion.ts#second
+recursion.ts#second/call:first #0 calls `first` → project recursion.ts#first

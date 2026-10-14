@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/mutation-21. Format: testdata/README.md.
-# Every indexed receiver mutation and delegated alias invalidates route proof (PoC: "Every indexed receiver mutation..."). Written: arguments = {'object': app, 'name': 'get', 'value': fake}; setattr(**arguments)

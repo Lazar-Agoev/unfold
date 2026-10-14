@@ -1,16 +1,11 @@
 //! Module-level facts for the payload ([`ModuleFacts`]): what a file declares at module scope,
-//! its import bindings, and its export entries, read from oxc's tree after selection so each
-//! declaration can name its block.
+//! its import bindings, and its export entries, read from oxc's tree.
 //!
 //! Module scope holds the top-level declarations, plus `var` declarations hoisted out of
 //! top-level blocks, loops, conditionals, and `try` statements (never out of functions or
 //! classes). Function declarations nested in blocks are block-scoped in modules, so they are not
 //! module-scope declarations. `declare global` and `declare module "…"` bodies are not module
 //! scope either.
-//!
-//! A declaration finds its block through the block's `name` slot (which covers exactly the
-//! declared identifier); anonymous default exports and inline initializers find theirs by kind
-//! and end offset, which a declaration's block shares with the syntax it was selected from.
 
 use oxc_ast::ast::{
     BindingPattern, Class, Declaration, ExportDefaultDeclarationKind, Expression, ForStatementInit,
@@ -19,28 +14,19 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::Visit;
 use oxc_span::{GetSpan, Span};
-use rustc_hash::FxHashMap;
-use unfold_core::vocab::{BlockKind, SlotName};
-use unfold_engine::select::Selection;
 
-use crate::build::range;
 use crate::payload::{
     Declaration as Decl, DeclarationKind, ExportEntry, ImportBinding, ImportSource, ModuleFacts,
 };
+use crate::spans::range;
 use forms::{access_path, export_name, namespace_instantiated, qualified, unwrap};
 
 /// How deep namespace bodies are searched for runtime declarations before one is assumed.
 const MAX_NAMESPACE_DEPTH: u32 = 64;
 
-/// Collects the module facts of a parsed program whose blocks `selection` selected.
-pub(crate) fn collect(
-    program: &Program<'_>,
-    selection: &Selection,
-    module_syntax: bool,
-    jsx: bool,
-) -> ModuleFacts {
+/// Collects the module facts of a parsed program.
+pub(crate) fn collect(program: &Program<'_>, module_syntax: bool, jsx: bool) -> ModuleFacts {
     let mut collector = Collector {
-        blocks: BlockIndex::new(selection),
         facts: ModuleFacts {
             module_syntax,
             jsx,
@@ -51,8 +37,6 @@ pub(crate) fn collect(
         name: "".into(),
         kind: DeclarationKind::Module,
         range: range(program.span),
-        block: Some(0),
-        locator: Some(0),
         exported: false,
         default: false,
         ambient: false,
@@ -79,42 +63,7 @@ pub(crate) fn uses_jsx(program: &Program<'_>) -> bool {
     finder.0
 }
 
-/// Finds the block a declaration was selected as.
-struct BlockIndex {
-    /// A `name` slot's start → its block.
-    by_name: FxHashMap<u32, u32>,
-    /// A block's kind and end → the block (the outermost, when several share both).
-    by_end: FxHashMap<(BlockKind, u32), u32>,
-}
-
-impl BlockIndex {
-    fn new(selection: &Selection) -> Self {
-        let mut by_name = FxHashMap::default();
-        for slot in selection.slots() {
-            if slot.slot == SlotName::Name {
-                by_name.entry(slot.range.start).or_insert(slot.block);
-            }
-        }
-        let mut by_end = FxHashMap::default();
-        for block in selection.blocks() {
-            by_end
-                .entry((block.kind, block.range.end))
-                .or_insert(block.local_id);
-        }
-        Self { by_name, by_end }
-    }
-
-    fn named(&self, name: Span) -> Option<u32> {
-        self.by_name.get(&name.start).copied()
-    }
-
-    fn ending(&self, kind: BlockKind, span: Span) -> Option<u32> {
-        self.by_end.get(&(kind, span.end)).copied()
-    }
-}
-
 struct Collector {
-    blocks: BlockIndex,
     facts: ModuleFacts,
 }
 
@@ -303,17 +252,10 @@ impl Collector {
     }
 
     fn function(&mut self, function: &Function<'_>, exported: Exported) {
-        let block = match &function.id {
-            Some(id) => self.blocks.named(id.span),
-            None => self.blocks.ending(BlockKind::Function, function.span),
-        };
-        let block = block.filter(|_| function.body.is_some());
         self.declare(Decl {
             name: function.id.as_ref().map_or("", |id| id.name.as_str()).into(),
             kind: DeclarationKind::Function,
             range: range(function.span),
-            block,
-            locator: block,
             exported: exported.named,
             default: exported.default,
             ambient: function.declare,
@@ -321,17 +263,10 @@ impl Collector {
     }
 
     fn class(&mut self, class: &Class<'_>, exported: Exported) {
-        let block = match &class.id {
-            Some(id) => self.blocks.named(id.span),
-            None => self.blocks.ending(BlockKind::Class, class.span),
-        };
-        let block = block.filter(|_| !class.declare);
         self.declare(Decl {
             name: class.id.as_ref().map_or("", |id| id.name.as_str()).into(),
             kind: DeclarationKind::Class,
             range: range(class.span),
-            block,
-            locator: block,
             exported: exported.named,
             default: exported.default,
             ambient: class.declare,
@@ -349,21 +284,10 @@ impl Collector {
         };
         for declarator in &list.declarations {
             if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                let block = if list.declare {
-                    None
-                } else {
-                    self.blocks.named(id.span)
-                };
-                let locator = match (&declarator.init, kind) {
-                    (Some(init), DeclarationKind::Const) if !list.declare => self.inline_block(init),
-                    _ => None,
-                };
                 self.declare(Decl {
                     name: id.name.as_str().into(),
                     kind,
                     range: range(declarator.span),
-                    block,
-                    locator,
                     exported: exported.named,
                     default: false,
                     ambient: list.declare,
@@ -371,17 +295,10 @@ impl Collector {
                 continue;
             }
             for id in declarator.id.get_binding_identifiers() {
-                let block = if list.declare {
-                    None
-                } else {
-                    self.blocks.named(id.span)
-                };
                 self.declare(Decl {
                     name: id.name.as_str().into(),
                     kind,
                     range: range(id.span),
-                    block,
-                    locator: None,
                     exported: exported.named,
                     default: false,
                     ambient: list.declare,
@@ -453,13 +370,10 @@ impl Collector {
                 declaration: None,
             },
             None => {
-                let block = self.inline_block(expression);
                 let declaration = self.declare(Decl {
                     name: "".into(),
                     kind: DeclarationKind::Expression,
                     range: range(expression.span()),
-                    block,
-                    locator: block,
                     exported: false,
                     default: exported == "default",
                     ambient: false,
@@ -473,26 +387,14 @@ impl Collector {
         };
         self.facts.exports.push(entry);
     }
-
-    /// The function or class block an expression is, after transparent wrappers.
-    fn inline_block(&self, expression: &Expression<'_>) -> Option<u32> {
-        match unwrap(expression) {
-            Expression::FunctionExpression(it) => self.blocks.ending(BlockKind::Function, it.span),
-            Expression::ArrowFunctionExpression(it) => self.blocks.ending(BlockKind::Function, it.span),
-            Expression::ClassExpression(it) => self.blocks.ending(BlockKind::Class, it.span),
-            _ => None,
-        }
-    }
 }
 
-/// A declaration with no block.
+/// A declaration with nothing but its name, kind, range, and export.
 fn plain(name: &str, kind: DeclarationKind, span: Span, exported: Exported) -> Decl {
     Decl {
         name: name.into(),
         kind,
         range: range(span),
-        block: None,
-        locator: None,
         exported: exported.named,
         default: exported.default,
         ambient: false,

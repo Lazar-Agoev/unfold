@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/fastapi.route/cross-module-reexport-mutation-2.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

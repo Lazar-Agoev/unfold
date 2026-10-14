@@ -1,6 +1,0 @@
-# Five mount links reach the application (exact); a sixth makes the route partial.
-# (PoC schema2-express: "permits five mount links".)
-entrance	express.route	http	GET	/top/m4/m3/m2/m1/five	exact	main.ts:13
-	target	handler	resolved	main.ts#function:handler	handler
-entrance	express.route	http	GET	/six	partial	main.ts:13
-	target	handler	resolved	main.ts#function:handler	handler

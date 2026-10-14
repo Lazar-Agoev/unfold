@@ -28,21 +28,16 @@ use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use oxc_syntax::scope::ScopeFlags;
 
 use super::callables::PatternOwner;
-use super::forms::{literal_name, top_declaration, uses_outer_scope};
+use super::forms::{literal_name, uses_outer_scope};
 use super::ir::unwrap;
 use super::scope::ScopeKind;
 use super::{AliasDraft, Binder, ClassDraft, Frame, ModuleKey};
-use crate::build::range;
 use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Meanings, VarKind};
+use crate::spans::range;
 
 impl<'a> Binder<'a> {
     /// Walks the whole file.
     pub(super) fn walk(&mut self, program: &Program<'a>) {
-        for statement in &program.body {
-            if let Some(address) = top_declaration(statement) {
-                self.top_level.insert(address);
-            }
-        }
         self.container = self.new_container();
         for statement in &program.body {
             self.visit_statement(statement);
@@ -287,11 +282,10 @@ impl<'a> Visit<'a> for Binder<'a> {
             VariableDeclarationKind::Const => VarKind::Const,
             VariableDeclarationKind::Using | VariableDeclarationKind::AwaitUsing => VarKind::Using,
         };
-        let top = self.top_level.contains(&it.unstable_address());
         let exported = std::mem::take(&mut self.exporting);
         self.ambient_if(it.declare, |binder| {
             for declarator in &it.declarations {
-                binder.declarator(declarator, var_kind, top, exported);
+                binder.declarator(declarator, var_kind, exported);
             }
         });
     }
@@ -314,8 +308,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         decl.flags = decl
             .flags
             .with(DeclFlags::HAS_BODY, has_body)
-            .with(DeclFlags::AMBIENT, it.declare)
-            .with(DeclFlags::TOP_LEVEL, self.top_level.contains(&address));
+            .with(DeclFlags::AMBIENT, it.declare);
         decl.block = self.block(address).filter(|_| has_body);
         let index = self.add(decl, declaration.then_some(ModuleKey::Function));
         if declaration {
@@ -375,10 +368,7 @@ impl<'a> Visit<'a> for Binder<'a> {
             DeclKind::ClassExpression
         };
         let mut decl = self.blank(kind, name, range(it.span));
-        decl.flags = decl
-            .flags
-            .with(DeclFlags::TOP_LEVEL, self.top_level.contains(&address))
-            .with(DeclFlags::DECORATED, !it.decorators.is_empty());
+        decl.flags = decl.flags.with(DeclFlags::DECORATED, !it.decorators.is_empty());
         decl.block = if self.ambient { None } else { self.block(address) };
         let selected = decl.block.is_some();
         let index = self.add(decl, declaration.then_some(ModuleKey::Class));

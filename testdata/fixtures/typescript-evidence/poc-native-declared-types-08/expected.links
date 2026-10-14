@@ -1,0 +1,4 @@
+shadow-library.ts#call #0 types `Map` → project shadow-library.ts#Map
+shadow-library.ts#call #1 types `String` → project shadow-library.ts#String
+shadow-library.ts#call/call:map.get #0 calls `map.get` → project shadow-library.ts#Map.get
+shadow-library.ts#call/call:text.trim #0 calls `text.trim` → project shadow-library.ts#String.trim

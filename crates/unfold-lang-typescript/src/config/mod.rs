@@ -16,8 +16,8 @@
 //! - **Paths.** Path options resolve against the configuration that wrote them, with
 //!   `${configDir}` meaning the extending configuration's folder. Paths outside the open folder
 //!   are dropped.
-//! - **Selectors.** `files`, `include`, and `exclude` never change what is graphed; only the emit
-//!   map reads them.
+//! - **Selectors.** `files`, `include`, and `exclude` never change what is graphed, so they are
+//!   not read.
 
 pub(crate) mod jsonc;
 pub(crate) mod options;
@@ -50,10 +50,6 @@ pub(crate) struct Config {
     pub(crate) chain: Vec<RepoPath>,
     /// The merged options.
     pub(crate) options: CompilerOptions,
-    /// The merged selectors, each with the folder of the file that wrote it.
-    pub(crate) files: Option<Placed<Vec<String>>>,
-    pub(crate) include: Option<Placed<Vec<String>>>,
-    pub(crate) exclude: Option<Placed<Vec<String>>>,
 }
 
 impl Config {
@@ -63,9 +59,6 @@ impl Config {
             dir: String::new(),
             chain: Vec::new(),
             options: CompilerOptions::without_config(),
-            files: None,
-            include: None,
-            exclude: None,
         }
     }
 
@@ -176,9 +169,6 @@ impl ConfigSet {
                 dir: dir.clone(),
                 chain,
                 options: raw.options,
-                files: raw.files,
-                include: raw.include,
-                exclude: raw.exclude,
             };
             set.by_dir.insert(dir, set.configs.len());
             set.configs.push(Arc::new(config));
@@ -302,9 +292,6 @@ impl Loader<'_> {
             base = RawConfig {
                 extends: Vec::new(),
                 options: loaded.raw.options.clone().over(&base.options),
-                files: loaded.raw.files.clone().or(base.files),
-                include: loaded.raw.include.clone().or(base.include),
-                exclude: loaded.raw.exclude.clone().or(base.exclude),
             };
         }
         stack.pop();
@@ -313,9 +300,6 @@ impl Loader<'_> {
             raw: RawConfig {
                 extends: raw.extends,
                 options: raw.options.over(&base.options),
-                files: raw.files.or(base.files),
-                include: raw.include.or(base.include),
-                exclude: raw.exclude.or(base.exclude),
             },
         });
         self.merged.insert(path.clone(), Some(Arc::clone(&merged)));

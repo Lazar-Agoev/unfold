@@ -1,0 +1,6 @@
+this.ts#C.run.arrow/lambda[0]/call:this.m #0 calls `this.m` → project this.ts#C.m
+this.ts#C.run.nested #0 types `C` → project this.ts#C
+this.ts#C.run.nested/call:this.m #0 calls `this.m` → unknown unbound_this
+this.ts#C.run.nested.arrow/call:this.m #0 calls `this.m` → unknown unbound_this
+this.ts#C.run.expression #0 types `C` → project this.ts#C
+this.ts#C.run.expression/call:this.m #0 calls `this.m` → unknown unbound_this

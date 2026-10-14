@@ -1,2 +1,0 @@
-function-value.ts#function:factory/return[0]/new[0] #0 constructs `Repo` -> function-value.ts#class:Repo
-function-value.ts#expression_statement[0]/call[0] #0 calls `factory.save` -> unknown_receiver

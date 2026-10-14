@@ -1,5 +1,0 @@
-a.ts#function:withThis/expression_statement[0]/call[0] #0 calls `second` -> parameter @1
-a.ts#function:withThis/expression_statement[1]/call[0] #0 calls `first` -> parameter @0
-a.ts#function:plain/expression_statement[0]/call[0] #0 calls `second` -> parameter @1
-a.ts#function:plain/expression_statement[1]/call[0] #0 calls `first` -> parameter @0
-a.ts#variable:arrow/function:arrow/call[0] #0 calls `only` -> parameter @0

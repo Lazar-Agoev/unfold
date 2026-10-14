@@ -1,3 +1,0 @@
-names.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.#m` -> names.ts#class:Base/method:%23m
-names.ts#class:Base/method:run/expression_statement[1]/call[0] #0 calls `this["literal"]` -> names.ts#class:Base/method[1]
-names.ts#class:Base/method:run/expression_statement[2]/call[0] #0 calls `this[1]` -> names.ts#class:Base/method:1

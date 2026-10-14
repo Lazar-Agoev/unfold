@@ -1,1 +1,0 @@
-{"scripts": {"invalid": 1, "cycle": "npm run cycle", "missing": "npm run absent", "cross": "npm --prefix absent run main"}, "bin": {"invalid": 1, "empty": ""}}

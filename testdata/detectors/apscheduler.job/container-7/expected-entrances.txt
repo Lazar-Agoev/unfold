@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/container-7. Format: testdata/README.md.
-# Called container aliases keep negative domain evidence (PoC: "Called container aliases and stored Jobs..."). Written: [BlockingScheduler.add_job][0](scheduler, second, id='first')
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

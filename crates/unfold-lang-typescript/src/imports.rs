@@ -1,4 +1,4 @@
-//! Which module syntax is a runtime dependency (an `import` block and an `imports` edge).
+//! Which module syntax is a runtime dependency (an `imports` link).
 //!
 //! | Syntax | Runtime dependency |
 //! | --- | --- |
@@ -9,7 +9,7 @@
 //! | `import x = require("x")` | Yes, unless `import type x = …`; `import x = A.B` is not a module |
 //! | Dynamic `import(…)` | Yes (a non-literal specifier is `dynamic`) |
 //!
-//! Extraction and the independent census both ask these questions, so an import block and a
+//! Extraction and the independent census both ask these questions, so an `imports` link and a
 //! census dependency are always found by the same rules.
 
 use oxc_ast::ast::{

@@ -1,0 +1,4 @@
+merges.ts#/call:F #0 calls `F` → project merges.ts#F
+merges.ts#/call:F.extra #0 calls `F.extra` → project merges.ts#F.extra
+merges.ts#/call:C.extra #0 calls `C.extra` → project merges.ts#C.extra
+merges.ts#/call:E.extra #0 calls `E.extra` → project merges.ts#E.extra

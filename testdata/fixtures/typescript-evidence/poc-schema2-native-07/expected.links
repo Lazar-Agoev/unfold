@@ -1,0 +1,5 @@
+use.ts#/try[0]/catch/call:error #0 calls `error` → unknown not_concrete
+use.ts#holder/try[0]/catch/call:callback #0 calls `callback` → unknown not_concrete
+use.ts#second/try[0]/catch/call:callback #0 calls `callback` → unknown not_concrete
+use.ts#/call:mutable #0 calls `mutable` → unknown mutable_binding
+use.ts#/call:variable #0 calls `variable` → unknown mutable_binding

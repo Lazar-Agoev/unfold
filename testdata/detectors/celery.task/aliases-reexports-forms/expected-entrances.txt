@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/aliases-reexports-forms. Format: testdata/README.md.
-# Proven imports, re-exports, and receiver aliases support decorator and immediate curried evidence (PoC: "Proven imports, reexports and receiver aliases...").
-entrance	celery.task	worker	-	orders	exact	src/app.py:4
-	target	handler	resolved	src/app.py#function:decorated	decorated
-entrance	celery.task	worker	-	emails	exact	src/app.py:8
-	target	handler	resolved	src/app.py#function:ordinary	alias
-entrance	celery.task	worker	-	reports	exact	src/app.py:9
-	target	handler	resolved	src/app.py#function:ordinary	ordinary

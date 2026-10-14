@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/shared-task-decoy. Format: testdata/README.md.
-# A local shared_task decoy doesn't withhold.
-entrance	celery.task	worker	-	orders	exact	src/app.py:11
-	target	handler	resolved	src/app.py#function:first	first

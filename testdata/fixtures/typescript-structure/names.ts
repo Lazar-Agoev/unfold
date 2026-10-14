@@ -1,4 +1,4 @@
-// Names of anonymous functions and classes come from what they initialize or are assigned to.
+// Names of anonymous functions and classes come from the declaration, class property, or object property they initialize, or from `export default`.
 const variable = function () {};
 const explicit = function named() {};
 let target;

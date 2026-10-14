@@ -1,0 +1,4 @@
+expressions.ts#C.make/return[0]/call:Self #0 calls `Self` → project expressions.ts#C.constructor
+expressions.ts#C.run/call:this.m #0 calls `this.m` → project expressions.ts#C.m
+expressions.ts#/call:C #0 calls `C` → project expressions.ts#C.constructor
+expressions.ts#/call:C.make #0 calls `C.make` → project expressions.ts#C.make

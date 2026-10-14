@@ -1,0 +1,6 @@
+a.ts# #0 imports `./b.js` → project b.ts#
+b.ts# #0 imports `./a.js` → project a.ts#
+use.ts# #0 imports `./outside.js` → project outside.ts#
+use.ts# #1 imports `./a.js` → project a.ts#
+use.ts#use #0 types `Outside` → project outside.ts#Outside
+use.ts#use #1 types `Missing` → unknown not_found

@@ -1,2 +1,0 @@
-base.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> overridden
-child.ts#import[0] #0 imports `./base.js` -> base.ts#

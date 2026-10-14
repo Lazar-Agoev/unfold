@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/family-mutation-2. Format: testdata/README.md.
-# FastAPI and APIRouter class API mutations invalidate the whole family (PoC: "FastAPI and APIRouter class API mutations..."). Written: APIRouter.get = fake

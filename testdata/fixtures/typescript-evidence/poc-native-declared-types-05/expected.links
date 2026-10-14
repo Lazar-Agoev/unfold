@@ -1,0 +1,8 @@
+returns.ts#make #0 types `Repo` → project returns.ts#Repo
+returns.ts#make/return[0]/call:Repo #0 calls `Repo` → project returns.ts#Repo
+returns.ts#Factory.make #0 types `Repo` → project returns.ts#Repo
+returns.ts#Factory.make/return[0]/call:Repo #0 calls `Repo` → project returns.ts#Repo
+returns.ts#Factory.run/call:this.make().save #0 calls `this.make().save` → project returns.ts#Repo.save
+returns.ts#Factory.run/call:this.make().save/call:this.make #0 calls `this.make` → project returns.ts#Factory.make
+returns.ts#/call:make().save #0 calls `make().save` → project returns.ts#Repo.save
+returns.ts#/call:make().save/call:make #0 calls `make` → project returns.ts#make

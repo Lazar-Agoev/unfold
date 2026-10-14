@@ -4,24 +4,23 @@
 //! `ref` options: `:refuse=wrapper|dynamic|unsupported|not_concrete`, `:ambiguous`,
 //! `:overridden`, `:import=not_found|not_indexed|ambiguous`, `:excluded`, `:extfile=PATH`,
 //! `:pkg=NAME`, `:nodecl`, `:mixed`, `:aug` (adds an augmentation), `:augext` (only an external
-//! augmentation), `:construct` (linking proves the call a construction: a `constructs` edge in
-//! the construct context). `get` takes `:ext=NAME` for an external member.
+//! augmentation), `:construct` (linking proves the call a construction: its node becomes `new`
+//! and it resolves in the construct context). `get` takes `:ext=NAME` for an external member.
+//!
+//! The standard library (`console`, `print`, `Math`) is `alien:lib`, the language's builtins, by
+//! location and as the label of an undeclared root.
 
 use rustc_hash::FxHashMap;
 use smallvec::smallvec;
 use unfold_core::validate::{CallSite as CensusSite, Census};
-use unfold_core::vocab::{BlockKind, EdgeKind, Language as LanguageId};
-use unfold_core::{ByteRange, RepoPath};
-use unfold_engine::entrances::EntranceDetector;
+use unfold_core::vocab::Language as LanguageId;
+use unfold_core::{ByteRange, ModuleLabel, RepoPath};
 use unfold_engine::evidence::{
-    Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, ImportBinding,
-    ImportTarget, LocatorMembers, MemberFact, ModuleTarget, Origin, OriginDeclaration, ParameterFact,
-    Refusal, Stability, ValueContext,
+    Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, ExternalLocation, ImportBinding,
+    ImportTarget, MemberFact, ModuleTarget, Origin, OriginDeclaration, Refusal, Stability, ValueContext,
 };
-use unfold_engine::facts::CallContext;
-use unfold_engine::{BlockRef, CallRef, DeclRef, FactsSet, FileId, Invocation, Linked, ValueRef};
+use unfold_engine::{CallRef, DeclRef, FactsSet, FileId, ImportRef, Linked, NodeRef, TypeRef, ValueRef};
 
-use super::detect::Routes;
 use super::payload::{Decl, DeclKind, Payload, ScopeKind, ValueInfo};
 
 /// Names that resolve to the alien standard library when nothing declares them.
@@ -33,7 +32,6 @@ pub struct AlienLinked<'a> {
     unindexed: &'a [RepoPath],
     classes: Vec<ClassShape>,
     dependencies: Vec<Vec<ModuleTarget>>,
-    exports: Vec<Vec<Export>>,
     census: AlienCensus,
 }
 
@@ -61,7 +59,6 @@ impl<'a> AlienLinked<'a> {
             unindexed,
             classes: Vec::new(),
             dependencies: Vec::new(),
-            exports: Vec::new(),
             census: AlienCensus::default(),
         };
         linked.classes = linked.class_shapes();
@@ -69,11 +66,7 @@ impl<'a> AlienLinked<'a> {
             .iter()
             .map(|(file, _)| linked.file_dependencies(file))
             .collect();
-        linked.exports = program
-            .iter()
-            .map(|(file, _)| linked.file_exports(file))
-            .collect();
-        let census = AlienCensus::new(program, &linked.payloads, |block| linked.keeps_import(block));
+        let census = AlienCensus::new(program, &linked.payloads, |import| linked.keeps_import(import));
         linked.census = census;
         linked
     }
@@ -505,35 +498,8 @@ impl<'a> AlienLinked<'a> {
             .collect()
     }
 
-    fn file_exports(&self, file: FileId) -> Vec<Export> {
-        let Some(payload) = self.payload(file) else {
-            return Vec::new();
-        };
-        let mut exports: Vec<Export> = Vec::new();
-        for &decl in &payload.scopes[0].decls {
-            let found = &payload.decls[decl as usize];
-            if found.name.is_empty() {
-                continue;
-            }
-            // A re-exported import exports whatever its binding resolves to.
-            let candidates: Vec<Candidate> = match found.kind {
-                DeclKind::Use { .. } => self.bound(file, &[decl]).candidates.into_vec(),
-                _ => vec![Candidate::indexed(DeclRef { file, index: decl })],
-            };
-            match exports.iter_mut().find(|export| *export.name == *found.name) {
-                Some(export) => export.candidates.extend(candidates),
-                None => exports.push(Export {
-                    name: found.name.as_str().into(),
-                    candidates,
-                }),
-            }
-        }
-        exports.sort_by(|a, b| a.name.cmp(&b.name));
-        exports
-    }
-
-    fn block(decl: DeclRef, local: u32) -> BlockRef {
-        BlockRef {
+    fn node(decl: DeclRef, local: u32) -> NodeRef {
+        NodeRef {
             file: decl.file,
             local,
         }
@@ -545,28 +511,23 @@ impl Linked for AlienLinked<'_> {
         LanguageId::TypeScript
     }
 
-    fn invocation(&self, call: CallRef) -> Option<Invocation> {
-        let callee = self.program.call(call)?.callee?;
-        let Some(ValueInfo::Ref { options, .. }) = self.value_info(ValueRef {
-            file: call.file,
-            value: callee,
-        }) else {
-            return None;
+    fn constructs(&self, call: CallRef) -> bool {
+        let Some(fact) = self.program.call(call) else {
+            return false;
         };
-        options
-            .iter()
-            .any(|(key, _)| key == "construct")
-            .then_some(Invocation {
-                edge: EdgeKind::Constructs,
-                context: CallContext::Construct,
-            })
+        let callee = ValueRef {
+            file: call.file,
+            value: fact.callee,
+        };
+        matches!(self.value_info(callee), Some(ValueInfo::Ref { options, .. })
+            if options.iter().any(|(key, _)| key == "construct"))
     }
 
     fn callee_evidence(&self, call: CallRef) -> Evidence {
-        match self.program.call(call).and_then(|fact| fact.callee) {
-            Some(value) => self.value_evidence(ValueRef {
+        match self.program.call(call) {
+            Some(fact) => self.value_evidence(ValueRef {
                 file: call.file,
-                value,
+                value: fact.callee,
             }),
             None => Evidence::default(),
         }
@@ -595,17 +556,17 @@ impl Linked for AlienLinked<'_> {
         }
     }
 
-    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+    fn class_takes_no_arguments(&self, class: NodeRef) -> bool {
         let Some(payload) = self.payload(class.file) else {
             return false;
         };
         payload.decls.iter().any(|decl| {
-            matches!(&decl.kind, DeclKind::Class { block, bases, decorated, .. }
-                if *block == class.local && bases.is_empty() && !decorated)
+            matches!(&decl.kind, DeclKind::Class { node, bases, decorated, .. }
+                if *node == class.local && bases.is_empty() && !decorated)
         })
     }
 
-    fn type_evidence(&self, reference: unfold_engine::TypeRef) -> Evidence {
+    fn type_evidence(&self, reference: TypeRef) -> Evidence {
         let Some((scope, name)) = self
             .payload(reference.file)
             .and_then(|payload| payload.types.get(reference.index as usize))
@@ -628,54 +589,43 @@ impl Linked for AlienLinked<'_> {
     fn concrete_target(&self, declaration: DeclRef, context: ValueContext) -> Option<ConcreteTarget> {
         let concrete = |local| {
             Some(ConcreteTarget {
-                target: Self::block(declaration, local),
+                target: Self::node(declaration, local),
                 implementation: declaration,
             })
         };
-        let class = |block: u32, ctor: Option<u32>| match context {
-            ValueContext::Construct => concrete(ctor.unwrap_or(block)),
-            ValueContext::Reference | ValueContext::Handler | ValueContext::Type => concrete(block),
-            ValueContext::Call => None,
-        };
-        if context == ValueContext::Type {
-            return match &self.decl(declaration)?.kind {
-                DeclKind::Class { block, .. } => class(*block, None),
-                _ => None,
-            };
-        }
-        match &self.decl(declaration)?.kind {
-            DeclKind::Function { block } | DeclKind::Method { block, .. } | DeclKind::Ctor { block, .. } => {
-                concrete(*block)
-            }
-            DeclKind::Class { block, ctor, .. } => class(*block, *ctor),
-            DeclKind::Variable {
-                mutable: false,
-                init: Some(init),
-                ..
-            }
-            | DeclKind::Field { init: Some(init), .. } => {
-                match self.value_info(ValueRef {
-                    file: declaration.file,
-                    value: *init,
-                })? {
-                    ValueInfo::Inline { block, class: false } => concrete(*block),
-                    ValueInfo::Inline { block, class: true } => class(*block, None),
-                    _ => None,
+        let decl = self.decl(declaration)?;
+        match (&decl.kind, context) {
+            (DeclKind::Class { node, ctor, .. }, ValueContext::Construct) => concrete(ctor.unwrap_or(*node)),
+            (DeclKind::Class { node, .. }, ValueContext::Reference | ValueContext::Type) => concrete(*node),
+            (_, ValueContext::Type) | (DeclKind::Class { .. }, ValueContext::Call) => None,
+            (
+                DeclKind::Function { node } | DeclKind::Method { node, .. } | DeclKind::Ctor { node, .. },
+                _,
+            ) => concrete(*node),
+            (
+                DeclKind::Variable {
+                    mutable: false,
+                    init: Some(init),
+                    ..
                 }
-            }
+                | DeclKind::Field { init: Some(init), .. },
+                _,
+            ) => match self.value_info(ValueRef {
+                file: declaration.file,
+                value: *init,
+            })? {
+                ValueInfo::Inline { node } => concrete(*node),
+                _ => None,
+            },
             _ => None,
         }
     }
 
-    fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        match self.decl(declaration)?.kind {
-            DeclKind::Param { owner, position, .. } => Some(ParameterFact {
-                parameter: declaration,
-                owner: Some(Self::block(declaration, owner)),
-                position,
-            }),
-            _ => None,
-        }
+    fn is_parameter(&self, declaration: DeclRef) -> bool {
+        matches!(
+            self.decl(declaration).map(|decl| &decl.kind),
+            Some(DeclKind::Param { .. })
+        )
     }
 
     fn binding_stability(&self, declaration: DeclRef) -> Stability {
@@ -785,74 +735,8 @@ impl Linked for AlienLinked<'_> {
         }
     }
 
-    fn locator_top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        self.top_level(file, name)
-            .into_iter()
-            .filter(|&decl| {
-                self.decl(decl).is_some_and(|decl| {
-                    matches!(
-                        decl.kind,
-                        DeclKind::Function { .. }
-                            | DeclKind::Class { .. }
-                            | DeclKind::Variable { .. }
-                            | DeclKind::Signature
-                    )
-                })
-            })
-            .collect()
-    }
-
-    fn locator_concrete(&self, declaration: DeclRef) -> Option<BlockRef> {
-        match &self.decl(declaration)?.kind {
-            DeclKind::Function { block }
-            | DeclKind::Class { block, .. }
-            | DeclKind::Method { block, .. }
-            | DeclKind::Ctor { block, .. }
-            | DeclKind::Getter { block, .. } => Some(Self::block(declaration, *block)),
-            DeclKind::Variable {
-                mutable: false,
-                init: Some(init),
-                ..
-            } => {
-                match self.value_info(ValueRef {
-                    file: declaration.file,
-                    value: *init,
-                })? {
-                    ValueInfo::Inline { block, .. } => Some(Self::block(declaration, *block)),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn locator_members(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        match self.decl(owner).map(|decl| &decl.kind) {
-            Some(DeclKind::Class { members, .. }) => LocatorMembers {
-                supported: true,
-                declarations: members
-                    .iter()
-                    .map(|&index| DeclRef {
-                        file: owner.file,
-                        index,
-                    })
-                    .filter(|&member| self.decl(member).is_some_and(|decl| decl.name == name))
-                    .collect(),
-            },
-            _ => LocatorMembers::default(),
-        }
-    }
-
-    fn locator_overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool {
-        self.overload_of(signature, implementation)
-    }
-
     fn module_dependencies(&self, file: FileId) -> &[ModuleTarget] {
         self.dependencies.get(file.index()).map_or(&[], Vec::as_slice)
-    }
-
-    fn module_exports(&self, file: FileId) -> &[Export] {
-        self.exports.get(file.index()).map_or(&[], Vec::as_slice)
     }
 
     fn classes(&self) -> &[ClassShape] {
@@ -881,28 +765,20 @@ impl Linked for AlienLinked<'_> {
     }
 
     fn global_label(&self, _file: FileId) -> String {
-        "global".to_owned()
+        "alien:lib".to_owned()
     }
 
-    fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
-        vec![Box::new(Routes { linked: self })]
+    fn is_builtin(&self, label: &ModuleLabel) -> bool {
+        label.as_str() == "alien:lib"
     }
 
     /// A `:when-indexed` import stays when its specifier names an indexed file.
-    fn keeps_import(&self, block: BlockRef) -> bool {
-        let Some(facts) = self.program.facts(block.file) else {
-            return false;
-        };
-        if facts.graph.conditional().binary_search(&block.local).is_err() {
-            return false;
-        }
-        facts
-            .graph
-            .imports()
-            .iter()
-            .find(|import| import.block == block.local)
-            .and_then(|import| import.specifier.as_deref())
-            .is_some_and(|spec| matches!(self.resolve_module(block.file, spec), Module::Indexed(_)))
+    fn keeps_import(&self, import: ImportRef) -> bool {
+        self.program
+            .import(import)
+            .filter(|fact| fact.conditional)
+            .and_then(|fact| fact.specifier.as_deref())
+            .is_some_and(|spec| matches!(self.resolve_module(import.file, spec), Module::Indexed(_)))
     }
 
     fn census(&self) -> Option<&dyn Census> {
@@ -914,7 +790,7 @@ impl Linked for AlienLinked<'_> {
 type CensusFile = (Vec<u32>, Vec<CensusSite>, Vec<ByteRange>);
 
 /// The alien census, from the payload's token boundaries and the parser's own call sites and
-/// dependencies (not from block selection).
+/// dependencies (not from the lowering).
 #[derive(Debug, Default)]
 pub struct AlienCensus {
     files: FxHashMap<RepoPath, CensusFile>,
@@ -922,8 +798,8 @@ pub struct AlienCensus {
 
 impl AlienCensus {
     /// The census of every alien file; the dependencies of conditional imports `keeps` rejects
-    /// are left out, as their blocks are.
-    fn new(program: &FactsSet, payloads: &[Option<Payload>], keeps: impl Fn(BlockRef) -> bool) -> Self {
+    /// are left out, as their links are.
+    fn new(program: &FactsSet, payloads: &[Option<Payload>], keeps: impl Fn(ImportRef) -> bool) -> Self {
         let mut files = FxHashMap::default();
         for ((id, file), payload) in program.iter().zip(payloads) {
             let (Some(payload), Some(facts)) = (payload, file.facts.as_deref()) else {
@@ -931,10 +807,17 @@ impl AlienCensus {
             };
             let dropped: Vec<ByteRange> = facts
                 .graph
-                .conditional()
+                .imports()
                 .iter()
-                .filter(|&&local| !keeps(BlockRef { file: id, local }))
-                .map(|&local| facts.graph.blocks()[local as usize].range)
+                .enumerate()
+                .filter(|(index, fact)| {
+                    let import = ImportRef {
+                        file: id,
+                        import: *index as u32,
+                    };
+                    fact.conditional && !keeps(import)
+                })
+                .map(|(_, fact)| fact.range)
                 .collect();
             let dependencies = payload
                 .dependencies
@@ -947,9 +830,7 @@ impl AlienCensus {
                 .iter()
                 .map(|site| CensusSite {
                     range: site.range,
-                    block_kind: if site.new { BlockKind::New } else { BlockKind::Call },
-                    edge_kind: None,
-                    ineligible_references: site.ineligible.clone(),
+                    form: site.form,
                 })
                 .collect();
             files.insert(
@@ -972,13 +853,13 @@ impl Census for AlienCensus {
         })
     }
 
-    fn call_sites(&self, path: &RepoPath) -> Option<Vec<CensusSite>> {
-        self.files.get(path).map(|(_, sites, _)| sites.clone())
+    fn call_sites(&self, path: &RepoPath) -> Option<&[CensusSite]> {
+        self.files.get(path).map(|(_, sites, _)| sites.as_slice())
     }
 
-    fn module_dependencies(&self, path: &RepoPath) -> Option<Vec<ByteRange>> {
+    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
         self.files
             .get(path)
-            .map(|(_, _, dependencies)| dependencies.clone())
+            .map(|(_, _, dependencies)| dependencies.as_slice())
     }
 }

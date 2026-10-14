@@ -1,0 +1,5 @@
+a.ts#local #0 types `NodeJS.Process` → library global
+a.ts#local/call:process.cwd #0 calls `process.cwd` → library node
+a.ts#/call:process.cwd #0 calls `process.cwd` → library global
+a.ts#shadowed #0 types `Console` → library global
+a.ts#shadowed/call:console.log #0 calls `console.log` → library global

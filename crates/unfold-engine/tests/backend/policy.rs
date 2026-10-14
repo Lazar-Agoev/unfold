@@ -1,10 +1,11 @@
 //! The value policy's reason order, one step at a time, including the step that wins when two
 //! tests match.
 
-use unfold_core::vocab::{EdgeKind, Reason, Resolution};
+use unfold_core::LinkTarget;
+use unfold_core::vocab::{Form, LinkKind, Reason};
 
 use crate::alien::Project;
-use crate::{assert_external, assert_reason, assert_resolved, compile, occurrence};
+use crate::{assert_library, assert_reason, assert_resolved, call, compile};
 
 #[test]
 fn step_1_language_refusals_come_first() {
@@ -47,7 +48,7 @@ fn step_3_unbound_this_and_arrows() {
     assert_resolved(
         "(class C (method m) (method run (stmt (call (lambda (stmt (call (get (this) m))))))))",
         "this.m",
-        "class:C/method:m",
+        "C.m",
     );
     // A non-arrow function inside a member does not.
     assert_reason(
@@ -84,8 +85,8 @@ fn step_4_failed_import_bindings() {
         .compile()
         .valid();
     for text in ["helper", "broken"] {
-        let edge = compiled.edge("a.alien", text);
-        assert_eq!(edge.reason, Some(Reason::NotIndexed), "{text}");
+        let link = compiled.call("a.alien", text);
+        assert_eq!(link.to, LinkTarget::Unknown(Reason::NotIndexed), "{text}");
     }
 }
 
@@ -103,18 +104,18 @@ fn step_5_unindexed_repository_candidates() {
 
 #[test]
 fn step_6_package_import_roots_are_external() {
-    assert_external(
+    assert_library(
         "(use express \"express\") (call (ref express))",
         "express",
         "express",
     );
-    assert_external(
+    assert_library(
         "(use router \"@scope/router/sub\") (call (ref router))",
         "router",
         "@scope/router",
     );
     // Members of a package import name the package, without any installed declaration.
-    assert_external(
+    assert_library(
         "(use express \"express\") (call (get (ref express) Router))",
         "express.Router",
         "express",
@@ -135,25 +136,25 @@ fn step_7_no_candidates() {
         Reason::Dynamic,
     );
     assert_reason("(fn f) (call (call (ref f)))", "f()", Reason::Dynamic);
-    // Only external augmentations: still external, labeled by location.
-    assert_external(
-        "(const merged) (call (ref merged :augext))",
-        "merged",
-        "alien:lib",
+    // Only outside augmentations: still outside, labeled by location (here the builtins).
+    assert_eq!(
+        call("(const merged) (call (ref merged :augext))", "merged").to,
+        builtin()
     );
 }
 
 #[test]
 fn step_8_external_and_mixed_origins() {
-    assert_external("(call (ref console))", "console", "global");
-    assert_external("(call (get (ref Math) max))", "Math.max", "global");
+    // The standard library is the language's builtins.
+    assert_eq!(call("(call (ref console))", "console").to, builtin());
+    assert_eq!(call("(call (get (ref Math) max))", "Math.max").to, builtin());
     // Declared roots are not `global`; their candidates' locations label them.
-    assert_external(
+    assert_library(
         "(const helper) (call (ref helper :pkg=lodash/fp))",
         "helper",
         "lodash",
     );
-    assert_external(
+    assert_library(
         "(const client) (call (ref client :pkg=client-b :mixed))",
         "client",
         r#"["client-b","mixed"]"#,
@@ -173,21 +174,21 @@ fn step_10_several_concrete_targets() {
 
 #[test]
 fn step_11_no_target_reasons_in_fixed_order() {
-    let edge = occurrence("(fn run (param first) (param cb) (call (ref cb)))", "cb");
-    assert_eq!((edge.reason, edge.position), (Some(Reason::Parameter), Some(1)));
-    // C-4: an explicit `this` parameter takes no position, and nothing re-adds it.
-    let edge = occurrence("(fn run (param this) (param cb) (call (ref cb)))", "cb");
-    assert_eq!((edge.reason, edge.position), (Some(Reason::Parameter), Some(0)));
-    // An outer closure's parameter, and a construction, have no position.
-    let edge = occurrence(
+    assert_reason(
+        "(fn run (param first) (param cb) (call (ref cb)))",
+        "cb",
+        Reason::Parameter,
+    );
+    // An outer function's parameter, and a construction.
+    assert_reason(
         "(fn outer (param cb) (stmt (lambda (stmt (call (ref cb))))))",
         "cb",
+        Reason::Parameter,
     );
-    assert_eq!((edge.reason, edge.position), (Some(Reason::Parameter), None));
-    let edge = occurrence("(fn outer (param Cb) (stmt (new (ref Cb))))", "Cb");
-    assert_eq!(
-        (edge.kind, edge.reason, edge.position),
-        (EdgeKind::Constructs, Some(Reason::Parameter), None)
+    assert_reason(
+        "(fn outer (param Cb) (stmt (new (ref Cb))))",
+        "Cb",
+        Reason::Parameter,
     );
     assert_reason("(let g (lambda)) (call (ref g))", "g", Reason::MutableBinding);
     assert_reason(
@@ -202,21 +203,16 @@ fn step_11_no_target_reasons_in_fixed_order() {
         "(fn h (param g) (let g) (call (ref g)))",
         "(fn h (let g) (param g) (call (ref g)))",
     ] {
-        let edge = occurrence(source, "g");
-        assert_eq!(
-            (edge.reason, edge.position),
-            (Some(Reason::Parameter), Some(0)),
-            "{source}"
-        );
+        assert_reason(source, "g", Reason::Parameter);
     }
 }
 
 #[test]
 fn step_12_nonconcrete_evidence_beside_a_target() {
-    assert_resolved("(sig f) (sig f) (fn f) (call (ref f))", "f", "function:f");
+    assert_resolved("(sig f) (sig f) (fn f) (call (ref f))", "f", "f");
     assert_reason("(let f) (fn f) (call (ref f))", "f", Reason::Ambiguous);
     // Augmentations never count as non-concrete evidence.
-    assert_resolved("(fn f) (call (ref f :aug))", "f", "function:f");
+    assert_resolved("(fn f) (call (ref f :aug))", "f", "f");
     // Ambiguity beside a target wins over overrides.
     assert_reason(
         "(let f) (fn f) (call (ref f :overridden))",
@@ -238,18 +234,18 @@ fn step_13_overrides() {
     assert_resolved(
         "(class Base (method ping)) (class Derived :base=Base (method ping) (method run (stmt (call (get (base) ping)))))",
         "super.ping",
-        "class:Base/method:ping",
+        "Base.ping",
     );
     assert_resolved(
         &format!("{classes} (call (get (ref Base) make))"),
         "Base.make",
-        "class:Base/method:make",
+        "Base.make",
     );
     assert_resolved(
         "(class Base (method secret :private) (method run (stmt (call (get (this) secret))))) \
          (class Derived :base=Base (method secret :private))",
         "this.secret",
-        "class:Base/method:secret",
+        "Base.secret",
     );
     // Every declared base participates, and a callable field can override a method.
     assert_reason(
@@ -262,7 +258,7 @@ fn step_13_overrides() {
     assert_resolved(
         &format!("{classes} (fn run (param d :type=Derived) (stmt (call (get (ref d) ping))))"),
         "d.ping",
-        "class:Derived/method:ping",
+        "Derived.ping",
     );
     // The language's own override evidence.
     assert_reason("(fn f) (call (ref f :overridden))", "f", Reason::Overridden);
@@ -282,8 +278,8 @@ fn step_13_override_census_crosses_files() {
         .compile()
         .valid();
     assert_eq!(
-        compiled.edge("a.alien", "b.ping").reason,
-        Some(Reason::Overridden)
+        compiled.call("a.alien", "b.ping").to,
+        LinkTarget::Unknown(Reason::Overridden)
     );
     let alone = Project::new()
         .file(
@@ -292,39 +288,27 @@ fn step_13_override_census_crosses_files() {
         )
         .compile()
         .valid();
-    assert_eq!(alone.edge("a.alien", "b.ping").resolution, Resolution::Resolved);
+    assert!(matches!(
+        alone.call("a.alien", "b.ping").to,
+        LinkTarget::Project(_)
+    ));
 }
 
 #[test]
 fn step_15_permitted_targets_by_context() {
-    assert_resolved("(fn f) (call (ref f))", "f", "function:f");
-    assert_resolved("(const f (lambda)) (call (ref f))", "f", "variable:f/function:f");
+    assert_resolved("(fn f) (call (ref f))", "f", "f");
+    assert_resolved("(const f (lambda)) (call (ref f))", "f", "f");
     // Constructions prefer a direct constructor, otherwise the class.
     let compiled = compile("(class K (ctor)) (class Bare) (stmt (new (ref K))) (stmt (new (ref Bare)))");
-    let k = compiled.edge("a.alien", "K");
-    assert_eq!(
-        (k.kind, compiled.target(k)),
-        (
-            EdgeKind::Constructs,
-            Some((
-                unfold_core::vocab::BlockKind::Constructor,
-                "a.alien#class:K/constructor:constructor"
-            ))
-        )
-    );
-    let bare = compiled.edge("a.alien", "Bare");
-    assert_eq!(
-        compiled.target(bare).map(|(kind, _)| kind),
-        Some(unfold_core::vocab::BlockKind::Class)
-    );
-    // `super(...)` keeps its call block and `calls` edge but selects the construction target.
+    let k = compiled.call("a.alien", "K");
+    assert_eq!(compiled.from("a.alien", k).form, Form::New);
+    assert_eq!(k.to, project("a.alien#K.constructor"));
+    assert_eq!(compiled.call("a.alien", "Bare").to, project("a.alien#Bare"));
+    // `super(...)` keeps its call form but selects the construction target.
     let compiled = compile("(class B (ctor)) (class K :base=B (ctor (stmt (super (ref B)))))");
-    let edge = compiled.edge("a.alien", "B");
-    assert_eq!(edge.kind, EdgeKind::Calls);
-    assert_eq!(
-        edge.target.as_ref().map(|key| key.as_str()),
-        Some("a.alien#class:B/constructor:constructor")
-    );
+    let link = compiled.call("a.alien", "B");
+    assert_eq!(compiled.from("a.alien", link).form, Form::Call);
+    assert_eq!(link.to, project("a.alien#B.constructor"));
 }
 
 #[test]
@@ -340,58 +324,34 @@ fn imports_resolve_through_module_targets() {
         .unindexed("skipped.alien")
         .compile()
         .valid();
-    let summary: Vec<_> = compiled
-        .occurrences("a.alien")
-        .into_iter()
-        .map(|edge| {
-            (
-                &*edge.text,
-                edge.resolution,
-                edge.reason,
-                edge.module.as_ref().map(|module| module.as_str().to_owned()),
-                edge.target.as_ref().map(|key| key.as_str().to_owned()),
-            )
-        })
+    let imports: Vec<(&str, &LinkTarget)> = compiled
+        .file("a.alien")
+        .links
+        .iter()
+        .filter(|link| link.kind == LinkKind::Imports)
+        .map(|link| (&*link.text, &link.to))
         .collect();
     assert_eq!(
-        summary,
+        imports,
         [
-            (
-                "./b",
-                Resolution::Resolved,
-                None,
-                None,
-                Some("b.alien#".to_owned())
-            ),
-            (
-                "express",
-                Resolution::External,
-                None,
-                Some("express".to_owned()),
-                None
-            ),
-            (
-                "./missing",
-                Resolution::Unresolved,
-                Some(Reason::NotFound),
-                None,
-                None
-            ),
-            (
-                "./skipped",
-                Resolution::External,
-                None,
-                Some("skipped.alien".to_owned()),
-                None
-            ),
-            (
-                "./broken",
-                Resolution::Unresolved,
-                Some(Reason::NotIndexed),
-                None,
-                None
-            ),
-            ("(…)", Resolution::Unresolved, Some(Reason::Dynamic), None, None),
+            ("./b", &project("b.alien#")),
+            ("express", &library("express")),
+            ("./missing", &LinkTarget::Unknown(Reason::NotFound)),
+            ("./skipped", &library("skipped.alien")),
+            ("./broken", &LinkTarget::Unknown(Reason::NotIndexed)),
+            ("(…)", &LinkTarget::Unknown(Reason::Dynamic)),
         ]
     );
+}
+
+fn project(key: &str) -> LinkTarget {
+    LinkTarget::Project(unfold_core::Key::from_text(key))
+}
+
+fn library(label: &str) -> LinkTarget {
+    LinkTarget::Library(unfold_core::ModuleLabel::single(label).expect("a label"))
+}
+
+fn builtin() -> LinkTarget {
+    LinkTarget::Builtin(unfold_core::ModuleLabel::single("alien:lib").expect("a label"))
 }

@@ -1,5 +1,0 @@
-# Only the real Worker matches: not a local class, a relative or missing module, another package,
-# Queue, QueueEvents, FlowProducer, a namespace member, a default import, a call, a const alias, or a
-# shadowing parameter. (PoC schema2-framework-jobs: "BullMQ same-name classes ... do not match".)
-entrance	bullmq.worker	worker	-	real	exact	main.ts:9
-	target	handler	resolved	main.ts#function:handle	handle

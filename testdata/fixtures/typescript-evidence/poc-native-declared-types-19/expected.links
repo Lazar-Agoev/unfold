@@ -1,0 +1,4 @@
+inferred.ts#inferred/return[0]/call:Repo #0 calls `Repo` → project inferred.ts#Repo
+inferred.ts#/call:inferred().save #0 calls `inferred().save` → unknown unknown_receiver
+inferred.ts#/call:inferred().save/call:inferred #0 calls `inferred` → project inferred.ts#inferred
+inferred.ts#/call:values.map #0 calls `values.map` → unknown unknown_receiver

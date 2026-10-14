@@ -105,9 +105,6 @@ pub struct InputFile {
     pub path: RepoPath,
     /// What it configures.
     pub role: InputRole,
-    /// Where it stands with respect to `[scope]`. The package and pyproject detectors skip
-    /// excluded inputs, as in the proof of concept; `tsconfig` files apply regardless.
-    pub scope: ScopeStatus,
     /// Its size and modification time.
     pub stamp: FileStamp,
 }

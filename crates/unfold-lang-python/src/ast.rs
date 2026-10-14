@@ -1,9 +1,19 @@
-//! Small helpers over Ruff's syntax tree that every pass shares: child expressions in source
-//! order, argument order, and string literals.
+//! Small helpers over Ruff's syntax tree that every pass shares: byte ranges, child expressions
+//! in source order, argument order, and string literals.
 
 use ruff_python_ast::{
     ArgOrKeyword, Arguments, Expr, ExprCall, InterpolatedStringElement, InterpolatedStringElements,
 };
+use ruff_text_size::TextRange;
+use unfold_core::text::ByteRange;
+
+/// A byte range from Ruff's range.
+pub(crate) fn bytes(range: TextRange) -> ByteRange {
+    ByteRange {
+        start: range.start().to_u32(),
+        end: range.end().to_u32(),
+    }
+}
 
 /// Appends the direct child expressions of `expr`, in source order. Nothing is skipped: lambda
 /// defaults and bodies, comprehension parts, and f-string interpolations (including those in

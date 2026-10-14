@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/fastapi.route/dependency-order.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

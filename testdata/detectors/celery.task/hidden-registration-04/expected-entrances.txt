@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/hidden-registration-04. Format: testdata/README.md.
-# Registrations outside the entrance surface still withhold cached task identities (PoC: "Registrations outside the entrance surface..."). Written: app.register_task(second)
-entrance	celery.task	worker	-	orders	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

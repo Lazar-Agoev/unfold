@@ -1,5 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/annotation-subclass-elsewhere. Format: testdata/README.md.
-# A subclass of fastapi.applications.FastAPI in another module withholds annotation-only receivers.
-entrance	fastapi.route	http	GET	/safe	exact	src/app.py:7
-	binding	src/app.py#variable:app
-	target	handler	resolved	src/app.py#function:endpoint	endpoint

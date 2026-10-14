@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/cron-mutation-1. Format: testdata/README.md.
-# Cron implementation mutations make the schedule unknown without inventing a body (PoC: "Cron implementation mutations..."). Written: CronTrigger.from_crontab = fake
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:8
-	target	handler	resolved	src/app.py#function:first	first

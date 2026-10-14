@@ -1,0 +1,3 @@
+fields.ts#C.run/call:this.arrow #0 calls `this.arrow` → project fields.ts#C.arrow
+fields.ts#C.run/call:this.expression #0 calls `this.expression` → project fields.ts#C.expression
+fields.ts#C.run/call:this.declared #0 calls `this.declared` → unknown not_concrete

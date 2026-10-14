@@ -1,10 +1,12 @@
 //! Extraction, linking, and highlighting never panic or overflow: arbitrary text, truncations of
-//! real files, and pathologically deep nesting either extract or fail with a message, and deep
-//! chains and cycles link into a valid graph.
+//! real files, and pathologically deep nesting either extract or fail with a message; blocks
+//! nested past the depth limit are truncated into a valid graph; and deep chains and cycles link
+//! into a valid graph.
 
 use proptest::prelude::*;
 use unfold_core::highlight::{Highlighter, spans_are_well_formed};
 use unfold_core::testkit::testdata_dir;
+use unfold_core::vocab::{Flag, Form};
 use unfold_core::{RepoPath, Snapshot};
 use unfold_lang_typescript::{ExtractOptions, TypeScript, TypeScriptHighlighter, extract};
 
@@ -53,6 +55,38 @@ fn deep_nesting_extracts_or_fails_cleanly() {
         exercise(&format!("if (a) {{}}{}", " else if (a) {}".repeat(depth)));
         exercise(&format!("x = 1{};", " + 1".repeat(depth)));
     }
+}
+
+/// Blocks nested past the depth limit are left out, and the block they would sit in is marked
+/// `truncated`: the graph stays valid, because the census leaves out the calls that were cut.
+#[test]
+fn nesting_past_the_depth_limit_is_truncated() {
+    let depth = 300;
+    let source = format!("{}work();{}\n", "if (a) {".repeat(depth), "}".repeat(depth));
+    let compiled = compile_source("deep.ts", &source).valid();
+    let nodes = &compiled.file("deep.ts").nodes;
+    let truncated: Vec<_> = nodes
+        .iter()
+        .filter(|node| node.flags.contains(Flag::Truncated))
+        .collect();
+    assert_eq!(truncated.len(), 1);
+    assert_eq!(truncated[0].form, Form::Then);
+    assert!(
+        nodes.iter().all(|node| node.form != Form::Call),
+        "the call is past the limit"
+    );
+    // A long call chain nests each call in the next one's receiver.
+    let chain = format!("start(){};\n", ".then()".repeat(400));
+    let compiled = compile_source("chain.ts", &chain).valid();
+    let nodes = &compiled.file("chain.ts").nodes;
+    assert_eq!(
+        nodes
+            .iter()
+            .filter(|node| node.flags.contains(Flag::Truncated))
+            .count(),
+        1
+    );
+    assert!(nodes.len() < 300);
 }
 
 #[test]
@@ -166,13 +200,13 @@ fn export_equals_cycles_link_without_overflow() {
             .graph
             .files
             .iter()
-            .flat_map(|file| &file.edges)
-            .filter(|edge| edge.kind == unfold_core::vocab::EdgeKind::Calls)
+            .flat_map(|file| &file.links)
+            .filter(|link| link.kind == unfold_core::vocab::LinkKind::Calls)
             .collect();
         assert_eq!(calls.len(), 1, "{program:?}");
         assert_eq!(
-            calls[0].resolution,
-            unfold_core::vocab::Resolution::Unresolved,
+            calls[0].to.outcome(),
+            unfold_core::vocab::Outcome::Unknown,
             "{program:?}"
         );
     }

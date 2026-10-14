@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Duration;
 
-use unfold_core::Graph;
-use unfold_core::vocab::{DetectorId, EntranceKind, FileState, Language as LanguageId, Reason, Resolution};
+use unfold_core::vocab::{FileState, Language as LanguageId, Outcome, Reason};
+use unfold_core::{Graph, LinkTarget};
 
 use super::UpdateKind;
 
@@ -20,10 +20,8 @@ pub enum Stage {
     Extract,
     /// Each language's cross-file indexes over the whole program.
     Link,
-    /// Every call site, construction, import, and reference.
+    /// Every link's outcome, and every argument's pairing.
     Resolve,
-    /// Entrance detectors and assembly.
-    Detect,
     /// The new graph against the core invariants and each language's census.
     Validate,
 }
@@ -36,7 +34,6 @@ impl Stage {
         Self::Extract,
         Self::Link,
         Self::Resolve,
-        Self::Detect,
         Self::Validate,
     ];
 
@@ -48,7 +45,6 @@ impl Stage {
             Self::Extract => "extract",
             Self::Link => "link",
             Self::Resolve => "resolve",
-            Self::Detect => "detect",
             Self::Validate => "validate",
         }
     }
@@ -101,16 +97,10 @@ pub struct UpdateStats {
     pub total: Duration,
     /// Whether the graph was rebuilt (an update that changed no input keeps the graph).
     pub relinked: bool,
-    /// Edges by resolution.
-    pub resolutions: BTreeMap<Resolution, usize>,
-    /// Unresolved edges by reason.
+    /// Links by outcome.
+    pub outcomes: BTreeMap<Outcome, usize>,
+    /// Unknown links by reason.
     pub reasons: BTreeMap<Reason, usize>,
-    /// Entrances by kind.
-    pub entrance_kinds: BTreeMap<EntranceKind, usize>,
-    /// Entrances by detector.
-    pub detectors: BTreeMap<DetectorId, usize>,
-    /// Entrance targets by resolution.
-    pub target_resolutions: BTreeMap<Resolution, usize>,
 }
 
 impl UpdateStats {
@@ -118,38 +108,23 @@ impl UpdateStats {
     pub(crate) fn count_graph(&mut self, graph: &Graph) {
         self.files.clear();
         self.states.clear();
-        self.resolutions.clear();
+        self.outcomes.clear();
         self.reasons.clear();
-        self.entrance_kinds.clear();
-        self.detectors.clear();
-        self.target_resolutions.clear();
         for file in &graph.files {
             *self.files.entry(file.file.language).or_default() += 1;
             *self.states.entry(file.file.state).or_default() += 1;
-            for edge in &file.edges {
-                *self.resolutions.entry(edge.resolution).or_default() += 1;
-                if let Some(reason) = edge.reason {
+            for link in &file.links {
+                *self.outcomes.entry(link.to.outcome()).or_default() += 1;
+                if let LinkTarget::Unknown(reason) = link.to {
                     *self.reasons.entry(reason).or_default() += 1;
                 }
             }
         }
-        for entrance in &graph.entrances {
-            *self.entrance_kinds.entry(entrance.kind).or_default() += 1;
-            *self.detectors.entry(entrance.detector).or_default() += 1;
-            for target in &entrance.targets {
-                *self.target_resolutions.entry(target.resolution).or_default() += 1;
-            }
-        }
     }
 
-    /// The number of edges.
-    pub fn edges(&self) -> usize {
-        self.resolutions.values().sum()
-    }
-
-    /// The number of entrances.
-    pub fn entrances(&self) -> usize {
-        self.entrance_kinds.values().sum()
+    /// The number of links.
+    pub fn links(&self) -> usize {
+        self.outcomes.values().sum()
     }
 }
 
@@ -200,15 +175,7 @@ impl fmt::Display for UpdateStats {
         if !self.relinked {
             return writeln!(f, "graph unchanged: nothing that shapes it changed");
         }
-        writeln!(f, "edges: {} ({})", self.edges(), counts(&self.resolutions))?;
-        writeln!(f, "reasons: {}", counts(&self.reasons))?;
-        writeln!(
-            f,
-            "entrances: {} ({}); targets: {}",
-            self.entrances(),
-            counts(&self.entrance_kinds),
-            counts(&self.target_resolutions)
-        )?;
-        writeln!(f, "detectors: {}", counts(&self.detectors))
+        writeln!(f, "links: {} ({})", self.links(), counts(&self.outcomes))?;
+        writeln!(f, "reasons: {}", counts(&self.reasons))
     }
 }

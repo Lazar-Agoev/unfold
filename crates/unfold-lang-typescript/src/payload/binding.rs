@@ -11,7 +11,7 @@
 //! first `ModuleFacts::declarations.len()` declarations are the module declarations, in the
 //! same order), a symbol index points into [`Binding::symbols`], an expression index into
 //! [`Binding::exprs`], and a type index into [`Binding::types`]. [`Binding::type_links`] is
-//! aligned with the file's type reference facts (`TypeFacts::type_refs`): the written type name
+//! aligned with the file's type reference facts (`GraphFacts::type_refs`): the written type name
 //! each one resolves from.
 
 use serde::{Deserialize, Serialize};
@@ -153,8 +153,6 @@ impl DeclFlags {
     pub const PRIVATE: Self = Self(1 << 3);
     /// A variable or binding element of a parameter (rather than of a variable declaration).
     pub const IN_PARAMETER: Self = Self(1 << 5);
-    /// A direct statement of the file (for manual locators).
-    pub const TOP_LEVEL: Self = Self(1 << 6);
     /// A catch clause binding (its stability is unknown).
     pub const CATCH: Self = Self(1 << 8);
     /// A class with at least one decorator, which may replace it.
@@ -172,17 +170,6 @@ impl DeclFlags {
     }
 }
 
-/// A parameter declaration's position, for `parameter` reasons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParamInfo {
-    /// The containing parameter's declaration (itself, for a parameter).
-    pub parameter: u32,
-    /// The callable that declares it.
-    pub owner: u32,
-    /// Its runtime argument position: an explicit `this` parameter is skipped (C-4).
-    pub position: u32,
-}
-
 /// One declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Decl {
@@ -195,8 +182,8 @@ pub struct Decl {
     pub flags: DeclFlags,
     /// Its range (from the declaration's own syntax).
     pub range: ByteRange,
-    /// Its selected block, for a function-like declaration with a body, a class, or a
-    /// (non-ambient) interface, type alias, or enum.
+    /// Its node, for a function-like declaration with a body, a class, or a (non-ambient)
+    /// interface, type alias, or enum.
     pub block: Option<u32>,
     /// The syntax it is written in (a class, a statement list, an object literal): overload
     /// signatures and their implementation share it.
@@ -214,8 +201,6 @@ pub struct Decl {
     pub ty: Option<u32>,
     /// A callable's written return type.
     pub returns: Option<u32>,
-    /// For a parameter, or a binding element of one, the containing parameter.
-    pub parameter: Option<ParamInfo>,
     /// For an `Expression` declaration, or a property assignment whose value is one, its
     /// inline function or class.
     pub inline: Option<u32>,

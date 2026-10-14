@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/distinct-names. Format: testdata/README.md.
-# Distinct literal names on two applications keep both bodies (PoC: "Duplicate and generated names...").
-entrance	celery.task	worker	-	orders	exact	src/app.py:7
-	target	handler	resolved	src/app.py#function:first	first
-entrance	celery.task	worker	-	emails	exact	src/app.py:8
-	target	handler	resolved	src/app.py#function:second	second

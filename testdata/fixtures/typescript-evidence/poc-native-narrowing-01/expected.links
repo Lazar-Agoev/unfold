@@ -1,0 +1,2 @@
+truthiness.ts#C.run/call:assert #0 calls `assert` → project truthiness.ts#assert
+truthiness.ts#C.run/call:this.m #0 calls `this.m` → project truthiness.ts#C.m

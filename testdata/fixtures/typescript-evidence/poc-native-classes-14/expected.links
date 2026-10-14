@@ -1,0 +1,2 @@
+nonconcrete.ts#Abstract.run/call:this.m #0 calls `this.m` → unknown not_concrete
+nonconcrete.ts#C.run/call:this.value #0 calls `this.value` → unknown accessor

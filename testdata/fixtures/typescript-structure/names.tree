@@ -1,0 +1,126 @@
+a.ts# module truncated
+a.ts#variable lambda
+  range `function () {}`
+  head `function ()`
+  body `{}`
+  stmt `const variable = function () {};`
+  name `variable`
+a.ts#explicit lambda
+  range `function named() {}`
+  head `function named()`
+  body `{}`
+  stmt `const explicit = function named() {};`
+  name `explicit`
+a.ts#/lambda[0] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `target = () => {};`
+a.ts#/lambda[1] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `holder.property = () => {};`
+a.ts#withDefault function
+  range `function withDefault(callback = () => {}) {}`
+  head `function withDefault(callback = () => {})`
+  body `{}`
+  stmt `function withDefault(callback = () => {}) {}`
+  name `withDefault`
+a.ts#withDefault/lambda[0] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+a.ts#/lambda[2] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `const { binding = () => {} } = source;`
+a.ts#object.property lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `const object = { property: () => {}, [computed]: () => {}, 42: () => {}, "text": () => {}, method() {}, get value() { return 1; } };`
+  name `object.property`
+a.ts#/lambda[3] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+a.ts#object.42 lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  name `object.42`
+a.ts#object.text lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  name `object.text`
+a.ts#object.method method
+  range `method() {}`
+  head `method()`
+  body `{}`
+  name `object.method`
+a.ts#object.value getter
+  range `get value() { return 1; }`
+  head `get value()`
+  body `{ return 1; }`
+  name `object.value`
+a.ts#object.value/return[0] return
+  range `return 1;`
+  stmt `return 1;`
+  value `1`
+a.ts#Fields class
+  range `class Fields { field = () => {}; static #secret = function () {}; [dynamic] = () => {}; constructor() {} }`
+  head `class Fields`
+  body `{ field = () => {}; static #secret = function () {}; [dynamic] = () => {}; constructor() {} }`
+  stmt `class Fields { field = () => {}; static #secret = function () {}; [dynamic] = () => {}; constructor() {} }`
+  name `Fields`
+a.ts#Fields.field lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `field = () => {};`
+  name `field`
+a.ts#Fields.%23secret lambda
+  range `function () {}`
+  head `function ()`
+  body `{}`
+  stmt `static #secret = function () {};`
+  name `#secret`
+a.ts#Fields/lambda[0] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `[dynamic] = () => {};`
+a.ts#Fields.constructor constructor
+  range `constructor() {}`
+  head `constructor()`
+  body `{}`
+  name `constructor`
+a.ts#wrapped lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `const wrapped = ((() => {}) as Handler)!;`
+  name `wrapped`
+a.ts#default lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `export default (() => {});`
+  name `default`
+a.ts#/lambda[4] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`
+  stmt `[assignedDefault = () => {}] = pairs;`
+a.ts#/lambda[5] lambda
+  range `function () {}`
+  head `function ()`
+  body `{}`
+  stmt `({ key: renamed = function () {}, shorthand = () => {} } = options);`
+a.ts#/lambda[6] lambda
+  range `() => {}`
+  head `() =>`
+  body `{}`

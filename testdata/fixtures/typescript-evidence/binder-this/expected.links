@@ -1,0 +1,13 @@
+a.ts#Derived #0 extends `Base` → project a.ts#Base
+a.ts#Derived.run/call:this.m #0 calls `this.m` → project a.ts#Base.m
+a.ts#Derived.run.f/call:this.m #0 calls `this.m` → project a.ts#Base.m
+a.ts#Derived.run/call:f #0 calls `f` → project a.ts#Derived.run.f
+a.ts#Derived.run.g/call:this.m #0 calls `this.m` → unknown unbound_this
+a.ts#Derived.run/call:g #0 calls `g` → project a.ts#Derived.run.g
+a.ts#Derived.make/call:this.s #0 calls `this.s` → project a.ts#Base.s
+a.ts#Derived.make/call:super.s #0 calls `super.s` → project a.ts#Base.s
+a.ts#Derived/call:this.m #0 calls `this.m` → project a.ts#Base.m
+a.ts#Derived/call:this.s #0 calls `this.s` → project a.ts#Base.s
+a.ts#free/call:this.m #0 calls `this.m` → unknown unbound_this
+a.ts#literal.run/call:this.m #0 calls `this.m` → unknown unbound_this
+a.ts#/call:literal.run #0 calls `literal.run` → project a.ts#literal.run

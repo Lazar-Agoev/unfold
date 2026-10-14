@@ -1,0 +1,2 @@
+unknown-base.ts#Base.run/call:this.m #0 calls `this.m` → unknown ambiguous
+unknown-base.ts#/call:base #0 calls `base` → project unknown-base.ts#base

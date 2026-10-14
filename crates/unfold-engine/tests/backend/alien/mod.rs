@@ -1,12 +1,11 @@
 //! A deliberately unrelated in-memory language that proves the shared backend works only
-//! through the `Language`/`Linked` contract: it parses its own syntax, drives the shared
-//! selection, caches its facts (round-tripping them through postcard), and answers evidence
-//! questions over IDs after linking.
+//! through the `Language`/`Linked` contract: it parses its own syntax, lowers it to nodes keyed
+//! with `KeyBuilder`, caches its facts (round-tripping them through postcard), and answers
+//! evidence questions over IDs after linking.
 //!
 //! Alien files claim the `typescript` language id, since the graph model's language vocabulary is
 //! closed; nothing TypeScript-specific is involved.
 
-pub mod detect;
 pub mod extract;
 pub mod link;
 pub mod parse;
@@ -17,15 +16,13 @@ use std::sync::Arc;
 
 use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
 use unfold_core::validate::Violation;
-use unfold_core::vocab::{BlockKind, EdgeKind, FileState, InputRole, Language as LanguageId};
-use unfold_core::{Block, Edge, Entrance, FileGraph, FileRecord, Graph, InputRecord, RepoPath, Snapshot};
-use unfold_engine::edges::{self, program_links};
-use unfold_engine::entrances::{self, TargetResolver};
+use unfold_core::vocab::{FileState, Language as LanguageId, LinkKind};
+use unfold_core::{File, FileGraph, Graph, Link, Node, RepoPath, Snapshot};
+use unfold_engine::links::{self, program_links};
 use unfold_engine::settings::{Settings, SettingsHash, SettingsHasher};
 use unfold_engine::validate::validate_graph;
 use unfold_engine::{
-    FactsSet, FileFacts, Language, Linked, Outcome, Producer, ProgramFile, ProjectInputs, Resolver,
-    SourceFailure,
+    FactsSet, FileFacts, Language, Linked, Producer, ProgramFile, ProjectInputs, Resolver, SourceFailure,
 };
 
 pub struct Alien;
@@ -105,39 +102,11 @@ impl Language for Alien {
     }
 }
 
-/// Launches resolve only to indexed alien files, by exact path; missing files consult the
-/// unindexed list.
-struct Targets<'a> {
-    program: &'a FactsSet,
-    unindexed: &'a [RepoPath],
-}
-
-impl TargetResolver for Targets<'_> {
-    fn is_unindexed_file(&self, path: &RepoPath) -> bool {
-        self.unindexed.contains(path)
-    }
-
-    fn launch(&self, path: &str, cwd: &str) -> Outcome {
-        let joined = if cwd.is_empty() || cwd == "." {
-            path.to_owned()
-        } else {
-            format!("{cwd}/{path}")
-        };
-        match self.program.find(&joined) {
-            Some(file) if self.program.facts(file).is_some() => {
-                Outcome::Resolved(unfold_engine::BlockRef { file, local: 0 })
-            }
-            _ => Outcome::unresolved(unfold_core::vocab::Reason::NotFound),
-        }
-    }
-}
-
 /// A small project to compile with the alien language.
 #[derive(Default, Clone)]
 pub struct Project {
     files: Vec<(String, String)>,
     unindexed: Vec<RepoPath>,
-    config: Option<String>,
 }
 
 /// A compiled project: the graph and what validation said about it.
@@ -145,8 +114,6 @@ pub struct Compiled {
     pub graph: Graph,
     pub violations: Vec<Violation>,
 }
-
-pub const CONFIG: &str = "unfold.toml";
 
 impl Project {
     pub fn new() -> Self {
@@ -161,12 +128,6 @@ impl Project {
     /// A repository file that exists but is outside the indexed scope.
     pub fn unindexed(mut self, path: &str) -> Self {
         self.unindexed.push(RepoPath::new(path).expect("valid path"));
-        self
-    }
-
-    /// `unfold.toml`, whose `[[entrance]]` tables become manual entrances.
-    pub fn config(mut self, text: &str) -> Self {
-        self.config = Some(text.to_owned());
         self
     }
 
@@ -187,10 +148,7 @@ impl Project {
 
     fn run(&self, check: Option<&Graph>) -> Compiled {
         let alien = Alien;
-        let settings = match &self.config {
-            Some(text) => Settings::parse(text).expect("valid settings"),
-            None => Settings::default(),
-        };
+        let settings = Settings::default();
         let mut snapshots = BTreeMap::new();
         let mut records = BTreeMap::new();
         let mut files = Vec::new();
@@ -204,7 +162,7 @@ impl Project {
                     let bytes = facts.to_bytes().expect("encode facts");
                     let decoded = FileFacts::from_bytes(&bytes).expect("decode facts");
                     assert_eq!(decoded, facts);
-                    let record = FileRecord {
+                    let record = File {
                         path: path.clone(),
                         language: LanguageId::TypeScript,
                         state: FileState::Current,
@@ -214,7 +172,7 @@ impl Project {
                     (Some(Arc::new(decoded)), record)
                 }
                 Err(failure) => {
-                    let record = FileRecord {
+                    let record = File {
                         path: path.clone(),
                         language: LanguageId::TypeScript,
                         state: FileState::Failed,
@@ -232,31 +190,19 @@ impl Project {
             records.insert(path.clone(), record);
             snapshots.insert(path, snapshot);
         }
-        let mut inputs = Vec::new();
-        if let Some(text) = &self.config {
-            let path = RepoPath::new(CONFIG).expect("valid path");
-            let snapshot = Snapshot::from_text(path.clone(), text).expect("valid text");
-            inputs.push(InputRecord {
-                path: path.clone(),
-                role: InputRole::UnfoldConfig,
-                hash: snapshot.hash(),
-            });
-            snapshots.insert(path, snapshot);
-        }
         let program = FactsSet::new(files).expect("distinct paths");
         let project_inputs = ProjectInputs {
-            settings: settings.clone(),
-            inputs: BTreeMap::new(),
+            settings,
             unindexed: self.unindexed.clone(),
             ..ProjectInputs::default()
         };
         let linked = alien.link(&program, &project_inputs);
         let resolver = Resolver::new(&program, linked.as_ref());
-        let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
+        let mut resolved: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
         // Resolving one file on this thread agrees with the parallel whole-program pass.
-        for (file, file_links) in &links {
+        for (file, file_links) in &resolved {
             assert_eq!(
-                &edges::file_links(&resolver, *file).expect("file links"),
+                &links::file_links(&resolver, *file).expect("file links"),
                 file_links
             );
         }
@@ -267,34 +213,20 @@ impl Project {
                 match &entry.facts {
                     Some(facts) => facts
                         .graph
-                        .linked_file_graph(record, links.remove(&id).unwrap_or_default(), |local| {
-                            linked.keeps_import(unfold_engine::BlockRef { file: id, local })
-                        })
-                        .expect("renumbered facts"),
+                        .file_graph(record, resolved.remove(&id).unwrap_or_default()),
                     None => FileGraph {
                         file: record,
-                        blocks: Vec::new(),
-                        slots: Vec::new(),
-                        edges: Vec::new(),
+                        nodes: Vec::new(),
+                        links: Vec::new(),
                         types: unfold_core::FileTypes::default(),
                     },
                 }
             })
             .collect();
-        // Detection order: manual declarations first, then the language's detectors.
-        let plans = entrances::launches::plans(&settings, &Default::default(), "");
-        let starts = entrances::launches::starts(&settings, &plans, &[linked.as_ref()]);
-        let mut candidates = entrances::manual_candidates(&settings, &starts);
-        candidates.extend(entrances::detect(&resolver, &settings));
-        let targets = Targets {
-            program: &program,
-            unindexed: &self.unindexed,
-        };
-        let entrances = entrances::assemble(&program, &[&resolver], &targets, candidates).expect("entrances");
         let graph = Graph {
             files: graphs,
-            inputs,
-            entrances,
+            inputs: Vec::new(),
+            apps: Vec::new(),
         };
         let violations = validate_graph(check.unwrap_or(&graph), Some(&snapshots), &[linked.as_ref()]);
         Compiled { graph, violations }
@@ -320,44 +252,39 @@ impl Compiled {
         self.graph.file(path).unwrap_or_else(|| panic!("no file {path}"))
     }
 
-    pub fn block(&self, key: &str) -> &Block {
+    /// The node with `key`, in any file.
+    pub fn node(&self, key: &str) -> &Node {
         self.graph
             .files
             .iter()
-            .flat_map(|file| &file.blocks)
-            .find(|block| block.key.as_str() == key)
-            .unwrap_or_else(|| panic!("no block {key}"))
+            .flat_map(|file| &file.nodes)
+            .find(|node| node.key.as_str() == key)
+            .unwrap_or_else(|| panic!("no node {key}"))
     }
 
-    /// The occurrence edges of `path`, in block order.
-    pub fn occurrences(&self, path: &str) -> Vec<&Edge> {
+    /// The `calls` links of `path`, in node order.
+    pub fn calls(&self, path: &str) -> Vec<&Link> {
         self.file(path)
-            .edges
+            .links
             .iter()
-            .filter(|edge| edge.kind.is_occurrence())
+            .filter(|link| link.kind == LinkKind::Calls)
             .collect()
     }
 
-    /// The call or construction edge whose text is `text` (the first, in block order).
-    pub fn edge(&self, path: &str, text: &str) -> &Edge {
-        self.file(path)
-            .edges
-            .iter()
-            .find(|edge| matches!(edge.kind, EdgeKind::Calls | EdgeKind::Constructs) && &*edge.text == text)
-            .unwrap_or_else(|| panic!("no occurrence `{text}` in {path}"))
+    /// The first `calls` link whose text is `text`, in node order.
+    pub fn call(&self, path: &str, text: &str) -> &Link {
+        self.calls(path)
+            .into_iter()
+            .find(|link| &*link.text == text)
+            .unwrap_or_else(|| panic!("no call `{text}` in {path}"))
     }
 
-    pub fn entrances(&self) -> &[Entrance] {
-        &self.graph.entrances
+    /// The node a link starts at, in `path`.
+    pub fn from(&self, path: &str, link: &Link) -> &Node {
+        &self.file(path).nodes[link.from as usize]
     }
 
     pub fn canonical(&self) -> String {
         unfold_core::canonical::to_string(&self.graph)
-    }
-
-    /// The kind and key of a resolved edge's target.
-    pub fn target(&self, edge: &Edge) -> Option<(BlockKind, &str)> {
-        let block = self.block(edge.target.as_ref()?.as_str());
-        Some((block.kind, block.key.as_str()))
     }
 }

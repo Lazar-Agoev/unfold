@@ -1,270 +1,459 @@
-//! Alien extraction: the graph mapping that drives the shared selection, then the value table,
-//! occurrences, and the private payload.
+//! Alien extraction: one lowering rule per form, straight to nodes keyed with `KeyBuilder`;
+//! then the value table, the call facts, the imports and type names, the typed records, and the
+//! binder payload.
 //!
-//! | Form | Block | Notes |
+//! | Form | Node | Notes |
 //! | --- | --- | --- |
-//! | `(fn NAME? ...)`, `(lambda ...)` | `function` | `(param NAME)` items are parameters; `lambda` inherits `this` |
-//! | `(class NAME :base=B ...)`, `(klass ...)` | `class` | members: `method` (`:static`, `:private`), `ctor`, `getter`, `field` |
-//! | `(const NAME init?)`, `(let NAME init?)` | `variable` | `:type=C` annotates an instance of class `C` |
-//! | `(call CALLEE ARG...)`, `(new ...)`, `(super CALLEE)` | `call`, `new`, `call` (construct context) | `(star X)` arguments never supply references |
-//! | `(use NAME "spec" :export=E)`, `(import "spec"? :when-indexed?)` | `import` | `use` also binds `NAME`; `:when-indexed` makes the block conditional: kept only when `spec` names an indexed file |
-//! | `(if C T E?)`, `(stmt X)`, `(ret X?)` | `if`, `expression_statement`, `return` | |
-//! | `(do ...)`, `(wrap X)`, `(deco X)`, `(type ...)` | none | a brace block, a transparent wrapper, a decorator, skipped type syntax |
+//! | `(fn NAME? ...)`, `(lambda ...)`, `(method NAME ...)`, `(ctor ...)`, `(getter NAME)` | function | an unnamed one takes the name of the `const`, `let`, or `field` it initializes, else is `callback[n]` in a call's arguments and `lambda[n]` elsewhere; `(param NAME :type=T :rest)` items are parameters; `lambda` inherits `this` |
+//! | `(class NAME :base=B :impl=I ...)` | class | members: `method` (`:static`, `:private`), `ctor`, `getter`, `field`; each `:base` is an `extends` link, each `:impl` an implementing one |
+//! | `(call CALLEE ARG...)`, `(new ...)`, `(super CALLEE)` | call (`call`, `new`, and `call` in the construct context) | a `(star X)` argument is a spread; a literal first argument joins the key when a callback is written |
+//! | `(if C T E?)` | decision `if`: part `then` (test `C`, body `T`) and part `else` | calls written in `C` are test calls |
+//! | `(ret X?)` | exit `return` | `X` is its value |
+//! | `(stmt X)`, `(const NAME X?)`, `(let NAME X?)` | none | a statement: its first node records it as `stmt`; a call that is exactly a `const` or `let` value binds `NAME`; `:type=C` annotates the binding |
+//! | `(use NAME "spec" :export=E)`, `(import X :when-indexed?)` | none | an `imports` link from the enclosing function or module; `use` also binds `NAME`; `:when-indexed` makes it conditional, kept only when `spec` names an indexed file |
+//! | `(do ...)`, `(wrap X)`, `(field NAME X?)`, `(spread ...)`, values | none | transparent |
+//! | `(deco X)`, `(type ...)`, `(sig NAME)`, `(param ...)` | none | opaque: a decorator mark, skipped type syntax, an overload signature, a parameter |
 //! | `(ref NAME :opts)`, `(get R NAME)`, `(key R "k")`, `(dyn R)`, `(this)`, `(base)` | none | values |
 //!
-//! Typed facts: every function-like block has a signature (no written return type); every
-//! `(param NAME :type=T :rest)` a parameter (`this` is a `this` parameter, `:rest` a rest
-//! parameter, `:type=T` its written type); every call a result (`stmt` discards it, `ret`
-//! returns it, a `const`/`let` initializer binds it, a call argument passes it, anything else is
-//! `other`); a `(star X)` argument is a spread; and each `:type=T` of a parameter or variable is a
-//! type name, looked up like a value name in the `type` context.
+//! Every function has a signature (no written return type); every `(param NAME :type=T :rest)`
+//! a parameter (`this` is a `this` parameter, `:rest` a rest parameter, `:type=T` its written
+//! type, which is also a `types` link from the function).
 
-use unfold_core::Snapshot;
-use unfold_core::text::ByteRange;
-use unfold_core::typed::{CallResult, Parameter, Signature, WrittenType};
-use unfold_core::vocab::{BlockKind, EdgeKind, Expansion, ParameterKind, ResultBinding, Role, SlotName};
+use unfold_core::key::{Callee, Child, KeyBuilder};
+use unfold_core::text::{ByteRange, LineIndex};
+use unfold_core::typed::{Parameter, Signature, WrittenType};
+use unfold_core::vocab::{CallRole, Expansion, Flag, Flags, Form, Inline, NodeKind, ParameterKind};
+use unfold_core::{Node, Snapshot};
 use unfold_engine::SourceFailure;
-use unfold_engine::edges::text;
 use unfold_engine::facts::{
-    ArgumentFact, CallContext, CallFact, FileFacts, GraphFacts, ImportFact, TypeFacts, TypeRefFact,
+    ArgumentFact, CallContext, CallFact, FileFacts, GraphFacts, ImportFact, TypeFacts, TypeRefFact, TypeUse,
     ValueFact, ValueShape,
 };
-use unfold_engine::select::{self, MappedSlot, Mapping, Saved, Tree};
+use unfold_engine::links::text;
 
 use super::parse::{Syntax, parse};
 use super::payload::{CallSite, Decl, DeclKind, Payload, Scope, ScopeKind, ValueInfo};
 
-/// The alien child-slot labels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Slot {
-    Body,
-    Param,
-    Deco,
-    Init,
-    Callee,
-    Arg,
-    Cond,
-    Then,
-    Else,
-    Expr,
-    Inner,
-    Recv,
-    Item,
-}
-
 const FUNCTIONS: &[&str] = &["fn", "lambda", "method", "ctor", "getter"];
 
-struct Alien<'a, 's> {
-    syntax: &'a Syntax<'s>,
-}
+/// Forms that are neither lowered nor looked into.
+const OPAQUE: &[&str] = &["deco", "type", "sig", "param", "use", "import"];
 
-impl Alien<'_, '_> {
-    fn head(&self, node: usize) -> &str {
-        let found = self.syntax.node(node);
-        if found.form { found.text } else { "" }
-    }
+/// Forms that become nodes.
+const NODES: &[&str] = &[
+    "fn", "lambda", "method", "ctor", "getter", "class", "call", "new", "super", "if", "ret",
+];
 
-    fn name_text(&self, node: usize) -> Option<&str> {
-        self.syntax.name(node).map(|name| self.syntax.node(name).text)
-    }
-
-    /// A `lambda`, `klass`, or anonymous `fn` takes the name of the variable or field it
-    /// initializes, looking through `wrap`.
-    fn inferred_name(&self, node: usize) -> Option<&str> {
-        let mut value = node;
-        let mut parent = self.syntax.node(value).parent?;
-        while self.head(parent) == "wrap" {
-            value = parent;
-            parent = self.syntax.node(value).parent?;
-        }
-        let initializes = matches!(self.head(parent), "const" | "let" | "field")
-            && self.syntax.items(parent).first() == Some(&value);
-        initializes.then(|| self.name_text(parent)).flatten()
-    }
-}
-
-impl Mapping for Alien<'_, '_> {
-    type Node = usize;
-    type Slot = Slot;
-
-    fn range(&self, node: usize) -> ByteRange {
-        self.syntax.node(node).range
-    }
-
-    fn skip(&self, node: usize) -> bool {
-        self.head(node) == "type"
-    }
-
-    fn decorator(&self, node: usize) -> bool {
-        self.head(node) == "deco"
-    }
-
-    fn kind(&self, node: usize) -> Option<BlockKind> {
-        if node == 0 {
-            return Some(BlockKind::File);
-        }
-        Some(match self.head(node) {
-            "fn" | "lambda" => BlockKind::Function,
-            "class" | "klass" => BlockKind::Class,
-            "method" => BlockKind::Method,
-            "ctor" => BlockKind::Constructor,
-            "getter" => BlockKind::Getter,
-            "const" | "let" => BlockKind::Variable,
-            "call" | "super" => BlockKind::Call,
-            "new" => BlockKind::New,
-            "use" | "import" => BlockKind::Import,
-            "if" => BlockKind::If,
-            "stmt" => BlockKind::ExpressionStatement,
-            "ret" => BlockKind::Return,
-            _ => return None,
-        })
-    }
-
-    fn name(&self, node: usize, kind: BlockKind) -> Option<Box<str>> {
-        match (kind, self.head(node)) {
-            (BlockKind::Import, _) => None,
-            (BlockKind::Constructor, _) => Some("constructor".into()),
-            (_, "lambda" | "klass") => self.inferred_name(node).map(Into::into),
-            (_, "fn") => self
-                .name_text(node)
-                .or_else(|| self.inferred_name(node))
-                .map(Into::into),
-            _ => self.name_text(node).map(Into::into),
-        }
-    }
-
-    fn role(&self, _parent: Saved<usize>, first_slot: Option<Slot>, through_decorator: bool) -> Option<Role> {
-        if through_decorator {
-            return Some(Role::Decorator);
-        }
-        Some(match first_slot? {
-            Slot::Body => Role::Body,
-            Slot::Param => Role::Parameter,
-            Slot::Init => Role::Initializer,
-            Slot::Callee => Role::Callee,
-            Slot::Arg => Role::Argument,
-            Slot::Cond => Role::Condition,
-            Slot::Then => Role::Then,
-            Slot::Else => Role::Else,
-            Slot::Expr => Role::Expression,
-            Slot::Deco | Slot::Inner | Slot::Recv | Slot::Item => return None,
-        })
-    }
-
-    fn slots(&self, node: usize, kind: BlockKind, out: &mut Vec<MappedSlot>) {
-        let syntax = self.syntax;
-        let mut add = |slot, index, range| out.push(MappedSlot { slot, index, range });
-        let items = syntax.items(node);
-        let range = |item: usize| syntax.node(item).range;
-        let name = syntax.name(node).map(range);
-        match kind {
-            kind if kind.is_function_like() => {
-                if let Some(name) = name.filter(|_| kind != BlockKind::Constructor) {
-                    add(SlotName::Name, None, name);
-                }
-                let mut body = Vec::new();
-                let mut parameters = 0;
-                for &item in &items {
-                    match self.head(item) {
-                        "param" => {
-                            add(SlotName::Parameter, Some(parameters), range(item));
-                            parameters += 1;
-                        }
-                        "deco" => {}
-                        _ => body.push(range(item)),
-                    }
-                }
-                if let (Some(first), Some(last)) = (body.first(), body.last()) {
-                    add(
-                        SlotName::Body,
-                        None,
-                        ByteRange::new(first.start, last.end).expect("ordered items"),
-                    );
-                }
-            }
-            BlockKind::Class => {
-                if let Some(name) = name {
-                    add(SlotName::Name, None, name);
-                }
-                let base =
-                    syntax.node(node).children.iter().copied().find(|&child| {
-                        syntax.is_option(child) && syntax.node(child).text.starts_with(":base=")
-                    });
-                if let Some(base) = base {
-                    add(SlotName::Heritage, None, range(base));
-                }
-            }
-            BlockKind::Variable => {
-                if let Some(name) = name {
-                    add(SlotName::Name, None, name);
-                }
-                if let Some(&init) = items.first() {
-                    add(SlotName::Initializer, None, range(init));
-                }
-            }
-            BlockKind::Call | BlockKind::New => {
-                if let Some(&callee) = items.first() {
-                    add(SlotName::Callee, None, range(callee));
-                }
-                for (index, &argument) in items.iter().skip(1).enumerate() {
-                    add(SlotName::Argument, Some(index as u32), range(argument));
-                }
-            }
-            BlockKind::If => {
-                for (slot, &item) in [SlotName::Condition, SlotName::Then, SlotName::Else]
-                    .into_iter()
-                    .zip(&items)
-                {
-                    add(slot, None, range(item));
-                }
-            }
-            BlockKind::ExpressionStatement | BlockKind::Return => {
-                if let Some(&expression) = items.first() {
-                    add(SlotName::Expression, None, range(expression));
-                }
-            }
-            BlockKind::Import => {
-                if let Some(&specifier) = items.iter().find(|&&item| syntax.is_literal(item)) {
-                    add(SlotName::Specifier, None, range(specifier));
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-impl Tree for Alien<'_, '_> {
-    fn children(&self, node: usize, out: &mut Vec<(Slot, usize)>) {
-        let head = if node == 0 { "file" } else { self.head(node) };
-        let items = self.syntax.items(node);
-        for (index, &item) in items.iter().enumerate() {
-            let slot = match head {
-                "file" => Slot::Body,
-                head if FUNCTIONS.contains(&head) => match self.head(item) {
-                    "param" => Slot::Param,
-                    "deco" => Slot::Deco,
-                    _ => Slot::Body,
-                },
-                "class" | "klass" => match self.head(item) {
-                    "deco" => Slot::Deco,
-                    _ => Slot::Body,
-                },
-                "const" | "let" | "field" => Slot::Init,
-                "call" | "new" | "super" if index == 0 => Slot::Callee,
-                "call" | "new" | "super" => Slot::Arg,
-                "if" => [Slot::Cond, Slot::Then, Slot::Else][index.min(2)],
-                "stmt" | "ret" => Slot::Expr,
-                "get" | "key" | "dyn" => Slot::Recv,
-                "do" => Slot::Item,
-                _ => Slot::Inner,
-            };
-            out.push((slot, item));
-        }
+fn failure(message: impl Into<Box<str>>) -> SourceFailure {
+    SourceFailure {
+        message: message.into(),
+        offset: None,
     }
 }
 
 fn unquote(text: &str) -> String {
     text.trim_matches('"').to_owned()
+}
+
+/// Where a node is being lowered: under which node, and whether directly in its arguments or
+/// in its test.
+#[derive(Debug, Clone, Copy)]
+struct Place {
+    parent: u32,
+    argument: bool,
+    test: bool,
+}
+
+impl Place {
+    const fn under(parent: u32) -> Self {
+        Self {
+            parent,
+            argument: false,
+            test: false,
+        }
+    }
+}
+
+struct Lowering<'a, 's> {
+    syntax: &'a Syntax<'s>,
+    lines: LineIndex,
+    keys: KeyBuilder,
+    nodes: Vec<Node>,
+    /// Each syntax node's node, for the forms that are nodes.
+    node_of: Vec<Option<u32>>,
+    /// The statement the next node begins.
+    statement: Option<ByteRange>,
+}
+
+impl<'s> Lowering<'_, 's> {
+    fn head(&self, node: usize) -> &'s str {
+        let found = self.syntax.node(node);
+        if found.form { found.text } else { "" }
+    }
+
+    fn name_text(&self, node: usize) -> Option<&'s str> {
+        self.syntax.name(node).map(|name| self.syntax.node(name).text)
+    }
+
+    fn range(&self, node: usize) -> ByteRange {
+        self.syntax.node(node).range
+    }
+
+    /// The outermost `wrap` around `node` (or `node` itself), and its parent.
+    fn unwrapped(&self, node: usize) -> (usize, Option<usize>) {
+        let mut value = node;
+        let mut parent = self.syntax.node(value).parent;
+        while let Some(wrapper) = parent.filter(|&wrapper| self.head(wrapper) == "wrap") {
+            value = wrapper;
+            parent = self.syntax.node(value).parent;
+        }
+        (value, parent)
+    }
+
+    /// The name of the `const`, `let`, or `field` whose value `node` is exactly.
+    fn bound_name(&self, node: usize, heads: &[&str]) -> Option<&'s str> {
+        let (value, parent) = self.unwrapped(node);
+        let parent = parent?;
+        let initializes =
+            heads.contains(&self.head(parent)) && self.syntax.items(parent).first() == Some(&value);
+        initializes.then(|| self.name_text(parent)).flatten()
+    }
+
+    /// Whether `node` is exactly the value of its `ret`.
+    fn returned(&self, node: usize) -> bool {
+        let (value, parent) = self.unwrapped(node);
+        parent.is_some_and(|parent| {
+            self.head(parent) == "ret" && self.syntax.items(parent).first() == Some(&value)
+        })
+    }
+
+    /// Whether an unnamed function is reached from `node` before any other node or opaque form.
+    fn reaches_inline(&self, node: usize) -> bool {
+        let found = self.syntax.node(node);
+        if !found.form {
+            return false;
+        }
+        match found.text {
+            "fn" | "lambda" => self.function_name(node).is_none(),
+            head if NODES.contains(&head) || OPAQUE.contains(&head) => false,
+            _ => found.children.iter().any(|&child| self.reaches_inline(child)),
+        }
+    }
+
+    fn function_name(&self, node: usize) -> Option<&'s str> {
+        match self.head(node) {
+            "ctor" => Some("constructor"),
+            "fn" => self
+                .name_text(node)
+                .or_else(|| self.bound_name(node, &["const", "let", "field"])),
+            "lambda" => self.bound_name(node, &["const", "let", "field"]),
+            _ => self.name_text(node),
+        }
+    }
+
+    /// The written callee of a call, normalized.
+    fn callee(&self, node: usize) -> Callee {
+        let syntax = self.syntax;
+        if syntax.is_literal(node) {
+            return Callee::string();
+        }
+        let items = syntax.items(node);
+        let receiver = || {
+            items
+                .first()
+                .map_or_else(Callee::expression, |&item| self.callee(item))
+        };
+        match self.head(node) {
+            "ref" => Callee::name(self.name_text(node).unwrap_or("(…)")),
+            "get" => receiver().member(self.name_text(node).unwrap_or("(…)")),
+            "key" | "dyn" => receiver().index(),
+            "call" | "new" | "super" => receiver().call(),
+            "wrap" => receiver(),
+            "this" => Callee::name("this"),
+            "base" => Callee::name("super"),
+            _ => Callee::expression(),
+        }
+    }
+
+    fn push(
+        &mut self,
+        syntax: usize,
+        place: Place,
+        child: Child<'_>,
+        form: Form,
+        name: Option<&str>,
+    ) -> Result<u32, SourceFailure> {
+        let key = self
+            .keys
+            .push(place.parent, child)
+            .map_err(|error| failure(error.to_string()))?;
+        let id = self.nodes.len() as u32;
+        let range = self.range(syntax);
+        self.nodes.push(Node {
+            key,
+            parent: Some(place.parent),
+            form,
+            name: name.map(Into::into),
+            range,
+            lines: self.lines.span(range),
+            head: None,
+            body: None,
+            doc: None,
+            stmt: self.statement.take(),
+            value: None,
+            binds: None,
+            role: None,
+            r#for: None,
+            flags: Flags::NONE,
+            target: None,
+        });
+        self.node_of[syntax] = Some(id);
+        Ok(id)
+    }
+
+    fn node(&mut self, id: u32) -> &mut Node {
+        &mut self.nodes[id as usize]
+    }
+
+    fn lower(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let found = self.syntax.node(node);
+        if !found.form {
+            return Ok(());
+        }
+        match found.text {
+            head if OPAQUE.contains(&head) => Ok(()),
+            head if FUNCTIONS.contains(&head) => self.function(node, place),
+            "class" => self.class(node, place),
+            "call" | "new" | "super" => self.call(node, place),
+            "if" => self.decision(node, place),
+            "ret" => self.exit(node, place),
+            "stmt" | "const" | "let" => {
+                self.statement = Some(found.range);
+                self.children(node, place)?;
+                self.statement = None;
+                Ok(())
+            }
+            _ => self.children(node, place),
+        }
+    }
+
+    fn children(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        for &child in &self.syntax.node(node).children {
+            self.lower(child, place)?;
+        }
+        Ok(())
+    }
+
+    /// A definition's head (its form's start through its last name, option, or parameter) and
+    /// body (its other items).
+    fn header_and_body(&self, node: usize) -> (ByteRange, Option<ByteRange>) {
+        let syntax = self.syntax;
+        let found = syntax.node(node);
+        let mut head_end = found.range.start + 1 + found.text.len() as u32;
+        let mut body: Option<ByteRange> = None;
+        for &child in &found.children {
+            let child_node = syntax.node(child);
+            let header = (!child_node.form && !syntax.is_literal(child)) || self.head(child) == "param";
+            if header {
+                head_end = head_end.max(child_node.range.end);
+            } else if self.head(child) != "deco" {
+                let range = child_node.range;
+                body = Some(body.map_or(range, |body| ByteRange {
+                    start: body.start,
+                    end: range.end,
+                }));
+            }
+        }
+        let head = ByteRange {
+            start: found.range.start,
+            end: head_end,
+        };
+        (head, body)
+    }
+
+    fn function(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let name = self.function_name(node);
+        let form = match (self.head(node), name) {
+            ("fn", Some(_)) => Form::Function,
+            ("method", Some(_)) => Form::Method,
+            ("ctor", _) => Form::Constructor,
+            ("getter", Some(_)) => Form::Getter,
+            _ => Form::Lambda,
+        };
+        let child = match name {
+            Some(name) => Child::Definition(name),
+            None if place.argument => Child::Inline(Inline::Callback),
+            None => Child::Inline(Inline::Lambda),
+        };
+        let id = self.push(node, place, child, form, name)?;
+        let (head, body) = self.header_and_body(node);
+        self.node(id).head = Some(head);
+        self.node(id).body = body;
+        self.children(node, Place::under(id))
+    }
+
+    fn class(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let name = self
+            .name_text(node)
+            .ok_or_else(|| failure("a class needs a name"))?;
+        let id = self.push(node, place, Child::Definition(name), Form::Class, Some(name))?;
+        let (head, body) = self.header_and_body(node);
+        self.node(id).head = Some(head);
+        self.node(id).body = body;
+        self.children(node, Place::under(id))
+    }
+
+    fn call(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let syntax = self.syntax;
+        let items = syntax.items(node);
+        let (&callee_item, arguments) = items
+            .split_first()
+            .ok_or_else(|| failure("a call needs a callee"))?;
+        let callee = self.callee(callee_item);
+        let first_literal = arguments
+            .first()
+            .filter(|&&argument| syntax.is_literal(argument))
+            .map(|&argument| unquote(syntax.node(argument).text));
+        let takes_callback = arguments.iter().any(|&argument| self.reaches_inline(argument));
+        let child = Child::Call {
+            callee: &callee,
+            first_literal: first_literal.as_deref(),
+            takes_callback,
+        };
+        let form = if self.head(node) == "new" {
+            Form::New
+        } else {
+            Form::Call
+        };
+        let id = self.push(node, place, child, form, Some(callee.text()))?;
+        let binds = self.bound_name(node, &["const", "let"]).map(Into::into);
+        let returned = self.returned(node);
+        let callee_range = self.range(callee_item);
+        let call = self.node(id);
+        call.head = Some(callee_range);
+        call.binds = binds;
+        call.role = place.test.then_some(CallRole::Test);
+        if returned {
+            call.flags.insert(Flag::ExitValue);
+        }
+        self.lower(callee_item, Place::under(id))?;
+        for &argument in arguments {
+            let place = Place {
+                argument: true,
+                ..Place::under(id)
+            };
+            self.lower(argument, place)?;
+        }
+        Ok(())
+    }
+
+    fn decision(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let items = self.syntax.items(node);
+        let (test, then, otherwise) = match items.as_slice() {
+            [test] => (*test, None, None),
+            [test, then] => (*test, Some(*then), None),
+            [test, then, otherwise] => (*test, Some(*then), Some(*otherwise)),
+            _ => return Err(failure("an if takes a test, a body, and an else")),
+        };
+        let id = self.push(node, place, Child::Form(Form::If), Form::If, None)?;
+        let test_range = self.range(test);
+        let then_end = then.map_or(test_range.end, |then| self.range(then).end);
+        let part = self
+            .keys
+            .push(id, Child::Form(Form::Then))
+            .map_err(|error| failure(error.to_string()))?;
+        let then_id = self.nodes.len() as u32;
+        let range = ByteRange {
+            start: test_range.start,
+            end: then_end,
+        };
+        self.nodes.push(Node {
+            key: part,
+            parent: Some(id),
+            form: Form::Then,
+            name: None,
+            range,
+            lines: self.lines.span(range),
+            head: Some(test_range),
+            body: then.map(|then| self.range(then)),
+            doc: None,
+            stmt: None,
+            value: None,
+            binds: None,
+            role: None,
+            r#for: None,
+            flags: Flags::NONE,
+            target: None,
+        });
+        let test_place = Place {
+            test: true,
+            ..Place::under(then_id)
+        };
+        self.lower(test, test_place)?;
+        if let Some(then) = then {
+            self.lower(then, Place::under(then_id))?;
+        }
+        if let Some(otherwise) = otherwise {
+            let else_id = self.push(
+                otherwise,
+                Place::under(id),
+                Child::Form(Form::Else),
+                Form::Else,
+                None,
+            )?;
+            // The part was registered under its item; the item itself is lowered inside it.
+            self.node_of[otherwise] = None;
+            let range = self.range(otherwise);
+            self.node(else_id).body = Some(range);
+            self.lower(otherwise, Place::under(else_id))?;
+        }
+        Ok(())
+    }
+
+    fn exit(&mut self, node: usize, place: Place) -> Result<(), SourceFailure> {
+        let range = self.range(node);
+        let statement = self.statement.take().unwrap_or(range);
+        let id = self.push(node, place, Child::Form(Form::Return), Form::Return, None)?;
+        let value = self.syntax.items(node).first().copied();
+        let value_range = value.map(|value| self.range(value));
+        let exit = self.node(id);
+        exit.stmt = Some(statement);
+        exit.value = value_range;
+        if let Some(value) = value {
+            self.lower(value, Place::under(id))?;
+        }
+        Ok(())
+    }
+
+    /// The nearest node at or above syntax node `node` that `fits`, or the module.
+    fn enclosing(&self, node: usize, fits: impl Fn(&Node) -> bool) -> u32 {
+        let mut current = Some(node);
+        while let Some(at) = current {
+            if let Some(id) = self.node_of[at].filter(|&id| fits(&self.nodes[id as usize])) {
+                return id;
+            }
+            current = self.syntax.node(at).parent;
+        }
+        0
+    }
+}
+
+/// The range and text of each `:key=value` option of `node`, in written order.
+fn option_values(syntax: &Syntax<'_>, node: usize, key: &str) -> Vec<(ByteRange, String)> {
+    let prefix = format!(":{key}=");
+    syntax
+        .node(node)
+        .children
+        .iter()
+        .copied()
+        .filter(|&child| syntax.is_option(child) && syntax.node(child).text.starts_with(&prefix))
+        .filter_map(|child| {
+            let token = syntax.node(child);
+            let value = &token.text[prefix.len()..];
+            let range = ByteRange::new(token.range.end - value.len() as u32, token.range.end).ok()?;
+            (!value.is_empty()).then(|| (range, value.to_owned()))
+        })
+        .collect()
 }
 
 /// Extracts one alien file's facts.
@@ -273,19 +462,124 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         message: error.message.into(),
         offset: Some(error.offset),
     })?;
-    let alien = Alien { syntax: &syntax };
-    let lines = snapshot.line_index();
     let count = syntax.nodes.len();
-    let mut block_of: Vec<Option<u32>> = vec![None; count];
-    let selection = select::walk(&alien, snapshot.path(), &lines, 0, |node, local| {
-        block_of[node] = Some(local);
-    })
-    .map_err(|error| SourceFailure {
-        message: error.to_string().into(),
-        offset: None,
-    })?;
+    let lines = snapshot.line_index();
+    let keys = KeyBuilder::new(snapshot.path());
+    let module = Node {
+        key: keys.keys()[0].clone(),
+        parent: None,
+        form: Form::Module,
+        name: None,
+        range: syntax.node(0).range,
+        lines: lines.span(syntax.node(0).range),
+        head: None,
+        body: None,
+        doc: None,
+        stmt: None,
+        value: None,
+        binds: None,
+        role: None,
+        r#for: None,
+        flags: Flags::NONE,
+        target: None,
+    };
+    let mut node_of = vec![None; count];
+    node_of[0] = Some(0);
+    let mut lowering = Lowering {
+        syntax: &syntax,
+        lines,
+        keys,
+        nodes: vec![module],
+        node_of,
+        statement: None,
+    };
+    lowering.children(0, Place::under(0))?;
 
-    // Scopes and declarations, in preorder.
+    let (mut decls, scopes, inits, outer, inner) = bind(&lowering);
+    let (mut values, mut infos, value_of) = record_values(&lowering, &outer);
+    for (decl, init) in inits {
+        if let DeclKind::Variable { init: slot, .. } | DeclKind::Field { init: slot, .. } =
+            &mut decls[decl].kind
+        {
+            *slot = value_of[init];
+        }
+    }
+
+    // One call fact per call node, in node order.
+    let mut call_nodes: Vec<(u32, usize)> = (0..count)
+        .filter_map(|node| {
+            let id = lowering.node_of[node]?;
+            matches!(lowering.head(node), "call" | "new" | "super").then_some((id, node))
+        })
+        .collect();
+    call_nodes.sort_unstable();
+    let mut calls = Vec::new();
+    for (id, node) in call_nodes {
+        let items = syntax.items(node);
+        let callee_item = items[0];
+        let callee = match value_of[callee_item] {
+            Some(callee) => callee,
+            None => {
+                values.push(ValueFact::new(
+                    ValueShape::Other,
+                    text::OTHER,
+                    syntax.node(callee_item).range,
+                ));
+                infos.push(ValueInfo::Other);
+                values.len() as u32 - 1
+            }
+        };
+        let arguments = items[1..]
+            .iter()
+            .map(|&item| {
+                let spread = lowering.head(item) == "star";
+                let value =
+                    value_of[item].filter(|&value| !spread && values[value as usize].shape.is_reference());
+                ArgumentFact {
+                    range: syntax.node(item).range,
+                    value,
+                    expand: spread.then_some(Expansion::Spread),
+                    keyword: None,
+                }
+            })
+            .collect();
+        calls.push(CallFact {
+            node: id,
+            callee,
+            context: if lowering.head(node) == "call" {
+                CallContext::Call
+            } else {
+                CallContext::Construct
+            },
+            arguments,
+        });
+    }
+
+    let (imports, dependencies) = imports(&lowering)?;
+    let (type_refs, type_names) = type_names(&lowering, &outer, &inner);
+    let types = typed(&lowering);
+    let payload = Payload {
+        decls,
+        scopes,
+        values: infos,
+        boundaries: syntax.boundaries.clone(),
+        call_sites: call_sites(&syntax),
+        dependencies,
+        types: type_names,
+    };
+    let graph = GraphFacts::new(lowering.nodes, values, calls, imports, type_refs, types)
+        .map_err(|error| failure(error.to_string()))?;
+    let payload = postcard::to_allocvec(&payload).map_err(|error| failure(error.to_string()))?;
+    Ok(FileFacts::new(graph, payload))
+}
+
+/// What binding records: declarations and scopes in preorder, each variable's and field's
+/// declaration with its initializer's syntax node, and each syntax node's outer and inner scope.
+type Bound = (Vec<Decl>, Vec<Scope>, Vec<(usize, usize)>, Vec<u32>, Vec<u32>);
+
+fn bind(lowering: &Lowering<'_, '_>) -> Bound {
+    let syntax = lowering.syntax;
+    let count = syntax.nodes.len();
     let mut scopes = vec![Scope {
         parent: None,
         kind: ScopeKind::File,
@@ -296,26 +590,23 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
     let mut outer = vec![0u32; count];
     let mut inner = vec![0u32; count];
     let mut class_decl: Vec<Option<u32>> = vec![None; count];
-    // Nodes inside skipped `type` syntax have no runtime calls, so the census leaves them out.
-    let mut skipped = vec![false; count];
     let mut stack = vec![0usize];
     while let Some(node) = stack.pop() {
         let found = syntax.node(node);
         let scope = found.parent.map_or(0, |parent| inner[parent]);
         outer[node] = scope;
         inner[node] = scope;
-        let head = alien.head(node);
-        skipped[node] = head == "type" || found.parent.is_some_and(|parent| skipped[parent]);
-        let name = alien.name_text(node).unwrap_or_default().to_owned();
-        let block = block_of[node].unwrap_or(0);
+        let head = lowering.head(node);
+        let name = lowering.name_text(node).unwrap_or_default().to_owned();
+        let id = lowering.node_of[node].unwrap_or(0);
         let owner = found.parent.and_then(|parent| class_decl[parent]);
         let mut declare = |decl: Decl, bind: Option<u32>| {
-            let id = decls.len() as u32;
+            let index = decls.len() as u32;
             decls.push(decl);
             if let Some(bind) = bind {
-                scopes[bind as usize].decls.push(id);
+                scopes[bind as usize].decls.push(index);
             }
-            id
+            index
         };
         if found.form && node != 0 {
             match head {
@@ -324,40 +615,42 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                         Decl {
                             name,
                             scope,
-                            kind: DeclKind::Function { block },
+                            kind: DeclKind::Function { node: id },
                         },
                         Some(scope),
                     );
                 }
-                "class" | "klass" => {
+                "class" => {
                     let bases = syntax
                         .options(node)
                         .into_iter()
                         .filter(|(key, _)| *key == "base")
                         .filter_map(|(_, value)| value.map(str::to_owned))
                         .collect();
-                    let bind = (head == "class").then_some(scope);
-                    let decorated = syntax.items(node).iter().any(|&item| alien.head(item) == "deco");
+                    let decorated = syntax
+                        .items(node)
+                        .iter()
+                        .any(|&item| lowering.head(item) == "deco");
                     let kind = DeclKind::Class {
-                        block,
+                        node: id,
                         ctor: None,
                         bases,
                         members: Vec::new(),
                         decorated,
                     };
-                    class_decl[node] = Some(declare(Decl { name, scope, kind }, bind));
+                    class_decl[node] = Some(declare(Decl { name, scope, kind }, Some(scope)));
                 }
                 "method" | "ctor" | "getter" | "field" => {
                     if let Some(owner) = owner {
                         let kind = match head {
                             "method" => DeclKind::Method {
-                                block,
+                                node: id,
                                 owner,
                                 is_static: syntax.option(node, "static").is_some(),
                                 is_private: syntax.option(node, "private").is_some(),
                             },
-                            "ctor" => DeclKind::Ctor { block, owner },
-                            "getter" => DeclKind::Getter { block, owner },
+                            "ctor" => DeclKind::Ctor { node: id, owner },
+                            "getter" => DeclKind::Getter { node: id, owner },
                             _ => DeclKind::Field { owner, init: None },
                         };
                         let name = if head == "ctor" {
@@ -365,30 +658,29 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                         } else {
                             name
                         };
-                        let id = declare(Decl { name, scope, kind }, None);
+                        let member = declare(Decl { name, scope, kind }, None);
                         if head == "field"
                             && let Some(&init) = syntax.items(node).first()
                         {
-                            inits.push((id as usize, init));
+                            inits.push((member as usize, init));
                         }
                         if let DeclKind::Class { ctor, members, .. } = &mut decls[owner as usize].kind {
-                            members.push(id);
+                            members.push(member);
                             if head == "ctor" {
-                                *ctor = Some(block);
+                                *ctor = Some(id);
                             }
                         }
                     }
                 }
                 "const" | "let" => {
                     let kind = DeclKind::Variable {
-                        block,
                         mutable: head == "let",
                         init: None,
                         ty: syntax.option(node, "type").map(str::to_owned),
                     };
-                    let id = declare(Decl { name, scope, kind }, Some(scope));
+                    let variable = declare(Decl { name, scope, kind }, Some(scope));
                     if let Some(&init) = syntax.items(node).first() {
-                        inits.push((id as usize, init));
+                        inits.push((variable as usize, init));
                     }
                 }
                 "sig" => {
@@ -402,28 +694,15 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                     );
                 }
                 "param" => {
-                    // Parameters live in their callable's own scope; an explicit `this`
-                    // parameter takes no runtime position (C-4).
-                    let callable = found.parent.unwrap_or(0);
-                    let earlier = syntax
-                        .node(callable)
-                        .children
-                        .iter()
-                        .take_while(|&&child| child != node);
-                    let position = earlier
-                        .filter(|&&child| {
-                            alien.head(child) == "param" && alien.name_text(child) != Some("this")
-                        })
-                        .count() as u32;
-                    let position = (name != "this").then_some(position);
-                    let bind = inner[callable];
-                    let owner = block_of[callable].unwrap_or(0);
+                    // Parameters live in their function's own scope.
+                    let function = found.parent.unwrap_or(0);
+                    let bind = inner[function];
                     let ty = syntax.option(node, "type").map(str::to_owned);
                     declare(
                         Decl {
                             name,
                             scope: bind,
-                            kind: DeclKind::Param { owner, position, ty },
+                            kind: DeclKind::Param { ty },
                         },
                         Some(bind),
                     );
@@ -467,8 +746,17 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         }
         stack.extend(found.children.iter().rev().copied());
     }
+    (decls, scopes, inits, outer, inner)
+}
 
-    // Values, in postorder so receivers precede their accesses.
+/// The value table and its payload, in postorder so receivers precede their accesses, with each
+/// syntax node's value.
+fn record_values(
+    lowering: &Lowering<'_, '_>,
+    outer: &[u32],
+) -> (Vec<ValueFact>, Vec<ValueInfo>, Vec<Option<u32>>) {
+    let syntax = lowering.syntax;
+    let count = syntax.nodes.len();
     let mut values: Vec<ValueFact> = Vec::new();
     let mut infos: Vec<ValueInfo> = Vec::new();
     let mut value_of: Vec<Option<u32>> = vec![None; count];
@@ -497,17 +785,18 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                 values[value as usize].label.to_string()
             })
         };
+        let range = syntax.node(node).range;
         let scope = outer[node];
         let entry: Option<(ValueFact, ValueInfo)> = if syntax.is_literal(node) {
             Some((
-                ValueFact::new(ValueShape::Other, text::OTHER),
+                ValueFact::new(ValueShape::Other, text::OTHER, range),
                 ValueInfo::Literal(unquote(syntax.node(node).text)),
             ))
         } else if !syntax.node(node).form || node == 0 {
             None
         } else {
-            let name = alien.name_text(node).unwrap_or_default().to_owned();
-            match alien.head(node) {
+            let name = lowering.name_text(node).unwrap_or_default().to_owned();
+            match lowering.head(node) {
                 "ref" => {
                     let options = syntax
                         .options(node)
@@ -515,15 +804,13 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                         .map(|(key, value)| (key.to_owned(), value.map(str::to_owned)))
                         .collect();
                     Some((
-                        ValueFact::new(ValueShape::Name, &name),
+                        ValueFact::new(ValueShape::Name, &name, range),
                         ValueInfo::Ref { name, scope, options },
                     ))
                 }
                 "get" => item_value(0).map(|receiver| {
-                    let mut fact = ValueFact::new(
-                        ValueShape::Member,
-                        &text::member(&label_of(Some(receiver)), &name),
-                    );
+                    let label = text::member(&label_of(Some(receiver)), &name);
+                    let mut fact = ValueFact::new(ValueShape::Member, &label, range);
                     fact.receiver = Some(receiver);
                     fact.member = Some(name.as_str().into());
                     let external = syntax.option(node, "ext").map(str::to_owned);
@@ -538,10 +825,8 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                 }),
                 "key" => item_value(0).map(|receiver| {
                     let key = items.get(1).map_or("", |&item| syntax.node(item).text);
-                    let mut fact = ValueFact::new(
-                        ValueShape::Member,
-                        &text::literal_key(&label_of(Some(receiver)), key),
-                    );
+                    let label = text::literal_key(&label_of(Some(receiver)), key);
+                    let mut fact = ValueFact::new(ValueShape::Member, &label, range);
                     fact.receiver = Some(receiver);
                     (
                         fact,
@@ -552,50 +837,48 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
                     )
                 }),
                 "dyn" => item_value(0).map(|receiver| {
-                    let mut fact =
-                        ValueFact::new(ValueShape::Other, &text::computed_key(&label_of(Some(receiver))));
+                    let label = text::computed_key(&label_of(Some(receiver)));
+                    let mut fact = ValueFact::new(ValueShape::Other, &label, range);
                     fact.receiver = Some(receiver);
                     (fact, ValueInfo::Dynamic)
                 }),
                 "this" => Some((
-                    ValueFact::new(ValueShape::Other, "this"),
+                    ValueFact::new(ValueShape::Other, "this", range),
                     ValueInfo::This { scope },
                 )),
                 "base" => Some((
-                    ValueFact::new(ValueShape::Other, "super"),
+                    ValueFact::new(ValueShape::Other, "super", range),
                     ValueInfo::Base { scope },
                 )),
                 "call" | "super" => {
                     let callee = item_value(0);
                     let label = text::call_result(&label_of(callee));
                     Some((
-                        ValueFact::new(ValueShape::CallResult, &label),
+                        ValueFact::new(ValueShape::Other, &label, range),
                         ValueInfo::Call { callee },
                     ))
                 }
                 "new" => {
                     let callee = item_value(0);
                     Some((
-                        ValueFact::new(ValueShape::Other, &label_of(callee)),
+                        ValueFact::new(ValueShape::Other, &label_of(callee), range),
                         ValueInfo::Call { callee },
                     ))
                 }
-                "fn" | "lambda" | "klass" | "class" => block_of[node].map(|block| {
-                    let class = matches!(alien.head(node), "klass" | "class");
-                    let shape = if class {
-                        ValueShape::InlineClass
-                    } else {
-                        ValueShape::InlineFunction
-                    };
-                    let mut fact = ValueFact::new(shape, text::OTHER);
-                    fact.block = Some(block);
-                    (fact, ValueInfo::Inline { block, class })
+                "fn" | "lambda" => lowering.node_of[node].map(|id| {
+                    (
+                        ValueFact::new(ValueShape::Other, text::OTHER, range),
+                        ValueInfo::Inline { node: id },
+                    )
                 }),
                 "wrap" | "star" => {
                     value_of[node] = item_value(0);
                     None
                 }
-                "spread" => Some((ValueFact::new(ValueShape::Other, text::OTHER), ValueInfo::Other)),
+                "spread" => Some((
+                    ValueFact::new(ValueShape::Other, text::OTHER, range),
+                    ValueInfo::Other,
+                )),
                 _ => None,
             }
         };
@@ -605,234 +888,175 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
             infos.push(info);
         }
     }
-    for (decl, init) in inits {
-        match &mut decls[decl].kind {
-            DeclKind::Variable { init: slot, .. } | DeclKind::Field { init: slot, .. } => {
-                *slot = value_of[init];
-            }
-            _ => {}
-        }
-    }
+    (values, infos, value_of)
+}
 
-    // Occurrences and the census.
-    let mut calls = Vec::new();
+/// The `imports` links before linking, and their ranges for the census.
+fn imports(lowering: &Lowering<'_, '_>) -> Result<(Vec<ImportFact>, Vec<ByteRange>), SourceFailure> {
+    let syntax = lowering.syntax;
     let mut imports = Vec::new();
-    let mut call_sites = Vec::new();
-    let mut dependencies = Vec::new();
-    let mut conditional = Vec::new();
-    for node in (1..count).filter(|&node| !skipped[node]) {
-        let head = alien.head(node);
-        let items = syntax.items(node);
-        let range = syntax.node(node).range;
-        match head {
-            "call" | "new" | "super" => {
-                let mut arguments = Vec::new();
-                let mut ineligible = Vec::new();
-                for (position, &item) in items.iter().enumerate().skip(1) {
-                    let position = position as u32 - 1;
-                    let reference = alien.head(item) != "star";
-                    if !reference {
-                        ineligible.push(position);
-                    }
-                    if let Some(value) = value_of[item] {
-                        arguments.push(ArgumentFact {
-                            expand: (!reference).then_some(Expansion::Spread),
-                            ..ArgumentFact::positional(value, position, reference)
-                        });
-                    }
-                }
-                call_sites.push(CallSite {
-                    range,
-                    new: head == "new",
-                    ineligible,
-                });
-                if let Some(block) = block_of[node] {
-                    calls.push(CallFact {
-                        block,
-                        callee: items.first().and_then(|&item| value_of[item]),
-                        edge: if head == "new" {
-                            EdgeKind::Constructs
-                        } else {
-                            EdgeKind::Calls
-                        },
-                        context: if head == "call" {
-                            CallContext::Call
-                        } else {
-                            CallContext::Construct
-                        },
-                        arguments,
-                    });
-                }
-            }
-            "use" | "import" => {
-                dependencies.push(range);
-                if let Some(block) = block_of[node].filter(|_| syntax.option(node, "when-indexed").is_some())
-                {
-                    conditional.push(block);
-                }
-                if let Some(block) = block_of[node] {
-                    let specifier = items
-                        .iter()
-                        .find(|&&item| syntax.is_literal(item))
-                        .map(|&item| unquote(syntax.node(item).text).into());
-                    imports.push(ImportFact { block, specifier });
-                }
-            }
-            _ => {}
+    let mut stack = vec![0usize];
+    while let Some(node) = stack.pop() {
+        let head = lowering.head(node);
+        if matches!(head, "deco" | "type" | "sig" | "param") {
+            continue;
         }
+        if matches!(head, "use" | "import") {
+            let items = syntax.items(node);
+            let literal = items.iter().copied().find(|&item| syntax.is_literal(item));
+            let (range, specifier) = match (head, literal, items.first()) {
+                (_, Some(literal), _) => (
+                    syntax.node(literal).range,
+                    Some(unquote(syntax.node(literal).text).into()),
+                ),
+                ("import", None, Some(&expression)) => (syntax.node(expression).range, None),
+                _ => return Err(failure("an import needs a specifier")),
+            };
+            let from = lowering.enclosing(node, |found| {
+                matches!(found.kind(), NodeKind::Module | NodeKind::Function)
+            });
+            imports.push(ImportFact {
+                from,
+                range,
+                specifier,
+                conditional: syntax.option(node, "when-indexed").is_some(),
+            });
+        }
+        stack.extend(syntax.node(node).children.iter().rev().copied());
     }
-    let (types, type_names) = typed(&alien, &block_of, &outer, &inner, &skipped, selection.blocks());
-    let payload = Payload {
-        decls,
-        scopes,
-        values: infos,
-        boundaries: syntax.boundaries.clone(),
-        call_sites,
-        dependencies,
-        types: type_names,
-    };
-    let graph = GraphFacts::new(selection, values, calls, imports)
-        .and_then(|graph| graph.with_conditional(conditional))
-        .and_then(|graph| graph.with_types(types))
-        .map_err(|error| SourceFailure {
-            message: error.to_string().into(),
-            offset: None,
-        })?;
-    let payload = postcard::to_allocvec(&payload).map_err(|error| SourceFailure {
-        message: error.to_string().into(),
-        offset: None,
-    })?;
-    Ok(FileFacts::new(graph, payload))
+    let dependencies = imports.iter().map(|import| import.range).collect();
+    Ok((imports, dependencies))
 }
 
-/// The range of an option's value inside its `:key=value` token.
-fn option_value(syntax: &Syntax<'_>, node: usize, key: &str) -> Option<(ByteRange, String)> {
-    let prefix = format!(":{key}=");
-    let child = syntax
-        .node(node)
-        .children
-        .iter()
-        .copied()
-        .find(|&child| syntax.is_option(child) && syntax.node(child).text.starts_with(&prefix))?;
-    let token = syntax.node(child);
-    let value = &token.text[prefix.len()..];
-    let range = ByteRange::new(token.range.end - value.len() as u32, token.range.end).ok()?;
-    (!value.is_empty()).then(|| (range, value.to_owned()))
-}
-
-/// The typed facts, and each type name's scope and text (the payload's `types`).
-fn typed(
-    alien: &Alien<'_, '_>,
-    block_of: &[Option<u32>],
+/// The written type names (each `:type` of a parameter or binding, and each `:base` and
+/// `:impl` of a class), and each one's scope and text for the payload.
+fn type_names(
+    lowering: &Lowering<'_, '_>,
     outer: &[u32],
     inner: &[u32],
-    skipped: &[bool],
-    blocks: &[unfold_core::Block],
-) -> (TypeFacts, Vec<(u32, String)>) {
-    let syntax = alien.syntax;
-    let mut signatures = Vec::new();
-    let mut parameters = Vec::new();
-    let mut results = Vec::new();
+) -> (Vec<TypeRefFact>, Vec<(u32, String)>) {
+    let syntax = lowering.syntax;
     let mut references = Vec::new();
     let mut names = Vec::new();
-    for node in (1..syntax.nodes.len()).filter(|&node| !skipped[node]) {
-        let head = alien.head(node);
-        let Some(block) = block_of[node] else {
-            if head == "param"
-                && let Some(callable) = syntax.node(node).parent
-                && let Some(owner) = block_of[callable]
-            {
-                let index = syntax
-                    .node(callable)
-                    .children
-                    .iter()
-                    .take_while(|&&child| child != node)
-                    .filter(|&&child| alien.head(child) == "param")
-                    .count() as u32;
-                let name = alien.name_text(node).map(str::to_owned);
-                let kind = match (name.as_deref(), syntax.option(node, "rest")) {
-                    (Some("this"), _) => ParameterKind::This,
-                    (_, Some(_)) => ParameterKind::Rest,
-                    _ => ParameterKind::Positional,
-                };
-                let ty = option_value(syntax, node, "type");
-                if let Some((range, text)) = &ty {
-                    references.push(TypeRefFact::new(*range, text, false));
-                    names.push((inner[callable], text.clone()));
-                }
-                parameters.push(Parameter {
-                    block: owner,
-                    index,
-                    kind,
-                    name: name.map(Into::into),
-                    optional: false,
-                    default: false,
-                    ty: ty.map(|(range, text)| WrittenType {
-                        text: text.into(),
-                        range,
-                    }),
-                });
-            }
+    for (node, &scope) in outer.iter().enumerate().skip(1) {
+        let skipped = std::iter::successors(Some(node), |&at| syntax.node(at).parent)
+            .any(|at| matches!(lowering.head(at), "type" | "deco" | "sig"));
+        if skipped {
             continue;
+        }
+        let mut add = |from: u32, usage: TypeUse, lookup: u32, (range, text): (ByteRange, String)| {
+            references.push(TypeRefFact::new(from, range, &text, false, usage));
+            names.push((lookup, text));
         };
-        let kind = blocks[block as usize].kind;
-        if kind.is_function_like() {
-            signatures.push(Signature { block, returns: None });
-        }
-        if kind == BlockKind::Variable
-            && let Some((range, text)) = option_value(syntax, node, "type")
-        {
-            references.push(TypeRefFact::new(range, &text, false));
-            names.push((outer[node], text));
-        }
-        if matches!(kind, BlockKind::Call | BlockKind::New) {
-            results.push(result(alien, block_of, node, block));
+        match lowering.head(node) {
+            "param" => {
+                let Some(function) = syntax.node(node).parent else {
+                    continue;
+                };
+                let Some(from) = lowering.node_of[function] else {
+                    continue;
+                };
+                for written in option_values(syntax, node, "type") {
+                    add(from, TypeUse::Annotation, inner[function], written);
+                }
+            }
+            "const" | "let" => {
+                let from = lowering.enclosing(node, |found| found.kind().is_definition());
+                for written in option_values(syntax, node, "type") {
+                    add(from, TypeUse::Annotation, scope, written);
+                }
+            }
+            "class" => {
+                let Some(from) = lowering.node_of[node] else {
+                    continue;
+                };
+                for written in option_values(syntax, node, "base") {
+                    add(from, TypeUse::Extends, scope, written);
+                }
+                for written in option_values(syntax, node, "impl") {
+                    add(from, TypeUse::Implements, scope, written);
+                }
+            }
+            _ => {}
         }
     }
-    let types = TypeFacts::new(blocks, signatures, parameters, Vec::new(), results, references);
-    (types, names)
+    (references, names)
 }
 
-/// Where the value of the call at `node` lands, looking through `wrap`.
-fn result(alien: &Alien<'_, '_>, block_of: &[Option<u32>], node: usize, call: u32) -> CallResult {
-    let syntax = alien.syntax;
-    let mut value = node;
-    let mut parent = syntax.node(value).parent;
-    while let Some(wrapper) = parent.filter(|&wrapper| alien.head(wrapper) == "wrap") {
-        value = wrapper;
-        parent = syntax.node(value).parent;
-    }
-    let other = CallResult {
-        call,
-        binding: ResultBinding::Other,
-        awaited: false,
-        target: None,
-        position: None,
-        bound: None,
-    };
-    let Some(parent) = parent else {
-        return other;
-    };
-    let items = syntax.items(parent);
-    let position = items.iter().position(|&item| item == value);
-    let (binding, target, position) = match (alien.head(parent), position) {
-        ("stmt", Some(0)) => (ResultBinding::Discard, None, None),
-        ("ret", Some(0)) => (ResultBinding::Return, None, None),
-        ("const" | "let", Some(0)) => (ResultBinding::Variable, block_of[parent], None),
-        ("call" | "new" | "super", Some(index)) if index > 0 => {
-            (ResultBinding::Argument, block_of[parent], Some(index as u32 - 1))
+/// One signature per function node, and one parameter per `(param ...)` of each.
+fn typed(lowering: &Lowering<'_, '_>) -> TypeFacts {
+    let syntax = lowering.syntax;
+    let mut signatures = Vec::new();
+    let mut parameters = Vec::new();
+    for node in 1..syntax.nodes.len() {
+        let Some(id) = lowering.node_of[node] else {
+            continue;
+        };
+        if !FUNCTIONS.contains(&lowering.head(node)) {
+            continue;
         }
-        _ => return other,
-    };
-    match target {
-        None if binding.eq(&ResultBinding::Variable) || binding.eq(&ResultBinding::Argument) => other,
-        _ => CallResult {
-            call,
-            binding,
-            awaited: false,
-            target,
-            position,
-            bound: None,
-        },
+        signatures.push(Signature {
+            node: id,
+            returns: None,
+        });
+        let params = syntax
+            .node(node)
+            .children
+            .iter()
+            .copied()
+            .filter(|&child| lowering.head(child) == "param");
+        for (index, param) in params.enumerate() {
+            let name = lowering.name_text(param).map(str::to_owned);
+            let kind = match (name.as_deref(), syntax.option(param, "rest")) {
+                (Some("this"), _) => ParameterKind::This,
+                (_, Some(_)) => ParameterKind::Rest,
+                _ => ParameterKind::Positional,
+            };
+            let ty = option_values(syntax, param, "type")
+                .into_iter()
+                .next()
+                .map(|(range, text)| WrittenType {
+                    text: text.into(),
+                    range,
+                });
+            parameters.push(Parameter {
+                node: id,
+                index: index as u32,
+                range: syntax.node(param).range,
+                kind,
+                name: name.map(Into::into),
+                optional: false,
+                default: false,
+                ty,
+            });
+        }
     }
+    TypeFacts::new(signatures, parameters, Vec::new())
+}
+
+/// Every call, construction, and `super` form outside opaque syntax: what the census checks the
+/// call nodes against, found from the parser alone.
+fn call_sites(syntax: &Syntax<'_>) -> Vec<CallSite> {
+    let mut sites = Vec::new();
+    let mut stack = vec![0usize];
+    while let Some(node) = stack.pop() {
+        let found = syntax.node(node);
+        if !found.form || (node != 0 && OPAQUE.contains(&found.text)) {
+            continue;
+        }
+        let form = match found.text {
+            "new" => Some(Some(Form::New)),
+            "super" => Some(Some(Form::Call)),
+            "call" => Some(None),
+            _ => None,
+        };
+        if let Some(form) = form.filter(|_| node != 0) {
+            sites.push(CallSite {
+                range: found.range,
+                form,
+            });
+        }
+        stack.extend(found.children.iter().rev().copied());
+    }
+    sites
 }

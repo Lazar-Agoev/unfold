@@ -1,4 +1,4 @@
-// Statements: every loop, exception, switch, label, transfer, directive, and automatic semicolon insertion; an explicit this parameter takes a parameter slot.
+// Statements: every loop, exception, switch, label, transfer, directive, and automatic semicolon insertion; an explicit this parameter is a parameter.
 async function run(this: Window, a = first()) {
     "use strict";
     outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }

@@ -1,0 +1,3 @@
+use.cts# #0 imports `#dual` → project cjs.cts#
+use.cts#/call:import #0 calls `import` → unknown dynamic
+use.cts#/call:import #1 imports `#dual` → project esm.mts#

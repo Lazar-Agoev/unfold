@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/rebound-alias. Format: testdata/README.md.
-# A rebound alias never selects a written name.
-entrance	celery.task	worker	-	-	unknown	src/app.py:8
-	target	handler	unresolved	mutable_binding	alias

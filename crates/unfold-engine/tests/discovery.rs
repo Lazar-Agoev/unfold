@@ -12,7 +12,7 @@ use unfold_core::vocab::{InputRole, Language};
 use unfold_engine::discovery::{
     DiscoverOptions, Discovery, DiscoveryError, IgnoreRules, Unindexed, discover, exists_in_root,
 };
-use unfold_engine::settings::{ScopeStatus, Settings};
+use unfold_engine::settings::Settings;
 
 fn testdata() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata")
@@ -30,13 +30,19 @@ fn run(root: &Path) -> Discovery {
     discover(root, &settings, &options()).unwrap()
 }
 
+/// Discovers `root` with the settings `text`: discovery reads only the scope, so a playground's
+/// scope is restated here and the rest of its `unfold.toml` doesn't matter.
+fn run_with(root: &Path, text: &str) -> Discovery {
+    discover(root, &Settings::parse(text).unwrap(), &options()).unwrap()
+}
+
 fn sources(discovery: &Discovery) -> Vec<&str> {
     discovery.sources.iter().map(|file| file.path.as_str()).collect()
 }
 
 #[test]
 fn playgrounds_know_their_unindexed_files() {
-    let ts = run(&testdata().join("playgrounds/ts-orders"));
+    let ts = run_with(&testdata().join("playgrounds/ts-orders"), "");
     let unindexed: Vec<(&str, Unindexed)> =
         ts.unindexed.iter().map(|f| (f.path.as_str(), f.reason)).collect();
     assert_eq!(
@@ -46,7 +52,10 @@ fn playgrounds_know_their_unindexed_files() {
             ("scripts/export.js", Unindexed::JavaScript)
         ]
     );
-    let py = run(&testdata().join("playgrounds/py-orders"));
+    let py = run_with(
+        &testdata().join("playgrounds/py-orders"),
+        "[scope]\nexclude = [\"legacy/**\", \"scripts/**\", \"tests/**\"]\n",
+    );
     let legacy = RepoPath::new("legacy/orders_legacy/export.py").unwrap();
     assert_eq!(py.unindexed_reason(&legacy), Some(Unindexed::Excluded));
     assert!(py.is_source(&RepoPath::new("src/orders_playground/server.py").unwrap()));
@@ -176,17 +185,18 @@ fn scope_and_languages_decide_what_is_indexed() {
         discovery.context.is_empty(),
         "TypeScript is off, so declaration files don't matter"
     );
-    let inputs: Vec<(&str, InputRole, ScopeStatus)> = discovery
+    // Configuration inputs are fingerprinted whatever the scope.
+    let inputs: Vec<(&str, InputRole)> = discovery
         .inputs
         .iter()
-        .map(|input| (input.path.as_str(), input.role, input.scope))
+        .map(|input| (input.path.as_str(), input.role))
         .collect();
     assert_eq!(
         inputs,
         [
-            ("app/pyproject.toml", InputRole::Pyproject, ScopeStatus::InScope),
-            ("pyproject.toml", InputRole::Pyproject, ScopeStatus::NotIncluded),
-            ("unfold.toml", InputRole::UnfoldConfig, ScopeStatus::InScope),
+            ("app/pyproject.toml", InputRole::Pyproject),
+            ("pyproject.toml", InputRole::Pyproject),
+            ("unfold.toml", InputRole::UnfoldConfig),
         ]
     );
 }

@@ -48,10 +48,10 @@ pub struct BindFacts {
     pub bindings: Vec<BindingFact>,
     /// The expression of each entry of the file's value table, aligned with it.
     pub values: Vec<ExprId>,
-    /// The expression of each written type name, aligned with the file's type references
-    /// ([`TypeFacts::type_refs`](unfold_engine::facts::TypeFacts::type_refs)): a name or a
-    /// member chain, evaluated in the scope its annotation is (a string annotation's name is
-    /// synthesized).
+    /// The expression of each written type name, aligned with the file's type names
+    /// ([`GraphFacts::type_refs`](unfold_engine::facts::GraphFacts::type_refs)): a name or a
+    /// member chain, evaluated in the scope its annotation, base, or handler clause is (a
+    /// string annotation's name is synthesized).
     pub types: Vec<ExprId>,
     /// Star imports, which linking expands from the target's literal `__all__`.
     pub stars: Vec<StarFact>,
@@ -137,8 +137,8 @@ pub enum NodeKind {
 /// A `def` or `lambda`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FunctionFact {
-    /// Its block's local ID.
-    pub block: u32,
+    /// Its node's local ID; absent below a truncated block, where nothing is lowered.
+    pub local: Option<u32>,
     /// Its name; `None` for a lambda.
     pub name: Option<NameId>,
     /// Decorator expressions, in written order.
@@ -154,8 +154,8 @@ pub struct FunctionFact {
 /// A `class`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClassFact {
-    /// Its block's local ID.
-    pub block: u32,
+    /// Its node's local ID; absent below a truncated block, where nothing is lowered.
+    pub local: Option<u32>,
     /// Its name.
     pub name: NameId,
     /// Decorator expressions, in written order.
@@ -222,8 +222,6 @@ pub enum ExprKind {
     Str(NameId),
     /// A list or tuple display.
     Sequence(Vec<ExprId>),
-    /// `*value` inside a display or target, which only the detectors' negative census reads.
-    Starred(ExprId),
     /// A dict display's values (and `**` expansions).
     Dict(Vec<ExprId>),
     /// A lambda.
@@ -418,7 +416,7 @@ impl BindFacts {
                             function,
                         } => expr(*callee) && arguments.iter().all(argument) && function.is_none_or(node),
                         ExprKind::Index { base, key } => expr(*base) && key.is_none_or(name),
-                        ExprKind::Await(id) | ExprKind::Starred(id) | ExprKind::Chain(id) => expr(*id),
+                        ExprKind::Await(id) | ExprKind::Chain(id) => expr(*id),
                         ExprKind::Sequence(items) | ExprKind::Dict(items) => items.iter().all(|&id| expr(id)),
                         ExprKind::Lambda(id) => node(*id),
                         ExprKind::Ternary | ExprKind::Other => true,

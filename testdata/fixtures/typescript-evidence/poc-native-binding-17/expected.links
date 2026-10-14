@@ -1,0 +1,5 @@
+parameter-closures.ts#outer/lambda[0]/call:f #0 calls `f` → project parameter-closures.ts#f
+parameter-closures.ts#outer/lambda[1]/call:f #0 calls `f` → project parameter-closures.ts#f
+parameter-closures.ts#outer/lambda[2]/lambda[0]/call:f #0 calls `f` → project parameter-closures.ts#f
+parameter-closures.ts#outer/lambda[3]/call:f #0 calls `f` → project parameter-closures.ts#f
+parameter-closures.ts#outer/call:f #0 calls `f` → project parameter-closures.ts#outer.f

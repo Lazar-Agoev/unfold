@@ -1,0 +1,6 @@
+containers.ts#/for[0]/body/call:f #0 calls `f` → project containers.ts#/for[0]/lambda[0]
+containers.ts#/for[1]/body/call:f #0 calls `f` → unknown not_concrete
+containers.ts#/for[2]/body/call:f #0 calls `f` → unknown not_concrete
+containers.ts#/switch[0]/case[0]/call:f #0 calls `f` → project containers.ts#f[1]
+containers.ts#/switch[0]/case[1]/call:f #0 calls `f` → project containers.ts#f[1]
+containers.ts#/call:f #0 calls `f` → project containers.ts#f

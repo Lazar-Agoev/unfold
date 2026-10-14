@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/non-registrations. Format: testdata/README.md.
-# shared_task, bare decorators, task(function), and task invocations add no entrances.

@@ -15,7 +15,6 @@ mod census;
 pub(crate) mod children;
 mod classes;
 mod decorators;
-mod launch;
 mod members;
 mod memo;
 pub(crate) mod modules;
@@ -25,22 +24,17 @@ pub(crate) mod program;
 mod types;
 pub(crate) mod value;
 
-use std::sync::OnceLock;
-
 use rustc_hash::FxHashMap;
-use unfold_core::RepoPath;
 use unfold_core::validate::Census;
-use unfold_core::vocab::{EdgeKind, Language};
-use unfold_engine::entrances::EntranceDetector;
+use unfold_core::vocab::Language;
+use unfold_core::{ModuleLabel, RepoPath};
 use unfold_engine::evidence::{
-    ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, LocatorMembers, MemberFact, ModuleTarget,
-    OriginDeclaration, ParameterFact, Stability, ValueContext,
+    ClassShape, ConcreteTarget, Evidence, ExternalLocation, MemberFact, ModuleTarget, OriginDeclaration,
+    Stability, ValueContext,
 };
-use unfold_engine::facts::CallContext;
-use unfold_engine::launch::{LaunchTarget, PythonContext};
 use unfold_engine::{
-    BlockRef, CallRef, DeclRef, FactsSet, FileId, Invocation, LanguageId, LanguageProblem, LaunchResolution,
-    Linked, ProjectInputs, TypeRef, ValueRef,
+    CallRef, DeclRef, FactsSet, FileId, ImportRef, LanguageId, LanguageProblem, Linked, NodeRef as GraphNode,
+    ProjectInputs, TypeRef, ValueRef,
 };
 
 pub use census::PythonCensus;
@@ -50,13 +44,13 @@ use binder::Binder;
 use program::{ExprRef, NodeRef};
 
 use crate::bind::ir::NodeKind;
-use crate::detect::scripts::Scripts;
-use crate::detect::{Sites, Source, SourceCandidates};
 use crate::payload::ImportSyntax;
 use crate::stdlib::module_label;
 
-/// An import whose module more than one source root could supply, or that the launches reaching
-/// its file resolve differently.
+/// The label of Python's own builtins, the only `builtin` outcome.
+const BUILTINS: &str = "python:builtins";
+
+/// An import whose module more than one source root could supply.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AmbiguousImport {
     /// The importing file.
@@ -68,25 +62,17 @@ pub struct AmbiguousImport {
 /// The linked Python program.
 pub struct PythonLinked<'a> {
     binder: Binder<'a>,
-    inputs: &'a ProjectInputs,
-    /// The call sites the source detectors read, indexed on first use.
-    sites: OnceLock<Sites>,
-    /// The console-script detector's findings, computed on first use.
-    scripts: OnceLock<Scripts>,
-    /// The source detectors' candidates, computed together on first use.
-    source_candidates: OnceLock<SourceCandidates>,
     /// Each file's import outcomes, aligned with its import facts.
     dependencies: Vec<Vec<ModuleTarget>>,
-    /// Each file's kept conditional import blocks, sorted.
+    /// Each file's kept conditional imports, by index in its import facts, sorted.
     kept: Vec<Vec<u32>>,
     classes: Vec<ClassShape>,
-    exports: Vec<OnceLock<Vec<Export>>>,
     census: PythonCensus,
     ambiguous: Vec<AmbiguousImport>,
-    /// The declaration of every `def` and `lambda`, by its block.
-    functions: FxHashMap<BlockRef, NodeRef>,
-    /// Every `class` declaration, by its block.
-    class_nodes: FxHashMap<BlockRef, NodeRef>,
+    /// The declaration of every lowered `def` and `lambda`, by its node.
+    functions: FxHashMap<GraphNode, NodeRef>,
+    /// Every lowered `class` declaration, by its node.
+    class_nodes: FxHashMap<GraphNode, NodeRef>,
 }
 
 impl<'a> PythonLinked<'a> {
@@ -134,7 +120,14 @@ impl<'a> PythonLinked<'a> {
                 let module = specifier.map(|specifier| binder.modules.resolve(id, path, &specifier));
                 modules.push(module);
             }
-            for ((fact, written), module) in facts.graph.imports().iter().zip(&syntax).zip(&modules) {
+            for (index, ((fact, written), module)) in facts
+                .graph
+                .imports()
+                .iter()
+                .zip(&syntax)
+                .zip(&modules)
+                .enumerate()
+            {
                 let target = match (written, module) {
                     (ImportSyntax::Child { from, name, node }, _) => {
                         let parent = modules.get(*from as usize).cloned().flatten();
@@ -155,7 +148,7 @@ impl<'a> PythonLinked<'a> {
                                 });
                         match child {
                             Some(child) => {
-                                children.push(fact.block);
+                                children.push(u32::try_from(index).unwrap_or(u32::MAX));
                                 module_target(&binder, &child)
                             }
                             None => ModuleTarget::Unsupported,
@@ -174,26 +167,24 @@ impl<'a> PythonLinked<'a> {
             }
             // Imports the payload doesn't describe (a corrupt payload) stay unsupported.
             targets.resize(facts.graph.imports().len(), ModuleTarget::Unsupported);
-            let ranges = children
-                .iter()
-                .filter_map(|&block| facts.graph.blocks().get(block as usize).map(|block| block.range));
+            let ranges = children.iter().filter_map(|&index| {
+                facts
+                    .graph
+                    .imports()
+                    .get(index as usize)
+                    .map(|import| import.range)
+            });
             census.add(file.path.clone(), &census_data, ranges);
             dependencies.push(targets);
             kept.push(children);
         }
         let classes = binder.class_shapes();
-        let exports = (0..files.files().len()).map(|_| OnceLock::new()).collect();
         let (functions, class_nodes) = definitions(&binder);
         Self {
             binder,
-            inputs,
-            sites: OnceLock::new(),
-            scripts: OnceLock::new(),
-            source_candidates: OnceLock::new(),
             dependencies,
             kept,
             classes,
-            exports,
             census,
             ambiguous,
             functions,
@@ -201,28 +192,8 @@ impl<'a> PythonLinked<'a> {
         }
     }
 
-    /// What the source detectors read.
-    pub(crate) fn source(&self) -> Source<'_, 'a> {
-        Source {
-            binder: &self.binder,
-            sites: self.sites.get_or_init(|| Sites::new(&self.binder)),
-        }
-    }
-
-    /// The console-script detector's findings.
-    pub(crate) fn scripts(&self) -> &Scripts {
-        self.scripts
-            .get_or_init(|| crate::detect::scripts::scripts(&self.binder, self.inputs))
-    }
-
-    /// The source detectors' candidates.
-    pub(crate) fn source_candidates(&self) -> &SourceCandidates {
-        self.source_candidates
-            .get_or_init(|| crate::detect::source_candidates(&self.source(), &self.inputs.settings))
-    }
-
     fn callee(&self, call: CallRef) -> Option<ExprRef> {
-        let callee = self.binder.program.facts.call(call)?.callee?;
+        let callee = self.binder.program.facts.call(call)?.callee;
         self.binder.value_expr(ValueRef {
             file: call.file,
             value: callee,
@@ -236,12 +207,9 @@ impl Linked for PythonLinked<'_> {
     }
 
     /// A call whose callee is a proven, concrete class constructs it.
-    fn invocation(&self, call: CallRef) -> Option<Invocation> {
-        let callee = self.callee(call)?;
-        self.binder.construction(callee).then_some(Invocation {
-            edge: EdgeKind::Constructs,
-            context: CallContext::Construct,
-        })
+    fn constructs(&self, call: CallRef) -> bool {
+        self.callee(call)
+            .is_some_and(|callee| self.binder.construction(callee))
     }
 
     fn callee_evidence(&self, call: CallRef) -> Evidence {
@@ -262,13 +230,13 @@ impl Linked for PythonLinked<'_> {
     }
 
     /// Proven from the callee's receiver and the target's decorators (see `types`).
-    fn bound_parameters(&self, call: CallRef, target: BlockRef) -> Option<u32> {
+    fn bound_parameters(&self, call: CallRef, target: GraphNode) -> Option<u32> {
         let function = *self.functions.get(&target)?;
         self.binder.bound_parameters(self.callee(call)?, function)
     }
 
     /// Proven from the passed value's receiver and the target's decorators (see `types`).
-    fn reference_bound_parameters(&self, value: ValueRef, target: BlockRef) -> Option<u32> {
+    fn reference_bound_parameters(&self, value: ValueRef, target: GraphNode) -> Option<u32> {
         let function = *self.functions.get(&target)?;
         self.binder
             .bound_reference(self.binder.value_expr(value)?, function)
@@ -276,7 +244,7 @@ impl Linked for PythonLinked<'_> {
 
     /// A class takes no arguments when nothing but `object` is its base, it has no keyword
     /// (`metaclass=`) and no decorator, and its body binds no `__new__`.
-    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+    fn class_takes_no_arguments(&self, class: GraphNode) -> bool {
         self.class_nodes
             .get(&class)
             .is_some_and(|&node| self.binder.takes_no_arguments(node))
@@ -290,8 +258,8 @@ impl Linked for PythonLinked<'_> {
         self.binder.concrete_target(declaration, context)
     }
 
-    fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        self.binder.parameter(declaration)
+    fn is_parameter(&self, declaration: DeclRef) -> bool {
+        self.binder.is_parameter(declaration)
     }
 
     fn binding_stability(&self, declaration: DeclRef) -> Stability {
@@ -314,37 +282,15 @@ impl Linked for PythonLinked<'_> {
         self.binder.origin(declaration)
     }
 
-    fn locator_top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        self.binder.top_level(file, name)
-    }
-
-    fn locator_concrete(&self, declaration: DeclRef) -> Option<BlockRef> {
-        self.binder.locator_block(declaration)
-    }
-
-    fn locator_members(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        self.binder.members_named(owner, name)
-    }
-
-    fn locator_overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool {
-        self.binder.overload_of(signature, implementation)
-    }
-
     fn module_dependencies(&self, file: FileId) -> &[ModuleTarget] {
         self.dependencies.get(file.index()).map_or(&[], Vec::as_slice)
     }
 
-    fn keeps_import(&self, block: BlockRef) -> bool {
+    /// A named child import is kept when its child module is proven (see `children`).
+    fn keeps_import(&self, import: ImportRef) -> bool {
         self.kept
-            .get(block.file.index())
-            .is_some_and(|kept| kept.binary_search(&block.local).is_ok())
-    }
-
-    fn module_exports(&self, file: FileId) -> &[Export] {
-        match self.exports.get(file.index()) {
-            Some(cell) => cell.get_or_init(|| self.binder.exports(file)),
-            None => &[],
-        }
+            .get(import.file.index())
+            .is_some_and(|kept| kept.binary_search(&import.import).is_ok())
     }
 
     fn classes(&self) -> &[ClassShape] {
@@ -362,36 +308,26 @@ impl Linked for PythonLinked<'_> {
 
     fn label_for_location(&self, _file: FileId, location: &ExternalLocation) -> String {
         match location {
-            ExternalLocation::Library => "python:builtins".to_owned(),
+            ExternalLocation::Library => BUILTINS.to_owned(),
             ExternalLocation::Package(name) => module_label(name),
             ExternalLocation::File(path) => path.to_string(),
         }
     }
 
     fn global_label(&self, _file: FileId) -> String {
-        "python:builtins".to_owned()
+        BUILTINS.to_owned()
     }
 
-    /// The `pyproject.toml` files the console-script detector reads (when it is enabled), even
-    /// those that declare no scripts.
-    fn inputs_read(&self) -> Vec<RepoPath> {
-        self.scripts().inputs.clone()
-    }
-
-    fn launch_target(&self, target: &LaunchTarget, context: &PythonContext) -> Option<LaunchResolution> {
-        Some(self.launch(target, context))
-    }
-
-    fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
-        crate::detect::detectors(self)
+    /// Exactly `python:builtins`.
+    fn is_builtin(&self, label: &ModuleLabel) -> bool {
+        label.as_str() == BUILTINS
     }
 
     fn census(&self) -> Option<&dyn Census> {
         Some(&self.census)
     }
 
-    /// Imports several source roots could supply (or launches resolve differently), and
-    /// `pyproject.toml` files the console-script detector can't read.
+    /// Imports several source roots could supply.
     fn problems(&self) -> Vec<LanguageProblem> {
         let mut problems: Vec<LanguageProblem> = self
             .ambiguous
@@ -399,39 +335,41 @@ impl Linked for PythonLinked<'_> {
             .map(|import| LanguageProblem {
                 path: import.path.clone(),
                 message: format!(
-                    "import `{}` is ambiguous: more than one source root (or launches that reach this file) supply different modules",
+                    "import `{}` is ambiguous: more than one source root supplies it",
                     import.specifier
                 )
                 .into(),
                 incomplete: false,
             })
             .collect();
-        problems.extend(self.scripts().problems.iter().cloned());
         problems.sort();
         problems.dedup();
         problems
     }
 }
 
-/// The declaration of every `def` and `lambda` of the program, and of every `class`, by its
-/// block.
-fn definitions(binder: &Binder<'_>) -> (FxHashMap<BlockRef, NodeRef>, FxHashMap<BlockRef, NodeRef>) {
+/// The declaration of every lowered `def` and `lambda` of the program, and of every lowered
+/// `class`, by its node.
+fn definitions(binder: &Binder<'_>) -> (FxHashMap<GraphNode, NodeRef>, FxHashMap<GraphNode, NodeRef>) {
     let mut functions = FxHashMap::default();
     let mut classes = FxHashMap::default();
     for (index, file) in binder.program.files.iter().enumerate() {
         let Some(file) = file else {
             continue;
         };
-        let id = FileId(index as u32);
+        let id = FileId(u32::try_from(index).unwrap_or(u32::MAX));
         for (node, fact) in file.nodes.iter().enumerate() {
             let (map, local) = match &fact.kind {
-                NodeKind::Function(function) => (&mut functions, function.block),
-                NodeKind::Class(class) => (&mut classes, class.block),
+                NodeKind::Function(function) => (&mut functions, function.local),
+                NodeKind::Class(class) => (&mut classes, class.local),
                 _ => continue,
             };
-            map.entry(BlockRef { file: id, local }).or_insert(NodeRef {
+            let Some(local) = local else {
+                continue;
+            };
+            map.entry(GraphNode { file: id, local }).or_insert(NodeRef {
                 file: id,
-                node: node as u32,
+                node: u32::try_from(node).unwrap_or(u32::MAX),
             });
         }
     }

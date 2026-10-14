@@ -1,0 +1,4 @@
+generic-super.ts#Child #0 extends `Base` → project generic-super.ts#Base
+generic-super.ts#Child.constructor/call:super #0 calls `super` → project generic-super.ts#Base.constructor
+generic-super.ts#Other #0 extends `N.Base` → project generic-super.ts#N.Base
+generic-super.ts#Other.constructor/call:super #0 calls `super` → project generic-super.ts#N.Base.constructor

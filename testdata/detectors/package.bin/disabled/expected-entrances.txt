@@ -1,3 +1,0 @@
-# [detectors] disabled = ["package.bin"]: no bins, but scripts remain.
-entrance	package.script	process	-	start	exact	package.json:1
-	target	startup	resolved	src/main.ts#	src/main.ts

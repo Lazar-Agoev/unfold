@@ -1,0 +1,2 @@
+class NoFreeSlot(Exception):
+    pass

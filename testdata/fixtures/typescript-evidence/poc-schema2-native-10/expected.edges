@@ -1,3 +1,0 @@
-a.ts#import[0] #0 imports `pkg` -> external pkg
-a.ts#expression_statement[0]/call[0] #0 calls `x` -> external pkg
-b.ts#for_of[0]/expression_statement[0]/call[0] #0 calls `f` -> unknown_name

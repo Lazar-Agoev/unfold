@@ -1,4 +1,0 @@
-contexts.ts#class:Outer/method:run/class:Inner/method[0]/call[0] #0 calls `this.key` -> unbound_this
-contexts.ts#class:Outer/method:run/class:Inner/method:method/call[0] #0 calls `decorate` -> contexts.ts#function:decorate
-contexts.ts#class:Outer/method:run/class:Inner/method:method/call[0]/call[0] #0 calls `this.key` -> contexts.ts#class:Outer/method:key
-contexts.ts#class:Outer/method:run/class:Inner/call[0] #0 calls `this.key` -> unknown_receiver

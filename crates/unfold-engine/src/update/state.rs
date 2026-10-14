@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use unfold_core::vocab::{FileState, InputRole, Language as LanguageId};
-use unfold_core::{ContentHash, FileRecord, Graph, Launches, RepoPath, Snapshot};
+use unfold_core::{ContentHash, File, Graph, RepoPath, Snapshot};
 
 use super::{LinkBasis, Problem};
 use crate::discovery::FileStamp;
@@ -104,13 +104,13 @@ pub(crate) struct FileEntry {
 }
 
 impl FileEntry {
-    pub(crate) fn record(&self, path: &RepoPath) -> FileRecord {
+    pub(crate) fn record(&self, path: &RepoPath) -> File {
         let (hash, failure) = match &self.facts {
             Facts::Current { hash, .. } => (Some(*hash), None),
             Facts::LastGood { hash, failure, .. } => (Some(*hash), Some(failure.clone())),
             Facts::Failed { failure } => (None, Some(failure.clone())),
         };
-        FileRecord {
+        File {
             path: path.clone(),
             language: self.language,
             state: self.facts.state(),
@@ -176,8 +176,6 @@ pub(crate) struct State {
     /// For a restored graph, what it was linked from, when the store kept it.
     pub(crate) restored: Option<LinkBasis>,
     pub(crate) graph: Arc<Graph>,
-    /// The launch records of `graph`.
-    pub(crate) launches: Arc<Launches>,
     /// What the languages saw beside the files at the last update or restore.
     pub(crate) project: Arc<ProjectInputs>,
     pub(crate) complete: bool,

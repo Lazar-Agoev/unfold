@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/toml-evidence. Format: testdata/README.md.
-# TOML evidence keeps quoted, dotted, and CRLF assignment offsets and RFC 6901 keys after a byte-order mark (PoC: "TOML evidence retains quoted, dotted and inline assignment offsets...").
-entrance	pyproject.script	process	-	run/tilde~😀=key	exact	pyproject.toml:1
-	target	startup	resolved	src/app.py#function:main	app:main
-entrance	pyproject.script	process	-	second.name	exact	pyproject.toml:2
-	target	startup	resolved	src/app.py#function:main	app:main
-entrance	pyproject.script	process	-	number	exact	pyproject.toml:3
-	target	startup	unresolved	unsupported	1_000

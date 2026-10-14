@@ -1,2 +1,0 @@
-authoritative.ts#variable:value/new[0] #0 constructs `C` -> authoritative.ts#class:C
-authoritative.ts#expression_statement[0]/call[0] #0 calls `value.m` -> unknown_receiver

@@ -1,0 +1,8 @@
+static.ts#Base.run/call:this.m #0 calls `this.m` → project static.ts#Base.m
+static.ts#Base.run/call:Base.m #0 calls `Base.m` → project static.ts#Base.m
+static.ts#Child #0 extends `Base` → project static.ts#Base
+static.ts#Child.run/call:this.m #0 calls `this.m` → project static.ts#Child.m
+static.ts#Child.run/call:super.m #0 calls `super.m` → project static.ts#Base.m
+static.ts#Inherited #0 extends `Base` → project static.ts#Base
+static.ts#/call:Inherited.m #0 calls `Inherited.m` → project static.ts#Base.m
+static.ts#/call:Child.m #0 calls `Child.m` → project static.ts#Child.m

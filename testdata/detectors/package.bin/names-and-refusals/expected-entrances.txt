@@ -1,8 +1,0 @@
-# An unscoped name is the command; a scope without a slash is kept whole; a missing or non-string
-# name, an empty path, a non-string member, an array, and a number produce no entrance.
-entrance	package.bin	process	-	kept	exact	members/package.json:1
-	target	startup	resolved	src/main.ts#	../src/main.ts
-entrance	package.bin	process	-	@scope	exact	scope-only/package.json:1
-	target	startup	resolved	src/main.ts#	../src/main.ts
-entrance	package.bin	process	-	tool	exact	unscoped/package.json:1
-	target	startup	resolved	src/main.ts#	../src/main.ts

@@ -129,11 +129,10 @@ impl Target {
     }
 }
 
-/// A value (a path, or a list of patterns) written in a configuration file, with the folder of
-/// the file that wrote it.
+/// A path written in a configuration file, with the folder of the file that wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Placed<T = String> {
-    pub(crate) value: T,
+pub(crate) struct Placed {
+    pub(crate) value: String,
     pub(crate) dir: String,
 }
 
@@ -178,12 +177,6 @@ pub(crate) struct CompilerOptions {
     pub(crate) custom_conditions: Option<Vec<String>>,
     pub(crate) base_url: Option<Placed>,
     pub(crate) paths: Option<PathMap>,
-    pub(crate) root_dir: Option<Placed>,
-    pub(crate) out_dir: Option<Placed>,
-    pub(crate) out_file: Option<Placed>,
-    pub(crate) declaration_dir: Option<Placed>,
-    pub(crate) no_emit: Option<bool>,
-    pub(crate) emit_declaration_only: Option<bool>,
 }
 
 impl CompilerOptions {
@@ -218,12 +211,6 @@ impl CompilerOptions {
             custom_conditions: self.custom_conditions.or_else(|| base.custom_conditions.clone()),
             base_url: self.base_url.or_else(|| base.base_url.clone()),
             paths: self.paths.or_else(|| base.paths.clone()),
-            root_dir: self.root_dir.or_else(|| base.root_dir.clone()),
-            out_dir: self.out_dir.or_else(|| base.out_dir.clone()),
-            out_file: self.out_file.or_else(|| base.out_file.clone()),
-            declaration_dir: self.declaration_dir.or_else(|| base.declaration_dir.clone()),
-            no_emit: self.no_emit.or(base.no_emit),
-            emit_declaration_only: self.emit_declaration_only.or(base.emit_declaration_only),
         }
     }
 
@@ -256,14 +243,11 @@ impl CompilerOptions {
     }
 }
 
-/// One configuration file as written: its options, `extends`, and file selectors.
+/// One configuration file as written: its options and `extends`.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RawConfig {
     pub(crate) extends: Vec<String>,
     pub(crate) options: CompilerOptions,
-    pub(crate) files: Option<Placed<Vec<String>>>,
-    pub(crate) include: Option<Placed<Vec<String>>>,
-    pub(crate) exclude: Option<Placed<Vec<String>>>,
 }
 
 /// Something wrong with a configuration file's contents.
@@ -290,24 +274,6 @@ pub(crate) fn parse_config(value: &Value, dir: &str, complaints: &mut Vec<Compla
                 Some(options) => config.options = parse_options(options, dir, complaints),
                 None => complaints.push("`compilerOptions` must be an object".to_owned()),
             },
-            "files" | "include" | "exclude" => {
-                let list = match value.as_array() {
-                    Some(items) => strings(items, key, complaints),
-                    None => {
-                        complaints.push(format!("`{key}` must be an array of strings"));
-                        continue;
-                    }
-                };
-                let placed = Some(Placed {
-                    value: list,
-                    dir: dir.to_owned(),
-                });
-                match key.as_str() {
-                    "files" => config.files = placed,
-                    "include" => config.include = placed,
-                    _ => config.exclude = placed,
-                }
-            }
             _ => {}
         }
     }
@@ -411,8 +377,6 @@ fn parse_options(
                 );
             }
             "esmoduleinterop" => set(&mut parsed.es_module_interop, flag(), &mut wrong, "a boolean"),
-            "noemit" => set(&mut parsed.no_emit, flag(), &mut wrong, "a boolean"),
-            "emitdeclarationonly" => set(&mut parsed.emit_declaration_only, flag(), &mut wrong, "a boolean"),
             "customconditions" => {
                 let list = value.as_array().and_then(|items| {
                     items
@@ -428,10 +392,6 @@ fn parse_options(
                 );
             }
             "baseurl" => set(&mut parsed.base_url, placed(), &mut wrong, "a string"),
-            "rootdir" => set(&mut parsed.root_dir, placed(), &mut wrong, "a string"),
-            "outdir" => set(&mut parsed.out_dir, placed(), &mut wrong, "a string"),
-            "outfile" => set(&mut parsed.out_file, placed(), &mut wrong, "a string"),
-            "declarationdir" => set(&mut parsed.declaration_dir, placed(), &mut wrong, "a string"),
             "paths" => {
                 let entries = value.as_object().and_then(|map| {
                     map.iter()
@@ -479,7 +439,7 @@ mod tests {
         let (config, complaints) = parse(
             r#"{"extends": ["./a.json", "pkg"], "compilerOptions": {"Module": "NodeNext", "TARGET": "ES2022",
                 "verbatimModuleSyntax": true, "baseUrl": "./src", "paths": {"@/*": ["./*"]},
-                "outDir": "${configDir}/dist", "jsx": "react-jsx", "unknown": 1}, "include": ["src"]}"#,
+                "jsx": "react-jsx", "unknown": 1}, "include": ["src"]}"#,
             "app",
         );
         assert!(complaints.is_empty(), "{complaints:?}");
@@ -498,20 +458,8 @@ mod tests {
             Some("app/src")
         );
         assert_eq!(
-            options
-                .out_dir
-                .as_ref()
-                .and_then(|dir| dir.resolve("leaf"))
-                .as_deref(),
-            Some("leaf/dist")
-        );
-        assert_eq!(
             options.paths.as_ref().map(|paths| paths.dir.as_str()),
             Some("app")
-        );
-        assert_eq!(
-            config.include.map(|include| include.value),
-            Some(vec!["src".to_owned()])
         );
         assert_eq!(options.resolution(), Resolution::NodeNext);
         assert_eq!(options.detection(), Detection::Force);

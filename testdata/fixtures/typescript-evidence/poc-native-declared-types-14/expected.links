@@ -1,0 +1,6 @@
+ambiguous.ts#call #0 types `C` → project ambiguous.ts#C
+ambiguous.ts#call #1 types `D` → project ambiguous.ts#D
+ambiguous.ts#call #2 types `C` → project ambiguous.ts#C
+ambiguous.ts#call #3 types `D` → project ambiguous.ts#D
+ambiguous.ts#call/call:union.m #0 calls `union.m` → unknown unknown_receiver
+ambiguous.ts#call/call:(…).m #0 calls `(…).m` → unknown unknown_receiver

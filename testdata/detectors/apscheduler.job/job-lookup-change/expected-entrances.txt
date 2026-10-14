@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/job-lookup-change. Format: testdata/README.md.
-# A Job looked up from the scheduler and mutated withholds.
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

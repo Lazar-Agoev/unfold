@@ -1,0 +1,3 @@
+self.ts#f/call:self #0 calls `self` → project self.ts#f
+self.ts#/call:f #0 calls `f` → project self.ts#f
+self.ts#/call:self #0 calls `self` → project self.ts#self

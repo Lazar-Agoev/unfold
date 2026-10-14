@@ -1,0 +1,10 @@
+a.ts#Animal.reveal/call:this.%23secret #0 calls `this.#secret` → project a.ts#Animal.%23secret
+a.ts#Dog #0 extends `Animal` → project a.ts#Animal
+a.ts#talk #0 types `Animal` → project a.ts#Animal
+a.ts#talk #1 types `Dog` → project a.ts#Dog
+a.ts#talk/call:a.speak #0 calls `a.speak` → unknown overridden
+a.ts#talk/call:a.walk #0 calls `a.walk` → unknown ambiguous
+a.ts#talk/call:d.speak #0 calls `d.speak` → project a.ts#Dog.speak
+a.ts#/call:make #0 calls `make` → project a.ts#make
+a.ts#stroll #0 types `Animal` → project a.ts#Animal
+a.ts#stroll/call:a.walk #0 calls `a.walk` → unknown ambiguous

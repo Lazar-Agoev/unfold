@@ -1,270 +1,377 @@
-//! Typed records from the normalized syntax and the selected blocks (`docs/languages/typescript.md`,
-//! "Typed records"): a signature per function-like block, a parameter per parameter slot, the
-//! written members of type declarations and classes, and a result per call and construction.
-//! Everything is read from what is written; nothing is inferred.
+//! Typed records, read from oxc's tree as the lowering creates each node
+//! (`docs/languages/typescript.md`, "Typed records"): a signature and parameters per function,
+//! and the written members of interfaces, object type literals that are a type alias's whole
+//! aliased type, enums, and classes. Everything is read from what is written; nothing is
+//! inferred.
 //!
-//! It also lists the written types whose names become type links ([`Records::linked`]): the
-//! return and parameter types recorded here, class property types, variable annotations, a type
-//! alias's aliased type, and an interface's body. Binding walks exactly those types for names.
-//!
-//! | Result | When the call, after parentheses, `await`, `!`, `as`, `satisfies`, and `<T>`, is |
-//! | --- | --- |
-//! | `variable` | a variable declaration's initializer (the variable block is the target) |
-//! | `return` | a `return`'s expression, or an arrow function's expression body |
-//! | `argument` | an argument of a call or `new` (the outer block and the argument's index) |
-//! | `discard` | an expression statement's expression |
-//! | `other` | anything else (a receiver, an operand, a spread, an assignment, a `throw`, …) |
+//! It also lists the written types whose names become `types` links ([`Typed::linked`]): the
+//! return and parameter types recorded here, class property types, variable annotations, catch
+//! clause annotations, a type alias's aliased type, and an interface's body. Binding walks
+//! exactly those types for names.
 
-use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_core::Block;
+use oxc_ast::ast::{
+    BindingPattern, ClassElement, FormalParameter, FormalParameters, MethodDefinitionKind, PropertyKey,
+    TSEnumDeclaration, TSEnumMemberName, TSInterfaceDeclaration, TSSignature, TSThisParameter, TSType,
+    TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeParameterDeclaration,
+};
+use oxc_parser::Kind;
+use oxc_span::{GetSpan, Span};
+use rustc_hash::FxHashSet;
 use unfold_core::text::ByteRange;
-use unfold_core::typed::{CallResult, Member, Parameter, Signature, WrittenType};
-use unfold_core::vocab::{BlockKind, ParameterKind, ResultBinding};
+use unfold_core::typed::{Member, Parameter, Signature, WrittenType};
+use unfold_core::vocab::{MemberKind, ParameterKind};
+use unfold_engine::facts::TypeFacts;
 
-use crate::syntax::{Cat, Flags, Label, NONE, Syntax};
+use crate::spans::{Tokens, range};
 
-/// The typed records of one file, and the written types whose names are linked.
-#[derive(Debug, Default)]
-pub(crate) struct Records {
-    /// One per function-like block.
-    pub(crate) signatures: Vec<Signature>,
-    /// One per parameter slot.
-    pub(crate) parameters: Vec<Parameter>,
-    /// The written members of interfaces, type aliases, enums, and classes.
-    pub(crate) members: Vec<Member>,
-    /// One per call and construction block.
-    pub(crate) results: Vec<CallResult>,
-    /// The ranges of the written types whose type names get links: recorded return,
-    /// parameter, and class property types, variable annotations, aliased types, and interface
-    /// bodies.
+/// What a function's typed records are read from.
+pub(crate) struct Callable<'s, 'a> {
+    pub(crate) this: Option<&'s TSThisParameter<'a>>,
+    pub(crate) parameters: &'s FormalParameters<'a>,
+    pub(crate) returns: Option<&'s TSTypeAnnotation<'a>>,
+}
+
+/// One file's typed records, and the written types whose names are linked.
+pub(crate) struct Typed<'s> {
+    source: &'s str,
+    tokens: Tokens<'s>,
+    signatures: Vec<Signature>,
+    parameters: Vec<Parameter>,
+    members: Vec<Member>,
+    /// The ranges of the written types whose type names get links.
     pub(crate) linked: FxHashSet<ByteRange>,
 }
 
-/// The typed records of a file whose syntax selected `blocks` (`block_of` maps a node to its
-/// block's local ID, or [`NONE`]).
-pub(crate) fn records(syntax: &Syntax<'_>, source: &str, block_of: &[u32], blocks: &[Block]) -> Records {
-    let mut records = Records::default();
-    let written = |range: ByteRange| -> Option<WrittenType> {
-        let text = source.get(range.start as usize..range.end as usize)?;
+impl<'s> Typed<'s> {
+    pub(crate) fn new(source: &'s str, tokens: Tokens<'s>) -> Self {
+        Self {
+            source,
+            tokens,
+            signatures: Vec::new(),
+            parameters: Vec::new(),
+            members: Vec::new(),
+            linked: FxHashSet::default(),
+        }
+    }
+
+    /// The finished records.
+    pub(crate) fn finish(self) -> (TypeFacts, FxHashSet<ByteRange>) {
+        let types = TypeFacts::new(self.signatures, self.parameters, self.members);
+        (types, self.linked)
+    }
+
+    fn written(&self, range: ByteRange) -> Option<WrittenType> {
+        let text = self.source.get(range.start as usize..range.end as usize)?;
         (!text.is_empty()).then(|| WrittenType {
             text: text.into(),
             range,
         })
-    };
-    for node in 0..syntax.len() as u32 {
-        let Some(&local) = block_of.get(node as usize).filter(|&&local| local != NONE) else {
-            continue;
+    }
+
+    fn text(&self, range: ByteRange) -> Option<Box<str>> {
+        self.source
+            .get(range.start as usize..range.end as usize)
+            .filter(|text| !text.is_empty())
+            .map(Box::from)
+    }
+
+    /// A written annotation's type (without its colon), linked.
+    fn linked_type(&mut self, annotation: Option<&TSTypeAnnotation<'_>>) -> Option<WrittenType> {
+        let ty = self.written(range(annotation?.type_annotation.span()))?;
+        self.linked.insert(ty.range);
+        Some(ty)
+    }
+
+    /// Links a variable's or catch clause's annotation.
+    pub(crate) fn annotation(&mut self, annotation: Option<&TSTypeAnnotation<'_>>) {
+        self.linked_type(annotation);
+    }
+
+    /// The signature and parameters of function `node`: an explicit `this` first, then each
+    /// written parameter, then a rest parameter.
+    pub(crate) fn function(&mut self, node: u32, callable: &Callable<'_, '_>) {
+        let mut index = 0;
+        if let Some(this) = callable.this {
+            let ty = self.linked_type(this.type_annotation.as_deref());
+            self.parameters.push(Parameter {
+                node,
+                index,
+                range: range(this.span),
+                kind: ParameterKind::This,
+                name: Some("this".into()),
+                optional: false,
+                default: false,
+                ty,
+            });
+            index += 1;
+        }
+        for parameter in &callable.parameters.items {
+            let record = self.parameter(node, index, parameter);
+            self.parameters.push(record);
+            index += 1;
+        }
+        if let Some(rest) = &callable.parameters.rest {
+            let ty = self.linked_type(rest.type_annotation.as_deref());
+            self.parameters.push(Parameter {
+                node,
+                index,
+                range: range(rest.span),
+                kind: ParameterKind::Rest,
+                name: identifier(&rest.rest.argument),
+                optional: false,
+                default: false,
+                ty,
+            });
+        }
+        let returns = self.linked_type(callable.returns);
+        self.signatures.push(Signature { node, returns });
+    }
+
+    fn parameter(&mut self, node: u32, index: u32, parameter: &FormalParameter<'_>) -> Parameter {
+        let (pattern, default) = match &parameter.pattern {
+            BindingPattern::AssignmentPattern(it) => (&it.left, true),
+            pattern => (pattern, parameter.initializer.is_some()),
         };
-        let Some(kind) = blocks.get(local as usize).map(|block| block.kind) else {
-            continue;
-        };
-        match kind {
-            kind if kind.is_function_like() => {
-                records.callable(syntax, node, local, &written);
-            }
-            BlockKind::Call | BlockKind::New => records.results.push(result(syntax, block_of, node, local)),
-            BlockKind::Variable if syntax.cat(node) == Cat::VariableDeclaration => {
-                if let Some(ty) = syntax.child(node, Label::Type) {
-                    records.linked.insert(syntax.range(ty));
-                }
-            }
-            BlockKind::TypeAlias => {
-                if let Some(ty) = syntax.child(node, Label::Type) {
-                    records.linked.insert(syntax.range(ty));
-                }
-            }
-            BlockKind::Interface => {
-                if let Some(body) = syntax.child(node, Label::Body) {
-                    records.linked.insert(syntax.range(body));
-                }
-            }
-            _ => {}
+        let ty = self.linked_type(parameter.type_annotation.as_deref());
+        Parameter {
+            node,
+            index,
+            range: range(parameter.span),
+            kind: ParameterKind::Positional,
+            name: identifier(pattern),
+            optional: parameter.optional,
+            default,
+            ty,
         }
     }
-    records.members(syntax, block_of, blocks, source, &written);
-    records
-}
 
-impl Records {
-    /// The signature and parameters of function-like block `local`, converted from `node`.
-    fn callable(
-        &mut self,
-        syntax: &Syntax<'_>,
-        node: u32,
-        local: u32,
-        written: &impl Fn(ByteRange) -> Option<WrittenType>,
-    ) {
-        let mut returns = None;
-        let mut index = 0;
-        for child in syntax.children(node) {
-            let found = syntax.node(child);
-            match found.label {
-                Label::Type => returns = written(found.range),
-                Label::Parameters => {
-                    let parameter = parameter(syntax, child, local, index, written);
-                    if let Some(ty) = &parameter.ty {
-                        self.linked.insert(ty.range);
+    /// The members of interface `node`, whose body is linked.
+    pub(crate) fn interface(&mut self, node: u32, it: &TSInterfaceDeclaration<'_>) {
+        self.linked.insert(range(it.body.span));
+        for member in &it.body.body {
+            self.signature_member(node, member);
+        }
+    }
+
+    /// The members of type alias `node` (those of an object type literal that is its whole
+    /// aliased type), whose aliased type is linked.
+    pub(crate) fn type_alias(&mut self, node: u32, it: &TSTypeAliasDeclaration<'_>) {
+        self.linked.insert(range(it.type_annotation.span()));
+        if let TSType::TSTypeLiteral(literal) = &it.type_annotation {
+            for member in &literal.members {
+                self.signature_member(node, member);
+            }
+        }
+    }
+
+    /// The `value` members of enum `node`.
+    pub(crate) fn enumeration(&mut self, node: u32, it: &TSEnumDeclaration<'_>) {
+        for member in &it.body.members {
+            let name = match &member.id {
+                TSEnumMemberName::ComputedString(_) | TSEnumMemberName::ComputedTemplateString(_) => {
+                    self.bracketed(member.id.span())
+                }
+                _ => range(member.id.span()),
+            };
+            let value = member
+                .initializer
+                .as_ref()
+                .and_then(|initializer| self.text(range(initializer.span())));
+            self.member(node, MemberKind::Value, Some(name), |member| member.value = value);
+        }
+    }
+
+    /// The instance properties of class `node`, its fields' types linked: its fields and
+    /// `accessor` properties, and the parameter properties of its constructor, in written
+    /// order.
+    pub(crate) fn class(&mut self, node: u32, elements: &[ClassElement<'_>]) {
+        for element in elements {
+            match element {
+                ClassElement::PropertyDefinition(it) if !it.r#static => {
+                    let name = self.key_range(&it.key, it.computed);
+                    let ty = self.linked_type(it.type_annotation.as_deref());
+                    self.member(node, MemberKind::Property, Some(name), |member| {
+                        member.optional = it.optional;
+                        member.readonly = it.readonly;
+                        member.default = it.value.is_some();
+                        member.ty = ty;
+                    });
+                }
+                ClassElement::AccessorProperty(it) if !it.r#static => {
+                    let name = self.key_range(&it.key, it.computed);
+                    let ty = self.linked_type(it.type_annotation.as_deref());
+                    self.member(node, MemberKind::Property, Some(name), |member| {
+                        member.default = it.value.is_some();
+                        member.ty = ty;
+                    });
+                }
+                ClassElement::MethodDefinition(it)
+                    if it.kind == MethodDefinitionKind::Constructor && it.value.body.is_some() =>
+                {
+                    for parameter in it.value.params.items.iter().filter(|parameter| {
+                        parameter.accessibility.is_some() || parameter.readonly || parameter.r#override
+                    }) {
+                        self.parameter_property(node, parameter);
                     }
-                    self.parameters.push(parameter);
-                    index += 1;
                 }
                 _ => {}
             }
         }
-        if let Some(returns) = &returns {
-            self.linked.insert(returns.range);
-        }
-        self.signatures.push(Signature {
-            block: local,
-            returns,
+    }
+
+    fn parameter_property(&mut self, node: u32, parameter: &FormalParameter<'_>) {
+        let (pattern, default) = match &parameter.pattern {
+            BindingPattern::AssignmentPattern(it) => (&it.left, true),
+            pattern => (pattern, parameter.initializer.is_some()),
+        };
+        let BindingPattern::BindingIdentifier(id) = pattern else {
+            return;
+        };
+        let ty = self.linked_type(parameter.type_annotation.as_deref());
+        self.member(node, MemberKind::Property, Some(range(id.span)), |member| {
+            member.optional = parameter.optional;
+            member.readonly = parameter.readonly;
+            member.default = default;
+            member.ty = ty;
         });
     }
 
-    /// The members of every selected type declaration and class, indexed per block in source
-    /// order. A class's property types are linked.
-    fn members(
+    /// Records one member of an interface or object type literal of `node`.
+    fn signature_member(&mut self, node: u32, member: &TSSignature<'_>) {
+        match member {
+            TSSignature::TSPropertySignature(it) => {
+                let name = self.key_range(&it.key, it.computed);
+                let ty = it
+                    .type_annotation
+                    .as_ref()
+                    .and_then(|annotation| self.written(range(annotation.type_annotation.span())));
+                self.member(node, MemberKind::Property, Some(name), |member| {
+                    member.optional = it.optional;
+                    member.readonly = it.readonly;
+                    member.ty = ty;
+                });
+            }
+            TSSignature::TSMethodSignature(it) => {
+                let name = self.key_range(&it.key, it.computed);
+                let ty = self.written(signature_range(
+                    it.type_parameters.as_deref(),
+                    &it.params,
+                    it.return_type.as_deref(),
+                ));
+                self.member(node, MemberKind::Method, Some(name), |member| {
+                    member.optional = it.optional;
+                    member.ty = ty;
+                });
+            }
+            TSSignature::TSIndexSignature(it) => {
+                let parameter = it.parameter.span;
+                let start = self
+                    .tokens
+                    .before(parameter.start)
+                    .filter(|token| token.kind() == Kind::LBrack)
+                    .map_or(parameter.start, |token| token.start());
+                let end = self
+                    .tokens
+                    .find(parameter.end, Kind::RBrack)
+                    .map_or(parameter.end, |token| token.end());
+                let ty = self.written(range(it.type_annotation.type_annotation.span()));
+                let name = ByteRange { start, end };
+                self.member(node, MemberKind::Index, Some(name), |member| {
+                    member.readonly = it.readonly;
+                    member.ty = ty;
+                });
+            }
+            TSSignature::TSCallSignatureDeclaration(it) => {
+                let ty = self.written(signature_range(
+                    it.type_parameters.as_deref(),
+                    &it.params,
+                    it.return_type.as_deref(),
+                ));
+                self.member(node, MemberKind::Call, None, |member| member.ty = ty);
+            }
+            TSSignature::TSConstructSignatureDeclaration(it) => {
+                let ty = self.written(signature_range(
+                    it.type_parameters.as_deref(),
+                    &it.params,
+                    it.return_type.as_deref(),
+                ));
+                self.member(node, MemberKind::Construct, None, |member| member.ty = ty);
+            }
+        }
+    }
+
+    /// Records a member of `node` named at `name`, filled by `fill`, at the next index.
+    fn member(
         &mut self,
-        syntax: &Syntax<'_>,
-        block_of: &[u32],
-        blocks: &[Block],
-        source: &str,
-        written: &impl Fn(ByteRange) -> Option<WrittenType>,
+        node: u32,
+        kind: MemberKind,
+        name: Option<ByteRange>,
+        fill: impl FnOnce(&mut Member),
     ) {
-        let text = |range: ByteRange| -> Option<Box<str>> {
-            source
-                .get(range.start as usize..range.end as usize)
-                .filter(|text| !text.is_empty())
-                .map(Box::from)
+        let index = self
+            .members
+            .iter()
+            .rev()
+            .take_while(|member| member.node == node)
+            .count() as u32;
+        let mut member = Member {
+            node,
+            index,
+            kind,
+            name: name.and_then(|name| self.text(name)),
+            optional: false,
+            readonly: false,
+            default: false,
+            ty: None,
+            value: None,
         };
-        let mut next: FxHashMap<u32, u32> = FxHashMap::default();
-        for draft in syntax.members() {
-            let Some(&block) = block_of.get(draft.owner as usize).filter(|&&block| block != NONE) else {
-                continue;
-            };
-            let Some(kind) = blocks.get(block as usize).map(|found| found.kind) else {
-                continue;
-            };
-            if !kind.is_type_declaration() {
-                continue;
-            }
-            let ty = draft.ty.and_then(written);
-            if kind == BlockKind::Class
-                && let Some(ty) = &ty
-            {
-                self.linked.insert(ty.range);
-            }
-            let index = next.entry(block).or_insert(0);
-            self.members.push(Member {
-                block,
-                index: *index,
-                kind: draft.kind,
-                name: draft.name.and_then(text),
-                optional: draft.optional,
-                readonly: draft.readonly,
-                default: draft.default,
-                ty,
-                value: draft.value.and_then(text),
-            });
-            *index += 1;
+        fill(&mut member);
+        self.members.push(member);
+    }
+
+    /// The written range of a member or property name: a computed name with its brackets.
+    fn key_range(&self, key: &PropertyKey<'_>, computed: bool) -> ByteRange {
+        if computed {
+            self.bracketed(key.span())
+        } else {
+            range(key.span())
         }
+    }
+
+    /// `inner` widened to the brackets around it (a computed name).
+    fn bracketed(&self, inner: Span) -> ByteRange {
+        let start = self
+            .tokens
+            .before(inner.start)
+            .filter(|token| token.kind() == Kind::LBrack)
+            .map_or(inner.start, |token| token.start());
+        let end = self
+            .tokens
+            .find(inner.end, Kind::RBrack)
+            .map_or(inner.end, |token| token.end());
+        ByteRange { start, end }
     }
 }
 
-/// Parameter `index` of function-like block `local`, from its parameter node.
-fn parameter(
-    syntax: &Syntax<'_>,
-    node: u32,
-    local: u32,
-    index: u32,
-    written: &impl Fn(ByteRange) -> Option<WrittenType>,
-) -> Parameter {
-    let found = syntax.node(node);
-    let name = syntax
-        .child(node, Label::Name)
-        .filter(|&name| syntax.cat(name) == Cat::Identifier)
-        .map(|name| syntax.node(name).text);
-    let rest = found.flags.has(Flags::REST);
-    // `this` is a reserved word, so only an explicit `this` parameter is spelled that way.
-    let kind = if rest {
-        ParameterKind::Rest
-    } else if index == 0 && name == Some("this") {
-        ParameterKind::This
-    } else {
-        ParameterKind::Positional
-    };
-    Parameter {
-        block: local,
-        index,
-        kind,
-        name: name.filter(|name| !name.is_empty()).map(Box::from),
-        optional: found.flags.has(Flags::OPTIONAL) && !rest,
-        default: syntax.child(node, Label::Initializer).is_some(),
-        ty: syntax
-            .child(node, Label::Type)
-            .and_then(|ty| written(syntax.range(ty))),
+/// The identifier a binding pattern is, if it is one.
+fn identifier(pattern: &BindingPattern<'_>) -> Option<Box<str>> {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().into()),
+        _ => None,
     }
 }
 
-/// Where the value of call or construction `node` (block `local`) lands.
-fn result(syntax: &Syntax<'_>, block_of: &[u32], node: u32, local: u32) -> CallResult {
-    let mut current = node;
-    let mut awaited = false;
-    loop {
-        let found = syntax.node(current);
-        if found.parent == NONE || found.label != Label::Expression {
-            break;
-        }
-        let parent = syntax.cat(found.parent);
-        if !parent.is_transparent() && parent != Cat::Await {
-            break;
-        }
-        awaited |= parent == Cat::Await;
-        current = found.parent;
+/// A signature's text after its name: from its type parameters (or its parameter list) through
+/// its return type (or its parameter list).
+fn signature_range(
+    type_parameters: Option<&TSTypeParameterDeclaration<'_>>,
+    parameters: &FormalParameters<'_>,
+    returns: Option<&TSTypeAnnotation<'_>>,
+) -> ByteRange {
+    let start = type_parameters.map_or(parameters.span.start, |parameters| parameters.span.start);
+    let end = returns.map_or(parameters.span.end, |returns| returns.type_annotation.span().end);
+    ByteRange {
+        start: start.min(end),
+        end,
     }
-    let found = syntax.node(current);
-    let block = |node: u32| {
-        block_of
-            .get(node as usize)
-            .copied()
-            .filter(|&block| block != NONE)
-    };
-    let mut result = CallResult {
-        call: local,
-        binding: ResultBinding::Other,
-        awaited,
-        target: None,
-        position: None,
-        // Set at link time, when the call's target is known.
-        bound: None,
-    };
-    if found.parent == NONE {
-        return result;
-    }
-    match (syntax.cat(found.parent), found.label) {
-        (Cat::VariableDeclaration, Label::Initializer) => {
-            if let Some(variable) = block(found.parent) {
-                result.binding = ResultBinding::Variable;
-                result.target = Some(variable);
-            }
-        }
-        // An arrow function's expression body is its returned value; a block body is a node of
-        // its own.
-        (Cat::Return, Label::Expression) | (Cat::ArrowFunction, Label::Body) => {
-            result.binding = ResultBinding::Return;
-        }
-        (Cat::Call | Cat::New, Label::Arguments) => {
-            let position = syntax
-                .children(found.parent)
-                .filter(|&child| syntax.node(child).label == Label::Arguments)
-                .position(|child| child == current);
-            if let (Some(outer), Some(position)) = (block(found.parent), position) {
-                result.binding = ResultBinding::Argument;
-                result.target = Some(outer);
-                result.position = Some(position as u32);
-            }
-        }
-        (Cat::ExpressionStatement, Label::Expression) => result.binding = ResultBinding::Discard,
-        _ => {}
-    }
-    result
 }

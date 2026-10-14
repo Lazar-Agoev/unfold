@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/fastapi.route/annotation-apirouter-subclass.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

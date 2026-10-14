@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/apscheduler.job/configuration-2.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

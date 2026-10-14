@@ -1,0 +1,5 @@
+field-overrides.ts#Base.run/call:this.m #0 calls `this.m` → unknown overridden
+field-overrides.ts#Field #0 extends `Base` → project field-overrides.ts#Base
+field-overrides.ts#Other.run/call:this.n #0 calls `this.n` → unknown overridden
+field-overrides.ts#Parameter #0 extends `Other` → project field-overrides.ts#Other
+field-overrides.ts#Parameter.constructor/call:super #0 calls `super` → project field-overrides.ts#Other

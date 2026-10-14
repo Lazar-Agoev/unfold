@@ -243,7 +243,8 @@ vocabulary! {
         Passes = "passes",
         /// A class or type extends (or, flagged, implements) a class or type.
         Extends = "extends",
-        /// A module, function, or dynamic-import call imports a module.
+        /// A module, class, function, or dynamic-import call imports a module: an import statement
+        /// links from the definition it is written in.
         Imports = "imports",
         /// A definition or an `except` part names a class or type in an annotation or clause.
         Types = "types",

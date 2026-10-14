@@ -1,0 +1,257 @@
+a.ts# module
+a.ts#run function async
+  range `async function run(this: Window, a = first()) {⏎    "use strict";⏎    outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }⏎    for (var key in object()) use(key);⏎    for await (const item of items()) use(item);⏎    for (target of targets) handle();⏎    while (condition()) body();⏎    do body(); while (condition());⏎    switch (input()) { case match(): use(); break; default: fallback(); }⏎    switch (empty) {}⏎    try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }⏎    try { action(); } catch { recover(); }⏎    if (a) b(); else if (c) d(); else e();⏎    if (x);⏎    return⏎    finish()⏎}`
+  head `async function run(this: Window, a = first())`
+  body `{⏎    "use strict";⏎    outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }⏎    for (var key in object()) use(key);⏎    for await (const item of items()) use(item);⏎    for (target of targets) handle();⏎    while (condition()) body();⏎    do body(); while (condition());⏎    switch (input()) { case match(): use(); break; default: fallback(); }⏎    switch (empty) {}⏎    try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }⏎    try { action(); } catch { recover(); }⏎    if (a) b(); else if (c) d(); else e();⏎    if (x);⏎    return⏎    finish()⏎}`
+  stmt `async function run(this: Window, a = first()) {⏎    "use strict";⏎    outer: for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }⏎    for (var key in object()) use(key);⏎    for await (const item of items()) use(item);⏎    for (target of targets) handle();⏎    while (condition()) body();⏎    do body(); while (condition());⏎    switch (input()) { case match(): use(); break; default: fallback(); }⏎    switch (empty) {}⏎    try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }⏎    try { action(); } catch { recover(); }⏎    if (a) b(); else if (c) d(); else e();⏎    if (x);⏎    return⏎    finish()⏎}`
+  name `run`
+a.ts#run/call:first call
+  range `first()`
+  head `first`
+  name `first`
+  role default
+a.ts#run/for[0] for
+  range `for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }`
+  head `for (let index = initial(); condition(); update())`
+  stmt `for (let index = initial(); condition(); update()) { if (stop()) break outer; continue; }`
+a.ts#run/for[0]/call:initial call
+  range `initial()`
+  head `initial`
+  name `initial`
+  binds `index`
+a.ts#run/for[0]/call:condition call
+  range `condition()`
+  head `condition`
+  name `condition`
+a.ts#run/for[0]/call:update call
+  range `update()`
+  head `update`
+  name `update`
+a.ts#run/for[0]/body body
+  range `{ if (stop()) break outer; continue; }`
+  body `{ if (stop()) break outer; continue; }`
+a.ts#run/for[0]/body/if[0] if
+  range `if (stop()) break outer;`
+  stmt `if (stop()) break outer;`
+a.ts#run/for[0]/body/if[0]/then then
+  range `if (stop()) break outer;`
+  head `stop()`
+  body `break outer;`
+a.ts#run/for[0]/body/if[0]/then/call:stop call
+  range `stop()`
+  head `stop`
+  name `stop`
+  role test
+a.ts#run/for[0]/body/if[0]/then/break[0] break
+  range `break outer;`
+  stmt `break outer;`
+  target a.ts#run/for[0]
+a.ts#run/for[0]/body/continue[0] continue
+  range `continue;`
+  stmt `continue;`
+  target a.ts#run/for[0]
+a.ts#run/for[1] for
+  range `for (var key in object()) use(key);`
+  head `for (var key in object())`
+  stmt `for (var key in object()) use(key);`
+a.ts#run/for[1]/call:object call
+  range `object()`
+  head `object`
+  name `object`
+a.ts#run/for[1]/body body
+  range `use(key);`
+  body `use(key);`
+a.ts#run/for[1]/body/call:use call
+  range `use(key)`
+  head `use`
+  stmt `use(key);`
+  name `use`
+a.ts#run/for[2] for
+  range `for await (const item of items()) use(item);`
+  head `for await (const item of items())`
+  stmt `for await (const item of items()) use(item);`
+a.ts#run/for[2]/call:items call
+  range `items()`
+  head `items`
+  name `items`
+a.ts#run/for[2]/body body
+  range `use(item);`
+  body `use(item);`
+a.ts#run/for[2]/body/call:use call
+  range `use(item)`
+  head `use`
+  stmt `use(item);`
+  name `use`
+a.ts#run/for[3] for
+  range `for (target of targets) handle();`
+  head `for (target of targets)`
+  stmt `for (target of targets) handle();`
+a.ts#run/for[3]/body body
+  range `handle();`
+  body `handle();`
+a.ts#run/for[3]/body/call:handle call
+  range `handle()`
+  head `handle`
+  stmt `handle();`
+  name `handle`
+a.ts#run/while[0] while
+  range `while (condition()) body();`
+  head `while (condition())`
+  stmt `while (condition()) body();`
+a.ts#run/while[0]/call:condition call
+  range `condition()`
+  head `condition`
+  name `condition`
+a.ts#run/while[0]/body body
+  range `body();`
+  body `body();`
+a.ts#run/while[0]/body/call:body call
+  range `body()`
+  head `body`
+  stmt `body();`
+  name `body`
+a.ts#run/do[0] do
+  range `do body(); while (condition());`
+  head `while (condition())`
+  stmt `do body(); while (condition());`
+a.ts#run/do[0]/body body
+  range `body();`
+  body `body();`
+a.ts#run/do[0]/body/call:body call
+  range `body()`
+  head `body`
+  stmt `body();`
+  name `body`
+a.ts#run/do[0]/call:condition call
+  range `condition()`
+  head `condition`
+  name `condition`
+a.ts#run/switch[0] switch
+  range `switch (input()) { case match(): use(); break; default: fallback(); }`
+  head `switch (input())`
+  stmt `switch (input()) { case match(): use(); break; default: fallback(); }`
+a.ts#run/switch[0]/call:input call
+  range `input()`
+  head `input`
+  name `input`
+a.ts#run/switch[0]/case[0] case
+  range `case match(): use(); break;`
+  head `match()`
+  body `use(); break;`
+a.ts#run/switch[0]/case[0]/call:match call
+  range `match()`
+  head `match`
+  name `match`
+  role test
+a.ts#run/switch[0]/case[0]/call:use call
+  range `use()`
+  head `use`
+  stmt `use();`
+  name `use`
+a.ts#run/switch[0]/default default
+  range `default: fallback();`
+  body `fallback();`
+a.ts#run/switch[0]/default/call:fallback call
+  range `fallback()`
+  head `fallback`
+  stmt `fallback();`
+  name `fallback`
+a.ts#run/switch[1] switch
+  range `switch (empty) {}`
+  head `switch (empty)`
+  stmt `switch (empty) {}`
+a.ts#run/try[0] try
+  range `try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }`
+  stmt `try { throw failure(); } catch (error: unknown) { recover(error); } finally { cleanup(); }`
+a.ts#run/try[0]/body body
+  range `{ throw failure(); }`
+  body `{ throw failure(); }`
+a.ts#run/try[0]/body/throw[0] throw
+  range `throw failure();`
+  stmt `throw failure();`
+  value `failure()`
+a.ts#run/try[0]/body/throw[0]/call:failure call exit_value
+  range `failure()`
+  head `failure`
+  name `failure`
+a.ts#run/try[0]/catch catch
+  range `catch (error: unknown) { recover(error); }`
+  head `catch (error: unknown)`
+  body `{ recover(error); }`
+a.ts#run/try[0]/catch/call:recover call
+  range `recover(error)`
+  head `recover`
+  stmt `recover(error);`
+  name `recover`
+a.ts#run/try[0]/finally finally
+  range `finally { cleanup(); }`
+  body `{ cleanup(); }`
+a.ts#run/try[0]/finally/call:cleanup call
+  range `cleanup()`
+  head `cleanup`
+  stmt `cleanup();`
+  name `cleanup`
+a.ts#run/try[1] try
+  range `try { action(); } catch { recover(); }`
+  stmt `try { action(); } catch { recover(); }`
+a.ts#run/try[1]/body body
+  range `{ action(); }`
+  body `{ action(); }`
+a.ts#run/try[1]/body/call:action call
+  range `action()`
+  head `action`
+  stmt `action();`
+  name `action`
+a.ts#run/try[1]/catch catch
+  range `catch { recover(); }`
+  head `catch`
+  body `{ recover(); }`
+a.ts#run/try[1]/catch/call:recover call
+  range `recover()`
+  head `recover`
+  stmt `recover();`
+  name `recover`
+a.ts#run/if[0] if
+  range `if (a) b(); else if (c) d(); else e();`
+  stmt `if (a) b(); else if (c) d(); else e();`
+a.ts#run/if[0]/then then
+  range `if (a) b();`
+  head `a`
+  body `b();`
+a.ts#run/if[0]/then/call:b call
+  range `b()`
+  head `b`
+  stmt `b();`
+  name `b`
+a.ts#run/if[0]/elif[0] elif
+  range `else if (c) d();`
+  head `c`
+  body `d();`
+a.ts#run/if[0]/elif[0]/call:d call
+  range `d()`
+  head `d`
+  stmt `d();`
+  name `d`
+a.ts#run/if[0]/else else
+  range `else e();`
+  body `e();`
+a.ts#run/if[0]/else/call:e call
+  range `e()`
+  head `e`
+  stmt `e();`
+  name `e`
+a.ts#run/if[1] if
+  range `if (x);`
+  stmt `if (x);`
+a.ts#run/if[1]/then then
+  range `if (x);`
+  head `x`
+  body `;`
+a.ts#run/return[0] return
+  range `return`
+  stmt `return`
+a.ts#run/call:finish call
+  range `finish()`
+  head `finish`
+  stmt `finish()`
+  name `finish`

@@ -1,0 +1,3 @@
+base.ts#Base.run/call:this.m #0 calls `this.m` → unknown overridden
+child.ts# #0 imports `./base.js` → project base.ts#
+child.ts#Child #0 extends `Base` → project base.ts#Base

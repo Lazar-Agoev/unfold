@@ -1,8 +1,9 @@
-//! Module resolution through import edges: relative paths and extension rules, packages and
+//! Module resolution through `imports` links: relative paths and extension rules, packages and
 //! Node built-ins, `paths` and `baseUrl`, in-repository packages and their `exports`, and the
 //! choice between `not_found`, `not_indexed`, and a path label.
 
-use unfold_core::vocab::{Reason, Resolution};
+use unfold_core::vocab::{Outcome, Reason};
+use unfold_core::{LinkTarget, ModuleLabel};
 
 use crate::support::Project;
 
@@ -11,11 +12,10 @@ const MODULE: &str = r#"{"type": "module"}"#;
 #[track_caller]
 fn assert_resolved(project: &Project, path: &str, text: &str, target: &str) {
     let compiled = project.compile();
-    let edge = compiled.import(path, text);
-    assert_eq!(edge.resolution, Resolution::Resolved, "{text}: {edge:?}");
+    let link = compiled.import(path, text);
     assert_eq!(
-        edge.target.as_ref().map(|key| key.as_str()),
-        Some(format!("{target}#").as_str()),
+        link.to,
+        LinkTarget::Project(unfold_core::Key::from_text(&format!("{target}#"))),
         "{text}"
     );
 }
@@ -23,22 +23,17 @@ fn assert_resolved(project: &Project, path: &str, text: &str, target: &str) {
 #[track_caller]
 fn assert_unresolved(project: &Project, path: &str, text: &str, reason: Reason) {
     let compiled = project.compile();
-    let edge = compiled.import(path, text);
-    assert_eq!(
-        (edge.resolution, edge.reason),
-        (Resolution::Unresolved, Some(reason)),
-        "{text}: {edge:?}"
-    );
+    let link = compiled.import(path, text);
+    assert_eq!(link.to, LinkTarget::Unknown(reason), "{text}");
 }
 
 #[track_caller]
 fn assert_external(project: &Project, path: &str, text: &str, module: &str) {
     let compiled = project.compile();
-    let edge = compiled.import(path, text);
-    assert_eq!(edge.resolution, Resolution::External, "{text}: {edge:?}");
+    let link = compiled.import(path, text);
     assert_eq!(
-        edge.module.as_ref().map(|module| module.as_str()),
-        Some(module),
+        link.to,
+        LinkTarget::Library(ModuleLabel::single(module).expect("a label")),
         "{text}"
     );
 }
@@ -85,17 +80,17 @@ fn import_kinds_pick_the_resolution_mode() {
     let compiled = project.compile();
     let dynamic: Vec<_> = compiled
         .file("a.ts")
-        .edges
+        .links
         .iter()
-        .filter(|edge| &*edge.text == "./b" || &*edge.text == "./b.js")
-        .map(|edge| (edge.text.to_string(), edge.resolution, edge.reason))
+        .filter(|link| &*link.text == "./b" || &*link.text == "./b.js")
+        .map(|link| (link.text.to_string(), link.to.outcome()))
         .collect();
     assert_eq!(
         dynamic,
         [
-            ("./b".to_owned(), Resolution::Resolved, None),
-            ("./b".to_owned(), Resolution::Unresolved, Some(Reason::NotFound)),
-            ("./b.js".to_owned(), Resolution::Resolved, None),
+            ("./b".to_owned(), Outcome::Project),
+            ("./b".to_owned(), Outcome::Unknown),
+            ("./b.js".to_owned(), Outcome::Project),
         ]
     );
     // A `.cts` file is CommonJS whatever the package says.
@@ -119,7 +114,7 @@ fn missing_unindexed_and_failed_targets_are_told_apart() {
     // A source the scope excludes, or a declaration file, is labeled with its path.
     assert_external(&project, "a.ts", "./excluded", "excluded.ts");
     assert_external(&project, "a.ts", "./types", "types.d.ts");
-    // A file that never parsed has no blocks to import.
+    // A file that never parsed has no nodes to import.
     assert_unresolved(&project, "a.ts", "./broken", Reason::NotIndexed);
     assert_unresolved(&project, "a.ts", "./gone/x", Reason::NotFound);
     assert_unresolved(&project, "a.ts", "/abs/x", Reason::NotFound);

@@ -1,1 +1,0 @@
-# [detectors] disabled = ["bullmq.worker"]: no workers.

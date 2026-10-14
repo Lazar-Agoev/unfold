@@ -1,7 +1,0 @@
-# Expected entrances for testdata/detectors/fastapi.route/annotation-apirouter. Format: testdata/README.md.
-# A APIRouter annotation proves a route while no indexed subclass exists (PoC: "Indexed framework subclasses...").
-entrance	fastapi.route	http	GET	/annotated	partial	src/app.py:5
-	target	handler	resolved	src/app.py#function:endpoint	endpoint
-entrance	fastapi.route	http	GET	/concrete	exact	src/app.py:7
-	binding	src/app.py#variable:app
-	target	handler	resolved	src/app.py#function:endpoint	endpoint

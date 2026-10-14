@@ -1,5 +1,0 @@
-override.ts#class:Base/method:run/expression_statement[0]/call[0] #0 calls `this.m` -> overridden
-override.ts#class:Mid/method:again/expression_statement[0]/call[0] #0 calls `this.m` -> overridden
-override.ts#class:Mid/method:again/expression_statement[1]/call[0] #0 calls `super.m` -> override.ts#class:Base/method:m
-override.ts#class:Leaf/method:runLeaf/expression_statement[0]/call[0] #0 calls `this.m` -> override.ts#class:Leaf/method:m
-override.ts#class:Leaf/method:runLeaf/expression_statement[1]/call[0] #0 calls `super.m` -> override.ts#class:Base/method:m

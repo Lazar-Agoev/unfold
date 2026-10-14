@@ -1,2 +1,0 @@
-super-context.ts#class:Child/method:run/variable:arrow/function:arrow/call[0] #0 calls `super.m` -> super-context.ts#class:Base/method:m
-super-context.ts#class:Child/method:run/function:nested/expression_statement[0]/call[0] #0 calls `super.m` -> unknown_receiver

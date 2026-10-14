@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/binding-refusals.
-
-[[python.project]]
-root = "."
-source_roots = ["src", "legacy"]

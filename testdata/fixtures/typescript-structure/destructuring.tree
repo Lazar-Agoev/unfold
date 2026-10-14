@@ -1,0 +1,70 @@
+a.ts# module
+a.ts#/call:f call
+  range `f()`
+  head `f`
+  stmt `const { a = f(), b: c, [k()]: d, nested: { value = g() }, ...rest } = source();`
+  name `f`
+a.ts#/call:k call
+  range `k()`
+  head `k`
+  name `k`
+a.ts#/call:g call
+  range `g()`
+  head `g`
+  name `g`
+a.ts#/call:source call
+  range `source()`
+  head `source`
+  name `source`
+  binds `{ a = f(), b: c, [k()]: d, nested: { value = g() }, ...rest }`
+a.ts#/call:h call
+  range `h()`
+  head `h`
+  stmt `const [first = h(), , [inner], ...tail] = values();`
+  name `h`
+a.ts#/call:values call
+  range `values()`
+  head `values`
+  name `values`
+  binds `[first = h(), , [inner], ...tail]`
+a.ts#parameters function
+  range `function parameters({ parameter = p() } = {}, [item = q()] = []) {}`
+  head `function parameters({ parameter = p() } = {}, [item = q()] = [])`
+  body `{}`
+  stmt `function parameters({ parameter = p() } = {}, [item = q()] = []) {}`
+  name `parameters`
+a.ts#parameters/call:p call
+  range `p()`
+  head `p`
+  name `p`
+  role default
+a.ts#parameters/call:q call
+  range `q()`
+  head `q`
+  name `q`
+  role default
+a.ts#/try[0] try
+  range `try {} catch ({ message = fallback() }) {}`
+  stmt `try {} catch ({ message = fallback() }) {}`
+a.ts#/try[0]/body body
+  range `{}`
+  body `{}`
+a.ts#/try[0]/catch catch
+  range `catch ({ message = fallback() }) {}`
+  head `catch ({ message = fallback() })`
+  body `{}`
+a.ts#/try[0]/catch/call:fallback call
+  range `fallback()`
+  head `fallback`
+  name `fallback`
+a.ts#/for[0] for
+  range `for (const { entry = initialize() } of entries) {}`
+  head `for (const { entry = initialize() } of entries)`
+  stmt `for (const { entry = initialize() } of entries) {}`
+a.ts#/for[0]/call:initialize call
+  range `initialize()`
+  head `initialize`
+  name `initialize`
+a.ts#/for[0]/body body
+  range `{}`
+  body `{}`

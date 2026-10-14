@@ -1,2 +1,0 @@
-use.ts#function:call/expression_statement[0]/call[0] #0 calls `client.send` -> not_indexed
-use.ts#function:call/expression_statement[1]/call[0] #0 calls `process.cwd` -> external node

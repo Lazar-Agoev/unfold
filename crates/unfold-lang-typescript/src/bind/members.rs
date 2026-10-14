@@ -14,9 +14,9 @@ use super::forms::{key_name, literal_name, private_name};
 use super::ir::unwrap;
 use super::scope::ScopeKind;
 use super::{AliasDraft, Binder, Frame, ModuleKey};
-use crate::build::range;
 use crate::module_syntax;
 use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Meanings, MemberWrite, ObjectFacts};
+use crate::spans::range;
 
 impl<'a> Binder<'a> {
     // --- Classes --------------------------------------------------------------------------

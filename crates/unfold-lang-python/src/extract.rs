@@ -1,27 +1,26 @@
-//! Extraction of one Python file: parse, the pre-pass ([`crate::analysis`]), block selection
-//! through the engine's shared selector, the value table and occurrences, the typed facts
-//! ([`crate::typed`]), and the payload.
+//! Extraction of one Python file: parse, the pre-pass ([`crate::analysis`]), lowering to nodes
+//! ([`crate::lower`]), the value table and call facts ([`crate::values`]), the binder pass
+//! ([`crate::bind`]), the written type names, and the payload.
 
-use ruff_python_ast::{Expr, Stmt};
-use ruff_text_size::TextRange;
+use ruff_python_ast::Expr;
 use rustc_hash::FxHashMap;
 use unfold_core::Snapshot;
+use unfold_core::text::ByteRange;
+use unfold_core::vocab::{Form, NodeKind};
 use unfold_engine::SourceFailure;
-use unfold_engine::facts::{FileFacts, GraphFacts, ImportFact, TypeFacts};
-use unfold_engine::select;
+use unfold_engine::facts::{CallFact, FileFacts, GraphFacts, TypeFacts, TypeRefFact, TypeUse};
 use unfold_engine::settings::PythonVersion;
 
 use crate::analysis::{self, Analysis};
-use crate::bind::ir::BindFacts;
-use crate::bind::{self, alias_address};
+use crate::ast::bytes;
+use crate::bind::ir::{BindFacts, ExprId};
+use crate::bind::{self, TypeName, TypeSite, alias_address};
 use crate::census;
-use crate::mapping::bytes;
+use crate::lower::{self, Lowered, Truncated, address};
 use crate::parse::{self, Module, failure};
 use crate::payload::{CensusData, ImportSyntax, PAYLOAD_VERSION, Payload};
-use crate::syntax::{Node, Syntax};
 use crate::tokens::Tokens;
-use crate::typed::Typed;
-use crate::values::{Values, address};
+use crate::values::Values;
 
 /// Parses `file` with grammar `version` and extracts its facts. Never panics: every problem is
 /// a [`SourceFailure`].
@@ -31,7 +30,8 @@ pub fn extract(file: &Snapshot, version: PythonVersion) -> Result<FileFacts, Sou
     let module = parse::parse_module(text, version)
         .ok_or_else(|| failure("the parser did not produce a module", None))?;
     let syntax_error = parse::syntax_error(&module);
-    let analysis = analysis::analyze(module.syntax(), version >= PythonVersion::V3_14);
+    let tokens = Tokens::new(module.tokens());
+    let analysis = analysis::analyze(module.syntax(), tokens, version >= PythonVersion::V3_14);
     let result = match (syntax_error, &analysis.failure) {
         (Some(problem), _) => Err(problem),
         (None, Some(problem)) => Err(problem.clone()),
@@ -44,182 +44,146 @@ pub fn extract(file: &Snapshot, version: PythonVersion) -> Result<FileFacts, Sou
 /// The facts of a file that parsed and passed the pre-pass.
 fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFacts, SourceFailure> {
     let text = file.text();
-    let syntax = Syntax {
-        text,
-        module: module.syntax(),
-        tokens: Tokens::new(module.tokens()),
-        proofs: &analysis.proofs,
-    };
-    let lines = file.line_index();
-    let mut occurrences: Vec<(Node<'_>, u32)> = Vec::new();
-    let mut blocks: FxHashMap<usize, u32> = FxHashMap::default();
-    let mut typed = Typed::new(&syntax);
-    let selection = select::walk(&syntax, file.path(), &lines, Node::Module, |node, local| {
-        typed.selected(node, local);
-        match node {
-            Node::Stmt(stmt @ (Stmt::FunctionDef(_) | Stmt::ClassDef(_))) => {
-                blocks.insert(std::ptr::from_ref(stmt) as usize, local);
-            }
-            Node::Expr(expr @ Expr::Lambda(_), _) => {
-                blocks.insert(address(expr), local);
-                occurrences.push((node, local));
-            }
-            Node::Expr(Expr::Call(_), _)
-            | Node::Alias(_)
-            | Node::Child(_)
-            | Node::Stmt(Stmt::ImportFrom(_)) => {
-                occurrences.push((node, local));
-            }
-            _ => {}
-        }
-    })
-    .map_err(|error| failure(format!("cannot select blocks: {error}"), None))?;
-
-    let mut values = Values::new(&syntax, &blocks);
-    let mut calls = Vec::new();
-    // Each call block's call, by address, for its result.
-    let mut call_blocks: Vec<(usize, u32)> = Vec::new();
+    let tokens = Tokens::new(module.tokens());
+    let lowered = lower::lower(file.path(), text, module.syntax(), tokens, &analysis.proofs)?;
+    let mut values = Values::new(text);
+    // Each call expression's callee in the value table, for the binder's factories.
     let mut callees: FxHashMap<usize, u32> = FxHashMap::default();
-    let mut imports = Vec::new();
-    let mut written = Vec::new();
-    let mut conditional = Vec::new();
-    // Each child candidate's entry in `written`, with its alias, for the binder's declaration.
-    let mut children: Vec<(usize, usize)> = Vec::new();
-    // The import index and normalized specifier of the latest `from` import, which its child
-    // candidates (its next blocks in preorder) extend.
-    let mut from: Option<(u32, String)> = None;
-    for &(node, block) in &occurrences {
-        match node {
-            Node::Expr(expr @ Expr::Call(call), _) => match analysis.proofs.dynamic_import(call) {
-                Some(name) => {
-                    imports.push(ImportFact {
-                        block,
-                        specifier: Some(name.into()),
-                    });
-                    written.push(ImportSyntax::Dynamic);
-                }
-                None => {
-                    let fact = values.call(call, block);
-                    if let Some(callee) = fact.callee {
-                        callees.insert(address(expr), callee);
-                    }
-                    call_blocks.push((address(expr), block));
-                    calls.push(fact);
-                }
-            },
-            Node::Alias(alias) => {
-                imports.push(ImportFact {
-                    block,
-                    specifier: Some(dotted(syntax.slice(alias.name.range)).into()),
-                });
-                written.push(ImportSyntax::Module {
-                    module: alias.name.id.as_str().into(),
-                    alias: alias.asname.as_ref().map(|name| name.id.as_str().into()),
-                });
+    let calls: Vec<CallFact> = lowered
+        .calls
+        .iter()
+        .map(|called| {
+            let fact = values.call(called);
+            if let Expr::Call(_) = called.expr {
+                callees.insert(address(called.expr), fact.callee);
             }
-            Node::Child(alias) => {
-                let (index, parent) = from.as_ref().map_or((0, ""), |(index, parent)| (*index, parent));
-                let member = syntax.slice(alias.name.range);
-                let separator = if parent.ends_with('.') { "" } else { "." };
-                imports.push(ImportFact {
-                    block,
-                    specifier: Some(format!("{parent}{separator}{member}").into()),
-                });
-                conditional.push(block);
-                children.push((written.len(), alias_address(alias)));
-                written.push(ImportSyntax::Child {
-                    from: index,
-                    name: alias.name.id.as_str().into(),
-                    // Filled in once the binder has declared the name.
-                    node: 0,
-                });
-            }
-            Node::Stmt(Stmt::ImportFrom(import)) => {
-                let specifier = syntax
-                    .module_range(import)
-                    .map_or("", |range| syntax.slice(range));
-                let specifier = dotted(specifier);
-                imports.push(ImportFact {
-                    block,
-                    specifier: Some(specifier.as_str().into()),
-                });
-                from = Some((imports.len() as u32 - 1, specifier));
-                written.push(ImportSyntax::From {
-                    level: import.level,
-                    module: import.module.as_ref().map(|name| name.id.as_str().into()),
-                    names: import
-                        .names
-                        .iter()
-                        .map(|alias| {
-                            let name: Box<str> = alias.name.id.as_str().into();
-                            (
-                                name,
-                                alias.asname.as_ref().map(|asname| asname.id.as_str().into()),
-                            )
-                        })
-                        .collect(),
-                });
-            }
-            _ => {}
-        }
-    }
+            fact
+        })
+        .collect();
     let (values, exprs) = values.finish();
     let inputs = bind::Inputs {
         text,
-        blocks: &blocks,
+        definitions: &lowered.definitions,
         values: &exprs,
         callees: &callees,
     };
     let built = bind::build(module.syntax(), &inputs);
-    let (signatures, parameters, members, results) = typed.finish(&call_blocks, &built.awaited);
-    for (index, alias) in children {
-        if let Some(ImportSyntax::Child { node, .. }) = written.get_mut(index) {
-            *node = built.aliases.get(&alias).copied().unwrap_or_default();
+    let mut bind = built.facts;
+    let (type_refs, types) = type_refs(text, &lowered, built.type_names, &bind.types);
+    bind.types = types;
+    let Lowered {
+        nodes,
+        imports: lowered_imports,
+        truncated,
+        signatures,
+        parameters,
+        members,
+        ..
+    } = lowered;
+    let mut imports = Vec::with_capacity(lowered_imports.len());
+    let mut written = Vec::with_capacity(lowered_imports.len());
+    for import in lowered_imports {
+        let mut syntax = import.syntax;
+        if let (ImportSyntax::Child { node, .. }, Some(alias)) = (&mut syntax, import.child) {
+            *node = built
+                .aliases
+                .get(&alias_address(alias))
+                .copied()
+                .unwrap_or_default();
         }
+        imports.push(import.fact);
+        written.push(syntax);
     }
-    let payload = payload(text, analysis, written, built.facts)
+    let payload = payload(text, analysis, &truncated, written, bind)
         .to_bytes()
         .map_err(|error| failure(error.to_string(), None))?;
-    let graph = GraphFacts::new(selection, values, calls, imports)
-        .and_then(|graph| graph.with_conditional(conditional))
-        .and_then(|graph| {
-            let types = TypeFacts::new(
-                graph.blocks(),
-                signatures,
-                parameters,
-                members,
-                results,
-                built.type_refs,
-            );
-            graph.with_types(types)
-        })
+    let types = TypeFacts::new(signatures, parameters, members);
+    let graph = GraphFacts::new(nodes, values, calls, imports, type_refs, types)
         .map_err(|error| failure(format!("inconsistent facts: {error}"), None))?;
     Ok(FileFacts::new(graph, payload))
 }
 
-/// A dotted module path as written, without the whitespace and line continuations Python
-/// allows between its parts.
-fn dotted(written: &str) -> String {
-    written
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != '\\')
-        .collect()
+/// The file's written type names as `types` and `extends` links before linking, with the
+/// binder's expression of each (aligned). A name in an annotation starts at the nearest
+/// definition around it, a base at its class, and a handler's class at its `except` part; a
+/// name inside a truncated block, or whose node wasn't lowered, has no link.
+fn type_refs(
+    text: &str,
+    lowered: &Lowered<'_>,
+    names: Vec<TypeName>,
+    exprs: &[ExprId],
+) -> (Vec<TypeRefFact>, Vec<ExprId>) {
+    let nodes = &lowered.nodes;
+    let candidates = |keep: &dyn Fn(u32) -> Option<ByteRange>| -> Vec<(u32, ByteRange)> {
+        (0..u32::try_from(nodes.len()).unwrap_or(u32::MAX))
+            .filter_map(|id| keep(id).map(|range| (id, range)))
+            .collect()
+    };
+    let definitions = candidates(&|id| {
+        let node = &nodes[id as usize];
+        node.kind().is_definition().then_some(node.range)
+    });
+    let handlers = candidates(&|id| {
+        let node = &nodes[id as usize];
+        (node.form == Form::Except).then_some(node.head).flatten()
+    });
+    let mut references = Vec::new();
+    let mut kept = Vec::new();
+    for (name, &expr) in names.iter().zip(exprs) {
+        if lowered
+            .truncated
+            .iter()
+            .any(|truncated| truncated.range.contains(name.range))
+        {
+            continue;
+        }
+        let from = match name.site {
+            TypeSite::Annotation => innermost(&definitions, name.range),
+            TypeSite::Base => innermost(&definitions, name.range)
+                .filter(|&class| nodes[class as usize].kind() == NodeKind::Class),
+            TypeSite::Handler => innermost(&handlers, name.range),
+        };
+        let Some(from) = from else {
+            continue;
+        };
+        let usage = match name.site {
+            TypeSite::Base => TypeUse::Extends,
+            TypeSite::Annotation | TypeSite::Handler => TypeUse::Annotation,
+        };
+        let written = text.get(name.range.as_usize()).unwrap_or_default();
+        references.push(TypeRefFact::new(from, name.range, written, name.qualified, usage));
+        kept.push(expr);
+    }
+    (references, kept)
 }
 
-/// The payload: the census from a fresh lexer pass, the written imports, and the binder facts.
-fn payload(text: &str, analysis: &Analysis, imports: Vec<ImportSyntax>, bind: BindFacts) -> Payload {
+/// The node with the smallest of `candidates`' ranges that contains `range`.
+fn innermost(candidates: &[(u32, ByteRange)], range: ByteRange) -> Option<u32> {
+    candidates
+        .iter()
+        .filter(|(_, candidate)| candidate.contains(range))
+        .min_by_key(|(id, candidate)| (candidate.len(), std::cmp::Reverse(*id)))
+        .map(|&(id, _)| id)
+}
+
+/// The payload: the census from a fresh lexer pass and the pre-pass's dependencies (both
+/// without what truncated blocks hide), the written imports, and the binder facts.
+fn payload(
+    text: &str,
+    analysis: &Analysis,
+    truncated: &[Truncated],
+    imports: Vec<ImportSyntax>,
+    bind: BindFacts,
+) -> Payload {
     let scan = census::scan(text);
-    let dynamic: Vec<TextRange> = analysis.proofs.dynamic_ranges().collect();
-    let calls = scan
-        .calls
-        .into_iter()
-        .filter(|call| !dynamic.iter().any(|range| bytes(*range) == call.range))
-        .collect();
+    let shown = |range: &ByteRange| !truncated.iter().any(|truncated| truncated.hides(*range));
+    let calls = scan.calls.into_iter().filter(shown).collect();
     let dependencies = analysis
         .proofs
         .dependencies()
         .iter()
-        .map(|range| bytes(*range))
+        .map(|&range| bytes(range))
+        .filter(shown)
         .collect();
     Payload {
         version: PAYLOAD_VERSION,

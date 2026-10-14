@@ -1,5 +1,5 @@
 //! The graph depends only on the files' contents: not on the order files arrive in, and not on
-//! how many threads resolve the occurrences.
+//! how many threads resolve the links.
 
 use crate::alien::Project;
 
@@ -45,6 +45,6 @@ fn shuffled_files_and_thread_counts_give_identical_exports() {
         assert_eq!(actual, expected, "{threads} threads");
     }
     // The export is the whole graph; spot-check that it is not trivially empty.
-    assert!(expected.contains("express.route"));
-    assert!(expected.contains("\"reason\":\"overridden\""));
+    assert!(expected.contains("\"to\":\"express\""));
+    assert!(expected.contains("\"to\":\"overridden\""));
 }

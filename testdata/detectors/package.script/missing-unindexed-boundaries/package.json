@@ -1,1 +1,0 @@
-{"scripts": {"missing": "tsx missing.ts", "omitted": "tsx omitted.ts", "legacy": "node legacy.js", "escape": "node ../outside.js", "dependency": "node node_modules/tool/index.js", "climb": "cd ../..; node main.js"}}

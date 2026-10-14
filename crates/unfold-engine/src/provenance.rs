@@ -1,8 +1,8 @@
 //! Bounded import provenance: which external package export a value comes from.
 //!
-//! Detectors use provenance to recognize framework objects (an Express application, a BullMQ
-//! `Worker`), and module-label rule 2 uses it to name a receiver's package. It never decides
-//! whether anything is callable. The walk spends at most [`MAX_STEPS`] steps, counting the
+//! Module-label rule 2 ([`crate::labels`]) uses provenance to name a receiver's package, so
+//! `app.get` on `const app = express()` is a call into `express`. It never decides whether
+//! anything is callable. The walk spends at most [`MAX_STEPS`] steps, counting the
 //! terminal import or annotation:
 //!
 //! | Value or declaration | Step |

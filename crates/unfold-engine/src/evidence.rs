@@ -1,13 +1,12 @@
-//! What a language answers when the shared backend asks about a value, a declaration, or a
-//! module: the proof of concept's semantic evidence, phrased with program IDs.
+//! What a language answers when the shared backend asks about a value, a type name, a
+//! declaration, or a module: semantic evidence, phrased with program IDs.
 //!
-//! Evidence can withhold a target, never invent one. The shared policy
-//! ([`crate::resolve`]) turns evidence into outcomes; a language never decides an edge's
-//! resolution or reason itself.
+//! Evidence can withhold a target, never invent one. The shared policy ([`crate::resolve`])
+//! turns evidence into outcomes; a language never decides a link's outcome or reason itself.
 
 use smallvec::SmallVec;
 
-use crate::program::{BlockRef, DeclRef, FileId, ValueRef};
+use crate::program::{DeclRef, FileId, NodeRef, ValueRef};
 
 /// Which target computation a value is resolved for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,10 +16,8 @@ pub enum ValueContext {
     /// A construction: a callable function or method, a class's explicit constructor with a
     /// body, or otherwise the class.
     Construct,
-    /// A callable passed as an argument: a concrete function, method, or class.
+    /// A definition passed as an argument: a concrete function, method, or class.
     Reference,
-    /// An entrance handler: a concrete function or method, including an inline function.
-    Handler,
     /// A type name in an annotation: a `class`, `interface`, `type_alias`, or `enum`
     /// declaration.
     Type,
@@ -180,22 +177,10 @@ impl Evidence {
 /// A declaration's concrete body for one context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConcreteTarget {
-    /// The block a resolved edge targets (for a construction, possibly the class's constructor).
-    pub target: BlockRef,
+    /// The node a resolved link reaches (for a construction, possibly the class's constructor).
+    pub target: NodeRef,
     /// The declaration used to compare overload signatures.
     pub implementation: DeclRef,
-}
-
-/// A declaration that is, or is bound inside, a parameter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ParameterFact {
-    /// The containing parameter (destructured bindings report their whole parameter).
-    pub parameter: DeclRef,
-    /// The block of the callable that declares it.
-    pub owner: Option<BlockRef>,
-    /// Its argument position in that callable. Languages report runtime positions: TypeScript
-    /// skips an explicit `this` parameter; Python counts written ordinals, receivers included.
-    pub position: Option<u32>,
 }
 
 /// Whether a binding can be reassigned.
@@ -238,16 +223,7 @@ pub struct OriginDeclaration {
     pub annotation: bool,
 }
 
-/// The members a locator's `Owner.member` names.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct LocatorMembers {
-    /// Whether the owner is a class or constant object literal that locators support.
-    pub supported: bool,
-    /// The members with that name.
-    pub declarations: Vec<DeclRef>,
-}
-
-/// How one runtime import (a file's [`ImportFact`](crate::facts::ImportFact)) resolved.
+/// How one written module dependency (a file's [`ImportFact`](crate::facts::ImportFact)) resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModuleTarget {
     /// An indexed file of the program.
@@ -264,17 +240,8 @@ pub enum ModuleTarget {
     /// A non-literal specifier.
     Dynamic,
     /// A dependency the language recognizes but does not resolve (for example, before its
-    /// module resolution exists); the edge is unresolved with `unsupported`.
+    /// module resolution exists); the link is `unknown` with `unsupported`.
     Unsupported,
-}
-
-/// One runtime export of a module, after re-exports are followed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Export {
-    /// The export name (`default` for a default export).
-    pub name: Box<str>,
-    /// Its candidate declarations.
-    pub candidates: Vec<Candidate>,
 }
 
 /// One class of the program, for the override census.

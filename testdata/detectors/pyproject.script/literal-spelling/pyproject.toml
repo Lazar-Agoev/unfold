@@ -1,7 +1,0 @@
-[project.scripts]
-attribute = "app:K"
-module = "K:main"
-case = "k:main"
-prefix = "upper.worker:main"
-package = "case:main"
-runtime = "app:K"

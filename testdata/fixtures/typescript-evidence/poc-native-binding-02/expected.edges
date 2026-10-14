@@ -1,5 +1,0 @@
-parameters.ts#function:parameter/expression_statement[0]/call[0] #0 calls `f` -> parameter @0
-parameters.ts#function:destructured/expression_statement[0]/call[0] #0 calls `f` -> parameter @0
-parameters.ts#try[0]/catch[0]/expression_statement[0]/call[0] #0 calls `f` -> not_concrete
-parameters.ts#try[1]/catch[0]/expression_statement[0]/call[0] #0 calls `f` -> not_concrete
-parameters.ts#expression_statement[0]/call[0] #0 calls `f` -> parameters.ts#function:f

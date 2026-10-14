@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/module-conflicts.
-
-[[python.project]]
-root = "."
-source_roots = ["src", "legacy"]

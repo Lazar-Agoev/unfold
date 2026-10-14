@@ -1,8 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/refusals.
-
-[[python.project]]
-root = "."
-source_roots = ["src", "legacy"]
-
-[scope]
-exclude = ["legacy/**"]

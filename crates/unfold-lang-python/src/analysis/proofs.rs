@@ -1,37 +1,38 @@
-//! The structural proofs: which identities a resolved per-file census proves, and the block
-//! kinds, erased imports, and dynamic imports that follow from them.
+//! The structural proofs: which identities a resolved per-file census proves, and the function
+//! forms, erased imports, and dynamic imports that follow from them.
 
 use ruff_python_ast::{Expr, ExprCall, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
-use unfold_core::vocab::BlockKind;
+use unfold_core::vocab::Form;
 
 use super::scope::{Census, Lookup, Origin, Write};
 
 /// The decisions about structure that depend on proven identities.
 #[derive(Debug, Default)]
 pub(crate) struct Proofs {
-    /// The kind of every function defined directly in a class body, by the `def`'s start (a
+    /// The form of every function defined directly in a class body, by the `def`'s start (a
     /// decorated definition starts at its first `@`). Functions not listed are `function`s.
-    pub(super) kinds: FxHashMap<TextSize, BlockKind>,
+    pub(super) kinds: FxHashMap<TextSize, Form>,
     /// The starts of `import` and `from … import` statements a proven `TYPE_CHECKING` guard
     /// erases.
     pub(super) erased: FxHashSet<TextSize>,
     /// Calls proven to be `importlib.import_module` with a literal module name, by range, with
-    /// the decoded name.
-    pub(super) dynamic: FxHashMap<TextRange, Box<str>>,
-    /// The range of every runtime module dependency, sorted: each `import` item, each
-    /// `from … import` statement, and each proven dynamic import call.
+    /// the decoded name and the literal's range.
+    pub(super) dynamic: FxHashMap<TextRange, (Box<str>, TextRange)>,
+    /// The specifier of every runtime module dependency, sorted: each `import` item's module,
+    /// each `from … import` statement's module path, and each proven dynamic import's literal.
+    /// Imports a proven `TYPE_CHECKING` guard erases are not dependencies.
     pub(super) dependencies: Vec<TextRange>,
 }
 
 impl Proofs {
-    /// The block kind of a `def`.
-    pub(crate) fn function_kind(&self, function: &StmtFunctionDef) -> BlockKind {
+    /// The form of a `def`.
+    pub(crate) fn function_form(&self, function: &StmtFunctionDef) -> Form {
         self.kinds
             .get(&function.range.start())
             .copied()
-            .unwrap_or(BlockKind::Function)
+            .unwrap_or(Form::Function)
     }
 
     /// Whether an import statement starting at `start` is erased.
@@ -39,28 +40,22 @@ impl Proofs {
         self.erased.contains(&start)
     }
 
-    /// The literal module name of a call proven to be a dynamic import.
-    pub(crate) fn dynamic_import(&self, call: &ExprCall) -> Option<&str> {
-        self.dynamic.get(&call.range()).map(|name| &**name)
+    /// The literal module name of a call proven to be a dynamic import, with the literal's
+    /// range.
+    pub(crate) fn dynamic_import(&self, call: &ExprCall) -> Option<(&str, TextRange)> {
+        self.dynamic
+            .get(&call.range())
+            .map(|(name, literal)| (&**name, *literal))
     }
 
     /// The ranges of every runtime module dependency, sorted, for the census.
     pub(crate) fn dependencies(&self) -> &[TextRange] {
         &self.dependencies
     }
-
-    /// The ranges of the proven dynamic imports.
-    pub(crate) fn dynamic_ranges(&self) -> impl Iterator<Item = TextRange> + '_ {
-        self.dynamic.keys().copied()
-    }
 }
 
-/// The kind of a `def` written directly in a class body.
-pub(super) fn member_kind(
-    function: &StmtFunctionDef,
-    scope: u32,
-    identities: &Identities<'_, '_>,
-) -> BlockKind {
+/// The form of a `def` written directly in a class body.
+pub(super) fn member_form(function: &StmtFunctionDef, scope: u32, identities: &Identities<'_, '_>) -> Form {
     let decorators = &function.decorator_list;
     let setter = decorators.iter().any(|decorator| {
         let Expr::Attribute(access) = &decorator.expression else {
@@ -84,17 +79,17 @@ pub(super) fn member_kind(
         })
     });
     if setter {
-        return BlockKind::Setter;
+        return Form::Setter;
     }
     let getter = decorators
         .iter()
         .any(|decorator| identities.is(callee(&decorator.expression), scope, "builtins.property"));
     if getter {
-        BlockKind::Getter
+        Form::Getter
     } else if function.name.id.as_str() == "__init__" {
-        BlockKind::Constructor
+        Form::Constructor
     } else {
-        BlockKind::Method
+        Form::Method
     }
 }
 

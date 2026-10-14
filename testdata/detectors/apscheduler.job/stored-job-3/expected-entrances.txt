@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/stored-job-3. Format: testdata/README.md.
-# Stored Jobs keep negative domain evidence. Written: jobs = (job,); alias = jobs; setattr(alias[0], 'func', second)
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first

@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/configuration-1. Format: testdata/README.md.
-# Scheduler configuration keeps handlers unsupported. Written: scheduler.configure(timezone='UTC')
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:8
-	target	handler	unresolved	unsupported	first

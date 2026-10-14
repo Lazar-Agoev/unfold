@@ -1,0 +1,5 @@
+use.ts#/call:factory #0 calls `factory` → unknown unknown_name
+use.ts#receive #0 types `Base` → project use.ts#Base
+use.ts#Narrowed.run/if[0]/then/call:unknownPredicate #0 calls `unknownPredicate` → unknown unknown_name
+use.ts#union #0 types `A` → library external
+use.ts#union #1 types `B` → library external

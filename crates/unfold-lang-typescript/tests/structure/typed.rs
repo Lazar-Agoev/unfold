@@ -1,14 +1,15 @@
-//! Typed records through the real TypeScript front end: signatures, parameters, members, call
-//! results, and type links, case by case, and argument pairing across files.
+//! Typed records through the real TypeScript front end: signatures, parameters, members,
+//! arguments, where call values land, and type names' `types` and `extends` links, case by case,
+//! and argument pairing across files.
 //!
 //! - Each source in `testdata/fixtures/typescript-typed/` is compiled alone, validated (with the
-//!   census), and its typed records compared with the golden `.typed` file beside it: the
-//!   canonical export's `signature`, `parameter`, `member`, `argument`, `result`, and
-//!   `type_link` lines, in export order.
+//!   census), and compared with the golden `.typed` file beside it: the canonical export's
+//!   `signature`, `parameter`, `member`, and `argument` lines, its `types` and `extends` links,
+//!   and its call nodes (which record `binds`, `exit_value`, and `awaited`), in export order.
 //! - `testdata/fixtures/typed-lines/expected/typescript.jsonl` is the snapshot of the
 //!   typed-lines fixture's TypeScript project, compiled by the engine from a copy of the
-//!   fixture: the canonical lines of its `interface`, `type_alias`, and `enum` blocks and of every
-//!   typed record of a file under `ts/`, in export order.
+//!   fixture: the canonical lines of its `type` nodes, its typed records, and its `types` and
+//!   `extends` links of a file under `ts/`, in export order.
 //!
 //! Run with `UNFOLD_BLESS=1` to rewrite the goldens after an intended change, and review them.
 
@@ -16,27 +17,20 @@ use std::path::Path;
 use std::sync::Arc;
 
 use unfold_core::testkit::{assert_golden, testdata_dir};
-use unfold_core::typed::{Pairing, TypeLink};
-use unfold_core::vocab::{Heritage, PairingReason, Reason, Resolution};
-use unfold_core::{Graph, canonical};
+use unfold_core::typed::Pairing;
+use unfold_core::vocab::{LinkKind, PairingReason, Reason};
+use unfold_core::{Graph, Link, LinkTarget, canonical};
 use unfold_engine::discovery::DiscoverOptions;
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{Engine, EngineOptions, Language, UpdateRequest};
 use unfold_lang_typescript::TypeScript;
 
-use crate::support::{Compiled, Project, compile_source};
+use crate::support::{Compiled, Project, compile_source, outcome};
 
 const FOLDER: &str = "fixtures/typescript-typed";
 
 /// The record types of typed records in the canonical export.
-const TYPED: [&str; 6] = [
-    "signature",
-    "parameter",
-    "member",
-    "argument",
-    "result",
-    "type_link",
-];
+const TYPED: [&str; 4] = ["signature", "parameter", "member", "argument"];
 
 /// The canonical export lines of `graph` that `keep` accepts (given each line's parsed JSON).
 fn canonical_lines(graph: &Graph, keep: impl Fn(&serde_json::Value) -> bool) -> String {
@@ -54,11 +48,20 @@ fn canonical_lines(graph: &Graph, keep: impl Fn(&serde_json::Value) -> bool) -> 
     out
 }
 
+/// A typed record, or a type name's link.
 fn is_typed(record: &serde_json::Value) -> bool {
-    record
-        .get("t")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|t| TYPED.contains(&t))
+    let field = |name: &str| record.get(name).and_then(serde_json::Value::as_str);
+    match field("t") {
+        Some("link") => matches!(field("kind"), Some("types" | "extends")),
+        Some(t) => TYPED.contains(&t),
+        None => false,
+    }
+}
+
+/// A typed record, a type name's link, or a call node.
+fn is_typed_or_call(record: &serde_json::Value) -> bool {
+    let field = |name: &str| record.get(name).and_then(serde_json::Value::as_str);
+    is_typed(record) || (field("t") == Some("node") && field("kind") == Some("call"))
 }
 
 fn check(name: &str) {
@@ -67,7 +70,7 @@ fn check(name: &str) {
     let compiled = compile_source("a.ts", &source).valid();
     assert_golden(
         format!("{FOLDER}/{name}.typed"),
-        &canonical_lines(&compiled.graph, is_typed),
+        &canonical_lines(&compiled.graph, is_typed_or_call),
     );
 }
 
@@ -101,61 +104,61 @@ fn heritage_names_are_bases_and_their_type_arguments_plain_links() {
     let source =
         std::fs::read_to_string(testdata_dir().join(FOLDER).join("heritage.ts")).expect("read the case");
     let compiled = compile_source("a.ts", &source).valid();
-    let links = links(&compiled, "a.ts");
-    let heritage = |block: &str| -> Vec<(&str, Option<Heritage>)> {
+    let links = type_links(&compiled, "a.ts");
+    let bases = |node: &str| -> Vec<(&str, LinkKind, bool)> {
+        let file = compiled.file("a.ts");
         links
             .iter()
-            .filter(|link| {
-                compiled.file("a.ts").blocks[link.block as usize].key.as_str() == format!("a.ts#{block}")
-            })
-            .map(|link| (&*link.text, link.heritage))
+            .filter(|link| file.nodes[link.from as usize].key.as_str() == format!("a.ts#{node}"))
+            .map(|link| (&*link.text, link.kind, link.implements))
             .collect()
     };
-    use Heritage::{Extends, Implements};
+    use LinkKind::{Extends, Types};
     assert_eq!(
-        heritage("interface:Both"),
+        bases("Both"),
         [
-            ("Base", Some(Extends)),
-            ("Named", Some(Extends)),
-            ("Missing", Some(Extends))
+            ("Base", Extends, false),
+            ("Named", Extends, false),
+            ("Missing", Extends, false)
         ],
         "the interface's own type parameter `T` is no link"
     );
     assert_eq!(
-        heritage("class:Leaf"),
+        bases("Leaf"),
         [
-            ("Root", Some(Extends)),
-            ("Named", Some(Implements)),
-            ("Base", Some(Implements)),
-            ("Leaf", None),
-            ("Leaf", None),
+            ("Root", Extends, false),
+            ("Named", Extends, true),
+            ("Base", Extends, true),
+            ("Leaf", Types, false),
+            ("Leaf", Types, false),
         ],
         "the class's type parameter `L` is no link; `Leaf<L>` in a type argument is a plain link"
     );
-    assert_eq!(
-        heritage("class:Mixed"),
-        [],
-        "`mixin(Root)` is a call, not a type name"
-    );
-    assert_eq!(heritage("class:Ambient"), [], "an ambient class is no block");
-    assert_eq!(heritage("class:Qualified"), [("ns.Inner", Some(Extends))]);
-    resolved(link(&links, "ns.Inner"), "a.ts#class:Inner");
+    assert_eq!(bases("Mixed"), [], "`mixin(Root)` is a call, not a type name");
+    assert_eq!(bases("Ambient"), [], "an ambient class is no node");
+    assert_eq!(bases("Qualified"), [("ns.Inner", Extends, false)]);
+    resolved(link(&links, "ns.Inner"), "a.ts#ns.Inner");
     external(link(&links, "Error"), "global");
     unresolved(link(&links, "Missing"), Reason::UnknownName);
     assert_eq!(
-        heritage("variable:made/class:made"),
-        [("Root", Some(Extends))],
+        bases("made"),
+        [("Root", Extends, false)],
         "a class expression's base"
     );
 }
 
-/// The type links of `path`, in canonical order.
-fn links<'c>(compiled: &'c Compiled, path: &str) -> Vec<&'c TypeLink> {
-    compiled.file(path).types.type_links.iter().collect()
+/// The `types` and `extends` links of `path`, in canonical order.
+fn type_links<'c>(compiled: &'c Compiled, path: &str) -> Vec<&'c Link> {
+    compiled
+        .file(path)
+        .links
+        .iter()
+        .filter(|link| matches!(link.kind, LinkKind::Types | LinkKind::Extends))
+        .collect()
 }
 
 #[track_caller]
-fn link<'c>(links: &[&'c TypeLink], text: &str) -> &'c TypeLink {
+fn link<'c>(links: &[&'c Link], text: &str) -> &'c Link {
     links
         .iter()
         .copied()
@@ -164,33 +167,18 @@ fn link<'c>(links: &[&'c TypeLink], text: &str) -> &'c TypeLink {
 }
 
 #[track_caller]
-fn resolved(link: &TypeLink, target: &str) {
-    assert_eq!(
-        (link.resolution, link.target.as_ref().map(|key| key.as_str())),
-        (Resolution::Resolved, Some(target)),
-        "{link:?}"
-    );
+fn resolved(link: &Link, target: &str) {
+    assert_eq!(outcome(&link.to), format!("project {target}"), "{link:?}");
 }
 
 #[track_caller]
-fn external(link: &TypeLink, module: &str) {
-    assert_eq!(
-        (
-            link.resolution,
-            link.module.as_ref().map(|module| module.as_str())
-        ),
-        (Resolution::External, Some(module)),
-        "{link:?}"
-    );
+fn external(link: &Link, module: &str) {
+    assert_eq!(outcome(&link.to), format!("library {module}"), "{link:?}");
 }
 
 #[track_caller]
-fn unresolved(link: &TypeLink, reason: Reason) {
-    assert_eq!(
-        (link.resolution, link.reason),
-        (Resolution::Unresolved, Some(reason)),
-        "{link:?}"
-    );
+fn unresolved(link: &Link, reason: Reason) {
+    assert_eq!(link.to, LinkTarget::Unknown(reason), "{link:?}");
 }
 
 #[test]
@@ -216,13 +204,13 @@ fn type_links_resolve_through_imports_namespaces_and_the_library() {
              l: Missing, m: NodeJS.Timeout): void {}\n",
         )
         .compile();
-    let links = links(&compiled, "src/use.ts");
-    resolved(link(&links, "Cart"), "src/models.ts#interface:Cart");
-    resolved(link(&links, "Id"), "src/models.ts#type_alias:Id");
-    resolved(link(&links, "Model"), "src/models.ts#class:Model");
-    resolved(link(&links, "Kind"), "src/models.ts#enum:Kind");
-    resolved(link(&links, "models.Cart"), "src/models.ts#interface:Cart");
-    resolved(link(&links, "models.NS.Inner"), "src/models.ts#interface:Inner");
+    let links = type_links(&compiled, "src/use.ts");
+    resolved(link(&links, "Cart"), "src/models.ts#Cart");
+    resolved(link(&links, "Id"), "src/models.ts#Id");
+    resolved(link(&links, "Model"), "src/models.ts#Model");
+    resolved(link(&links, "Kind"), "src/models.ts#Kind");
+    resolved(link(&links, "models.Cart"), "src/models.ts#Cart");
+    resolved(link(&links, "models.NS.Inner"), "src/models.ts#NS.Inner");
     unresolved(link(&links, "Merged"), Reason::Ambiguous);
     external(link(&links, "Stripe.PaymentIntent"), "stripe");
     external(link(&links, "Request"), "express");
@@ -249,9 +237,9 @@ fn a_type_name_resolves_only_to_a_type_declaration() {
              export function use(a: helper, b: value, c: Space, d: Ambient, e: Twice): void {}\n",
         )
         .compile();
-    let links = links(&compiled, "src/a.ts");
-    // Values have no type meaning; a namespace only augments; an ambient class has no block;
-    // an interface merged with a class names two blocks.
+    let links = type_links(&compiled, "src/a.ts");
+    // Values have no type meaning; a namespace only augments; an ambient class has no node;
+    // an interface merged with a class names two nodes.
     unresolved(link(&links, "helper"), Reason::UnknownName);
     unresolved(link(&links, "value"), Reason::UnknownName);
     unresolved(link(&links, "Space"), Reason::UnknownName);
@@ -259,19 +247,15 @@ fn a_type_name_resolves_only_to_a_type_declaration() {
     unresolved(link(&links, "Twice"), Reason::Ambiguous);
 }
 
-/// The pairing of each argument of the call or construction whose key ends with `suffix`.
+/// The pairing of each argument of the call node with `key`.
 #[track_caller]
-fn pairings(compiled: &Compiled, path: &str, suffix: &str) -> Vec<Option<Pairing>> {
+fn pairings(compiled: &Compiled, path: &str, key: &str) -> Vec<Option<Pairing>> {
     let file = compiled.file(path);
-    let block = file
-        .blocks
-        .iter()
-        .find(|block| block.key.as_str().ends_with(suffix))
-        .unwrap_or_else(|| panic!("no block {suffix}"));
+    let call = file.local_id(key).unwrap_or_else(|| panic!("no node {key}"));
     file.types
         .arguments
         .iter()
-        .filter(|argument| argument.call == block.local_id)
+        .filter(|argument| argument.call == call)
         .map(|argument| argument.pairing)
         .collect()
 }
@@ -297,50 +281,43 @@ fn arguments_pair_with_parameters_by_the_calling_rules() {
     use PairingReason as R;
     // The `this` parameter (index 0) takes no argument; a third argument has no parameter.
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[0]/call[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:withThis"),
         [Some(P(1)), Some(P(2)), Some(U(R::NoParameter))]
     );
     // A rest parameter takes every further positional argument.
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[1]/call[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:rest"),
         [Some(P(0)), Some(P(1)), Some(P(1))]
     );
     // A spread makes itself and every later argument `spread`.
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[2]/call[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:rest[1]"),
         [Some(U(R::Spread)), Some(U(R::Spread))]
     );
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[3]/call[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:rest[2]"),
         [Some(P(0)), Some(U(R::Spread)), Some(U(R::Spread))]
     );
     // A class without a constructor: nothing without a base, unknown with one.
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[4]/new[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:NoConstructor"),
         [Some(U(R::NoParameter))]
     );
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[5]/new[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:Derived"),
         [Some(U(R::NoSignature))]
     );
     // A direct constructor's parameters; `super(y)` pairs with the base's.
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[6]/new[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:Constructed"),
         [Some(P(0))]
     );
     assert_eq!(
-        pairings(
-            &compiled,
-            "a.ts",
-            "#class:Constructed/constructor:constructor/expression_statement[0]/call[0]"
-        ),
+        pairings(&compiled, "a.ts", "a.ts#Constructed.constructor/call:super"),
         [Some(P(0))]
     );
     // An unresolved call pairs nothing.
-    assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[7]/call[0]"),
-        [None]
-    );
+    assert_eq!(pairings(&compiled, "a.ts", "a.ts#/call:unknown"), [None]);
 }
 
 /// A decorator may replace a class with anything that takes arguments, so a decorated class
@@ -355,7 +332,7 @@ fn a_decorated_class_is_not_proven_to_take_nothing() {
     use Pairing::Unpaired as U;
     use PairingReason as R;
     assert_eq!(
-        pairings(&compiled, "a.ts", "#expression_statement[0]/new[0]"),
+        pairings(&compiled, "a.ts", "a.ts#/call:Sealed"),
         [Some(U(R::NoSignature))]
     );
 }
@@ -410,9 +387,8 @@ fn the_typed_lines_fixture_matches_its_snapshot() {
     );
     let snapshot = canonical_lines(graph, |record| {
         let field = |name: &str| record.get(name).and_then(serde_json::Value::as_str);
-        let declaration =
-            field("t") == Some("block") && matches!(field("kind"), Some("interface" | "type_alias" | "enum"));
-        let owner = field("block").or(field("call")).or(field("key"));
+        let declaration = field("t") == Some("node") && field("kind") == Some("type");
+        let owner = field("node").or(field("call")).or(field("from")).or(field("key"));
         (declaration || is_typed(record)) && owner.is_some_and(|owner| owner.starts_with("ts/"))
     });
     assert_golden("fixtures/typed-lines/expected/typescript.jsonl", &snapshot);

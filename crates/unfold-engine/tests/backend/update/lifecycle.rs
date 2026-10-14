@@ -4,23 +4,29 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use unfold_core::vocab::{FileState, Reason, Resolution};
+use unfold_core::LinkTarget;
+use unfold_core::vocab::{FileState, Reason};
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{CancelToken, Stage, UpdateError, UpdateRequest};
 
-use super::{Counting, Folder, background, compile, engine, engine_with, file, template};
+use super::{Counting, Folder, background, canonical, compile, engine, engine_with, file, template};
 
 fn paths(paths: &[unfold_core::RepoPath]) -> Vec<&str> {
     paths.iter().map(|path| path.as_str()).collect()
 }
 
-fn helper_edge(outcome: &unfold_engine::UpdateOutcome) -> (Resolution, Option<Reason>) {
-    let edge = file(outcome, "main.ts")
-        .edges
+fn helper_call(outcome: &unfold_engine::UpdateOutcome) -> LinkTarget {
+    file(outcome, "main.ts")
+        .links
         .iter()
-        .find(|edge| &*edge.text == "helper")
-        .expect("the helper call");
-    (edge.resolution, edge.reason)
+        .find(|link| &*link.text == "helper")
+        .expect("a call of helper")
+        .to
+        .clone()
+}
+
+fn resolved(target: &LinkTarget) -> bool {
+    matches!(target, LinkTarget::Project(_))
 }
 
 #[test]
@@ -31,19 +37,19 @@ fn a_file_that_stops_parsing_keeps_its_last_good_facts() {
     let mut engine = engine(&folder);
     let first = compile(&mut engine);
     assert!(first.complete);
-    assert_eq!(helper_edge(&first).0, Resolution::Resolved);
+    assert!(resolved(&helper_call(&first)));
 
     folder.write("lib/util.ts", "(fn");
     let broken = background(&mut engine, &["lib/util.ts"]);
     let util = file(&broken, "lib/util.ts");
     assert_eq!(util.file.state, FileState::LastGood);
     assert!(util.file.failure.is_some());
-    assert_eq!(util.blocks, file(&first, "lib/util.ts").blocks);
+    assert_eq!(util.nodes, file(&first, "lib/util.ts").nodes);
     assert_eq!(util.file.hash, file(&first, "lib/util.ts").file.hash);
-    assert_eq!(helper_edge(&broken).0, Resolution::Resolved);
+    assert!(resolved(&helper_call(&broken)));
     assert!(broken.complete, "last-good files are indexed");
     assert_eq!(paths(&broken.summary.changed_files), ["lib/util.ts"]);
-    assert!(broken.summary.changed_keys.is_empty(), "the blocks didn't change");
+    assert!(broken.summary.changed_keys.is_empty(), "the nodes didn't change");
 
     folder.write("lib/util.ts", &template(0, 1));
     let fixed = background(&mut engine, &["lib/util.ts"]);
@@ -64,11 +70,8 @@ fn a_file_that_never_parsed_is_failed_and_the_first_compile_goes_on() {
     let util = file(&outcome, "lib/util.ts");
     assert_eq!(util.file.state, FileState::Failed);
     assert_eq!(util.file.hash, None);
-    assert!(util.blocks.is_empty() && util.edges.is_empty());
-    assert_eq!(
-        helper_edge(&outcome),
-        (Resolution::Unresolved, Some(Reason::NotIndexed))
-    );
+    assert!(util.nodes.is_empty() && util.links.is_empty());
+    assert_eq!(helper_call(&outcome), LinkTarget::Unknown(Reason::NotIndexed));
     let latin = file(&outcome, "latin.ts");
     assert_eq!(latin.file.state, FileState::Failed);
     assert_eq!(latin.file.failure.as_deref(), Some("invalid UTF-8 at byte 7"));
@@ -81,17 +84,14 @@ fn changed_paths_add_remove_and_delete_folders() {
     folder.write("main.ts", &template(1, 0));
     let mut engine = engine(&folder);
     let first = compile(&mut engine);
-    assert_eq!(
-        helper_edge(&first),
-        (Resolution::Unresolved, Some(Reason::NotFound))
-    );
+    assert_eq!(helper_call(&first), LinkTarget::Unknown(Reason::NotFound));
 
     folder.write("lib/util.ts", &template(0, 1));
     folder.write("lib/base.ts", &template(2, 1));
     let added = background(&mut engine, &["lib/util.ts", "lib/base.ts"]);
     assert!(!added.stats.full_discovery);
     assert_eq!(added.stats.files_read, 2);
-    assert_eq!(helper_edge(&added).0, Resolution::Resolved);
+    assert!(resolved(&helper_call(&added)));
     assert_eq!(
         paths(&added.summary.changed_files),
         ["lib/base.ts", "lib/util.ts", "main.ts"]
@@ -133,18 +133,12 @@ fn ignored_and_unindexed_paths_follow_discovery() {
     let ignored = background(&mut engine, &[".gitignore"]);
     assert!(ignored.stats.full_discovery);
     assert_eq!(paths(&ignored.summary.removed_files), ["lib/util.ts"]);
-    assert_eq!(
-        helper_edge(&ignored),
-        (Resolution::Unresolved, Some(Reason::NotFound))
-    );
+    assert_eq!(helper_call(&ignored), LinkTarget::Unknown(Reason::NotFound));
     // Settings that exclude a file make it unindexed: references to it are `not_indexed`.
     folder.write(".gitignore", "");
     folder.write("unfold.toml", "[scope]\nexclude = [\"lib/**\"]\n");
     let excluded = background(&mut engine, &[".gitignore", "unfold.toml"]);
-    assert_eq!(
-        helper_edge(&excluded),
-        (Resolution::Unresolved, Some(Reason::NotIndexed))
-    );
+    assert_eq!(helper_call(&excluded), LinkTarget::Unknown(Reason::NotIndexed));
     assert_eq!(
         excluded.graph.inputs.len(),
         1,
@@ -173,7 +167,7 @@ fn invalid_settings_keep_the_previous_ones() {
     assert!(defaults.graph.inputs.is_empty());
 }
 
-/// Cancelling in each late stage (link, resolve, detect, validate) stops the update promptly
+/// Cancelling in each late stage (link, resolve, validate) stops the update promptly
 /// and leaves the previous graph; a prepared update the engine never adopts changes nothing
 /// either, and one prepared against an older state can't be adopted.
 #[test]
@@ -194,7 +188,7 @@ fn cancelling_late_stages_is_prompt_and_keeps_the_previous_graph() {
     folder.write("main.ts", &template(2, 0));
     let before = Arc::clone(engine.graph());
 
-    for stage in [Stage::Link, Stage::Resolve, Stage::Detect, Stage::Validate] {
+    for stage in [Stage::Link, Stage::Resolve, Stage::Validate] {
         let cancel = CancelToken::new();
         language.trip.arm(stage, cancel.clone());
         let result = engine.update(UpdateRequest::compile().with_cancel(cancel));
@@ -314,6 +308,37 @@ fn an_engine_error_fails_the_update_and_keeps_the_previous_state() {
     );
 }
 
+/// The engine validates every graph with each language's census: a census that finds a call no
+/// node is fails the update, and the previous graph stays.
+#[test]
+fn the_census_runs_on_every_update() {
+    let folder = Folder::new();
+    folder.write("lib/util.ts", &template(0, 1));
+    folder.write("main.ts", &template(1, 0));
+    let language = Counting::new();
+    let mut engine = engine_with(
+        &folder,
+        Arc::clone(&language),
+        Arc::new(MemoryFactsCache::new()),
+        2,
+    );
+    let first = compile(&mut engine);
+    language.skew_census.store(true, Ordering::SeqCst);
+    let result = engine.update(UpdateRequest::compile());
+    let Err(UpdateError::Validation(violations)) = result else {
+        panic!("{result:?}");
+    };
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.message.contains("needs exactly one call node")),
+        "{violations:?}"
+    );
+    assert!(Arc::ptr_eq(engine.graph(), &first.graph));
+    language.skew_census.store(false, Ordering::SeqCst);
+    assert_eq!(canonical(&compile(&mut engine)), canonical(&first));
+}
+
 #[test]
 fn progress_counts_files() {
     let folder = Folder::new();
@@ -349,5 +374,5 @@ fn changed_paths_under_a_symlinked_folder_stay_out_of_scope() {
     assert!(compiled.graph.file("link/a.ts").is_none());
     let updated = background(&mut engine, &["link/a.ts"]);
     assert!(updated.graph.file("link/a.ts").is_none());
-    assert_eq!(super::canonical(&updated), super::canonical(&compiled));
+    assert_eq!(canonical(&updated), canonical(&compiled));
 }

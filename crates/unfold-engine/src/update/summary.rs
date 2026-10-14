@@ -1,26 +1,23 @@
-//! The change summary that `graph_updated` carries: which files, structural keys, and entrances
-//! differ between the previous graph and the new one, so the window refreshes only the cards
-//! that depend on them.
+//! The change summary that `graph_updated` carries: which files and structural keys differ
+//! between the previous graph and the new one, so the window refreshes only the cards that
+//! depend on them.
 //!
-//! This is not the store's delta: the workspace builds the store's `Update` from the same two
-//! graphs with `FileChange::between` and `EntranceChanges::between`. The summary only names
-//! what changed.
+//! This is not the store's delta: the store builds its update from the same two graphs. The
+//! summary only names what changed.
 
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use unfold_core::{Block, Edge, Entrance, FileGraph, Graph, Key, RepoPath, Slot};
+use unfold_core::{FileGraph, Graph, Key, Link, Node, RepoPath};
 
 /// What differs between two graphs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ChangeSummary {
-    /// Files added, or whose record, blocks, slots, or edges changed, in path order.
+    /// Files added, or whose record, nodes, links, or typed records changed, in path order.
     pub changed_files: Vec<RepoPath>,
     /// Files no longer indexed, in path order.
     pub removed_files: Vec<RepoPath>,
-    /// Block keys added, removed, or whose block, slots, or outgoing edges changed, sorted.
+    /// Node keys added, removed, or whose node or outgoing links changed, sorted.
     pub changed_keys: Vec<Key>,
-    /// Entrance keys added, removed, or whose entrance changed, sorted.
-    pub changed_entrances: Vec<Key>,
     /// Whether the input set or any input's fingerprint changed.
     pub inputs_changed: bool,
 }
@@ -56,7 +53,7 @@ impl ChangeSummary {
                     (true, keys)
                 }
                 (Some(file), None) | (None, Some(file)) => {
-                    (true, file.blocks.iter().map(|block| block.key.clone()).collect())
+                    (true, file.nodes.iter().map(|node| node.key.clone()).collect())
                 }
                 (None, None) => (false, Vec::new()),
             })
@@ -71,87 +68,83 @@ impl ChangeSummary {
         }
         summary.changed_keys.sort();
         summary.changed_keys.dedup();
-        summary.changed_entrances = changed_entrances(&previous.entrances, &current.entrances);
         summary
     }
 
     /// Whether nothing changed.
     pub fn is_empty(&self) -> bool {
-        self.changed_files.is_empty()
-            && self.removed_files.is_empty()
-            && self.changed_entrances.is_empty()
-            && !self.inputs_changed
+        self.changed_files.is_empty() && self.removed_files.is_empty() && !self.inputs_changed
     }
 }
 
-/// A block as cards see it: everything but its file-local numbering.
-struct BlockView<'g> {
-    block: &'g Block,
+/// A node as cards see it: everything but its file-local numbering, whose references become
+/// keys.
+struct NodeView<'g> {
+    node: &'g Node,
     parent: Option<&'g Key>,
-    slots: &'g [Slot],
-    edges: &'g [Edge],
+    owner: Option<&'g Key>,
+    target: Option<&'g Key>,
+    links: &'g [Link],
 }
 
-impl BlockView<'_> {
+impl NodeView<'_> {
     fn same_as(&self, other: &Self) -> bool {
-        let (a, b) = (self.block, other.block);
-        let same_block = a.kind == b.kind
-            && a.role == b.role
+        let (a, b) = (self.node, other.node);
+        let same_node = a.form == b.form
             && a.name == b.name
             && a.range == b.range
-            && a.lines == b.lines;
-        let same_slot = |a: &Slot, b: &Slot| a.slot == b.slot && a.index == b.index && a.range == b.range;
-        let same_edge = |a: &Edge, b: &Edge| {
+            && a.lines == b.lines
+            && a.head == b.head
+            && a.body == b.body
+            && a.doc == b.doc
+            && a.stmt == b.stmt
+            && a.value == b.value
+            && a.binds == b.binds
+            && a.role == b.role
+            && a.flags == b.flags;
+        let same_link = |a: &Link, b: &Link| {
             a.seq == b.seq
                 && a.kind == b.kind
-                && a.target == b.target
+                && a.range == b.range
                 && a.text == b.text
-                && a.resolution == b.resolution
-                && a.reason == b.reason
-                && a.module == b.module
-                && a.position == b.position
+                && a.to == b.to
+                && a.implements == b.implements
+                && a.bound == b.bound
         };
-        same_block
+        same_node
             && self.parent == other.parent
-            && self.slots.len() == other.slots.len()
-            && self.slots.iter().zip(other.slots).all(|(a, b)| same_slot(a, b))
-            && self.edges.len() == other.edges.len()
-            && self.edges.iter().zip(other.edges).all(|(a, b)| same_edge(a, b))
+            && self.owner == other.owner
+            && self.target == other.target
+            && self.links.len() == other.links.len()
+            && self.links.iter().zip(other.links).all(|(a, b)| same_link(a, b))
     }
 }
 
-/// Each block of `file` by key, with its slots and outgoing edges.
-fn views(file: &FileGraph) -> FxHashMap<&Key, BlockView<'_>> {
+/// Each node of `file` by key, with its outgoing links.
+fn views(file: &FileGraph) -> FxHashMap<&Key, NodeView<'_>> {
+    let key = |id: Option<u32>| {
+        id.and_then(|id| file.nodes.get(id as usize))
+            .map(|node| &node.key)
+    };
     let mut views = FxHashMap::default();
-    let (mut slot, mut edge) = (0usize, 0usize);
-    for block in &file.blocks {
-        let slots_start = slot;
+    let mut link = 0usize;
+    for (id, node) in file.nodes.iter().enumerate() {
+        let start = link;
         while file
-            .slots
-            .get(slot)
-            .is_some_and(|found| found.block == block.local_id)
+            .links
+            .get(link)
+            .is_some_and(|found| found.from as usize == id)
         {
-            slot += 1;
+            link += 1;
         }
-        let edges_start = edge;
-        while file
-            .edges
-            .get(edge)
-            .is_some_and(|found| found.source == block.local_id)
-        {
-            edge += 1;
-        }
-        let parent = block
-            .parent
-            .and_then(|parent| file.blocks.get(parent as usize))
-            .map(|parent| &parent.key);
         views.insert(
-            &block.key,
-            BlockView {
-                block,
-                parent,
-                slots: &file.slots[slots_start..slot],
-                edges: &file.edges[edges_start..edge],
+            &node.key,
+            NodeView {
+                node,
+                parent: key(node.parent),
+                owner: key(node.r#for),
+                target: key(node.target),
+                links: &file.links[start..link],
             },
         );
     }
@@ -173,57 +166,32 @@ fn changed_keys(before: &FileGraph, after: &FileGraph, out: &mut Vec<Key>) {
     );
 }
 
-fn changed_entrances(previous: &[Entrance], current: &[Entrance]) -> Vec<Key> {
-    let old: FxHashMap<&Key, &Entrance> = previous
-        .iter()
-        .map(|entrance| (&entrance.key, entrance))
-        .collect();
-    let new: FxHashMap<&Key, &Entrance> = current.iter().map(|entrance| (&entrance.key, entrance)).collect();
-    let mut keys: Vec<Key> = new
-        .iter()
-        .filter(|(key, entrance)| old.get(*key) != Some(*entrance))
-        .map(|(key, _)| (*key).clone())
-        .chain(
-            old.keys()
-                .filter(|key| !new.contains_key(*key))
-                .map(|key| (*key).clone()),
-        )
-        .collect();
-    keys.sort();
-    keys
-}
-
 #[cfg(test)]
 mod tests {
-    use unfold_core::testkit::sample::sample;
+    use unfold_core::testkit::sample;
 
     use super::*;
 
     #[test]
     fn identical_graphs_have_no_changes() {
-        let graph = sample().build();
+        let graph = sample::shop().build();
         assert!(ChangeSummary::between(&graph, &graph).is_empty());
     }
 
     #[test]
-    fn names_changed_files_keys_and_entrances() {
-        let before = sample().build();
+    fn names_changed_files_and_keys() {
+        let before = sample::shop().build();
         let mut after = before.clone();
         let file = &mut after.files[0];
         let path = file.file.path.clone();
-        let renamed = file.blocks.len() - 1;
-        file.blocks[renamed].name = Some("renamed".into());
-        let key = file.blocks[renamed].key.clone();
+        let renamed = file.nodes.len() - 1;
+        file.nodes[renamed].binds = Some("renamed".into());
+        let key = file.nodes[renamed].key.clone();
         let removed = after.files.pop().map(|file| file.file.path);
-        let entrance = after.entrances.first().map(|entrance| entrance.key.clone());
-        after.entrances.clear();
         let summary = ChangeSummary::between(&before, &after);
         assert_eq!(summary.changed_files, [path]);
         assert!(summary.changed_keys.contains(&key));
         assert_eq!(summary.removed_files.first().cloned(), removed);
-        if let Some(entrance) = entrance {
-            assert!(summary.changed_entrances.contains(&entrance));
-        }
         assert!(!summary.inputs_changed);
     }
 }

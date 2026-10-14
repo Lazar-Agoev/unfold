@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/module-conflicts. Format: testdata/README.md.
-# A package beside a same-named module wins, as in Python, and unimported child files can't manufacture attributes (PoC: "Module/package conflicts and unimported child files...", where the conflict was ambiguous).
-entrance	pyproject.script	process	-	conflict	exact	pyproject.toml:2
-	target	startup	resolved	src/conflict/__init__.py#function:main	conflict:main
-entrance	pyproject.script	process	-	attribute	exact	pyproject.toml:3
-	target	startup	unresolved	not_found	pkg:worker.main
-entrance	pyproject.script	process	-	namespace	exact	pyproject.toml:4
-	target	startup	unresolved	not_found	space:worker.main

@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 use super::ir::{Argument, ExprFact, ExprId, ExprKind, NameId, NodeId, ScopeId};
 use crate::ast::{arguments, string_literal};
-use crate::values::address;
+use crate::lower::address;
 
 /// The expression and name tables of one file under construction.
 #[derive(Default)]
@@ -145,7 +145,6 @@ impl<'a> Interner<'a> {
                 key: string_literal(&subscript.slice).map(|key| self.name(key)),
             },
             Expr::Await(node) => ExprKind::Await(self.reserve(&node.value, scope)),
-            Expr::Starred(starred) => ExprKind::Starred(self.reserve(&starred.value, scope)),
             Expr::If(_) => ExprKind::Ternary,
             Expr::StringLiteral(_) => {
                 string_literal(expr).map_or(ExprKind::Other, |text| ExprKind::Str(self.name(text)))

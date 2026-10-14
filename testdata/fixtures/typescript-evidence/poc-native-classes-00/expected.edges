@@ -1,4 +1,0 @@
-construct.ts#class:Child/constructor:constructor/expression_statement[0]/call[0] #0 calls `super` -> construct.ts#class:Base/constructor:constructor
-construct.ts#expression_statement[0]/new[0] #0 constructs `Plain` -> construct.ts#class:Plain
-construct.ts#expression_statement[1]/new[0] #0 constructs `Base` -> construct.ts#class:Base/constructor:constructor
-construct.ts#expression_statement[2]/new[0] #0 constructs `Child` -> construct.ts#class:Child/constructor:constructor

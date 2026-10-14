@@ -6,13 +6,13 @@ use std::cell::{Cell, OnceCell, RefCell};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use unfold_engine::evidence::{Candidate, ExternalLocation, Origin};
+use unfold_engine::evidence::ExternalLocation;
 use unfold_engine::{DeclRef, FileId};
 
 use super::index::{Indexed, Link, index};
 use super::{ExportTarget, Identity, ModuleFile, Specifiers, external_member};
 use crate::modules::{Resolved, SpecifierKind};
-use crate::payload::{ImportSource, ModuleFacts};
+use crate::payload::ImportSource;
 
 /// The `(module, name)` pairs and local names being followed, to stop cycles.
 #[derive(Default)]
@@ -43,9 +43,6 @@ pub(super) struct Builder<'f, 'i, 's> {
 /// What export names are followed for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Mode {
-    /// The module's runtime exports (`Linked::module_exports`): type-only links and names
-    /// whose declarations are all types are type-only.
-    Runtime,
     /// A value, as evidence follows it (the proof of concept's callee linker): type-only links
     /// name nothing, a name's every declaration is its target, each merged symbol is its own
     /// identity, and `import * as` of a module with `export =` names what it assigns.
@@ -99,11 +96,6 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
         let module = self.files.get(file.index())?.as_ref()?;
         let index = self.indexes.get(file.index())?.as_ref()?;
         Some((module, index))
-    }
-
-    /// Any TypeScript file's module facts.
-    fn facts(&self, file: FileId) -> Option<&'f ModuleFacts> {
-        Some(self.files.get(file.index())?.as_ref()?.facts)
     }
 
     pub(super) fn has_explicit(&self, file: FileId, name: &str) -> bool {
@@ -214,7 +206,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
     }
 
     fn export_uncached(&self, file: FileId, name: &str, visiting: &mut Visiting) -> ExportTarget {
-        let Some((module, index)) = self.file(file) else {
+        let Some((_, index)) = self.file(file) else {
             return ExportTarget::default();
         };
         let mut targets = Vec::new();
@@ -247,9 +239,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
                             Some(skipped) => skipped,
                             None => {
                                 let target = self.module(file, specifier, SpecifierKind::Import);
-                                if self.mode == Mode::Runtime {
-                                    self.imported(&target, imported, module.synthetic_default, visiting)
-                                } else if *imported == "*" {
+                                if *imported == "*" {
                                     self.module_value(&target, visiting)
                                 } else {
                                     self.member(&target, imported, visiting)
@@ -275,14 +265,9 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
         join(targets, links.is_none())
     }
 
-    /// What a type-only link is: type-only at run time, nothing as a value, followed as a
-    /// type (`None`).
+    /// What a type-only link is: nothing as a value, followed as a type (`None`).
     fn skip(&self, type_only: bool) -> Option<ExportTarget> {
-        match (type_only, self.mode) {
-            (false, _) | (true, Mode::Type) => None,
-            (true, Mode::Runtime) => Some(ExportTarget::type_only()),
-            (true, Mode::Value) => Some(ExportTarget::default()),
-        }
+        (type_only && self.mode == Mode::Value).then(ExportTarget::default)
     }
 
     /// A whole module as a value: what its `export =` assigns, if it has one.
@@ -302,14 +287,10 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
         visiting: &mut Visiting,
     ) -> ExportTarget {
         if imported == "*" {
-            return if self.mode == Mode::Runtime {
-                namespace_value(module)
-            } else {
-                self.module_value(module, visiting)
-            };
+            return self.module_value(module, visiting);
         }
         let target = self.member(module, imported, visiting);
-        if !target.is_empty() || target.type_only {
+        if !target.is_empty() {
             return target;
         }
         match imported {
@@ -330,11 +311,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
         if let Some(skipped) = self.skip(entry.type_only) {
             return skipped;
         }
-        let synthetic = if self.mode == Mode::Runtime {
-            module.synthetic_default
-        } else {
-            module.callee_synthetic_default
-        };
+        let synthetic = module.synthetic_default;
         match &entry.source {
             ImportSource::Module { specifier, require } => {
                 let kind = if *require {
@@ -350,7 +327,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
                     return ExportTarget::default();
                 };
                 let mut target = self.local(file, first, visiting);
-                if target.namespace.is_none() && target.external.is_empty() && !target.type_only {
+                if target.namespace.is_none() && target.external.is_empty() {
                     return ExportTarget::default();
                 }
                 for name in rest {
@@ -372,43 +349,27 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
                 .iter()
                 .map(|&index| DeclRef { file, index })
                 .collect();
-            let value = declarations.iter().any(|declaration| {
-                module.facts.declarations[declaration.index as usize]
-                    .kind
-                    .is_value()
-            });
-            if self.mode != Mode::Runtime {
-                // Each merged symbol is its own identity (an interface and a value of the same
-                // name are two symbols when declared apart).
-                let mut identities: Vec<Identity> = Vec::new();
-                for declaration in &declarations {
-                    let symbol = module
-                        .symbols
-                        .get(declaration.index as usize)
-                        .copied()
-                        .flatten()
-                        .map_or_else(
-                            || Identity::Declaration(*declaration),
-                            |symbol| Identity::Bound(file, symbol),
-                        );
-                    if !identities.contains(&symbol) {
-                        identities.push(symbol);
-                    }
+            // Each merged symbol is its own identity (an interface and a value of the same name
+            // are two symbols when declared apart).
+            let mut identities: Vec<Identity> = Vec::new();
+            for declaration in &declarations {
+                let symbol = module
+                    .symbols
+                    .get(declaration.index as usize)
+                    .copied()
+                    .flatten()
+                    .map_or_else(
+                        || Identity::Declaration(*declaration),
+                        |symbol| Identity::Bound(file, symbol),
+                    );
+                if !identities.contains(&symbol) {
+                    identities.push(symbol);
                 }
-                return ExportTarget {
-                    declarations,
-                    identities,
-                    ..ExportTarget::default()
-                };
             }
-            return if value {
-                ExportTarget {
-                    declarations,
-                    identities: vec![Identity::Symbol(file, name.into())],
-                    ..ExportTarget::default()
-                }
-            } else {
-                ExportTarget::type_only()
+            return ExportTarget {
+                declarations,
+                identities,
+                ..ExportTarget::default()
             };
         }
         let Some(&binding) = index.imports.get(name) else {
@@ -444,7 +405,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
         let mut target = Cow::Borrowed(target);
         let mut hops: SmallVec<[FileId; 4]> = SmallVec::new();
         loop {
-            if target.ambiguous || !target.excluded.is_empty() || target.type_only {
+            if target.ambiguous || !target.excluded.is_empty() {
                 return target.into_owned();
             }
             if !target.external.is_empty() {
@@ -454,7 +415,7 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
                 return ExportTarget::default();
             };
             let found = self.export(module, name, visiting);
-            if !found.is_empty() || found.type_only {
+            if !found.is_empty() {
                 return found;
             }
             if name == "export=" || !self.has_explicit(module, "export=") || hops.contains(&module) {
@@ -506,71 +467,6 @@ impl<'f, 'i, 's> Builder<'f, 'i, 's> {
             ..ExportTarget::default()
         }
     }
-
-    /// The declaration candidates of a target, sorted as the proof of concept sorted them.
-    pub(super) fn candidates(&self, target: &ExportTarget) -> Vec<Candidate> {
-        let mut keyed: Vec<(String, Candidate)> = Vec::new();
-        for location in &target.external {
-            keyed.push((
-                external_key("external", location),
-                Candidate::external(location.clone()),
-            ));
-        }
-        for location in &target.excluded {
-            let candidate = Candidate {
-                origin: Origin::Excluded,
-                declaration: None,
-                augmentation: false,
-                location: Some(location.clone()),
-            };
-            keyed.push((external_key("excluded", location), candidate));
-        }
-        for &declaration in &target.declarations {
-            let Some((facts, path)) = self
-                .facts(declaration.file)
-                .zip(self.specifiers.path(declaration.file))
-            else {
-                continue;
-            };
-            let Some(fact) = facts.declarations.get(declaration.index as usize) else {
-                continue;
-            };
-            let key = format!("{path}\0{:012}\0{:012}", fact.range.start, fact.range.end);
-            let mut candidate = Candidate::indexed(declaration);
-            candidate.augmentation = fact.kind.is_augmentation();
-            keyed.push((key, candidate));
-        }
-        keyed.sort_by(|a, b| a.0.cmp(&b.0));
-        keyed.into_iter().map(|(_, candidate)| candidate).collect()
-    }
-}
-
-/// A module's value as a namespace: the module itself, as its file declaration.
-fn namespace_value(target: &ExportTarget) -> ExportTarget {
-    match target.namespace {
-        Some(module) if target.declarations.is_empty() => ExportTarget {
-            declarations: vec![DeclRef {
-                file: module,
-                index: 0,
-            }],
-            ..target.clone()
-        },
-        _ => target.clone(),
-    }
-}
-
-/// The sort key of an external or excluded candidate.
-fn external_key(origin: &str, location: &ExternalLocation) -> String {
-    let location = match location {
-        ExternalLocation::Library => r#"{"kind":"library"}"#.to_owned(),
-        ExternalLocation::Package(name) => format!(r#"{{"kind":"package","name":{}}}"#, json_string(name)),
-        ExternalLocation::File(path) => format!(r#"{{"kind":"file","filePath":{}}}"#, json_string(path)),
-    };
-    format!("{origin}\0{location}")
-}
-
-fn json_string(text: &str) -> String {
-    serde_json::Value::String(text.to_owned()).to_string()
 }
 
 /// Several links of one name joined: everything they name, ambiguous when star exports
@@ -578,9 +474,7 @@ fn json_string(text: &str) -> String {
 fn join(targets: Vec<ExportTarget>, conflict: bool) -> ExportTarget {
     let mut joined = ExportTarget::default();
     let mut namespaces: SmallVec<[FileId; 2]> = SmallVec::new();
-    let mut any_type_only = false;
     for target in targets {
-        any_type_only |= target.type_only;
         joined.ambiguous |= target.ambiguous;
         for declaration in target.declarations {
             if !joined.declarations.contains(&declaration) {
@@ -612,6 +506,5 @@ fn join(targets: Vec<ExportTarget>, conflict: bool) -> ExportTarget {
     if namespaces.len() == 1 {
         joined.namespace = Some(namespaces[0]);
     }
-    joined.type_only = joined.is_empty() && any_type_only;
     joined
 }

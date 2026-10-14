@@ -1,2 +1,0 @@
-self-parameter.ts#variable:fn/function:self/expression_statement[0]/call[0] #0 calls `self` -> ambiguous
-self-parameter.ts#expression_statement[0]/call[0] #0 calls `fn` -> self-parameter.ts#variable:fn/function:self

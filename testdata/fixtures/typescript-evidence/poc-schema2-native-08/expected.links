@@ -1,0 +1,2 @@
+use.ts#C.run/switch[0]/case[0]/call:this.m #0 calls `this.m` → project use.ts#C.m
+use.ts#C.run/switch[0]/default/call:this.m #0 calls `this.m` → project use.ts#C.m

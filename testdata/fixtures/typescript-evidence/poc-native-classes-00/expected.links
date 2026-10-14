@@ -1,0 +1,5 @@
+construct.ts#Child #0 extends `Base` → project construct.ts#Base
+construct.ts#Child.constructor/call:super #0 calls `super` → project construct.ts#Base.constructor
+construct.ts#/call:Plain #0 calls `Plain` → project construct.ts#Plain
+construct.ts#/call:Base #0 calls `Base` → project construct.ts#Base.constructor
+construct.ts#/call:Child #0 calls `Child` → project construct.ts#Child.constructor

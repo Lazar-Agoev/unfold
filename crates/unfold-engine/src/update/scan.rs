@@ -278,7 +278,7 @@ fn apply_paths(engine: &Engine, previous: &State, settings: &Settings, paths: &[
             FileClass::Source(_) | FileClass::Unindexed(_) => {
                 unindexed.insert(path.clone());
             }
-            FileClass::Input(role, _) if role != InputRole::UnfoldConfig => {
+            FileClass::Input(role) if role != InputRole::UnfoldConfig => {
                 inputs.insert(path.clone(), FoundInput { role, stamp });
             }
             FileClass::Context(..) => {

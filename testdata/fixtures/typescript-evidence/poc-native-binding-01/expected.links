@@ -1,0 +1,4 @@
+hoist.ts#outer/call:f #0 calls `f` → unknown mutable_binding
+hoist.ts#outer/call:f[1] #0 calls `f` → unknown mutable_binding
+hoist.ts#other/call:f #0 calls `f` → unknown mutable_binding
+hoist.ts#/call:f #0 calls `f` → project hoist.ts#f

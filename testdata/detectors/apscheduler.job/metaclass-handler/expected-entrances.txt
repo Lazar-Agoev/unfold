@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/metaclass-handler. Format: testdata/README.md.
-# A member of a class with an unproven metaclass stays unresolved.
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:11
-	target	handler	unresolved	unsupported	Commands.run

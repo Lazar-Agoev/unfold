@@ -1,0 +1,4 @@
+contexts.ts#Outer.run.Inner/call:this.key #0 calls `this.key` → unknown unbound_this
+contexts.ts#Outer.run.Inner/call:decorate #0 calls `decorate` → project contexts.ts#decorate
+contexts.ts#Outer.run.Inner/call:decorate/call:this.key #0 calls `this.key` → project contexts.ts#Outer.key
+contexts.ts#Outer.run.Inner/call:this.key[1] #0 calls `this.key` → unknown unknown_receiver

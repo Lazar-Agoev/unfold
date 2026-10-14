@@ -1,37 +1,37 @@
-{"t":"signature","block":"a.ts#function:plain","returns":"Promise<void>","returns_range":[191,204]}
-{"t":"signature","block":"a.ts#function:withThis","returns":"void","returns_range":[289,293]}
-{"t":"signature","block":"a.ts#variable:arrow/function:arrow"}
-{"t":"signature","block":"a.ts#variable:expression/function:expression","returns":"value is string","returns_range":[439,454]}
-{"t":"signature","block":"a.ts#class:Service/constructor:constructor"}
-{"t":"signature","block":"a.ts#class:Service/getter:size","returns":"number","returns_range":[598,604]}
-{"t":"signature","block":"a.ts#class:Service/setter:size"}
-{"t":"signature","block":"a.ts#class:Service/method:run","returns":"T","returns_range":[711,712]}
-{"t":"signature","block":"a.ts#class:Service/method:overloaded"}
-{"t":"signature","block":"a.ts#variable:literal/method:method","returns":"number","returns_range":[866,872]}
-{"t":"signature","block":"a.ts#variable:literal/getter:value"}
-{"t":"signature","block":"a.ts#function:untyped"}
-{"t":"parameter","block":"a.ts#function:plain","index":0,"kind":"positional","name":"a","type":"number","type_range":[139,145]}
-{"t":"parameter","block":"a.ts#function:plain","index":1,"kind":"positional","name":"b","optional":true,"type":"string","type_range":[151,157]}
-{"t":"parameter","block":"a.ts#function:plain","index":2,"kind":"positional","name":"c","default":true}
-{"t":"parameter","block":"a.ts#function:plain","index":3,"kind":"rest","name":"rest","type":"Array<string>","type_range":[175,188]}
-{"t":"parameter","block":"a.ts#function:withThis","index":0,"kind":"this","name":"this","type":"HTMLElement","type_range":[261,272]}
-{"t":"parameter","block":"a.ts#function:withThis","index":1,"kind":"positional","name":"event","type":"Event","type_range":[281,286]}
-{"t":"parameter","block":"a.ts#variable:arrow/function:arrow","index":0,"kind":"positional","type":"{ id: string; name: string }","type_range":[332,360]}
-{"t":"parameter","block":"a.ts#variable:arrow/function:arrow","index":1,"kind":"positional","default":true,"type":"number[]","type_range":[371,379]}
-{"t":"parameter","block":"a.ts#variable:expression/function:expression","index":0,"kind":"positional","name":"value","type":"unknown","type_range":[429,436]}
-{"t":"parameter","block":"a.ts#class:Service/constructor:constructor","index":0,"kind":"positional","name":"url","type":"string","type_range":[548,554]}
-{"t":"parameter","block":"a.ts#class:Service/constructor:constructor","index":1,"kind":"positional","name":"retries","optional":true,"type":"number","type_range":[573,579]}
-{"t":"parameter","block":"a.ts#class:Service/setter:size","index":0,"kind":"positional","name":"value","type":"number","type_range":[643,649]}
-{"t":"parameter","block":"a.ts#class:Service/method:run","index":0,"kind":"positional","name":"input","type":"T","type_range":[670,671]}
-{"t":"parameter","block":"a.ts#class:Service/method:run","index":1,"kind":"positional","name":"options","default":true,"type":"{ verbose?: boolean }","type_range":[682,703]}
-{"t":"parameter","block":"a.ts#class:Service/method:overloaded","index":0,"kind":"positional","name":"value","type":"unknown","type_range":[794,801]}
-{"t":"parameter","block":"a.ts#variable:literal/method:method","index":0,"kind":"positional","name":"x","type":"number","type_range":[857,863]}
-{"t":"parameter","block":"a.ts#function:untyped","index":0,"kind":"positional","name":"a"}
-{"t":"parameter","block":"a.ts#function:untyped","index":1,"kind":"positional","name":"b"}
-{"t":"member","block":"a.ts#class:Service","index":0,"kind":"property","name":"url","readonly":true,"type":"string","type_range":[548,554]}
-{"t":"member","block":"a.ts#class:Service","index":1,"kind":"property","name":"retries","optional":true,"type":"number","type_range":[573,579]}
-{"t":"result","call":"a.ts#function:plain/return[0]/call[0]","binding":"return"}
-{"t":"type_link","block":"a.ts#function:plain","range":[175,180],"text":"Array","resolution":"external","module":"global"}
-{"t":"type_link","block":"a.ts#function:plain","range":[191,198],"text":"Promise","resolution":"external","module":"global"}
-{"t":"type_link","block":"a.ts#function:withThis","range":[261,272],"text":"HTMLElement","resolution":"external","module":"global"}
-{"t":"type_link","block":"a.ts#function:withThis","range":[281,286],"text":"Event","resolution":"external","module":"global"}
+{"t":"node","key":"a.ts#plain/return[0]/call:Promise.resolve","parent":"a.ts#plain/return[0]","kind":"call","form":"call","name":"Promise.resolve","range":[216,233],"lines":[3,3],"head":[216,231],"flags":["exit_value"]}
+{"t":"link","from":"a.ts#plain","seq":0,"kind":"types","range":[175,180],"text":"Array","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#plain","seq":1,"kind":"types","range":[191,198],"text":"Promise","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#withThis","seq":0,"kind":"types","range":[261,272],"text":"HTMLElement","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#withThis","seq":1,"kind":"types","range":[281,286],"text":"Event","outcome":"library","to":"global"}
+{"t":"signature","node":"a.ts#plain","returns":"Promise<void>","returns_range":[191,204]}
+{"t":"signature","node":"a.ts#withThis","returns":"void","returns_range":[289,293]}
+{"t":"signature","node":"a.ts#arrow"}
+{"t":"signature","node":"a.ts#expression","returns":"value is string","returns_range":[439,454]}
+{"t":"signature","node":"a.ts#Service.constructor"}
+{"t":"signature","node":"a.ts#Service.size","returns":"number","returns_range":[598,604]}
+{"t":"signature","node":"a.ts#Service.size[1]"}
+{"t":"signature","node":"a.ts#Service.run","returns":"T","returns_range":[711,712]}
+{"t":"signature","node":"a.ts#Service.overloaded"}
+{"t":"signature","node":"a.ts#literal.method","returns":"number","returns_range":[866,872]}
+{"t":"signature","node":"a.ts#literal.value"}
+{"t":"signature","node":"a.ts#untyped"}
+{"t":"parameter","node":"a.ts#plain","index":0,"range":[136,145],"kind":"positional","name":"a","type":"number","type_range":[139,145]}
+{"t":"parameter","node":"a.ts#plain","index":1,"range":[147,157],"kind":"positional","name":"b","optional":true,"type":"string","type_range":[151,157]}
+{"t":"parameter","node":"a.ts#plain","index":2,"range":[159,164],"kind":"positional","name":"c","default":true}
+{"t":"parameter","node":"a.ts#plain","index":3,"range":[166,188],"kind":"rest","name":"rest","type":"Array<string>","type_range":[175,188]}
+{"t":"parameter","node":"a.ts#withThis","index":0,"range":[255,272],"kind":"this","name":"this","type":"HTMLElement","type_range":[261,272]}
+{"t":"parameter","node":"a.ts#withThis","index":1,"range":[274,286],"kind":"positional","name":"event","type":"Event","type_range":[281,286]}
+{"t":"parameter","node":"a.ts#arrow","index":0,"range":[318,360],"kind":"positional","type":"{ id: string; name: string }","type_range":[332,360]}
+{"t":"parameter","node":"a.ts#arrow","index":1,"range":[362,384],"kind":"positional","default":true,"type":"number[]","type_range":[371,379]}
+{"t":"parameter","node":"a.ts#expression","index":0,"range":[422,436],"kind":"positional","name":"value","type":"unknown","type_range":[429,436]}
+{"t":"parameter","node":"a.ts#Service.constructor","index":0,"range":[526,554],"kind":"positional","name":"url","type":"string","type_range":[548,554]}
+{"t":"parameter","node":"a.ts#Service.constructor","index":1,"range":[556,579],"kind":"positional","name":"retries","optional":true,"type":"number","type_range":[573,579]}
+{"t":"parameter","node":"a.ts#Service.size[1]","index":0,"range":[636,649],"kind":"positional","name":"value","type":"number","type_range":[643,649]}
+{"t":"parameter","node":"a.ts#Service.run","index":0,"range":[663,671],"kind":"positional","name":"input","type":"T","type_range":[670,671]}
+{"t":"parameter","node":"a.ts#Service.run","index":1,"range":[673,708],"kind":"positional","name":"options","default":true,"type":"{ verbose?: boolean }","type_range":[682,703]}
+{"t":"parameter","node":"a.ts#Service.overloaded","index":0,"range":[787,801],"kind":"positional","name":"value","type":"unknown","type_range":[794,801]}
+{"t":"parameter","node":"a.ts#literal.method","index":0,"range":[854,863],"kind":"positional","name":"x","type":"number","type_range":[857,863]}
+{"t":"parameter","node":"a.ts#untyped","index":0,"range":[934,935],"kind":"positional","name":"a"}
+{"t":"parameter","node":"a.ts#untyped","index":1,"range":[937,938],"kind":"positional","name":"b"}
+{"t":"member","node":"a.ts#Service","index":0,"kind":"property","name":"url","readonly":true,"type":"string","type_range":[548,554]}
+{"t":"member","node":"a.ts#Service","index":1,"kind":"property","name":"retries","optional":true,"type":"number","type_range":[573,579]}

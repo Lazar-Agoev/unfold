@@ -1,5 +1,0 @@
-arrays.ts#function:run/expression_statement[0]/call[0] #0 calls `values[0].save` -> unknown_receiver
-arrays.ts#function:run/expression_statement[1]/call[0] #0 calls `values[…].save` -> unknown_receiver
-arrays.ts#function:run/expression_statement[2]/call[0] #0 calls `values["0"].save` -> unknown_receiver
-arrays.ts#function:run/expression_statement[3]/call[0] #0 calls `values.map` -> external global
-arrays.ts#function:run/expression_statement[4]/call[0] #0 calls `values["map"]` -> external global

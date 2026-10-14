@@ -1,19 +1,16 @@
 //! Declaration semantics (the proof of concept's `frontend/typescript-shared/semantics.ts`):
-//! concrete bodies per value context, parameters and their runtime positions, binding
-//! stability, accessors, class-member facts, overload signatures, provenance facts, and the
-//! manual-locator lookups (whose rules deliberately differ from the value policy).
+//! concrete bodies per value context, parameters, binding stability, accessors, class-member
+//! facts, overload signatures, and provenance facts.
 
-use unfold_engine::evidence::{
-    ConcreteTarget, LocatorMembers, MemberFact, OriginDeclaration, ParameterFact, Stability, ValueContext,
-};
-use unfold_engine::{BlockRef, DeclRef, FileId, ValueRef};
+use unfold_engine::evidence::{ConcreteTarget, MemberFact, OriginDeclaration, Stability, ValueContext};
+use unfold_engine::{DeclRef, FileId, NodeRef, ValueRef};
 
 use crate::link::TypeScriptLinked;
 use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, VarKind};
 
 impl TypeScriptLinked<'_> {
-    fn block_ref(file: FileId, local: Option<u32>) -> Option<BlockRef> {
-        local.map(|local| BlockRef { file, local })
+    fn node_ref(file: FileId, local: Option<u32>) -> Option<NodeRef> {
+        local.map(|local| NodeRef { file, local })
     }
 
     /// The inline function or class a declaration's initializer is (after transparent
@@ -75,7 +72,7 @@ impl TypeScriptLinked<'_> {
             return match decl.kind {
                 DeclKind::Class | DeclKind::Interface | DeclKind::TypeAlias | DeclKind::Enum => {
                     Some(ConcreteTarget {
-                        target: Self::block_ref(file, decl.block)?,
+                        target: Self::node_ref(file, decl.block)?,
                         implementation: declaration,
                     })
                 }
@@ -92,7 +89,7 @@ impl TypeScriptLinked<'_> {
                     return None;
                 }
                 Some(ConcreteTarget {
-                    target: Self::block_ref(file, decl.block)?,
+                    target: Self::node_ref(file, decl.block)?,
                     implementation: declaration,
                 })
             }
@@ -108,9 +105,9 @@ impl TypeScriptLinked<'_> {
                                 })
                             })
                             .and_then(|constructor| constructor.block);
-                        Self::block_ref(file, constructor.or(decl.block))?
+                        Self::node_ref(file, constructor.or(decl.block))?
                     }
-                    ValueContext::Reference | ValueContext::Handler => Self::block_ref(file, decl.block)?,
+                    ValueContext::Reference => Self::node_ref(file, decl.block)?,
                     ValueContext::Call | ValueContext::Type => return None,
                 };
                 Some(ConcreteTarget {
@@ -151,24 +148,10 @@ impl TypeScriptLinked<'_> {
         }
     }
 
-    /// Parameter facts of a parameter or a binding element of one.
-    pub(crate) fn parameter_facts(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        let info = self.decl(declaration)?.parameter?;
-        let file = declaration.file;
-        let owner = self
-            .decl(DeclRef {
-                file,
-                index: info.owner,
-            })
-            .and_then(|owner| owner.block);
-        Some(ParameterFact {
-            parameter: DeclRef {
-                file,
-                index: info.parameter,
-            },
-            owner: Self::block_ref(file, owner),
-            position: Some(info.position),
-        })
+    /// Whether a declaration is a parameter or a binding element of one.
+    pub(crate) fn in_parameter(&self, declaration: DeclRef) -> bool {
+        self.decl(declaration)
+            .is_some_and(|decl| decl.kind == DeclKind::Parameter || decl.flags.has(DeclFlags::IN_PARAMETER))
     }
 
     /// Whether a declaration's binding can be reassigned: `const` is stable, `let` and `var`
@@ -248,131 +231,5 @@ impl TypeScriptLinked<'_> {
                 DeclKind::Parameter | DeclKind::Variable | DeclKind::Property
             ),
         }
-    }
-
-    // --- Locators -------------------------------------------------------------------------
-
-    /// The top-level function, class, and variable declarations of `file` named `name`.
-    pub(crate) fn top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        let Some(binding) = self.binding(file) else {
-            return Vec::new();
-        };
-        binding
-            .declarations
-            .iter()
-            .enumerate()
-            .filter(|(_, decl)| {
-                decl.flags.has(DeclFlags::TOP_LEVEL)
-                    && matches!(
-                        decl.kind,
-                        DeclKind::Function | DeclKind::Class | DeclKind::Variable
-                    )
-                    && decl.name.as_deref() == Some(name)
-            })
-            .map(|(index, _)| DeclRef {
-                file,
-                index: index as u32,
-            })
-            .collect()
-    }
-
-    /// The block a locator names for a declaration.
-    pub(crate) fn locator_block(&self, declaration: DeclRef) -> Option<BlockRef> {
-        let decl = self.decl(declaration)?;
-        if decl.flags.has(DeclFlags::AMBIENT) {
-            return None;
-        }
-        let file = declaration.file;
-        match decl.kind {
-            DeclKind::Function | DeclKind::FunctionExpression | DeclKind::Arrow | DeclKind::Method => {
-                Self::block_ref(file, decl.block.filter(|_| decl.flags.has(DeclFlags::HAS_BODY)))
-            }
-            DeclKind::Variable => {
-                if decl.var_kind != Some(VarKind::Const) {
-                    return None;
-                }
-                let (inline, _) = self.inline_initializer(declaration, decl)?;
-                self.locator_block(inline)
-            }
-            DeclKind::Expression => self.locator_block(DeclRef {
-                file,
-                index: decl.inline?,
-            }),
-            DeclKind::Class
-            | DeclKind::ClassExpression
-            | DeclKind::Constructor
-            | DeclKind::Getter
-            | DeclKind::Setter => Self::block_ref(file, decl.block),
-            _ => None,
-        }
-    }
-
-    /// The members named `name` of a class or constant object literal a locator names.
-    pub(crate) fn members_named(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        let Some(decl) = self.decl(owner) else {
-            return LocatorMembers::default();
-        };
-        let file = owner.file;
-        let mut class = matches!(decl.kind, DeclKind::Class | DeclKind::ClassExpression).then_some(owner);
-        let mut object = None;
-        if decl.kind == DeclKind::Variable && decl.var_kind == Some(VarKind::Const) {
-            if let Some((inline, true)) = self.inline_initializer(owner, decl) {
-                class = Some(inline);
-            }
-            object = self.tables.objects.get(&owner).copied();
-        }
-        let members: Vec<u32> = if let Some(class) = class {
-            self.tables
-                .classes
-                .get(&class)
-                .map(|tables| {
-                    tables
-                        .members
-                        .iter()
-                        .filter(|member| {
-                            self.decl(**member)
-                                .is_some_and(|decl| decl.kind != DeclKind::Parameter)
-                        })
-                        .map(|member| member.index)
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else if let Some(object) = object {
-            self.binding(file)
-                .and_then(|binding| binding.objects.get(object as usize))
-                .map(|facts| facts.members.clone())
-                .unwrap_or_default()
-        } else {
-            return LocatorMembers::default();
-        };
-        let mut declarations = Vec::new();
-        for member in members {
-            let reference = DeclRef { file, index: member };
-            let Some(found) = self.decl(reference) else {
-                continue;
-            };
-            let spelled = if found.kind == DeclKind::Constructor {
-                Some("constructor")
-            } else {
-                found.name.as_deref()
-            };
-            if spelled != Some(name) {
-                continue;
-            }
-            let declaration = match (found.kind, found.inline) {
-                (DeclKind::PropertyAssignment, Some(inline)) => DeclRef { file, index: inline },
-                _ => reference,
-            };
-            declarations.push(declaration);
-        }
-        LocatorMembers {
-            supported: true,
-            declarations,
-        }
-    }
-
-    /// Whether `signature` is an overload signature of `implementation` by locator rules.
-    pub(crate) fn is_locator_overload(&self, signature: DeclRef, implementation: DeclRef) -> bool {
-        self.is_overload(signature, implementation)
     }
 }

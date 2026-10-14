@@ -1,0 +1,4 @@
+safety.ts#g/call:f #0 calls `f` → unknown parameter
+safety.ts#C.m/call:f #0 calls `f` → unknown parameter
+safety.ts#/call:f #0 calls `f` → project safety.ts#f
+safety.ts#/call:g #0 calls `g` → project safety.ts#g

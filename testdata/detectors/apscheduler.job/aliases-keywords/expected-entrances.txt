@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/aliases-keywords. Format: testdata/README.md.
-# Imported aliases and reordered func and trigger keywords keep exact call evidence (PoC: "Imported aliases and reordered func trigger keywords...").
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:5
-	target	handler	resolved	src/app.py#function:first	first
-entrance	apscheduler.job	schedule	-	*/15 * * * *	exact	src/app.py:6
-	target	handler	resolved	src/app.py#function:second	second

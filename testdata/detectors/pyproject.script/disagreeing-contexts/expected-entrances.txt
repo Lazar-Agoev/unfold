@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/disagreeing-contexts. Format: testdata/README.md.
-# Files of one pyproject with different source roots must agree on the startup.
-entrance	pyproject.script	process	-	run	exact	pyproject.toml:2
-	target	startup	unresolved	ambiguous	service:main

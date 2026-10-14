@@ -1,0 +1,2 @@
+use.ts# #0 imports `missing` → library missing
+use.ts# #1 imports `re-export` → library re-export

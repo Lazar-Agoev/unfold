@@ -166,7 +166,6 @@ impl Binder<'_> {
             | ExprKind::Sequence(_)
             | ExprKind::Dict(_)
             | ExprKind::Chain(_)
-            | ExprKind::Starred(_)
             | ExprKind::Other => Value::default(),
         }
     }

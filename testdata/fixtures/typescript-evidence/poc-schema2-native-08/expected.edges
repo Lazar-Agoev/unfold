@@ -1,2 +1,0 @@
-use.ts#class:C/method:run/switch[0]/case[0]/expression_statement[0]/call[0] #0 calls `this.m` -> use.ts#class:C/method:m
-use.ts#class:C/method:run/switch[0]/default[0]/expression_statement[0]/call[0] #0 calls `this.m` -> use.ts#class:C/method:m

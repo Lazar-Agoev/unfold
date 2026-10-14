@@ -1,0 +1,11 @@
+main.ts# #0 imports `express` → library express
+main.ts# #1 imports `absent-package` → library absent-package
+main.ts# #2 types `Application` → library express-core
+main.ts# #3 types `Router` → library express-core
+main.ts#/call:express #0 calls `express` → library express
+main.ts#/call:express.Router #0 calls `express.Router` → library express
+main.ts#/call:app.get #0 calls `app.get` → library express
+main.ts#/call:router.get #0 calls `router.get` → library express
+main.ts#/call:ambientApp.get #0 calls `ambientApp.get` → library express
+main.ts#/call:absent #0 calls `absent` → library absent-package
+main.ts#/call:unknown.get #0 calls `unknown.get` → unknown unknown_receiver

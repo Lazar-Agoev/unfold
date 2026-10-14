@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/wrapped-class-handler. Format: testdata/README.md.
-# A wrapped class keeps wrapper.
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:13
-	target	handler	unresolved	wrapper	Commands.run

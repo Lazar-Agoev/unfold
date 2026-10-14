@@ -1,0 +1,6 @@
+predicates.ts#isD #0 types `C` → project predicates.ts#C
+predicates.ts#isD #1 types `D` → project predicates.ts#D
+predicates.ts#Holder #0 types `C` → project predicates.ts#C
+predicates.ts#Holder.run/if[0]/then/call:isD #0 calls `isD` → project predicates.ts#isD
+predicates.ts#Holder.run/if[0]/then/call:this.value.m #0 calls `this.value.m` → unknown unknown_receiver
+predicates.ts#Holder.run/call:this.m #0 calls `this.m` → project predicates.ts#Holder.m

@@ -172,9 +172,7 @@ fn reopen(
         .filter_map(|file| Some((file.file.path.clone(), engine.disk_state(&file.file.path)?)))
         .collect();
     let mut reopened = engine_over(folder, Arc::clone(language), Arc::clone(cache));
-    let stats = reopened
-        .restore(graph, Default::default(), disks, None)
-        .expect("restore");
+    let stats = reopened.restore(graph, disks, None).expect("restore");
     (reopened, stats)
 }
 

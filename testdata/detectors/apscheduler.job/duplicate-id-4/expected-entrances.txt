@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/duplicate-id-4. Format: testdata/README.md.
-# Duplicate or dynamic IDs withhold both registrations. Written: scheduler.add_job(second, id=DYNAMIC_ID)
-entrance	apscheduler.job	schedule	-	0 2 * * *	exact	src/app.py:7
-	target	handler	unresolved	unsupported	first
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:8
-	target	handler	unresolved	unsupported	second

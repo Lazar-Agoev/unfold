@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/mutation-6. Format: testdata/README.md.
-# Celery and Task class mutations invalidate genuine API provenance (PoC: "Celery and Task class mutations..."). Written: from celery import Task; Alias = Task; Alias = other; Alias.bind = fake

@@ -1,0 +1,5 @@
+inherit.ts#Mid #0 extends `Base` → project inherit.ts#Base
+inherit.ts#Mid.run/call:this.m #0 calls `this.m` → project inherit.ts#Base.m
+inherit.ts#Leaf #0 extends `Mid` → project inherit.ts#Mid
+inherit.ts#Leaf.runAgain/call:this.m #0 calls `this.m` → project inherit.ts#Base.m
+inherit.ts#Leaf.runAgain/call:super.m #0 calls `super.m` → project inherit.ts#Base.m

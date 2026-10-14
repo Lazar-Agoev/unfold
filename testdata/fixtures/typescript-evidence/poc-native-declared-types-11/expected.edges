@@ -1,6 +1,0 @@
-unknown.ts#function:call/expression_statement[0]/call[0] #0 calls `value.m` -> unknown_receiver
-unknown.ts#function:call/expression_statement[1]/call[0] #0 calls `abstract.m` -> not_concrete
-unknown.ts#function:call/expression_statement[2]/call[0] #0 calls `callback` -> parameter @2
-unknown.ts#function:call/expression_statement[3]/call[0] #0 calls `anyValue.m` -> unknown_receiver
-unknown.ts#function:call/expression_statement[4]/call[0] #0 calls `unknownValue.m` -> unknown_receiver
-unknown.ts#function:call/expression_statement[5]/call[0] #0 calls `missing.m` -> unknown_receiver

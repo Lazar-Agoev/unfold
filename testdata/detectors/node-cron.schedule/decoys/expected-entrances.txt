@@ -1,6 +1,0 @@
-# Only the real schedule matches: not a local function, a relative or missing module, another
-# package, a default or namespace call, another export, a literal-key or computed access, a
-# construction, a const alias, or a shadowing parameter.
-# (PoC schema2-framework-jobs: "node-cron spelling decoys ... do not match".)
-entrance	node-cron.schedule	schedule	-	real	exact	main.ts:8
-	target	handler	resolved	main.ts#function:handle	handle

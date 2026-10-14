@@ -1,0 +1,3 @@
+blocks.ts#/call:f #0 calls `f` → project blocks.ts#f[1]
+blocks.ts#/call:f[1] #0 calls `f` → project blocks.ts#f[1]
+blocks.ts#/call:f[2] #0 calls `f` → project blocks.ts#f

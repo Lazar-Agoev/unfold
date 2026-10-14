@@ -1,7 +1,0 @@
-# A name two star exports supply is ambiguous; a re-export from a package is external with its
-# module. (PoC schema2-manual: "conflicting exported definitions are ambiguous and external exports
-# keep module provenance".)
-entrance	manual	command	-	-	unknown	unfold.toml:1
-	target	handler	unresolved	ambiguous	barrel.ts#duplicate
-entrance	manual	command	-	-	unknown	unfold.toml:6
-	target	handler	external	remote	barrel.ts#remote

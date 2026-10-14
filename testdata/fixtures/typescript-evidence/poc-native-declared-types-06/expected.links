@@ -1,0 +1,3 @@
+function-value.ts#factory #0 types `Repo` → project function-value.ts#Repo
+function-value.ts#factory/return[0]/call:Repo #0 calls `Repo` → project function-value.ts#Repo
+function-value.ts#/call:factory.save #0 calls `factory.save` → unknown unknown_receiver

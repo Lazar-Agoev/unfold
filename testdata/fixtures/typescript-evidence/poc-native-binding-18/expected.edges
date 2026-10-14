@@ -1,4 +1,0 @@
-scope-boundaries.ts#class:C/method:method/expression_statement[0]/call[0] #0 calls `f` -> scope-boundaries.ts#function:f
-scope-boundaries.ts#expression_statement[0]/call[0] #0 calls `f` -> unknown_name
-scope-boundaries.ts#expression_statement[1]/call[0] #0 calls `console.log` -> unknown_receiver
-scope-boundaries.ts#expression_statement[2]/call[0] #0 calls `f` -> scope-boundaries.ts#function:f

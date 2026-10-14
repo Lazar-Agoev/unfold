@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/constructor-5. Format: testdata/README.md.
-# Only the main, broker, and backend constructor options prove the body. Written: Celery('demo', loader=Loader)
-entrance	celery.task	worker	-	orders	exact	src/app.py:4
-	target	handler	unresolved	unsupported	first

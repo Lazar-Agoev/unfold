@@ -1,6 +1,6 @@
-//! The value table and occurrence facts: one [`CallFact`] per call, tagged template, and
-//! construction block, one [`ImportFact`] per import block, and a [`ValueFact`] for every callee,
-//! argument, and the receivers, callees, and tags they depend on.
+//! The value table: a [`ValueFact`] for every callee and every argument that may pass a
+//! definition, and for the receivers, callees, and tags their labels depend on. Each value keeps
+//! the oxc expression it was recorded for, so binding can give it its converted expression.
 //!
 //! | Unwrapped expression | Shape | Label |
 //! | --- | --- | --- |
@@ -8,254 +8,219 @@
 //! | Property access (`a.b`, `a?.b`, `a.#b`) | `Member` | `receiver.name` |
 //! | Element access with a literal key | `Member` | `receiver["key"]` as written |
 //! | Other element access | `Other` | `receiver[…]` |
-//! | Call (or dynamic import) used as a value | `CallResult` | `callee()` |
-//! | Function or arrow expression | `InlineFunction` | `(…)` |
-//! | Class expression | `InlineClass` | `(…)` |
+//! | Call (or dynamic import) used as a value | `Other` | `callee()` |
 //! | `new`, tagged template | `Other` | the target's or tag's label |
 //! | `this`, `super` | `Other` | the keyword |
-//! | Anything else, including spreads | `Other` | `(…)` |
+//! | Anything else, including inline functions and classes | `Other` | `(…)` |
 //!
 //! Parentheses, `!`, `as`, `satisfies`, and `<T>` assertions are transparent. Values are created
-//! dependencies first, so a receiver always precedes the access that uses it.
+//! dependencies first, so a receiver always precedes the access that uses it. A value's range is
+//! the written expression, wrappers included: where its `calls` or `passes` link is written.
 
+use oxc_allocator::{Address, GetAddress};
+use oxc_ast::ast::{ChainElement, Expression, MemberExpression};
+use oxc_span::GetSpan;
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{EdgeKind, Expansion};
-use unfold_engine::facts::{ArgumentFact, CallContext, CallFact, ImportFact, ValueFact, ValueShape};
+use unfold_core::text::ByteRange;
+use unfold_engine::facts::{ValueFact, ValueShape};
+use unfold_engine::links::text;
 
-use crate::names;
-use crate::payload::{ImportKind, ValueSyntax};
-use crate::syntax::{Cat, Label, NONE, Syntax};
+use crate::spans::range;
 
-/// Everything recorded about one file's occurrences.
+/// One file's value table, being recorded.
 #[derive(Debug, Default)]
-pub(crate) struct Occurrences {
-    pub(crate) values: Vec<ValueFact>,
-    pub(crate) syntax: Vec<ValueSyntax>,
-    pub(crate) calls: Vec<CallFact>,
-    pub(crate) imports: Vec<ImportFact>,
-    pub(crate) import_kinds: Vec<ImportKind>,
-    /// The syntax node each value was recorded for (before transparent wrappers are removed).
-    pub(crate) nodes: Vec<u32>,
+pub(crate) struct Values {
+    facts: Vec<ValueFact>,
+    /// The expression each value was recorded for; `None` for an `import` keyword.
+    addresses: Vec<Option<Address>>,
+    /// Expression address → its value.
+    memo: FxHashMap<Address, u32>,
 }
 
-/// Records the occurrences of every selected call, construction, and import. `block_of` maps a
-/// node to its block's local ID, or [`NONE`]. More values can be added to the returned table
-/// ([`Table::value`]) before it is finished.
-pub(crate) fn occurrences<'t, 'a>(
-    syntax: &'t Syntax<'a>,
-    source: &'t str,
-    block_of: &'t [u32],
-) -> Table<'t, 'a> {
-    let mut table = Table {
-        syntax,
-        source,
-        block_of,
-        memo: FxHashMap::default(),
-        out: Occurrences::default(),
-    };
-    for node in 0..syntax.len() as u32 {
-        let block = block_of[node as usize];
-        if block == NONE {
-            continue;
-        }
-        match syntax.cat(node) {
-            Cat::Call | Cat::TaggedTemplate | Cat::New => table.call(node, block),
-            Cat::ImportDeclaration | Cat::Reexport | Cat::ImportEquals | Cat::ImportCall => {
-                table.import(node, block);
-            }
-            _ => {}
-        }
-    }
-    table
-}
-
-/// The value table being recorded.
-pub(crate) struct Table<'t, 'a> {
-    syntax: &'t Syntax<'a>,
-    source: &'t str,
-    block_of: &'t [u32],
-    memo: FxHashMap<u32, u32>,
-    out: Occurrences,
-}
-
-impl Table<'_, '_> {
-    fn call(&mut self, node: u32, block: u32) {
-        let syntax = self.syntax;
-        let cat = syntax.cat(node);
-        let callee_label = if cat == Cat::TaggedTemplate {
-            Label::Tag
-        } else {
-            Label::Expression
-        };
-        let callee_node = syntax.child(node, callee_label);
-        let callee = callee_node.map(|callee| self.value(callee));
-        let mut arguments = Vec::new();
-        if cat != Cat::TaggedTemplate {
-            let written: Vec<u32> = syntax
-                .children(node)
-                .filter(|&child| syntax.node(child).label == Label::Arguments)
-                .collect();
-            for (position, argument) in written.into_iter().enumerate() {
-                // A spread can never supply a named reference.
-                let spread = syntax.cat(argument) == Cat::Spread;
-                arguments.push(ArgumentFact {
-                    expand: spread.then_some(Expansion::Spread),
-                    ..ArgumentFact::positional(self.value(argument), position as u32, !spread)
-                });
-            }
-        }
-        // `super(…)` keeps its call block and `calls` edge but selects a construction target.
-        let construct = cat == Cat::New
-            || (cat == Cat::Call && callee_node.is_some_and(|callee| syntax.cat(callee) == Cat::Super));
-        self.out.calls.push(CallFact {
-            block,
-            callee,
-            edge: if cat == Cat::New {
-                EdgeKind::Constructs
-            } else {
-                EdgeKind::Calls
-            },
-            context: if construct {
-                CallContext::Construct
-            } else {
-                CallContext::Call
-            },
-            arguments,
-        });
-    }
-
-    fn import(&mut self, node: u32, block: u32) {
-        let syntax = self.syntax;
-        let (specifier, kind) = match syntax.cat(node) {
-            // Only a direct string or plain template literal names the module; a parenthesized
-            // literal is a non-literal dependency.
-            Cat::ImportCall => (
-                syntax.child(node, Label::Arguments).filter(|&argument| {
-                    matches!(
-                        syntax.cat(argument),
-                        Cat::StringLiteral | Cat::NoSubstitutionTemplate
-                    )
-                }),
-                ImportKind::Dynamic,
-            ),
-            Cat::Reexport => (syntax.child(node, Label::ModuleSpecifier), ImportKind::Reexport),
-            Cat::ImportEquals => (
-                syntax.child(node, Label::ModuleSpecifier),
-                ImportKind::ImportEquals,
-            ),
-            _ => (syntax.child(node, Label::ModuleSpecifier), ImportKind::Import),
-        };
-        let specifier = specifier.map(|literal| Box::from(syntax.node(literal).text));
-        self.out.import_kinds.push(kind);
-        self.out.imports.push(ImportFact { block, specifier });
-    }
-
-    /// The syntax node of each value recorded so far.
-    pub(crate) fn nodes(&self) -> &[u32] {
-        &self.out.nodes
-    }
-
-    /// The recorded occurrences and values.
-    pub(crate) fn finish(self) -> Occurrences {
-        self.out
-    }
-
-    /// The value index of `node`, creating it and everything it depends on.
-    pub(crate) fn value(&mut self, node: u32) -> u32 {
+impl Values {
+    /// The value of `expression` (written in `source`), creating it and everything its label
+    /// depends on.
+    pub(crate) fn value(&mut self, expression: &Expression<'_>, source: &str) -> u32 {
         // Walk the dependency chain (receiver, callee, or tag) iteratively, then create values
         // innermost first, so long access chains never recurse.
         let mut chain = Vec::new();
-        let mut current = Some(node);
+        let mut current = Some(expression);
         while let Some(link) = current {
-            if self.memo.contains_key(&link) {
+            if self.memo.contains_key(&link.address()) {
                 break;
             }
             chain.push(link);
-            current = self.dependency(link);
+            current = dependency(link);
         }
-        let mut dependency = current.and_then(|link| self.memo.get(&link).copied());
-        for &link in chain.iter().rev() {
-            let index = self.create(link, dependency);
-            self.memo.insert(link, index);
+        let mut dependency = current.and_then(|link| self.memo.get(&link.address()).copied());
+        for link in chain.into_iter().rev() {
+            let index = self.create(link, dependency, source);
+            self.memo.insert(link.address(), index);
             dependency = Some(index);
         }
         dependency.unwrap_or_default()
     }
 
-    /// The expression a value's label and facts are built from.
-    fn dependency(&self, node: u32) -> Option<u32> {
-        let syntax = self.syntax;
-        let unwrapped = syntax.unwrap(node);
-        match syntax.cat(unwrapped) {
-            Cat::PropertyAccess | Cat::ElementAccess | Cat::Call | Cat::New => {
-                syntax.child(unwrapped, Label::Expression)
-            }
-            Cat::TaggedTemplate => syntax.child(unwrapped, Label::Tag),
-            _ => None,
-        }
+    /// The value of a dynamic import's `import` keyword at `range`: its callee, which names
+    /// nothing.
+    pub(crate) fn import_keyword(&mut self, range: ByteRange) -> u32 {
+        let index = self.facts.len() as u32;
+        self.facts
+            .push(ValueFact::new(ValueShape::Other, "import", range));
+        self.addresses.push(None);
+        index
     }
 
-    fn create(&mut self, node: u32, dependency: Option<u32>) -> u32 {
-        let syntax = self.syntax;
-        let unwrapped = syntax.unwrap(node);
-        let found = syntax.node(unwrapped);
-        let label = {
-            let inner = dependency.map(|index| &*self.out.values[index as usize].label);
-            names::label_from(syntax, self.source, node, inner)
-        };
-        let block = self.block_of[unwrapped as usize];
-        let (shape, info) = match found.cat {
-            Cat::Identifier => (ValueShape::Name, ValueSyntax::Name { range: found.range }),
-            Cat::PropertyAccess => (ValueShape::Member, ValueSyntax::Member),
-            Cat::ElementAccess => {
-                let key = syntax
-                    .child(unwrapped, Label::ArgumentExpression)
-                    .map(|key| syntax.unwrap(key))
-                    .filter(|&key| syntax.cat(key).is_name_literal());
-                match key {
-                    Some(key) => (
-                        ValueShape::Member,
-                        ValueSyntax::LiteralKey {
-                            key: syntax.node(key).text.into(),
-                        },
-                    ),
-                    None => (ValueShape::Other, ValueSyntax::Computed),
-                }
+    /// The value recorded for the expression at `address`.
+    pub(crate) fn index_of(&self, address: Address) -> Option<u32> {
+        self.memo.get(&address).copied()
+    }
+
+    /// The expression of each value, in value order.
+    pub(crate) fn addresses(&self) -> &[Option<Address>] {
+        &self.addresses
+    }
+
+    /// The finished table.
+    pub(crate) fn finish(self) -> Vec<ValueFact> {
+        self.facts
+    }
+
+    fn create(&mut self, expression: &Expression<'_>, dependency: Option<u32>, source: &str) -> u32 {
+        let unwrapped = unwrap(expression);
+        let inner = dependency.map_or(text::OTHER, |index| &*self.facts[index as usize].label);
+        let (shape, label, member) = match unwrapped {
+            Expression::Identifier(it) => (ValueShape::Name, it.name.to_string(), None),
+            Expression::ThisExpression(_) => (ValueShape::Other, "this".to_owned(), None),
+            Expression::Super(_) => (ValueShape::Other, "super".to_owned(), None),
+            Expression::CallExpression(_) => (ValueShape::Other, text::call_result(inner), None),
+            Expression::ImportExpression(_) => (ValueShape::Other, text::call_result(text::OTHER), None),
+            Expression::NewExpression(_) | Expression::TaggedTemplateExpression(_) => {
+                (ValueShape::Other, inner.to_owned(), None)
             }
-            Cat::Call | Cat::ImportCall => (
-                ValueShape::CallResult,
-                ValueSyntax::CallResult { callee: dependency },
-            ),
-            Cat::New => (
-                ValueShape::Other,
-                ValueSyntax::Construction { callee: dependency },
-            ),
-            Cat::TaggedTemplate => (ValueShape::Other, ValueSyntax::TaggedTemplate { tag: dependency }),
-            Cat::This => (ValueShape::Other, ValueSyntax::This { range: found.range }),
-            Cat::Super => (ValueShape::Other, ValueSyntax::Super { range: found.range }),
-            Cat::FunctionExpression | Cat::ArrowFunction if block != NONE => {
-                (ValueShape::InlineFunction, ValueSyntax::Inline)
-            }
-            Cat::ClassExpression if block != NONE => (ValueShape::InlineClass, ValueSyntax::Inline),
-            _ => (ValueShape::Other, ValueSyntax::Other),
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(_) => (ValueShape::Other, text::call_result(inner), None),
+                element => match element.as_member_expression() {
+                    Some(access) => self.access(access, inner, source),
+                    None => (ValueShape::Other, text::OTHER.to_owned(), None),
+                },
+            },
+            other => match other.as_member_expression() {
+                Some(access) => self.access(access, inner, source),
+                None => (ValueShape::Other, text::OTHER.to_owned(), None),
+            },
         };
-        let mut fact = ValueFact::new(shape, &label);
-        if matches!(found.cat, Cat::PropertyAccess | Cat::ElementAccess) {
+        let mut fact = ValueFact::new(shape, &label, range(expression.span()));
+        if member_of(unwrapped).is_some() {
             fact.receiver = dependency;
         }
-        if found.cat == Cat::PropertyAccess {
-            fact.member = syntax
-                .child(unwrapped, Label::Name)
-                .and_then(|name| names::declared_name(syntax, name))
-                .map(Box::from);
-        }
-        if info == ValueSyntax::Inline {
-            fact.block = Some(block);
-        }
-        let index = self.out.values.len() as u32;
-        self.out.values.push(fact);
-        self.out.syntax.push(info);
-        self.out.nodes.push(node);
+        fact.member = member;
+        let index = self.facts.len() as u32;
+        self.facts.push(fact);
+        self.addresses.push(Some(expression.address()));
         index
+    }
+
+    /// The shape, label, and member name of a property or element access whose receiver's
+    /// label is `inner`.
+    fn access(
+        &self,
+        access: &MemberExpression<'_>,
+        inner: &str,
+        source: &str,
+    ) -> (ValueShape, String, Option<Box<str>>) {
+        match access {
+            MemberExpression::StaticMemberExpression(it) => {
+                let name = it.property.name.as_str();
+                (ValueShape::Member, text::member(inner, name), Some(name.into()))
+            }
+            MemberExpression::PrivateFieldExpression(it) => {
+                let name = format!("#{}", it.field.name);
+                (ValueShape::Member, text::member(inner, &name), Some(name.into()))
+            }
+            MemberExpression::ComputedMemberExpression(it) => {
+                let shape = if is_name_literal(unwrap(&it.expression)) {
+                    ValueShape::Member
+                } else {
+                    ValueShape::Other
+                };
+                let label = if is_name_literal(&it.expression) {
+                    let written = range(it.expression.span());
+                    let spelling = source
+                        .get(written.start as usize..written.end as usize)
+                        .unwrap_or("…");
+                    text::literal_key(inner, spelling)
+                } else {
+                    text::computed_key(inner)
+                };
+                (shape, label, None)
+            }
+        }
+    }
+}
+
+/// The expression inside parentheses, `!`, `as`, `satisfies`, and `<T>` assertions.
+pub(crate) fn unwrap<'e, 'a>(mut expression: &'e Expression<'a>) -> &'e Expression<'a> {
+    loop {
+        expression = match expression {
+            Expression::ParenthesizedExpression(it) => &it.expression,
+            Expression::TSNonNullExpression(it) => &it.expression,
+            Expression::TSAsExpression(it) => &it.expression,
+            Expression::TSSatisfiesExpression(it) => &it.expression,
+            Expression::TSTypeAssertion(it) => &it.expression,
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::TSNonNullExpression(it) => &it.expression,
+                _ => return expression,
+            },
+            _ => return expression,
+        };
+    }
+}
+
+/// Whether an expression may name a definition: through transparent wrappers, an identifier,
+/// a property access, or an element access with a literal key.
+pub(crate) fn may_name(expression: &Expression<'_>) -> bool {
+    let unwrapped = unwrap(expression);
+    match member_of(unwrapped) {
+        Some(MemberExpression::ComputedMemberExpression(it)) => is_name_literal(unwrap(&it.expression)),
+        Some(_) => true,
+        None => matches!(unwrapped, Expression::Identifier(_)),
+    }
+}
+
+/// The property or element access an unwrapped expression is, inside an optional chain too.
+fn member_of<'e, 'a>(expression: &'e Expression<'a>) -> Option<&'e MemberExpression<'a>> {
+    match expression {
+        Expression::ChainExpression(chain) => chain.expression.as_member_expression(),
+        other => other.as_member_expression(),
+    }
+}
+
+/// The expression a value's label and facts are built from: an access's receiver, a call's or
+/// construction's callee, or a template's tag.
+fn dependency<'e, 'a>(expression: &'e Expression<'a>) -> Option<&'e Expression<'a>> {
+    let unwrapped = unwrap(expression);
+    if let Some(access) = member_of(unwrapped) {
+        return Some(access.object());
+    }
+    match unwrapped {
+        Expression::CallExpression(it) => Some(&it.callee),
+        Expression::NewExpression(it) => Some(&it.callee),
+        Expression::TaggedTemplateExpression(it) => Some(&it.tag),
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::CallExpression(it) => Some(&it.callee),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Whether an expression is a literal that can key an element access by name: a string, a
+/// number, or a template without substitutions.
+fn is_name_literal(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(_) | Expression::NumericLiteral(_) => true,
+        Expression::TemplateLiteral(it) => it.expressions.is_empty(),
+        _ => false,
     }
 }

@@ -1,0 +1,4 @@
+asserted-return.ts#factory #0 types `C` → project asserted-return.ts#C
+asserted-return.ts#factory/return[0]/call:C #0 calls `C` → project asserted-return.ts#C
+asserted-return.ts#/call:factory().m #0 calls `factory().m` → unknown unknown_receiver
+asserted-return.ts#/call:factory().m/call:factory #0 calls `factory` → project asserted-return.ts#factory

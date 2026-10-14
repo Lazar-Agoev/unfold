@@ -1,0 +1,4 @@
+wrappers.ts#/call:f #0 calls `f` → project wrappers.ts#f
+wrappers.ts#/call:f[1] #0 calls `f` → project wrappers.ts#f
+wrappers.ts#/call:f[2] #0 calls `f` → project wrappers.ts#f
+wrappers.ts#/call:f[3] #0 calls `f` → project wrappers.ts#f

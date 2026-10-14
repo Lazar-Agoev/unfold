@@ -7,9 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use unfold_core::validate::Violation;
-use unfold_core::vocab::{FileState, InputRole, Language as LanguageId};
-use unfold_core::{FileGraph, FileRecord, Graph, RepoPath, Snapshot};
-use unfold_engine::edges::program_links;
+use unfold_core::vocab::{FileState, InputRole, Language as LanguageId, LinkKind};
+use unfold_core::{ByteRange, File, FileGraph, Graph, Link, LinkTarget, RepoPath, Snapshot};
+use unfold_engine::links::program_links;
 use unfold_engine::settings::Settings;
 use unfold_engine::validate::validate_graph;
 use unfold_engine::{FactsSet, FileFacts, Language, ProgramFile, ProjectInput, ProjectInputs, Resolver};
@@ -64,7 +64,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
                 let encoded = facts.to_bytes().expect("encode facts");
                 let decoded = FileFacts::from_bytes(&encoded).expect("decode facts");
                 assert_eq!(decoded, facts);
-                let record = FileRecord {
+                let record = File {
                     path: path.clone(),
                     language: LanguageId::TypeScript,
                     state: FileState::Current,
@@ -75,7 +75,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
             }
             Err(failure) => {
                 failures.push((path.as_str().to_owned(), failure.to_string()));
-                let record = FileRecord {
+                let record = File {
                     path: path.clone(),
                     language: LanguageId::TypeScript,
                     state: FileState::Failed,
@@ -107,9 +107,8 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
                     .file_graph(record, links.remove(&id).unwrap_or_default()),
                 None => FileGraph {
                     file: record,
-                    blocks: Vec::new(),
-                    slots: Vec::new(),
-                    edges: Vec::new(),
+                    nodes: Vec::new(),
+                    links: Vec::new(),
                     types: unfold_core::FileTypes::default(),
                 },
             }
@@ -118,7 +117,7 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
     let graph = Graph {
         files,
         inputs: Vec::new(),
-        entrances: Vec::new(),
+        apps: Vec::new(),
     };
     let violations = validate_graph(&graph, Some(&snapshots), &[linked.as_ref()]);
     Compiled {
@@ -213,29 +212,145 @@ fn walk(root: &Path) -> Vec<(String, Vec<u8>)> {
     found
 }
 
-/// The blocks and slots of one file as text, for compact assertions: each block is
-/// `key role \`text\`` (its name is part of its key) followed by its slots as
-/// `  slot[index] \`text\``, with newlines shown as `⏎`.
-pub fn outline(path: &str, source: &str) -> Vec<String> {
-    let compiled = compile_source(path, source).valid();
-    let file = compiled.file(path);
-    let text =
-        |range: unfold_core::ByteRange| source[range.start as usize..range.end as usize].replace('\n', "⏎");
+/// The text of `range` in `source`, with newlines shown as `⏎`.
+fn shown(source: &str, range: ByteRange) -> String {
+    source[range.start as usize..range.end as usize].replace('\n', "⏎")
+}
+
+/// What a link reaches, as one word and its target.
+pub fn outcome(target: &LinkTarget) -> String {
+    match target {
+        LinkTarget::Project(key) => format!("project {key}"),
+        LinkTarget::Library(label) => format!("library {}", label.as_str()),
+        LinkTarget::Builtin(label) => format!("builtin {}", label.as_str()),
+        LinkTarget::Unknown(reason) => format!("unknown {reason}"),
+    }
+}
+
+/// One link as `kind `text` → outcome`.
+pub fn link_line(link: &Link) -> String {
+    let implements = if link.implements { " (implements)" } else { "" };
+    format!(
+        "{} `{}` → {}{implements}",
+        link.kind,
+        link.text,
+        outcome(&link.to)
+    )
+}
+
+/// The nodes of one file as an indented tree, one line per node: its key step (the key after
+/// its parent's), its form and flags, its role and what it is `for`, what it binds, its
+/// `break`/`continue` target, its head, and its doc; and each of its links on its own line below
+/// it (`↳ kind `text` → outcome`). The module's own flags and doc come first, and its links
+/// last.
+pub fn tree(file: &FileGraph, source: &str) -> Vec<String> {
+    let nodes = &file.nodes;
+    let key_of = |id: u32| nodes[id as usize].key.as_str();
+    let file_key = key_of(0);
+    let mut depth = vec![0usize; nodes.len()];
     let mut lines = Vec::new();
-    for block in file.blocks.iter().skip(1) {
-        let key = block
+    let module = &nodes[0];
+    if module.doc.is_some() || !module.flags.is_empty() {
+        let mut line = "(module)".to_owned();
+        for flag in module.flags.iter() {
+            line.push_str(&format!(" {flag}"));
+        }
+        if let Some(doc) = module.doc {
+            line.push_str(&format!(" doc=`{}`", shown(source, doc)));
+        }
+        lines.push(line);
+    }
+    for (id, node) in nodes.iter().enumerate().skip(1) {
+        let parent = node.parent.expect("a node other than the module has a parent");
+        depth[id] = depth[parent as usize] + 1;
+        let indent = "  ".repeat(depth[id] - 1);
+        let step = node
             .key
             .as_str()
-            .strip_prefix(path)
-            .unwrap_or(block.key.as_str());
-        let role = block.role.map_or("-".to_owned(), |role| role.to_string());
-        lines.push(format!("{key} {role} `{}`", text(block.range)));
-        for slot in file.slots.iter().filter(|slot| slot.block == block.local_id) {
-            let index = slot.index.map_or(String::new(), |index| format!("[{index}]"));
-            lines.push(format!("  {}{index} `{}`", slot.slot, text(slot.range)));
+            .strip_prefix(key_of(parent))
+            .unwrap_or(node.key.as_str());
+        let mut line = format!("{indent}{step} {}", node.form);
+        for flag in node.flags.iter() {
+            line.push_str(&format!(" {flag}"));
+        }
+        if let Some(role) = node.role {
+            line.push_str(&format!(" role={role}"));
+        }
+        if let Some(definition) = node.r#for {
+            let key = key_of(definition);
+            line.push_str(&format!(" for={}", key.strip_prefix(file_key).unwrap_or(key)));
+        }
+        if let Some(binds) = &node.binds {
+            line.push_str(&format!(" binds=`{binds}`"));
+        }
+        if let Some(target) = node.target {
+            let key = key_of(target);
+            line.push_str(&format!(" target={}", key.strip_prefix(file_key).unwrap_or(key)));
+        }
+        if let Some(head) = node.head {
+            line.push_str(&format!(" head=`{}`", shown(source, head)));
+        }
+        if let Some(doc) = node.doc {
+            line.push_str(&format!(" doc=`{}`", shown(source, doc)));
+        }
+        lines.push(line);
+        for link in file.links.iter().filter(|link| link.from as usize == id) {
+            lines.push(format!("{indent}  ↳ {}", link_line(link)));
+        }
+    }
+    for link in file.links.iter().filter(|link| link.from == 0) {
+        lines.push(format!("↳ {}", link_line(link)));
+    }
+    lines
+}
+
+/// Every field of every node of one file, as text: its key, form, and flags, then each range
+/// it records (`range`, `head`, `body`, `doc`, `stmt`, `value`) with its text, its name, what it
+/// binds, its role and `for`, and its target.
+pub fn outline(file: &FileGraph, source: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    for node in &file.nodes {
+        let mut line = format!("{} {}", node.key, node.form);
+        for flag in node.flags.iter() {
+            line.push_str(&format!(" {flag}"));
+        }
+        lines.push(line);
+        let ranges = [
+            ("range", Some(node.range)),
+            ("head", node.head),
+            ("body", node.body),
+            ("doc", node.doc),
+            ("stmt", node.stmt),
+            ("value", node.value),
+        ];
+        for (field, range) in ranges {
+            if let Some(range) = range.filter(|_| node.parent.is_some() || field != "range") {
+                lines.push(format!("  {field} `{}`", shown(source, range)));
+            }
+        }
+        if let Some(name) = &node.name {
+            lines.push(format!("  name `{name}`"));
+        }
+        if let Some(binds) = &node.binds {
+            lines.push(format!("  binds `{binds}`"));
+        }
+        if let Some(role) = node.role {
+            lines.push(format!("  role {role}"));
+        }
+        for (field, id) in [("for", node.r#for), ("target", node.target)] {
+            if let Some(id) = id {
+                lines.push(format!("  {field} {}", file.nodes[id as usize].key));
+            }
         }
     }
     lines
+}
+
+/// The node tree of one source file named `path`, which must compile into a valid graph, with
+/// its links.
+pub fn linked_tree_of(path: &str, source: &str) -> Vec<String> {
+    let compiled = compile_source(path, source).valid();
+    tree(compiled.file(path), source)
 }
 
 /// An in-memory folder: TypeScript sources plus the inputs, unindexed files, and declaration
@@ -334,22 +449,22 @@ impl Project {
 }
 
 impl Compiled {
-    /// The `imports` edge of the import block whose specifier text is `text` in `path`.
+    /// The `imports` link whose specifier text is `text` in `path`.
     #[track_caller]
-    pub fn import(&self, path: &str, text: &str) -> &unfold_core::Edge {
+    pub fn import(&self, path: &str, text: &str) -> &Link {
         let file = self.file(path);
-        file.edges
+        file.links
             .iter()
-            .find(|edge| edge.kind == unfold_core::vocab::EdgeKind::Imports && &*edge.text == text)
-            .unwrap_or_else(|| panic!("no import `{text}` in {path}: {:?}", file.edges))
+            .find(|link| link.kind == LinkKind::Imports && &*link.text == text)
+            .unwrap_or_else(|| panic!("no import `{text}` in {path}: {:?}", file.links))
     }
 
-    /// The number of `imports` edges of `path`.
+    /// The number of `imports` links of `path`.
     pub fn import_count(&self, path: &str) -> usize {
         self.file(path)
-            .edges
+            .links
             .iter()
-            .filter(|edge| edge.kind == unfold_core::vocab::EdgeKind::Imports)
+            .filter(|link| link.kind == LinkKind::Imports)
             .count()
     }
 }

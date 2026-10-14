@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/metaclass-method. Format: testdata/README.md.
-# A method of a class with an unproven metaclass stays unsupported.
-entrance	celery.task	worker	-	-	unknown	src/app.py:8
-	target	handler	unresolved	unsupported	command

@@ -1,0 +1,5 @@
+main.ts#owner/call:register #0 calls `register` → project main.ts#register
+main.ts#owner/call:register #1 passes `named` → project main.ts#named
+main.ts#owner/call:register #2 passes `Named` → project main.ts#Named
+main.ts#owner/call:register/call:wrap #0 calls `wrap` → project main.ts#wrap
+main.ts#owner/call:register/call:wrap #1 passes `named` → project main.ts#named

@@ -1,0 +1,96 @@
+a.ts# module
+a.ts#/call:Constructor new
+  range `new Constructor`
+  head `Constructor`
+  stmt `const first = new Constructor;`
+  name `Constructor`
+  binds `first`
+a.ts#/call:namespace.Constructor new
+  range `new namespace.Constructor(argument(), ...rest())`
+  head `namespace.Constructor`
+  stmt `const second = new namespace.Constructor(argument(), ...rest());`
+  name `namespace.Constructor`
+  binds `second`
+a.ts#/call:namespace.Constructor/call:argument call
+  range `argument()`
+  head `argument`
+  name `argument`
+a.ts#/call:namespace.Constructor/call:rest call
+  range `rest()`
+  head `rest`
+  name `rest`
+a.ts#/call:(…).method call
+  range `new Factory().method()`
+  head `new Factory().method`
+  stmt `new Factory().method();`
+  name `(…).method`
+a.ts#/call:(…).method/call:Factory new
+  range `new Factory()`
+  head `Factory`
+  name `Factory`
+a.ts#/call:choose() new
+  range `new (choose())(argument())`
+  head `(choose())`
+  stmt `new (choose())(argument());`
+  name `choose()`
+a.ts#/call:choose()/call:choose call
+  range `choose()`
+  head `choose`
+  name `choose`
+a.ts#/call:choose()/call:argument call
+  range `argument()`
+  head `argument`
+  name `argument`
+a.ts#/call:receiver.method call conditional
+  range `receiver?.method?.(argument())`
+  head `receiver?.method`
+  stmt `receiver?.method?.(argument());`
+  name `receiver.method`
+a.ts#/call:receiver.method/call:argument call conditional
+  range `argument()`
+  head `argument`
+  name `argument`
+a.ts#/call:receiver%5B%5D call conditional
+  range `receiver?.[key()]?.()`
+  head `receiver?.[key()]`
+  stmt `receiver?.[key()]?.();`
+  name `receiver[]`
+a.ts#/call:receiver%5B%5D/call:key call conditional
+  range `key()`
+  head `key`
+  name `key`
+a.ts#/call:tag call
+  range `tag`before${nested()}after``
+  head `tag`
+  stmt `tag`before${nested()}after`;`
+  name `tag`
+a.ts#/call:tag/call:nested call
+  range `nested()`
+  head `nested`
+  name `nested`
+a.ts#/call:namespace.tag call
+  range `namespace.tag<Type>`value=${value()}``
+  head `namespace.tag`
+  stmt `namespace.tag<Type>`value=${value()}`;`
+  name `namespace.tag`
+a.ts#/call:namespace.tag/call:value call
+  range `value()`
+  head `value`
+  name `value`
+a.ts#/call:items.map()%5B%5D.done call
+  range `items.map((item) => transform(item))[0].done()`
+  head `items.map((item) => transform(item))[0].done`
+  stmt `items.map((item) => transform(item))[0].done();`
+  name `items.map()[].done`
+a.ts#/call:items.map()%5B%5D.done/call:items.map call
+  range `items.map((item) => transform(item))`
+  head `items.map`
+  name `items.map`
+a.ts#/call:items.map()%5B%5D.done/call:items.map/callback[0] lambda
+  range `(item) => transform(item)`
+  head `(item) =>`
+  body `transform(item)`
+a.ts#/call:items.map()%5B%5D.done/call:items.map/callback[0]/call:transform call
+  range `transform(item)`
+  head `transform`
+  name `transform`

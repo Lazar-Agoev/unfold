@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/configuration-cross-module-1. Format: testdata/README.md.
-# A configuration loader alias imported elsewhere withholds the body.
-entrance	celery.task	worker	-	orders	exact	src/appmod.py:6
-	target	handler	unresolved	unsupported	first

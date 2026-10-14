@@ -1,9 +1,0 @@
-# A string bin is named after its package (the scope removed); object bins are named after their keys
-# (pointers escaped); paths are relative to the package's folder. (PoC schema2-launch: "string and
-# object bins use package-relative starts and remove the package-name scope".)
-entrance	package.bin	process	-	worker	exact	package.json:1
-	target	startup	resolved	src/main.ts#	src/main.ts
-entrance	package.bin	process	-	a/b	exact	tools/package.json:1
-	target	startup	resolved	src/main.ts#	../src/main.ts
-entrance	package.bin	process	-	plain	exact	tools/package.json:1
-	target	startup	resolved	src/main.ts#	./../src/main.ts

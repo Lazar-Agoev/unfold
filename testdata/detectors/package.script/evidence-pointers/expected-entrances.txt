@@ -1,8 +1,0 @@
-# Evidence is the exact member (whitespace around the colon kept) with its RFC 6901 pointer: ~ and /
-# escaped, a duplicate key's last member, an empty name (an unknown trigger).
-entrance	package.script	process	-	run/tilde~😀	exact	package.json:3
-	target	startup	resolved	a.ts#	a.js
-entrance	package.script	process	-	dup	exact	package.json:5
-	target	startup	resolved	b.ts#	b.js
-entrance	package.script	process	-	-	unknown	package.json:6
-	target	startup	resolved	a.ts#	a.js

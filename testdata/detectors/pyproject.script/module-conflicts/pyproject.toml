@@ -1,4 +1,0 @@
-[project.scripts]
-conflict="conflict:main"
-attribute="pkg:worker.main"
-namespace="space:worker.main"

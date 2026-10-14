@@ -1,0 +1,4 @@
+helpers.ts#/call:actual.call #0 calls `actual.call` → unknown unknown_receiver
+helpers.ts#/call:actual.apply #0 calls `actual.apply` → unknown unknown_receiver
+helpers.ts#/call:actual.bind() #0 calls `actual.bind()` → unknown dynamic
+helpers.ts#/call:actual.bind()/call:actual.bind #0 calls `actual.bind` → unknown unknown_receiver

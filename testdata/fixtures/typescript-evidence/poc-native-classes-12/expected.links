@@ -1,0 +1,3 @@
+super-context.ts#Child #0 extends `Base` → project super-context.ts#Base
+super-context.ts#Child.run.arrow/call:super.m #0 calls `super.m` → project super-context.ts#Base.m
+super-context.ts#Child.run.nested/call:super.m #0 calls `super.m` → unknown unknown_receiver

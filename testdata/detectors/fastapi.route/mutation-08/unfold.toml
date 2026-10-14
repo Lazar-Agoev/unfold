@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/fastapi.route/mutation-08.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

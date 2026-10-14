@@ -1,5 +1,5 @@
-//! Provenance through TypeScript evidence: the bounded import lineage detectors use to
-//! recognize framework objects follows imports, `const` factories, and written annotations.
+//! Provenance through TypeScript evidence: the bounded import lineage that labels external
+//! outcomes follows imports, `const` factories, and written annotations.
 
 use unfold_engine::ValueRef;
 use unfold_engine::provenance::{Provenance, provenance};

@@ -1,5 +1,0 @@
-a.ts#function:check/if[0]/expression_statement[0]/call[0] #0 calls `c.m` -> unknown_receiver
-a.ts#function:check/if[1]/call[0] #0 calls `isD` -> a.ts#function:isD
-a.ts#function:check/if[1]/expression_statement[0]/call[0] #0 calls `other.m` -> unknown_receiver
-a.ts#function:check/if[2]/call[0] #0 calls `unknownCall` -> not_concrete
-a.ts#function:check/if[2]/expression_statement[0]/call[0] #0 calls `third.m` -> a.ts#class:C/method:m

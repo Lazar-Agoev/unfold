@@ -1,5 +1,5 @@
-//! The binder pass over annotations: every type name a recorded annotation writes, with the
-//! expression the type meaning resolves at link time ([`crate::link`]).
+//! The binder pass over annotations, class bases, and handler clauses: every type name they
+//! write, with the expression the type meaning resolves at link time ([`crate::link`]).
 //!
 //! The recorded annotations are parameter and return annotations and the annotation of every
 //! annotated assignment (`x: T`, `x: T = v`, class members included). Each is evaluated where
@@ -27,16 +27,41 @@
 //! is a subscript's value (`Generic` in `Generic[T]`), whose slice holds ordinary type names as
 //! in an annotation. Keyword arguments (`metaclass=`, `total=`), starred bases, and bases of any
 //! other form (`make_base()`) record nothing.
+//!
+//! An `except` clause names classes too, evaluated where the `try` is: a name or member chain
+//! (`except PaymentDeclined`, `except errors.Declined`), or each such item of a tuple
+//! (`except (KeyError, ValueError)`). Anything else records nothing.
 
 use std::borrow::Cow;
 
 use ruff_python_ast::{Expr, ExprStringLiteral, Operator, StringFlags};
 use ruff_text_size::{Ranged, TextRange};
-use unfold_core::vocab::Heritage;
+use unfold_core::text::ByteRange;
 use unicode_normalization::UnicodeNormalization;
 
 use super::build::Builder;
 use super::ir::{ExprId, ExprKind, ScopeId, ScopeKind};
+
+/// What a written type name is written in, which decides the node its link starts at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TypeSite {
+    /// An annotation, or a base's type argument: a `types` link from the nearest definition.
+    Annotation,
+    /// A class base: an `extends` link from the class.
+    Base,
+    /// An `except` clause: a `types` link from the `except` part.
+    Handler,
+}
+
+/// One written type name, aligned with [`super::ir::BindFacts::types`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TypeName {
+    /// The written name's range: the name, the whole chain, or a string's content.
+    pub(crate) range: ByteRange,
+    /// Whether it is a dotted name (`a.B`).
+    pub(crate) qualified: bool,
+    pub(crate) site: TypeSite,
+}
 
 /// One type name before the type-parameter filter.
 pub(super) struct RawTypeName<'a> {
@@ -50,8 +75,7 @@ pub(super) struct RawTypeName<'a> {
     pub(super) scope: ScopeId,
     /// The chain's root name (NFKC), which decides whether it names a type parameter.
     pub(super) root: Cow<'a, str>,
-    /// For a class base: `extends`.
-    pub(super) heritage: Option<Heritage>,
+    pub(super) site: TypeSite,
 }
 
 /// Python's keywords, which no dotted name in a string annotation can contain.
@@ -69,7 +93,7 @@ impl<'a> Builder<'a> {
         while let Some(expr) = pending.pop() {
             match expr {
                 Expr::Name(_) | Expr::Attribute(_) => {
-                    self.type_name(expr, scope, None);
+                    self.type_name(expr, scope, TypeSite::Annotation);
                 }
                 Expr::Subscript(subscript) => {
                     let elements = match &*subscript.slice {
@@ -104,16 +128,27 @@ impl<'a> Builder<'a> {
             Expr::Subscript(subscript) => (&*subscript.value, Some(&*subscript.slice)),
             _ => (base, None),
         };
-        if self.type_name(named, scope, Some(Heritage::Extends))
+        if self.type_name(named, scope, TypeSite::Base)
             && let Some(slice) = slice
         {
             self.annotation(slice, scope);
         }
     }
 
-    /// Records a name or a member chain whose every receiver is a member or a name, with its
-    /// heritage; whether `expr` is one.
-    fn type_name(&mut self, expr: &'a Expr, scope: ScopeId, heritage: Option<Heritage>) -> bool {
+    /// Records the classes an `except` clause names, evaluated in `scope`.
+    pub(super) fn handler(&mut self, clause: &'a Expr, scope: ScopeId) {
+        let names = match clause {
+            Expr::Tuple(tuple) => tuple.elts.as_slice(),
+            single => std::slice::from_ref(single),
+        };
+        for name in names {
+            self.type_name(name, scope, TypeSite::Handler);
+        }
+    }
+
+    /// Records a name or a member chain whose every receiver is a member or a name, written in
+    /// `site`; whether `expr` is one.
+    fn type_name(&mut self, expr: &'a Expr, scope: ScopeId, site: TypeSite) -> bool {
         let Some(root) = chain_root(expr) else {
             return false;
         };
@@ -124,7 +159,7 @@ impl<'a> Builder<'a> {
             expr: id,
             scope,
             root: Cow::Borrowed(root),
-            heritage,
+            site,
         });
         true
     }
@@ -171,7 +206,7 @@ impl<'a> Builder<'a> {
             expr,
             scope,
             root,
-            heritage: None,
+            site: TypeSite::Annotation,
         });
     }
 

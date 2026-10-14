@@ -1,3 +1,0 @@
-﻿{
-"scripts":{"x~/y":"tsx absent.ts","x~/y":"tsx src/main.ts","__proto__":"tsx src/main.ts","":"tsx src/main.ts"},
-"bin":{"a~/b":"src/main.ts","__proto__":"src/main.ts","":"src/main.ts"}}

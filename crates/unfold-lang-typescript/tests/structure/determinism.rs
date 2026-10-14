@@ -1,7 +1,7 @@
-//! Determinism: the canonical export of a compiled folder is identical whatever the number of
-//! threads and whatever order the files are supplied in (docs/graph-model.md#order-and-canonical-export). Extraction,
-//! linking (whose tables are built in parallel), and edge resolution all run on the rayon pool
-//! the test installs.
+//! Determinism: the canonical export of a compiled folder is a valid graph, identical whatever
+//! the number of threads and whatever order the files are supplied in. Extraction, linking
+//! (whose tables are built in parallel), and link resolution all run on the rayon pool the test
+//! installs.
 
 use unfold_core::canonical;
 use unfold_core::testkit::testdata_dir;
@@ -16,7 +16,10 @@ fn export(threads: usize, files: &[(String, Vec<u8>)], inputs: &ProjectInputs) -
         .num_threads(threads)
         .build()
         .expect("a thread pool");
-    let graph = pool.install(|| compile_with(&TypeScript::new(), files, inputs).graph);
+    let compiled = pool.install(|| compile_with(&TypeScript::new(), files, inputs));
+    let violations: Vec<String> = compiled.violations.iter().map(ToString::to_string).collect();
+    assert!(violations.is_empty(), "violations:\n{}", violations.join("\n"));
+    let graph = compiled.graph;
     let mut out = Vec::new();
     canonical::write(&graph, &mut out).expect("write the export");
     out

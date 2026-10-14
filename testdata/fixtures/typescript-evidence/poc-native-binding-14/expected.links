@@ -1,0 +1,2 @@
+static.ts#C/call:f #0 calls `f` → unknown mutable_binding
+static.ts#/call:f #0 calls `f` → project static.ts#f

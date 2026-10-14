@@ -1,0 +1,101 @@
+a.ts# module
+a.ts#Shape interface
+  range `export interface Shape<T> extends Base, Other<T> { kind: string }`
+  head `interface Shape<T> extends Base, Other<T>`
+  body `{ kind: string }`
+  stmt `export interface Shape<T> extends Base, Other<T> { kind: string }`
+  name `Shape`
+a.ts#Fallback interface
+  range `export default interface Fallback { x: number }`
+  head `interface Fallback`
+  body `{ x: number }`
+  stmt `export default interface Fallback { x: number }`
+  name `Fallback`
+a.ts#Merged interface
+  range `interface Merged { a: number }`
+  head `interface Merged`
+  body `{ a: number }`
+  stmt `interface Merged { a: number }`
+  name `Merged`
+a.ts#Merged[1] interface
+  range `interface Merged { b: number }`
+  head `interface Merged`
+  body `{ b: number }`
+  stmt `interface Merged { b: number }`
+  name `Merged`
+a.ts#Pair type_alias
+  range `export type Pair<A, B> = [A, B];`
+  head `type Pair<A, B>`
+  body `[A, B]`
+  stmt `export type Pair<A, B> = [A, B];`
+  name `Pair`
+a.ts#Literal type_alias
+  range `type Literal = { a: string; b?: number };`
+  head `type Literal`
+  body `{ a: string; b?: number }`
+  stmt `type Literal = { a: string; b?: number };`
+  name `Literal`
+a.ts#Mode enum
+  range `export const enum Mode { On = 1 }`
+  head `const enum Mode`
+  body `{ On = 1 }`
+  stmt `export const enum Mode { On = 1 }`
+  name `Mode`
+a.ts#Status enum
+  range `enum Status { Ready = start(), Done = finish("x") }`
+  head `enum Status`
+  body `{ Ready = start(), Done = finish("x") }`
+  stmt `enum Status { Ready = start(), Done = finish("x") }`
+  name `Status`
+a.ts#/call:start call
+  range `start()`
+  head `start`
+  name `start`
+a.ts#/call:finish call
+  range `finish("x")`
+  head `finish`
+  name `finish`
+a.ts#Shapes.Circle interface
+  range `export interface Circle { r: number }`
+  head `interface Circle`
+  body `{ r: number }`
+  stmt `export interface Circle { r: number }`
+  name `Shapes.Circle`
+a.ts#Shapes.Unit enum
+  range `export enum Unit { Px = scale() }`
+  head `enum Unit`
+  body `{ Px = scale() }`
+  stmt `export enum Unit { Px = scale() }`
+  name `Shapes.Unit`
+a.ts#/call:scale call
+  range `scale()`
+  head `scale`
+  name `scale`
+a.ts#Shapes.Local type_alias
+  range `type Local = string;`
+  head `type Local`
+  body `string`
+  stmt `type Local = string;`
+  name `Shapes.Local`
+a.ts#scoped function
+  range `function scoped() { interface Inner { z: number } enum Local { A = compute() } }`
+  head `function scoped()`
+  body `{ interface Inner { z: number } enum Local { A = compute() } }`
+  stmt `function scoped() { interface Inner { z: number } enum Local { A = compute() } }`
+  name `scoped`
+a.ts#scoped.Inner interface
+  range `interface Inner { z: number }`
+  head `interface Inner`
+  body `{ z: number }`
+  stmt `interface Inner { z: number }`
+  name `Inner`
+a.ts#scoped.Local enum
+  range `enum Local { A = compute() }`
+  head `enum Local`
+  body `{ A = compute() }`
+  stmt `enum Local { A = compute() }`
+  name `Local`
+a.ts#scoped/call:compute call
+  range `compute()`
+  head `compute`
+  name `compute`

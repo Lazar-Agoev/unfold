@@ -1,8 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/class-callbacks-type. Format: testdata/README.md.
-# Class members of a metaclass=type class resolve.
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:12
-	target	handler	resolved	src/app.py#class:Commands/method:run	Commands.run
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:13
-	target	handler	resolved	src/app.py#class:Commands/method:run	Child.run
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:14
-	target	handler	resolved	src/app.py#class:Commands/method:run	alias

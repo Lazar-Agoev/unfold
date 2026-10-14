@@ -1,12 +1,13 @@
-//! Per-file extraction: parse strictly with oxc, convert to the normalized syntax, drive the
-//! shared selection, and record values, occurrences, typed facts, the payload, and the census.
+//! Per-file extraction: parse strictly with oxc, take the independent census, lower the tree to
+//! nodes (with the value table, call and import facts, and typed records), bind it, and record
+//! the payload.
 //!
 //! Parsing is strict: a file with any syntax diagnostic fails with the first diagnostic's message
 //! and byte offset, and a recovered tree is never used. Declaration files (`.d.ts`, `.d.mts`,
 //! `.d.cts`) are not extracted.
 //!
 //! Each file is parsed on a thread with a large enough stack ([`crate::stack`]), and a file nested
-//! deeper than the converter's limit fails instead of overflowing.
+//! deeper than the census's limit fails instead of overflowing.
 
 use std::borrow::Cow;
 
@@ -16,21 +17,15 @@ use oxc_span::SourceType;
 use serde::{Deserialize, Serialize};
 use unfold_core::{RepoPath, Snapshot};
 use unfold_engine::SourceFailure;
-use unfold_engine::facts::{FileFacts, GraphFacts, TypeFacts, TypeRefFact};
-use unfold_engine::select;
+use unfold_engine::facts::{FileFacts, GraphFacts, TypeRefFact};
 
 use crate::bind;
-use crate::build::{self, BuildOptions};
-use crate::census::CensusRecord;
+use crate::census::{self, CensusRecord};
 use crate::config::BindingContext;
-use crate::mapping::TypeScriptMapping;
+use crate::lower;
 use crate::module_syntax;
 use crate::payload::Payload;
-use crate::sites;
 use crate::stack::{self, StackError};
-use crate::syntax::NONE;
-use crate::typed;
-use crate::values;
 
 /// Inputs that shape a file's facts besides its bytes. Every field is part of the settings hash.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -145,88 +140,66 @@ fn extract_here(
     if parsed.fatal_error {
         return Err(failure("the file could not be parsed", None));
     }
-    let too_deep = || {
-        failure(
-            format!("syntax is nested more than {} levels deep", build::MAX_DEPTH),
-            None,
-        )
-    };
-    let build_options = BuildOptions {
-        verbatim_module_syntax: options.verbatim_module_syntax,
-    };
-    let syntax =
-        build::build(&allocator, &parsed.program, &parsed.tokens, build_options).map_err(|_| too_deep())?;
-    let census = CensusRecord::take(
+    let mut census = CensusRecord::take(
         &parsed.program,
         &parsed.tokens,
         file.len(),
         options.verbatim_module_syntax,
     )
-    .map_err(|_| too_deep())?;
-
-    let lines = file.line_index();
-    let mapping = TypeScriptMapping { syntax: &syntax };
-    let mut block_of = vec![NONE; syntax.len()];
-    let selection = select::walk(&mapping, file.path(), &lines, 0, |node, local| {
-        block_of[node as usize] = local;
-    })
-    .map_err(|error| failure(error.to_string(), None))?;
-    let records = typed::records(&syntax, text, &block_of, selection.blocks());
-    let mut table = values::occurrences(&syntax, text, &block_of);
-    let jsx = source_type.is_jsx() && module_syntax::uses_jsx(&parsed.program);
-    let module = module_syntax::collect(
+    .map_err(|_| {
+        failure(
+            format!("syntax is nested more than {} levels deep", census::MAX_DEPTH),
+            None,
+        )
+    })?;
+    let mut lowered = lower::lower(
         &parsed.program,
-        &selection,
-        parsed.module_record.has_module_syntax,
-        jsx,
-    );
+        file,
+        &parsed.tokens,
+        options.verbatim_module_syntax,
+    )
+    .map_err(|error| failure(format!("cannot key a block: {error}"), None))?;
+    census.cut(&lowered.cuts);
+    let jsx = source_type.is_jsx() && module_syntax::uses_jsx(&parsed.program);
+    let module = module_syntax::collect(&parsed.program, parsed.module_record.has_module_syntax, jsx);
     let input = bind::Input {
         program: &parsed.program,
-        syntax: &syntax,
-        block_of: &block_of,
+        nodes: &lowered.definitions,
         module: &module,
         context: options.binding,
     };
-    // Sites add values (a route's array elements), so they come before binding, which gives
-    // every recorded value its expression.
-    let sites = sites::collect(&syntax, text, &block_of, &mut table);
-    let (binding, type_sites) = bind::bind(&input, &mut table, records.linked);
-    let occurrences = table.finish();
-    let payload = Payload {
-        values: occurrences.syntax,
-        imports: occurrences.import_kinds,
-        module,
-        census,
-        binding,
-        sites,
-    };
-    let graph = GraphFacts::new(
-        selection,
-        occurrences.values,
-        occurrences.calls,
-        occurrences.imports,
-    )
-    .map_err(|error| failure(error.to_string(), None))?;
+    let linked = std::mem::take(&mut lowered.linked);
+    let (binding, type_sites) = bind::bind(&input, &lowered.values, linked);
     let type_refs = type_sites
         .iter()
         .map(|site| {
             let name = text
                 .get(site.range.start as usize..site.range.end as usize)
                 .unwrap_or_default();
-            TypeRefFact::new(site.range, name, site.qualified).with_heritage(site.heritage)
+            TypeRefFact::new(
+                lowered.owner(site.range),
+                site.range,
+                name,
+                site.qualified,
+                site.usage,
+            )
         })
         .collect();
-    let types = TypeFacts::new(
-        graph.blocks(),
-        records.signatures,
-        records.parameters,
-        records.members,
-        records.results,
+    let payload = Payload {
+        imports: lowered.import_kinds,
+        module,
+        census,
+        binding,
+    };
+    let graph = GraphFacts::new(
+        lowered.nodes,
+        lowered.values.finish(),
+        lowered.calls,
+        lowered.imports,
         type_refs,
-    );
-    let graph = graph
-        .with_types(types)
-        .map_err(|error| failure(error.to_string(), None))?;
+        lowered.types,
+    )
+    .map_err(|error| failure(error.to_string(), None))?;
     let payload = payload
         .to_bytes()
         .map_err(|error| failure(format!("cannot encode TypeScript facts: {error}"), None))?;

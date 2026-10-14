@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "run/tilde~😀": "node a.js",
-    "dup": "node a.js",
-    "dup" :  "node b.js",
-    "": "node a.js"
-  }
-}

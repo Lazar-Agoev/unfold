@@ -1,8 +1,0 @@
-from fastapi import FastAPI, APIRouter, Depends
-app = FastAPI()
-def endpoint(): pass
-def fake(*args, **kwargs): pass
-state = app.__dict__
-state = other
-state.update({'get': fake})
-app.get('/safe')(endpoint)

@@ -1,6 +1,6 @@
 //! The independent census validation compares Python files with: token boundaries and call
-//! sites from a fresh run of the lexer (never the syntax tree or block selection), plus the
-//! file's runtime module dependencies.
+//! sites from a fresh run of the lexer (never the syntax tree or lowering), plus the file's
+//! runtime module dependencies.
 //!
 //! The call scanner is the proof of concept's primary-chain scanner (`token-census.ts`) over
 //! Ruff's tokens. It tracks, for every token that can end a primary expression, where that
@@ -8,24 +8,15 @@
 //! concatenated strings, whole f-strings), and reports every `(` that follows one as a call
 //! from the primary's start to the matching `)`. Parentheses that are not calls are excluded:
 //! a `def` or `class` header's parameter or base list, a `match` subject in parentheses, and
-//! everything in a `case` pattern. Starred and double-starred arguments are recorded as
-//! positions that can never supply a named reference.
+//! everything in a `case` pattern. Every decorator is a call too: one written as a call is
+//! already a site, and any other (`@property`, `@app.task`) is one from its first token to its
+//! last, without the parentheses that enclose all of it.
 
 use ruff_python_ast::token::TokenKind;
 use ruff_python_parser::{Mode, lexer};
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
-use serde::{Deserialize, Serialize};
 use unfold_core::text::ByteRange;
-
-/// One call site the scanner found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CallSite {
-    /// From the primary's first token to the closing parenthesis.
-    pub range: ByteRange,
-    /// The written positions of starred and double-starred arguments.
-    pub ineligible: Vec<u32>,
-}
 
 /// What the lexer pass found in one file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -34,8 +25,8 @@ pub(crate) struct Scan {
     pub(crate) starts: Vec<u32>,
     /// Sorted, distinct token ends (plus 0 and the text's length).
     pub(crate) ends: Vec<u32>,
-    /// Call sites, sorted by range.
-    pub(crate) calls: Vec<CallSite>,
+    /// Call sites, sorted.
+    pub(crate) calls: Vec<ByteRange>,
 }
 
 /// Tokens that carry no syntax for the scanner. Logical newlines stay: they end statements.
@@ -197,16 +188,9 @@ fn exclusions(tokens: &[(TokenKind, TextRange)]) -> (FxHashSet<usize>, FxHashSet
 struct Open {
     start: u32,
     invocation: bool,
-    /// The written position of the argument being read.
-    position: u32,
-    /// Whether no token of the current argument has been read yet.
-    at_argument_start: bool,
-    /// Unclosed `lambda` parameter lists directly inside, whose commas separate parameters.
-    lambdas: u32,
-    ineligible: Vec<u32>,
 }
 
-fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<CallSite> {
+fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<ByteRange> {
     let (headers, patterns) = exclusions(tokens);
     let mut starts: Vec<Option<u32>> = vec![None; tokens.len()];
     let mut stack: Vec<Open> = Vec::new();
@@ -215,25 +199,6 @@ fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<CallSite> {
     for (index, &(kind, range)) in tokens.iter().enumerate() {
         let previous = index.checked_sub(1).map(|before| tokens[before].0);
         let prior = index.checked_sub(1).and_then(|before| starts[before]);
-        if let Some(open) = stack.last_mut().filter(|open| open.invocation) {
-            match kind {
-                TokenKind::Comma if open.lambdas == 0 => {
-                    open.position += 1;
-                    open.at_argument_start = true;
-                }
-                TokenKind::Lambda => {
-                    open.lambdas += 1;
-                    open.at_argument_start = false;
-                }
-                TokenKind::Colon if open.lambdas > 0 => open.lambdas -= 1,
-                TokenKind::Star | TokenKind::DoubleStar if open.at_argument_start => {
-                    open.ineligible.push(open.position);
-                    open.at_argument_start = false;
-                }
-                _ if closer(kind) => {}
-                _ => open.at_argument_start = false,
-            }
-        }
         let start = range.start().to_u32();
         match kind {
             TokenKind::FStringStart | TokenKind::TStringStart => {
@@ -249,22 +214,15 @@ fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<CallSite> {
                 stack.push(Open {
                     start: prior.filter(|_| chained).unwrap_or(start),
                     invocation,
-                    position: 0,
-                    at_argument_start: true,
-                    lambdas: 0,
-                    ineligible: Vec::new(),
                 });
             }
             _ if closer(kind) => {
                 if let Some(open) = stack.pop() {
                     starts[index] = Some(open.start);
                     if open.invocation {
-                        calls.push(CallSite {
-                            range: ByteRange {
-                                start: open.start,
-                                end: range.end().to_u32(),
-                            },
-                            ineligible: open.ineligible,
+                        calls.push(ByteRange {
+                            start: open.start,
+                            end: range.end().to_u32(),
                         });
                     }
                 }
@@ -281,8 +239,59 @@ fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<CallSite> {
             _ => {}
         }
     }
-    calls.sort_by_key(|call| (call.range.start, call.range.end));
+    calls.sort_unstable();
+    let named: Vec<ByteRange> = decorators(tokens)
+        .into_iter()
+        .filter(|decorator| calls.binary_search(decorator).is_err())
+        .collect();
+    calls.extend(named);
+    calls.sort_unstable();
     calls
+}
+
+/// The expression of every decorator: from the token after an `@` that starts a statement to
+/// the last token before the line ends, without parentheses that enclose all of it.
+fn decorators(tokens: &[(TokenKind, TextRange)]) -> Vec<ByteRange> {
+    let mut found = Vec::new();
+    let mut statement_start = true;
+    for (index, &(kind, _)) in tokens.iter().enumerate() {
+        if statement_start && kind == TokenKind::At {
+            let end = tokens[index + 1..]
+                .iter()
+                .position(|&(next, _)| next == TokenKind::Newline)
+                .map_or(tokens.len(), |offset| index + 1 + offset);
+            let mut expression = &tokens[(index + 1).min(end)..end];
+            while let [(TokenKind::Lpar, _), inner @ .., (TokenKind::Rpar, _)] = expression
+                && encloses(expression)
+            {
+                expression = inner;
+            }
+            if let (Some(first), Some(last)) = (expression.first(), expression.last()) {
+                found.push(ByteRange {
+                    start: first.1.start().to_u32(),
+                    end: last.1.end().to_u32(),
+                });
+            }
+        }
+        statement_start = matches!(kind, TokenKind::Newline | TokenKind::Semi);
+    }
+    found
+}
+
+/// Whether the opening parenthesis of `tokens` is closed by its last token.
+fn encloses(tokens: &[(TokenKind, TextRange)]) -> bool {
+    let mut depth = 0u32;
+    for (index, &(kind, _)) in tokens.iter().enumerate() {
+        if opener(kind) {
+            depth += 1;
+        } else if closer(kind) {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return index + 1 == tokens.len();
+            }
+        }
+    }
+    false
 }
 
 /// Encodes sorted offsets as gaps, which postcard stores in a byte or two each.
@@ -309,24 +318,15 @@ pub(crate) fn delta_decode(gaps: &[u32]) -> Vec<u32> {
         .collect()
 }
 
-/// The byte range of a census call, for comparisons in tests.
-#[cfg(test)]
-pub(crate) fn call_ranges(text: &str) -> Vec<(u32, u32)> {
-    scan(text)
-        .calls
-        .iter()
-        .map(|call| (call.range.start, call.range.end))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn texts(text: &str) -> Vec<&str> {
-        call_ranges(text)
+        scan(text)
+            .calls
             .into_iter()
-            .map(|(start, end)| &text[start as usize..end as usize])
+            .map(|range| &text[range.as_usize()])
             .collect()
     }
 
@@ -353,10 +353,12 @@ mod tests {
     }
 
     #[test]
-    fn expansions_are_ineligible_by_written_position() {
-        let scanned = scan("f(a, *b, k=lambda x, y: x, **c, d=(1, 2))\n");
-        assert_eq!(scanned.calls.len(), 1);
-        assert_eq!(scanned.calls[0].ineligible, [1, 3]);
+    fn every_decorator_is_a_call() {
+        let text = "@property\n@app.task(queue=\"q\")\n@(handlers[0])\n@((f))(1)\ndef g(): pass\nx = a @ b\n";
+        assert_eq!(
+            texts(text),
+            ["property", "app.task(queue=\"q\")", "handlers[0]", "((f))(1)"]
+        );
     }
 
     #[test]

@@ -1,1 +1,0 @@
-{"scripts": {"start": "tsx src/main.ts"}, "bin": {"app": "src/main.ts"}}

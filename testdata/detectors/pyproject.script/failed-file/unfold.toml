@@ -1,5 +1,0 @@
-# Detector case: testdata/detectors/pyproject.script/failed-file.
-
-[[python.project]]
-root = "."
-source_roots = ["src"]

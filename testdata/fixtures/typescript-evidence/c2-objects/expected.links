@@ -1,0 +1,14 @@
+a.ts# #0 types `Shape` → project a.ts#Shape
+a.ts#/call:service.start #0 calls `service.start` → project a.ts#service.start
+a.ts#/call:service.stop #0 calls `service.stop` → project a.ts#service.stop
+a.ts#/call:service.arrow #0 calls `service.arrow` → unknown mutable_binding
+a.ts#/call:written.run #0 calls `written.run` → unknown mutable_binding
+a.ts#/call:spread.extra #0 calls `spread.extra` → unknown unknown_receiver
+a.ts#/call:annotated.draw #0 calls `annotated.draw` → unknown unknown_receiver
+a.ts#/call:asserted.draw #0 calls `asserted.draw` → unknown unknown_receiver
+a.ts#/call:mutable.go #0 calls `mutable.go` → unknown unknown_receiver
+a.ts#/call:computed.lit #0 calls `computed.lit` → unknown unknown_receiver
+b.ts# #0 imports `./a.js` → project a.ts#
+b.ts# #1 imports `./a.js` → project a.ts#
+b.ts#/call:service.start #0 calls `service.start` → project a.ts#service.start
+b.ts#/call:all.service.stop #0 calls `all.service.stop` → project a.ts#service.stop

@@ -1,6 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/stacked-registrations. Format: testdata/README.md.
-# Two task decorators on one function stay unsupported.
-entrance	celery.task	worker	-	-	unknown	src/app.py:6
-	target	handler	unresolved	unsupported	stacked
-entrance	celery.task	worker	-	-	unknown	src/app.py:7
-	target	handler	unresolved	unsupported	stacked

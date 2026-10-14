@@ -1,20 +1,21 @@
-//! The per-file pre-pass that runs before block selection: one iterative walk over the whole
-//! syntax tree that
+//! The per-file pre-pass that runs before lowering: one iterative walk over the whole syntax
+//! tree that
 //!
 //! - fails the file on the compile-time errors in [`checks`];
 //! - measures the tree's depth, so it can be dropped safely ([`crate::parse::release`]);
 //! - takes a per-file write census ([`scope`]) and proves the identities that shape structure
-//!   ([`Proofs`]): `builtins.property` (getter and setter blocks), `typing.TYPE_CHECKING`
-//!   (erased imports), and `importlib.import_module` (literal dynamic imports become `import`
-//!   blocks).
+//!   ([`Proofs`]): `builtins.property` (getter and setter forms), `typing.TYPE_CHECKING`
+//!   (erased imports), and `importlib.import_module` (literal dynamic imports, which are calls
+//!   with an `imports` link);
+//! - lists the file's runtime module dependencies for the census, independently of lowering.
 //!
-//! **Per file by design.** These proofs decide which blocks exist, so they must be settled at
-//! extraction, which sees one file. The proof of concept decided them with its whole-program
-//! binder, which also saw what a star import binds and whether another module mutates an imported
-//! module's attribute; here a star import is assumed not to rebind `property`, `TYPE_CHECKING`, or
-//! an `importlib` alias, and only same-file attribute writes (`typing.TYPE_CHECKING = True`)
-//! invalidate an imported identity. Everything else is the binder's ([`crate::bind`],
-//! [`crate::link`]), which sees the whole program.
+//! **Per file by design.** These proofs decide which forms and links exist, so they must be
+//! settled at extraction, which sees one file. The proof of concept decided them with its
+//! whole-program binder, which also saw what a star import binds and whether another module
+//! mutates an imported module's attribute; here a star import is assumed not to rebind
+//! `property`, `TYPE_CHECKING`, or an `importlib` alias, and only same-file attribute writes
+//! (`typing.TYPE_CHECKING = True`) invalidate an imported identity. Everything else is the
+//! binder's ([`crate::bind`], [`crate::link`]), which sees the whole program.
 
 pub(crate) mod checks;
 mod proofs;
@@ -29,9 +30,10 @@ use unfold_engine::SourceFailure;
 
 use self::checks::{Flags, Transfer};
 pub(crate) use self::proofs::Proofs;
-use self::proofs::{Identities, member_kind};
+use self::proofs::{Identities, member_form};
 use self::scope::{Census, MODULE, Origin, ScopeKind, Write};
 use crate::ast::{expr_children, single_name_argument, string_literal};
+use crate::tokens::Tokens;
 
 /// What the pre-pass found.
 #[derive(Debug)]
@@ -93,10 +95,12 @@ struct Walker<'a> {
     guards: Vec<Guard<'a>>,
     definitions: Vec<(&'a StmtFunctionDef, u32)>,
     imports: Vec<(TextSize, u32)>,
-    /// Each import statement's start with the range of one runtime dependency it declares.
+    /// Each import statement's start with the specifier of one runtime dependency it declares.
     import_ranges: Vec<(TextSize, TextRange)>,
+    tokens: Tokens<'a>,
     failure: Option<SourceFailure>,
-    dynamic: Vec<(&'a ExprCall, u32, &'a str)>,
+    /// Calls that may be dynamic imports: the call, its scope, the literal, and its range.
+    dynamic: Vec<(&'a ExprCall, u32, &'a str, TextRange)>,
     evaluations: Vec<(&'a Expr, u32)>,
     mutations: Vec<(u32, &'a str, &'a str)>,
     scratch: Vec<&'a Expr>,
@@ -105,7 +109,7 @@ struct Walker<'a> {
 /// Walks `module` once: checks, depth, census, and proofs. `pep765` turns on the grammar 3.14
 /// checks for transfers out of `finally`. The walk always completes, even after a failure, so
 /// the depth is known whatever the tree.
-pub(crate) fn analyze(module: &ModModule, pep765: bool) -> Analysis {
+pub(crate) fn analyze<'a>(module: &'a ModModule, tokens: Tokens<'a>, pep765: bool) -> Analysis {
     let mut walker = Walker {
         census: Census::new(),
         stack: Vec::new(),
@@ -115,6 +119,7 @@ pub(crate) fn analyze(module: &ModModule, pep765: bool) -> Analysis {
         definitions: Vec::new(),
         imports: Vec::new(),
         import_ranges: Vec::new(),
+        tokens,
         failure: None,
         dynamic: Vec::new(),
         evaluations: Vec::new(),
@@ -328,7 +333,7 @@ impl<'a> Walker<'a> {
             Stmt::Import(node) => {
                 self.imports.push((node.range.start(), context.guard));
                 for alias in &node.names {
-                    self.import_ranges.push((node.range.start(), alias.range));
+                    self.import_ranges.push((node.range.start(), alias.name.range));
                     let (bound, origin) = match &alias.asname {
                         Some(asname) => (asname.id.as_str(), alias.name.id.as_str()),
                         None => {
@@ -342,7 +347,10 @@ impl<'a> Walker<'a> {
             }
             Stmt::ImportFrom(node) => {
                 self.imports.push((node.range.start(), context.guard));
-                self.import_ranges.push((node.range.start(), node.range));
+                let module_end = node.module.as_ref().map(|module| module.range.end());
+                if let Some(path) = self.tokens.import_module_path(node.range.start(), module_end) {
+                    self.import_ranges.push((node.range.start(), path));
+                }
                 for alias in &node.names {
                     if alias.name.id.as_str() == "*" {
                         continue;
@@ -428,11 +436,12 @@ impl<'a> Walker<'a> {
                 {
                     self.evaluations.push((&call.func, scope));
                 }
-                if let Some(name) = single_name_argument(call).and_then(string_literal)
+                if let Some(argument) = single_name_argument(call)
+                    && let Some(name) = string_literal(argument)
                     && !name.is_empty()
                     && !name.starts_with('.')
                 {
-                    self.dynamic.push((call, scope, name));
+                    self.dynamic.push((call, scope, name, argument.range()));
                 }
                 self.children(expr, inner);
             }
@@ -577,7 +586,7 @@ impl<'a> Walker<'a> {
         for &(function, scope) in &self.definitions {
             proofs
                 .kinds
-                .insert(function.range.start(), member_kind(function, scope, &identities));
+                .insert(function.range.start(), member_form(function, scope, &identities));
         }
         let mut guards: Vec<Option<bool>> = vec![None; self.guards.len()];
         for &(start, guard) in &self.imports {
@@ -585,9 +594,9 @@ impl<'a> Walker<'a> {
                 proofs.erased.insert(start);
             }
         }
-        for &(call, scope, name) in &self.dynamic {
+        for &(call, scope, name, literal) in &self.dynamic {
             if identities.is(&call.func, scope, "importlib.import_module") {
-                proofs.dynamic.insert(call.range(), name.into());
+                proofs.dynamic.insert(call.range(), (name.into(), literal));
             }
         }
         proofs.dependencies = self
@@ -595,7 +604,7 @@ impl<'a> Walker<'a> {
             .iter()
             .filter(|(start, _)| !proofs.erased.contains(start))
             .map(|&(_, range)| range)
-            .chain(proofs.dynamic.keys().copied())
+            .chain(proofs.dynamic.values().map(|&(_, literal)| literal))
             .collect();
         proofs
             .dependencies

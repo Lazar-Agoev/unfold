@@ -31,17 +31,17 @@ pub fn is_default_excluded(path: &str) -> bool {
 /// What a file is to Unfold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FileClass {
-    /// An indexed source file: it gets blocks.
+    /// An indexed source file: it gets nodes.
     Source(Language),
-    /// A file a language reads for context but never gives blocks: TypeScript declaration
+    /// A file a language reads for context but never gives nodes: TypeScript declaration
     /// files (`.d.ts`, `.d.mts`, `.d.cts`).
     Context(Language, ScopeStatus),
     /// A file with a source extension that exists but isn't indexed. References into it
     /// resolve as `not_indexed` rather than `not_found`.
     Unindexed(Unindexed),
-    /// An input whose bytes are fingerprinted: a configuration file, or an evidence file
-    /// (`[evidence] files`, which `[scope]` doesn't apply to: always [`ScopeStatus::InScope`]).
-    Input(InputRole, ScopeStatus),
+    /// An input whose bytes are fingerprinted: a configuration file (whatever `[scope]` says),
+    /// or an evidence file (`[evidence] files`, which `[scope]` doesn't apply to either).
+    Input(InputRole),
     /// Anything else (documentation, images, lockfiles, ...): not tracked.
     Other,
 }
@@ -68,18 +68,18 @@ pub enum Unindexed {
 pub fn classify(path: &RepoPath, settings: &Settings) -> FileClass {
     let text = path.as_str();
     if text == SETTINGS_PATH {
-        return FileClass::Input(InputRole::UnfoldConfig, ScopeStatus::InScope);
+        return FileClass::Input(InputRole::UnfoldConfig);
     }
     if is_default_excluded(text) {
         return FileClass::Other;
     }
     let name = path.file_name();
     if let Some(role) = input_role(name) {
-        return FileClass::Input(role, settings.scope.status(path));
+        return FileClass::Input(role);
     }
     let Some(kind) = source_kind(name) else {
         return if settings.evidence.contains(path) {
-            FileClass::Input(InputRole::Evidence, ScopeStatus::InScope)
+            FileClass::Input(InputRole::Evidence)
         } else {
             FileClass::Other
         };
@@ -180,7 +180,7 @@ mod tests {
                 "{path}"
             );
         }
-        let input = |role| FileClass::Input(role, ScopeStatus::InScope);
+        let input = FileClass::Input;
         assert_eq!(class("package.json", &settings), input(InputRole::Package));
         assert_eq!(class("a/pyproject.toml", &settings), input(InputRole::Pyproject));
         assert_eq!(class("tsconfig.json", &settings), input(InputRole::Tsconfig));
@@ -209,7 +209,7 @@ mod tests {
         );
         assert_eq!(
             class("legacy/pyproject.toml", &settings),
-            FileClass::Input(InputRole::Pyproject, ScopeStatus::Excluded)
+            FileClass::Input(InputRole::Pyproject)
         );
         let narrowed = Settings::parse("[scope]\ninclude = [\"src\"]\n").unwrap();
         assert_eq!(
@@ -225,7 +225,7 @@ mod tests {
             "[scope]\ninclude = [\"src\"]\n[evidence]\nfiles = [\"db\", \"package.json\", \"src/a.ts\", \"lib/*.js\"]\n",
         )
         .unwrap();
-        let evidence = FileClass::Input(InputRole::Evidence, ScopeStatus::InScope);
+        let evidence = FileClass::Input(InputRole::Evidence);
         assert_eq!(
             class("db/migrations/001.sql", &settings),
             evidence,
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(class("docs/a.sql", &settings), FileClass::Other);
         assert_eq!(
             class("package.json", &settings),
-            FileClass::Input(InputRole::Package, ScopeStatus::NotIncluded)
+            FileClass::Input(InputRole::Package)
         );
         assert_eq!(
             class("src/a.ts", &settings),

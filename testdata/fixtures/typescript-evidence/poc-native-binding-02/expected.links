@@ -1,0 +1,5 @@
+parameters.ts#parameter/call:f #0 calls `f` → unknown parameter
+parameters.ts#destructured/call:f #0 calls `f` → unknown parameter
+parameters.ts#/try[0]/catch/call:f #0 calls `f` → unknown not_concrete
+parameters.ts#/try[1]/catch/call:f #0 calls `f` → unknown not_concrete
+parameters.ts#/call:f #0 calls `f` → project parameters.ts#f

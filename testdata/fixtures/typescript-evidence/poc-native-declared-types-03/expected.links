@@ -1,0 +1,5 @@
+chains.ts#Box.constructor #0 types `Repo` → project chains.ts#Repo
+chains.ts#Holder.constructor #0 types `Box` → project chains.ts#Box
+chains.ts#Holder.run/call:this.box.repo.save #0 calls `this.box.repo.save` → project chains.ts#Repo.save
+chains.ts#call #0 types `Box` → project chains.ts#Box
+chains.ts#call/call:box.repo.save #0 calls `box.repo.save` → project chains.ts#Repo.save

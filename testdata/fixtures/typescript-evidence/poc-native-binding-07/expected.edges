@@ -1,4 +1,0 @@
-values.ts#expression_statement[0]/call[0] #0 calls `arrow` -> values.ts#variable:arrow/function:arrow
-values.ts#expression_statement[1]/call[0] #0 calls `expression` -> values.ts#variable:expression/function:expression
-values.ts#expression_statement[2]/call[0] #0 calls `mutable` -> mutable_binding
-values.ts#expression_statement[3]/call[0] #0 calls `hoisted` -> mutable_binding

@@ -1,29 +1,28 @@
 //! The TypeScript front end: the oxc adapter, project configuration (`tsconfig.json` chains),
-//! module resolution, export tables, binding and evidence, the emit map, module labels, generated
-//! library tables, and syntax highlighting for the reader (`docs/languages/typescript.md`).
+//! module resolution, export tables, the lowering to nodes, binding and evidence, module labels,
+//! generated library tables, and syntax highlighting for the reader
+//! (`docs/languages/typescript.md`).
 //!
-//! - [`extract`]: strict parsing with oxc, block selection through the engine's shared selector
-//!   with the TypeScript mapping (kinds, roles, names, slots), the value table, call and import
-//!   occurrences, typed facts (signatures, parameters, members, call results, and written type
-//!   names), module-level facts, the file's binding (declarations, symbols, and the expressions
-//!   evidence evaluates), the payload, and the independent census;
+//! - [`extract`]: strict parsing with oxc, the lowering of the parse tree straight to the file's
+//!   nodes (definitions, control blocks and their parts, calls, and exits, keyed in preorder),
+//!   the value table, call facts, written module dependencies, typed records (signatures,
+//!   parameters, members, and written type names), module-level facts, the file's binding
+//!   (declarations, symbols, and the expressions evidence evaluates), the payload, and the
+//!   independent census;
 //! - [`TypeScript`]: the [`Language`] implementation. Each file's extraction options come from
 //!   its nearest `tsconfig.json` ([`TypeScript::extraction_options`]); linking
 //!   ([`link::TypeScriptLinked`]) resolves modules and exports, answers callee, value, type,
-//!   and declaration evidence (evidence levels 1–4 and constant object members), class shapes,
-//!   and locators, and spells module labels;
+//!   and declaration evidence (evidence levels 1–4 and constant object members) and class
+//!   shapes, and spells module labels;
 //! - [`tables`]: the known globals, library types, global type aliases, and Node built-ins of the
 //!   pinned TypeScript and `@types/node` declarations;
-//! - [`TypeScriptHighlighter`]: lexical colors for the Code view.
+//! - [`TypeScriptHighlighter`]: lexical colors for the code panel.
 
 #![forbid(unsafe_code)]
 
 mod bind;
-mod build;
 pub mod census;
 mod config;
-mod detect;
-mod emit;
 mod evidence;
 pub mod exports;
 mod extract;
@@ -31,17 +30,15 @@ mod highlight;
 mod imports;
 pub mod labels;
 pub mod link;
-mod mapping;
+mod lower;
 mod module_syntax;
 pub mod modules;
-mod names;
 mod number;
 mod paths;
 pub mod payload;
 mod scan;
-mod sites;
+mod spans;
 mod stack;
-mod syntax;
 pub mod tables;
 mod typed;
 mod values;
@@ -58,7 +55,6 @@ use unfold_engine::{
 };
 
 pub use config::BindingContext;
-pub use emit::EmitMap;
 pub use extract::{ExtractOptions, extract, is_typescript_source};
 pub use highlight::TypeScriptHighlighter;
 

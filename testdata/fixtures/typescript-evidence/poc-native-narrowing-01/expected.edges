@@ -1,2 +1,0 @@
-truthiness.ts#class:C/method:run/expression_statement[0]/call[0] #0 calls `assert` -> truthiness.ts#function:assert
-truthiness.ts#class:C/method:run/expression_statement[1]/call[0] #0 calls `this.m` -> truthiness.ts#class:C/method:m

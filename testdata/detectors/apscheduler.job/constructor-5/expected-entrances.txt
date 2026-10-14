@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/constructor-5. Format: testdata/README.md.
-# Custom scheduler construction keeps handlers unsupported (PoC: "Custom scheduler construction..."). Written: BlockingScheduler(**settings)
-entrance	apscheduler.job	schedule	-	-	unknown	src/app.py:4
-	target	handler	unresolved	unsupported	first

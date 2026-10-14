@@ -1,0 +1,2 @@
+narrowing.ts#call #0 types `C` → project narrowing.ts#C
+narrowing.ts#call/if[0]/then/call:value.m #0 calls `value.m` → unknown unknown_receiver

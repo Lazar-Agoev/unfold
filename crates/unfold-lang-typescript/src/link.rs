@@ -3,18 +3,17 @@
 //!
 //! What linking answers:
 //!
-//! - **Modules.** Each runtime import's outcome ([`Linked::module_dependencies`], aligned with
-//!   the file's import facts), resolved by [`ModuleResolver`] with the file's `tsconfig.json`.
+//! - **Modules.** Each written module dependency's outcome ([`Linked::module_dependencies`],
+//!   aligned with the file's import facts), resolved by [`ModuleResolver`] with the file's
+//!   `tsconfig.json`.
 //! - **Exports.** Each module's runtime exports with re-export chains followed
-//!   ([`Linked::module_exports`], from [`ExportTable`]).
-//! - **Evidence.** Callee, value, type, and annotation evidence, declaration semantics, class
-//!   shapes, and manual-locator lookups, computed by the `evidence` module over the files' bindings and
-//!   tables built once here (script globals, class members and bases, narrowed receivers,
-//!   members that may override unknown bases, and the mutation census).
-//! - **Labels, inputs, and launches.** Module-label spelling, the `tsconfig.json` chains the
-//!   graph used ([`Linked::inputs_read`]), and the emit map ([`Linked::emitted_source`]).
-//! - **Entrances.** The `package.json` files the package detectors read (with their problems)
-//!   and the five detectors ([`Linked::detectors`], `crate::detect`).
+//!   ([`ExportTable`]), which import bindings read.
+//! - **Evidence.** Callee, value, type, and annotation evidence, declaration semantics, and
+//!   class shapes, computed by the `evidence` module over the files' bindings and tables built
+//!   once here (script globals, class members and bases, narrowed receivers, members that may
+//!   override unknown bases, and the mutation census).
+//! - **Labels and inputs.** Module-label spelling, and the `tsconfig.json` chains the graph used
+//!   ([`Linked::inputs_read`]).
 //! - **Validation.** The independent census.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -24,20 +23,16 @@ use rustc_hash::FxHashMap;
 use unfold_core::RepoPath;
 use unfold_core::validate::Census;
 use unfold_core::vocab::Language;
-use unfold_engine::entrances::EntranceDetector;
 use unfold_engine::evidence::{
-    ClassShape, ConcreteTarget, Evidence, Export, ExternalLocation, LocatorMembers, MemberFact, ModuleTarget,
-    OriginDeclaration, ParameterFact, Stability, ValueContext,
+    ClassShape, ConcreteTarget, Evidence, ExternalLocation, MemberFact, ModuleTarget, OriginDeclaration,
+    Stability, ValueContext,
 };
 use unfold_engine::{
-    BlockRef, CallRef, DeclRef, EmitSource, FactsSet, FileId, LanguageId, LanguageProblem, Linked,
-    ProjectInputs, TypeRef, ValueRef,
+    CallRef, DeclRef, FactsSet, FileId, LanguageId, Linked, NodeRef, ProjectInputs, TypeRef, ValueRef,
 };
 
 use crate::census::TypeScriptCensus;
 use crate::config::{BindingContext, ConfigSet, Detection, Jsx, Resolution};
-use crate::detect::packages::Packages;
-use crate::emit::EmitMap;
 use crate::evidence::{GlobalSymbol, Tables, Walk, WrittenMembers};
 use crate::exports::{ExportTable, ModuleFile, Specifiers};
 use crate::labels;
@@ -61,11 +56,8 @@ pub struct TypeScriptLinked<'a> {
     /// `None` for other aliases).
     alias_resolutions: Vec<Vec<Option<Resolved>>>,
     exports: ExportTable,
-    emit: EmitMap,
     inputs_read: Vec<RepoPath>,
     census: TypeScriptCensus,
-    /// The package detectors' inputs and candidates.
-    packages: Packages,
     /// The tables evidence reads.
     pub(crate) tables: Tables,
     /// Every class's shape, for the override census.
@@ -180,8 +172,7 @@ impl<'a> TypeScriptLinked<'a> {
                 Some(ModuleFile {
                     facts: &payload.module,
                     is_module,
-                    synthetic_default: options.allow_synthetic_default_imports.unwrap_or(true),
-                    callee_synthetic_default: options
+                    synthetic_default: options
                         .allow_synthetic_default_imports
                         .or(options.es_module_interop)
                         .unwrap_or(node_module),
@@ -214,7 +205,6 @@ impl<'a> TypeScriptLinked<'a> {
         let exports = ExportTable::build(&files, &cached);
         drop(cached);
         drop(files);
-        let emit = EmitMap::build(configs, program, inputs);
         let mut inputs_read: Vec<RepoPath> = Vec::new();
         for (file, payload) in program.files().iter().zip(&payloads) {
             if payload.is_some() {
@@ -237,10 +227,6 @@ impl<'a> TypeScriptLinked<'a> {
                 *group_ids.entry(key).or_insert(next)
             })
             .collect();
-        let packages = Packages::new(inputs);
-        inputs_read.extend(packages.read.iter().cloned());
-        inputs_read.sort();
-        inputs_read.dedup();
         let mut linked = Self {
             program,
             resolver,
@@ -250,10 +236,8 @@ impl<'a> TypeScriptLinked<'a> {
             import_resolutions,
             alias_resolutions,
             exports,
-            emit,
             inputs_read,
             census,
-            packages,
             tables: Tables::default(),
             shapes: Vec::new(),
         };
@@ -349,11 +333,6 @@ impl<'a> TypeScriptLinked<'a> {
     /// The program this links.
     pub(crate) fn program(&self) -> &'a FactsSet {
         self.program
-    }
-
-    /// What the package detectors read and found.
-    pub(crate) fn packages(&self) -> &Packages {
-        &self.packages
     }
 
     /// The module resolver, for specifiers written in a file.
@@ -510,8 +489,8 @@ impl Linked for TypeScriptLinked<'_> {
     }
 
     fn callee_evidence(&self, call: CallRef) -> Evidence {
-        match self.program.call(call).and_then(|fact| fact.callee) {
-            Some(callee) => self.value_facts(call.file, callee),
+        match self.program.call(call) {
+            Some(fact) => self.value_facts(call.file, fact.callee),
             None => Evidence::default(),
         }
     }
@@ -526,7 +505,7 @@ impl Linked for TypeScriptLinked<'_> {
 
     /// A class without a direct constructor takes no arguments when it has no `extends` clause
     /// (its implicit constructor is empty) and no decorator (which could replace the class).
-    fn class_takes_no_arguments(&self, class: BlockRef) -> bool {
+    fn class_takes_no_arguments(&self, class: NodeRef) -> bool {
         let Some(binding) = self.binding(class.file) else {
             return false;
         };
@@ -546,8 +525,8 @@ impl Linked for TypeScriptLinked<'_> {
         self.concrete(declaration, context)
     }
 
-    fn parameter(&self, declaration: DeclRef) -> Option<ParameterFact> {
-        self.parameter_facts(declaration)
+    fn is_parameter(&self, declaration: DeclRef) -> bool {
+        self.in_parameter(declaration)
     }
 
     fn binding_stability(&self, declaration: DeclRef) -> Stability {
@@ -570,28 +549,8 @@ impl Linked for TypeScriptLinked<'_> {
         self.origin(declaration)
     }
 
-    fn locator_top_level(&self, file: FileId, name: &str) -> Vec<DeclRef> {
-        self.top_level(file, name)
-    }
-
-    fn locator_concrete(&self, declaration: DeclRef) -> Option<BlockRef> {
-        self.locator_block(declaration)
-    }
-
-    fn locator_members(&self, owner: DeclRef, name: &str) -> LocatorMembers {
-        self.members_named(owner, name)
-    }
-
-    fn locator_overload_of(&self, signature: DeclRef, implementation: DeclRef) -> bool {
-        self.is_locator_overload(signature, implementation)
-    }
-
     fn module_dependencies(&self, file: FileId) -> &[ModuleTarget] {
         self.dependencies.get(file.index()).map_or(&[], Vec::as_slice)
-    }
-
-    fn module_exports(&self, file: FileId) -> &[Export] {
-        self.exports.exports(file)
     }
 
     fn classes(&self) -> &[ClassShape] {
@@ -618,19 +577,7 @@ impl Linked for TypeScriptLinked<'_> {
         self.inputs_read.clone()
     }
 
-    fn emitted_source(&self, output: &RepoPath) -> EmitSource {
-        self.emit.source(output)
-    }
-
-    fn detectors(&self) -> Vec<Box<dyn EntranceDetector + '_>> {
-        crate::detect::detectors(self)
-    }
-
     fn census(&self) -> Option<&dyn Census> {
         Some(&self.census)
-    }
-
-    fn problems(&self) -> Vec<LanguageProblem> {
-        self.packages.problems.clone()
     }
 }

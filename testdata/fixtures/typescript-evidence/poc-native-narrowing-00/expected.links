@@ -1,0 +1,6 @@
+conditions.ts#check #0 types `C` → project conditions.ts#C
+conditions.ts#host #0 types `C` → project conditions.ts#C
+conditions.ts#C.run/if[0]/then/call:check #0 calls `check` → project conditions.ts#check
+conditions.ts#C.run/if[0]/then/call:this.m #0 calls `this.m` → project conditions.ts#C.m
+conditions.ts#C.run/call:host #0 calls `host` → project conditions.ts#host
+conditions.ts#C.run/call:this.m #0 calls `this.m` → project conditions.ts#C.m

@@ -1,0 +1,4 @@
+asserted-this.ts#A.run/call:this.m #0 calls `this.m` → unknown overridden
+asserted-this.ts#A.run/call:this.m[1] #0 calls `this.m` → unknown overridden
+asserted-this.ts#A.run/call:this.m[2] #0 calls `this.m` → project asserted-this.ts#A.m
+asserted-this.ts#Child #0 extends `B` → project asserted-this.ts#B

@@ -1,0 +1,10 @@
+use.ts# #0 imports `@internal/omitted` → project src/omitted.ts#
+use.ts# #1 imports `@internal/missing` → unknown not_found
+use.ts# #2 imports `./missing.js` → unknown not_found
+use.ts# #3 imports `@scope/pkg` → library @scope/pkg
+use.ts# #4 imports `not-installed` → library not-installed
+use.ts#/call:omitted #0 calls `omitted` → project src/omitted.ts#omitted
+use.ts#/call:absent #0 calls `absent` → unknown not_found
+use.ts#/call:missing #0 calls `missing` → unknown not_found
+use.ts#/call:call #0 calls `call` → library @scope/pkg
+use.ts#/call:bare #0 calls `bare` → library not-installed

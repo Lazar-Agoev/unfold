@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/pyproject.script/ambiguous-roots. Format: testdata/README.md.
-# Two source roots supplying the same module never choose the first startup (PoC: "Ambiguous roots and disagreeing source-project contexts...").
-entrance	pyproject.script	process	-	run	exact	pyproject.toml:2
-	target	startup	unresolved	ambiguous	service:main

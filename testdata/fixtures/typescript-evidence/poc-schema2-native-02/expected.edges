@@ -1,8 +1,0 @@
-use.ts#import[0] #0 imports `client-b` -> external client-b
-use.ts#function:run/expression_statement[0]/call[0] #0 calls `a.send` -> external client-a
-use.ts#function:run/expression_statement[1]/call[0] #0 calls `b.send` -> external client-b
-use.ts#function:run/expression_statement[2]/call[0] #0 calls `both.send` -> unknown_receiver
-use.ts#function:run/expression_statement[3]/call[0] #0 calls `array.map` -> external global
-use.ts#class:Derived/method:execute/expression_statement[0]/call[0] #0 calls `this.send` -> external client-b
-use.ts#class:Derived/method:execute/expression_statement[1]/call[0] #0 calls `super.send` -> external client-b
-use.ts#expression_statement[0]/call[0] #0 calls `console.log` -> external global

@@ -1,0 +1,23 @@
+a.ts# module
+a.ts#/call:import call
+  range `import(path())`
+  head `import`
+  stmt `const loaded = import(path());`
+  name `import`
+  binds `loaded`
+a.ts#/call:import/call:path call
+  range `path()`
+  head `path`
+  name `path`
+a.ts#/call:import[1] call
+  range `import("./lit.js")`
+  head `import`
+  stmt `const literal = import("./lit.js");`
+  name `import`
+  binds `literal`
+a.ts#/call:import[2] call
+  range `import(("./par.js"))`
+  head `import`
+  stmt `const parenthesized = import(("./par.js"));`
+  name `import`
+  binds `parenthesized`

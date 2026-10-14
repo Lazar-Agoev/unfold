@@ -17,7 +17,7 @@ impl<'a> Builder<'a> {
             .map(|decorator| self.reserve(&decorator.expression, scope))
             .collect();
         let kind = NodeKind::Function(FunctionFact {
-            block: self.block(stmt),
+            local: self.local(stmt),
             name: Some(self.interner.name(function.name.id.as_str())),
             decorators,
             parameters: Vec::new(),

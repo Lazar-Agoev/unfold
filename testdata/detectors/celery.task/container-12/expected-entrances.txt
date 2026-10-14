@@ -1,4 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/container-12. Format: testdata/README.md.
-# Called literal container members withhold registry identities (PoC: "Called literal container members..."). Written: from celery import shared_task; methods = {'task': shared_task}; methods['task'](name='unique.first')(second)
-entrance	celery.task	worker	-	orders	exact	src/app.py:9
-	target	handler	unresolved	unsupported	first

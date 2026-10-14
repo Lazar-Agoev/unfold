@@ -1,4 +1,4 @@
-//! Syntax colors for the Code view, from Ruff's lexer (the parser's token stream). Highlighting
+//! Syntax colors for the code panel, from Ruff's lexer (the parser's token stream). Highlighting
 //! never parses: it colors text that does not parse as well as it can.
 //!
 //! The classes are the proof of concept reader's (`reader/core/python-syntax.ts`):
@@ -23,8 +23,8 @@ use ruff_text_size::TextRange;
 use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
 use unfold_core::vocab::Language;
 
+use crate::ast::bytes;
 use crate::census::lex;
-use crate::mapping::bytes;
 
 /// The Python highlighter.
 #[derive(Debug, Clone, Copy, Default)]

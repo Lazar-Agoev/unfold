@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/celery.task/conf-update-1. Format: testdata/README.md.
-# Other configuration updates invalidate the application. Written: app.conf.update(task_annotations={'*': {'run': fake}})

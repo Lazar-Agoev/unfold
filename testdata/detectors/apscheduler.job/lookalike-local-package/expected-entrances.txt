@@ -1,2 +1,0 @@
-# Expected entrances for testdata/detectors/apscheduler.job/lookalike-local-package. Format: testdata/README.md.
-# A source package named apscheduler shadows the library.

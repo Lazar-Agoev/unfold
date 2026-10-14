@@ -1,0 +1,10 @@
+a.ts#D #0 extends `C` → project a.ts#C
+a.ts#isD #0 types `D` → project a.ts#D
+a.ts#check #0 types `C` → project a.ts#C
+a.ts#check #1 types `C` → project a.ts#C
+a.ts#check #2 types `C` → project a.ts#C
+a.ts#check/if[0]/then/call:c.m #0 calls `c.m` → unknown unknown_receiver
+a.ts#check/if[1]/then/call:isD #0 calls `isD` → project a.ts#isD
+a.ts#check/if[1]/then/call:other.m #0 calls `other.m` → unknown unknown_receiver
+a.ts#check/if[2]/then/call:unknownCall #0 calls `unknownCall` → unknown not_concrete
+a.ts#check/if[2]/then/call:third.m #0 calls `third.m` → project a.ts#C.m

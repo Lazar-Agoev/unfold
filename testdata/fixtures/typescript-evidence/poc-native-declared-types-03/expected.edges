@@ -1,2 +1,0 @@
-chains.ts#class:Holder/method:run/expression_statement[0]/call[0] #0 calls `this.box.repo.save` -> chains.ts#class:Repo/method:save
-chains.ts#function:call/expression_statement[0]/call[0] #0 calls `box.repo.save` -> chains.ts#class:Repo/method:save

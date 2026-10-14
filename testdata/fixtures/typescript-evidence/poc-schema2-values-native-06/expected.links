@@ -1,0 +1,2 @@
+a.ts#handle #0 types `Application` → library express
+b.ts# #0 imports `./a.js` → project a.ts#

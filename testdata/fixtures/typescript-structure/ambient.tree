@@ -1,0 +1,65 @@
+a.ts# module
+a.ts#Alias type_alias
+  range `type Alias = { [typeKey()]: string };`
+  head `type Alias`
+  body `{ [typeKey()]: string }`
+  stmt `type Alias = { [typeKey()]: string };`
+  name `Alias`
+a.ts#Shape interface
+  range `interface Shape { method(): void; [key: string]: unknown }`
+  head `interface Shape`
+  body `{ method(): void; [key: string]: unknown }`
+  stmt `interface Shape { method(): void; [key: string]: unknown }`
+  name `Shape`
+a.ts#Status enum
+  range `export enum Status { Ready = initialize(), Next = 2 }`
+  head `enum Status`
+  body `{ Ready = initialize(), Next = 2 }`
+  stmt `export enum Status { Ready = initialize(), Next = 2 }`
+  name `Status`
+a.ts#/call:initialize call
+  range `initialize()`
+  head `initialize`
+  name `initialize`
+a.ts#/call:create call
+  range `create()`
+  head `create`
+  stmt `export const value = create();`
+  name `create`
+  binds `value`
+a.ts#Outer.Inner.run function
+  range `export function run() { return finish(); }`
+  head `function run()`
+  body `{ return finish(); }`
+  stmt `export function run() { return finish(); }`
+  name `Outer.Inner.run`
+a.ts#Outer.Inner.run/return[0] return
+  range `return finish();`
+  stmt `return finish();`
+  value `finish()`
+a.ts#Outer.Inner.run/return[0]/call:finish call exit_value
+  range `finish()`
+  head `finish`
+  name `finish`
+a.ts#overloaded function
+  range `function overloaded(value: unknown) { return value; }`
+  head `function overloaded(value: unknown)`
+  body `{ return value; }`
+  stmt `function overloaded(value: unknown) { return value; }`
+  name `overloaded`
+a.ts#overloaded/return[0] return
+  range `return value;`
+  stmt `return value;`
+  value `value`
+a.ts#/call:factory call
+  range `factory()`
+  head `factory`
+  stmt `const checked = (factory() as Map<string, Array<Foo>>) satisfies object;`
+  name `factory`
+  binds `checked`
+a.ts#/call:make call
+  range `make()`
+  head `make`
+  stmt `const asserted = (<Foo>make())!;`
+  name `make`
+  binds `asserted`
