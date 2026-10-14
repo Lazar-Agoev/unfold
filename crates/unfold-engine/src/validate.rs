@@ -1,8 +1,8 @@
 //! The graph-level validation hook every compile and update runs before committing.
 //!
 //! It runs `unfold_core`'s validator over the candidate graph, against the source snapshots when
-//! the caller has them, and against each linked language's independent census of token
-//! boundaries, call sites, and module dependencies, so validation never just trusts extraction.
+//! the caller has them, and against each linked language's independent census of call sites, so
+//! validation never just trusts extraction.
 
 use unfold_core::Graph;
 use unfold_core::validate::{Sources, Validator, Violation};

@@ -8,6 +8,10 @@
 //! callable, `type[X]`, `Any`) leaves the value unknown. `LiteralString` is read as `str`, which
 //! it is. A name with several bindings (overloads,
 //! or the branches of platform conditions) keeps a type only when every binding agrees.
+//!
+//! One table is read per Python version, and the tables are then intersected ([`intersect`]): a
+//! module, class, or member is kept only when every version has it, and a type only when every
+//! version agrees on it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -74,6 +78,8 @@ pub(crate) enum Member {
     Module(String),
     /// A variable, attribute, or property, with its written class when it has one.
     Variable(Option<String>),
+    /// A property written `Self`: the instance it is read on.
+    SelfVariable,
 }
 
 /// A module of the table.
@@ -89,6 +95,9 @@ pub(crate) struct TableClass {
     pub(crate) name: String,
     /// The base classes as written, in order; `Generic[…]` and `Protocol[…]` are left out.
     pub(crate) bases: Vec<String>,
+    /// Whether `Protocol` (or `Protocol[…]`) is among its written bases: any class with the
+    /// members implements it, whatever its bases.
+    pub(crate) protocol: bool,
     pub(crate) members: BTreeMap<String, Member>,
 }
 
@@ -120,8 +129,10 @@ enum Symbol {
 /// A base class, read.
 enum Base {
     Class(Rc<ClassDef>),
-    /// `Generic[…]` or `Protocol[…]`, which add no members.
+    /// `Generic[…]`, which adds no members.
     Marker,
+    /// `Protocol` or `Protocol[…]`, which adds no members and makes the class a protocol.
+    Protocol,
     /// `Any`: the class may have any attribute.
     Any,
 }
@@ -218,11 +229,12 @@ impl Reader<'_> {
     /// A class's bases and members.
     fn class(&mut self, class: &Rc<ClassDef>) -> anyhow::Result<TableClass> {
         let mut bases = Vec::new();
+        let mut protocol = false;
         for base in &class.bases {
-            if let Base::Class(base) = self.base(&class.module, base)?
-                && let Some(base) = self.reach(&base)?
-            {
-                bases.push(base);
+            match self.base(&class.module, base)? {
+                Base::Class(base) => bases.extend(self.reach(&base)?),
+                Base::Protocol => protocol = true,
+                Base::Marker | Base::Any => {}
             }
         }
         let mut members = BTreeMap::new();
@@ -234,6 +246,7 @@ impl Reader<'_> {
         Ok(TableClass {
             name: class.qualified.clone(),
             bases,
+            protocol,
             members,
         })
     }
@@ -255,7 +268,8 @@ impl Reader<'_> {
             Symbol::TypeAlias(alias, alias_module) if depth < MAX_DEPTH => {
                 self.base_at(&alias_module, &alias, depth + 1)
             }
-            Symbol::Special("Generic" | "Protocol") => Ok(Base::Marker),
+            Symbol::Special("Generic") => Ok(Base::Marker),
+            Symbol::Special("Protocol") => Ok(Base::Protocol),
             Symbol::Special("Any") => Ok(Base::Any),
             other => bail!(
                 "a base class in `{module}` is not a class: {}",
@@ -276,7 +290,7 @@ impl Reader<'_> {
             open |= match self.base(&class.module, base)? {
                 Base::Any => true,
                 Base::Class(base) => self.is_open(&base)?,
-                Base::Marker => false,
+                Base::Marker | Base::Protocol => false,
             };
         }
         self.open.insert(class.qualified.clone(), open);
@@ -305,6 +319,9 @@ impl Reader<'_> {
                 let mut forms = Vec::new();
                 for function in &functions {
                     forms.push(self.annotation(&class.module, function.returns.as_ref())?);
+                }
+                if forms.iter().all(|form| *form == Form::Receiver) {
+                    return Ok(Some(Member::SelfVariable));
                 }
                 return Ok(Some(Member::Variable(agree_class(&forms))));
             }
@@ -565,6 +582,107 @@ fn merge(symbols: Vec<Symbol>) -> Symbol {
         });
     }
     merged.unwrap_or(Symbol::Missing)
+}
+
+/// The tables of several Python versions, intersected: the modules and classes every table has,
+/// each with the members every table gives it ([`shared`]), and then only the classes the kept
+/// modules still reach through members and bases. A class whose bases differ between versions
+/// fails: its members would be looked up differently.
+pub(crate) fn intersect(tables: Vec<Table>) -> anyhow::Result<Table> {
+    let mut tables = tables.into_iter();
+    let Some(first) = tables.next() else {
+        return Ok(Table::default());
+    };
+    let rest: Vec<Table> = tables.collect();
+    let mut modules = Vec::new();
+    for module in first.modules {
+        let theirs: Option<Vec<&BTreeMap<String, Member>>> = rest
+            .iter()
+            .map(|table| {
+                let found = table.modules.iter().find(|other| other.name == module.name)?;
+                Some(&found.members)
+            })
+            .collect();
+        if let Some(theirs) = theirs {
+            modules.push(TableModule {
+                members: shared(module.members, &theirs),
+                name: module.name,
+            });
+        }
+    }
+    let mut classes = BTreeMap::new();
+    for class in first.classes {
+        let mut theirs = Vec::new();
+        for table in &rest {
+            let Some(found) = table.classes.iter().find(|other| other.name == class.name) else {
+                break;
+            };
+            if found.bases != class.bases || found.protocol != class.protocol {
+                bail!("the bases of `{}` differ between Python versions", class.name);
+            }
+            theirs.push(&found.members);
+        }
+        if theirs.len() == rest.len() {
+            let members = shared(class.members, &theirs);
+            classes.insert(class.name.clone(), TableClass { members, ..class });
+        }
+    }
+    // Keep the classes the modules reach, through members and bases.
+    let mut pending: Vec<&str> = modules
+        .iter()
+        .flat_map(|module| module.members.values())
+        .filter_map(Member::class)
+        .collect();
+    let mut reached = BTreeSet::new();
+    while let Some(name) = pending.pop() {
+        let Some(class) = classes.get(name) else {
+            continue;
+        };
+        if reached.insert(name.to_owned()) {
+            pending.extend(class.bases.iter().map(String::as_str));
+            pending.extend(class.members.values().filter_map(Member::class));
+        }
+    }
+    let classes = classes
+        .into_values()
+        .filter(|class| reached.contains(&class.name))
+        .collect();
+    Ok(Table { modules, classes })
+}
+
+/// The members every version has, each with the form every version agrees on; a function they
+/// disagree on gives nothing known, and any other member is a variable of unknown type.
+fn shared(
+    members: BTreeMap<String, Member>,
+    theirs: &[&BTreeMap<String, Member>],
+) -> BTreeMap<String, Member> {
+    members
+        .into_iter()
+        .filter_map(|(name, mut member)| {
+            for other in theirs {
+                let found = other.get(&name)?;
+                if *found != member {
+                    member = match (&member, found) {
+                        (Member::Function(_), Member::Function(_)) => Member::Function(Returns::Unknown),
+                        _ => Member::Variable(None),
+                    };
+                }
+            }
+            Some((name, member))
+        })
+        .collect()
+}
+
+impl Member {
+    /// The class a member names or gives an instance of.
+    fn class(&self) -> Option<&str> {
+        match self {
+            Self::Class(class)
+            | Self::Variable(Some(class))
+            | Self::Function(Returns::Instance(class) | Returns::AwaitInstance(class)) => Some(class),
+            _ => None,
+        }
+    }
 }
 
 /// The arms of a `|` union, flattened.

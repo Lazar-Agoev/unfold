@@ -1249,8 +1249,8 @@ fn stubs_give_standard_library_values_their_class() {
 /// Anything the stubs don't write stays unknown with its reason: a member the class doesn't
 /// have, a return type the overloads disagree on, a stub function read through the wrong
 /// `await`, a generic project return type, an unannotated parameter, a rebound name, a
-/// third-party value, and an attribute read on a class (whose stub types its instances). A
-/// class with `__getattr__` makes a member it doesn't declare dynamic.
+/// third-party value, and a member of an attribute read on a class (whose stub types its
+/// instances). A class with `__getattr__` makes a member it doesn't declare dynamic.
 #[test]
 fn values_the_stubs_dont_write_stay_unknown() {
     let compiled = graph(&[(
@@ -1276,12 +1276,142 @@ fn values_the_stubs_dont_write_stay_unknown() {
     assert_eq!(reason(&compiled, "row.get"), Some(Reason::UnknownReceiver));
     assert_eq!(reason(&compiled, "app.get"), Some(Reason::UnknownReceiver));
     assert_eq!(
+        reason(&compiled, "datetime.datetime.min.isoformat"),
+        Some(Reason::UnknownReceiver)
+    );
+    assert_eq!(
         reason(&compiled, "list.__class_getitem__(int).anything"),
         Some(Reason::Dynamic)
     );
-    // The calls themselves are still proven outside the project.
+}
+
+/// Only a member the stub class has takes the class's origin: a further hop on a member the
+/// stubs write no type for, or a member the class lacks, is unknown. A module's members (a
+/// submodule another import loads among them) and anything outside the stubs keep a longer path.
+#[test]
+fn hops_past_what_the_stubs_type_are_unknown() {
+    let compiled = graph(&[(
+        "m.py",
+        "import logging.handlers\nimport os\nimport re\nimport xml.dom.minidom\nfrom pathlib import Path\n\n\ndef f(p: Path, t: str):\n    m = re.compile(\"a\").match(t)\n    m.string.upper()\n    p.parent.parent.no_such_thing()\n    os.environ.no_such()\n    os.getcwd.no_such()\n    os.environ.get(\"X\")\n    p.with_suffix(\".x\").exists()\n    p.parent.parent.mkdir()\n    p.with_suffix(\".x\").no_such_thing()\n    os.path.join(\"a\")\n    logging.handlers.RotatingFileHandler(\"f\")\n    xml.dom.minidom.parseString(\"x\")\n",
+    )]);
+    for label in [
+        "m.string.upper",
+        "p.parent.parent.no_such_thing",
+        "os.environ.no_such",
+        "os.getcwd.no_such",
+        "p.with_suffix(\".x\").no_such_thing",
+    ] {
+        assert_eq!(reason(&compiled, label), Some(Reason::UnknownReceiver), "{label}");
+    }
+    let library = |label: &str| (Outcome::Library, Some(label.to_owned()));
+    for (label, expected) in [
+        ("os.environ.get", library("python:os")),
+        ("p.with_suffix(\".x\").exists", library("python:pathlib")),
+        // `parent` is written `Self`.
+        ("p.parent.parent.mkdir", library("python:pathlib")),
+        ("os.path.join", library("python:os")),
+        ("logging.handlers.RotatingFileHandler", library("python:logging")),
+        ("xml.dom.minidom.parseString", library("python:xml")),
+    ] {
+        assert_eq!(library_call(&compiled, label), expected, "{label}");
+    }
+}
+
+/// An instance of `type` is a class the stubs don't name: `type(x)` and a `type[…]` annotation
+/// give nothing known, so their members aren't `type`'s.
+#[test]
+fn instances_of_type_are_unknown() {
+    let compiled = graph(&[(
+        "m.py",
+        "class Node:\n    def __init__(self):\n        self.x = 1\n\n    def clone(self, fresh):\n        type(self).__init__(fresh)\n        type(self).__repr__(fresh)\n        cls = type(self)\n        cls.__init__(fresh)\n\n\ndef make(cls: type[Node], kind: type):\n    cls.__init__(None)\n    kind.mro()\n",
+    )]);
+    for label in [
+        "type(self).__init__",
+        "type(self).__repr__",
+        "cls.__init__",
+        "kind.mro",
+    ] {
+        for link in calls(&compiled, label) {
+            assert_eq!(link.to.outcome(), Outcome::Unknown, "{label}");
+        }
+    }
     assert_eq!(
-        library_call(&compiled, "datetime.datetime.min.isoformat"),
-        (Outcome::Library, Some("python:datetime".to_owned()))
+        library_call(&compiled, "type"),
+        (Outcome::Builtin, Some("python:builtins".to_owned()))
+    );
+}
+
+/// A written standard-library type is any instance of the class or of a class that derives from
+/// it: a member a project class deriving from it defines, or any member of `object` or a
+/// protocol, is overridden. A literal or a construction is exactly its class.
+#[test]
+fn written_library_types_yield_to_project_overrides() {
+    let compiled = graph(&[(
+        "m.py",
+        "import json\nimport logging\nimport os\n\n\nclass MyDict(dict):\n    def get(self, key, default=None):\n        return 3\n\n\nclass Base(logging.Logger):\n    pass\n\n\nclass MyLogger(Base):\n    def info(self, msg, *args, **kwargs):\n        return 1\n\n\nclass Enc(json.JSONEncoder):\n    def encode(self, o):\n        return \"x\"\n\n\nclass Fields(json.JSONDecoder):\n    def __init__(self):\n        self.decode = None\n\n\ndef make() -> logging.Logger:\n    return MyLogger(\"x\")\n\n\ndef f(d: dict, log: logging.Logger, e: json.JSONEncoder, p: os.PathLike, o: object, s: json.JSONDecoder):\n    d.get(\"x\")\n    d.keys()\n    log.info(\"x\")\n    log.debug(\"x\")\n    make().info(\"x\")\n    logging.getLogger().info(\"x\")\n    e.encode(1)\n    p.__fspath__()\n    o.__str__()\n    s.decode(\"x\")\n    {}.get(\"x\")\n    dict().get(\"x\")\n    object().__str__()\n    \"x\".upper()\n",
+    )]);
+    for label in [
+        "d.get",
+        "log.info",
+        "make().info",
+        "logging.getLogger().info",
+        "e.encode",
+        "p.__fspath__",
+        "o.__str__",
+        "s.decode",
+    ] {
+        assert_eq!(reason(&compiled, label), Some(Reason::Overridden), "{label}");
+    }
+    let builtin = (Outcome::Builtin, Some("python:builtins".to_owned()));
+    for (label, expected) in [
+        ("d.keys", builtin.clone()),
+        ("log.debug", (Outcome::Library, Some("python:logging".to_owned()))),
+        ("{}.get", builtin.clone()),
+        ("dict().get", builtin.clone()),
+        ("object().__str__", builtin.clone()),
+        ("\"x\".upper", builtin),
+    ] {
+        assert_eq!(library_call(&compiled, label), expected, "{label}");
+    }
+}
+
+/// A name nothing binds is a builtin exactly when the stubs' `builtins` binds it, as a value
+/// and as a type; a builtin exception class among a project class's bases is proven through
+/// the stubs, aliases included.
+#[test]
+fn builtins_are_named_by_the_stubs() {
+    let compiled = graph(&[(
+        "m.py",
+        "class Missing(IOError):\n    pass\n\n\ndef f(c, x) -> function:\n    ord(c)\n    id(x)\n    hash(x)\n    divmod(1, 2)\n    frozenset([1]).union([2])\n    vars(x)\n    bytearray(b\"x\")\n    reveal_type(x)\n    raise Missing()\n",
+    )]);
+    let builtin = (Outcome::Builtin, Some("python:builtins".to_owned()));
+    for label in [
+        "ord",
+        "id",
+        "hash",
+        "divmod",
+        "frozenset",
+        "frozenset([1]).union",
+        "vars",
+        "bytearray",
+    ] {
+        assert_eq!(library_call(&compiled, label), builtin, "{label}");
+    }
+    assert_eq!(reason(&compiled, "reveal_type"), Some(Reason::UnknownName));
+    assert!(
+        project(call(&compiled, "Missing")).is_some(),
+        "`IOError` is `OSError`"
+    );
+    let function = compiled
+        .graph
+        .files
+        .iter()
+        .flat_map(|file| &file.links)
+        .find(|link| link.kind == LinkKind::Types && &*link.text == "function")
+        .expect("the return type");
+    assert_eq!(
+        reason_of(function),
+        Some(Reason::UnknownName),
+        "a stub-only class"
     );
 }

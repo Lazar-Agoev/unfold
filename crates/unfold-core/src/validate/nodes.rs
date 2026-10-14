@@ -8,7 +8,7 @@ use super::{Census, Checker, Subject, links, records};
 use crate::key::{Callee, Child, KeyBuilder, ParsedKey, Segment};
 use crate::model::{FileGraph, Node};
 use crate::text::{ByteRange, Snapshot};
-use crate::vocab::{CallRole, FileState, Flag, Form, Inline, Language, LinkKind, NodeKind};
+use crate::vocab::{CallRole, FileState, Flag, Form, Inline, Language, NodeKind};
 
 pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph, census: Option<&dyn Census>) {
     let snapshot = check_record(checker, file);
@@ -764,38 +764,11 @@ fn trivia(text: &str, language: Language, comments: bool) -> Option<&'static str
     (comments && comment).then_some("starts with a comment")
 }
 
-/// Checks a file against its language's census: token boundaries, one call node per call in
-/// the parse tree, and one `imports` link per module dependency.
+/// Checks a file against its language's census: every call in the parse tree is exactly one
+/// call node, and every call node is one of them.
 fn check_census(checker: &mut Checker<'_>, file: &FileGraph, census: &dyn Census) {
-    let path = &file.file.path;
-    for node in file.nodes.iter().skip(1) {
-        let fields = [
-            ("range", Some(node.range)),
-            ("head", node.head),
-            ("stmt", node.stmt),
-            ("value", node.value),
-        ];
-        for (field, range) in fields {
-            if let Some(range) = range
-                && !census.is_token_range(path, range)
-            {
-                checker.report(
-                    Subject::Node(node.key.clone()),
-                    format!("{field} {range} is not on token boundaries"),
-                );
-            }
-        }
-    }
-    for (subject, field, range) in records::ranges(file) {
-        if !census.is_token_range(path, range) {
-            checker.report(subject, format!("{field} {range} is not on token boundaries"));
-        }
-    }
-    if let Some(sites) = census.call_sites(path) {
+    if let Some(sites) = census.call_sites(&file.file.path) {
         check_call_sites(checker, file, sites);
-    }
-    if let Some(dependencies) = census.module_dependencies(path) {
-        check_dependencies(checker, file, dependencies);
     }
 }
 
@@ -837,42 +810,5 @@ fn check_call_sites(checker: &mut Checker<'_>, file: &FileGraph, sites: &[super:
             Subject::Node(file.nodes[index].key.clone()),
             "the call does not match exactly one call site",
         );
-    }
-}
-
-fn check_dependencies(checker: &mut Checker<'_>, file: &FileGraph, dependencies: &[ByteRange]) {
-    let mut imports: FxHashMap<ByteRange, Vec<usize>> = FxHashMap::default();
-    for (index, link) in file.links.iter().enumerate() {
-        if link.kind == LinkKind::Imports {
-            imports.entry(link.range).or_default().push(index);
-        }
-    }
-    let mut matched: FxHashMap<ByteRange, u32> = FxHashMap::default();
-    for range in dependencies {
-        *matched.entry(*range).or_insert(0) += 1;
-        if imports.get(range).map_or(0, Vec::len) != 1 {
-            checker.report(
-                Subject::File(file.file.path.clone()),
-                format!("module dependency {range} needs exactly one `imports` link"),
-            );
-        }
-    }
-    let mut unmatched: Vec<usize> = imports
-        .iter()
-        .filter(|(range, _)| matched.get(*range) != Some(&1))
-        .flat_map(|(_, indexes)| indexes.iter().copied())
-        .collect();
-    unmatched.sort_unstable();
-    for index in unmatched {
-        let link = &file.links[index];
-        if let Some(from) = file.nodes.get(link.from as usize) {
-            checker.report(
-                Subject::Link {
-                    from: from.key.clone(),
-                    seq: link.seq,
-                },
-                "the `imports` link does not match exactly one module dependency",
-            );
-        }
     }
 }

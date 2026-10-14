@@ -1,6 +1,6 @@
 //! The Python front end's private per-file facts, cached with the language-neutral graph facts.
 //!
-//! It holds the census (token boundaries, call sites, module dependencies), the written form of
+//! It holds the census's call sites, the written form of
 //! every runtime import (aligned with the file's
 //! [`ImportFact`](unfold_engine::facts::ImportFact)s), which import resolution reads, and the
 //! binder's facts ([`BindFacts`]), whose `values` and `types` tables give each value and each
@@ -11,10 +11,9 @@ use serde::{Deserialize, Serialize};
 use unfold_core::text::ByteRange;
 
 use crate::bind::ir::{BindFacts, NodeId};
-use crate::census::{delta_decode, delta_encode};
 
 /// The payload's format version.
-pub const PAYLOAD_VERSION: u32 = 11;
+pub const PAYLOAD_VERSION: u32 = 12;
 
 /// Why a payload cannot be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -32,51 +31,13 @@ pub enum PayloadError {
 pub struct Payload {
     /// [`PAYLOAD_VERSION`] when written.
     pub version: u32,
-    /// What validation compares the file's nodes and links with.
-    pub census: CensusData,
+    /// Call sites from the token scan, sorted, which validation compares the file's call nodes
+    /// with; those inside a truncated block are left out.
+    pub calls: Vec<ByteRange>,
     /// The written form of each runtime import, aligned with the file's import facts.
     pub imports: Vec<ImportSyntax>,
     /// The binder's facts.
     pub bind: BindFacts,
-}
-
-/// The census, compactly: offsets are stored as gaps.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CensusData {
-    starts: Vec<u32>,
-    ends: Vec<u32>,
-    /// Call sites from the token scan, sorted; those inside a truncated block are left out.
-    pub calls: Vec<ByteRange>,
-    /// The specifier of every runtime module dependency, sorted; those inside a truncated block
-    /// are left out. Conditional child imports are not here: linking adds the ones it keeps.
-    pub dependencies: Vec<ByteRange>,
-}
-
-impl CensusData {
-    /// The census from sorted token starts and ends, call sites, and dependency ranges.
-    pub(crate) fn new(
-        starts: &[u32],
-        ends: &[u32],
-        calls: Vec<ByteRange>,
-        dependencies: Vec<ByteRange>,
-    ) -> Self {
-        Self {
-            starts: delta_encode(starts),
-            ends: delta_encode(ends),
-            calls,
-            dependencies,
-        }
-    }
-
-    /// The sorted token starts.
-    pub fn starts(&self) -> Vec<u32> {
-        delta_decode(&self.starts)
-    }
-
-    /// The sorted token ends.
-    pub fn ends(&self) -> Vec<u32> {
-        delta_decode(&self.ends)
-    }
 }
 
 /// How a runtime import is written.

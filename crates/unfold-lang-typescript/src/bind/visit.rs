@@ -11,16 +11,17 @@
 
 use oxc_allocator::UnstableAddress;
 use oxc_ast::ast::{
-    Argument, ArrowFunctionBody, BinaryExpression, BindingPattern, BlockStatement, CallExpression,
-    CatchClause, Class, ClassType, ConditionalExpression, DoWhileStatement, ExportDefaultDeclaration,
-    ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression, ForInStatement, ForOfStatement,
-    ForStatement, Function, FunctionType, IfStatement, ImportDeclaration, ImportDeclarationSpecifier,
-    ImportOrExportKind, LogicalExpression, ObjectExpression, PrivateFieldExpression, Program,
-    SimpleAssignmentTarget, Statement, SwitchStatement, TSEnumDeclaration, TSEnumMemberName,
-    TSExportAssignment, TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration,
-    TSInterfaceDeclaration, TSModuleReference, TSNamespaceDeclaration, TSType, TSTypeAliasDeclaration,
-    TSTypeAnnotation, TSTypeName, TSTypeParameterDeclaration, TSTypeParameterInstantiation, ThisExpression,
-    UnaryExpression, VariableDeclaration, VariableDeclarationKind, WhileStatement, WithStatement,
+    Argument, ArrowFunctionBody, AssignmentTargetPropertyIdentifier, BinaryExpression, BindingPattern,
+    BlockStatement, CallExpression, CatchClause, Class, ClassType, ConditionalExpression, DoWhileStatement,
+    ExportDefaultDeclaration, ExportDefaultDeclarationKind, ExportNamedDeclaration, Expression,
+    ForInStatement, ForOfStatement, ForStatement, Function, FunctionType, IfStatement, ImportDeclaration,
+    ImportDeclarationSpecifier, ImportOrExportKind, LogicalExpression, ObjectExpression,
+    PrivateFieldExpression, Program, SimpleAssignmentTarget, Statement, SwitchStatement, TSEnumDeclaration,
+    TSEnumMemberName, TSExportAssignment, TSExternalModuleDeclaration, TSGlobalDeclaration,
+    TSImportEqualsDeclaration, TSInterfaceDeclaration, TSModuleReference, TSNamespaceDeclaration, TSType,
+    TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeName, TSTypeParameterDeclaration,
+    TSTypeParameterInstantiation, ThisExpression, UnaryExpression, VariableDeclaration,
+    VariableDeclarationKind, WhileStatement, WithStatement,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
@@ -32,7 +33,7 @@ use super::forms::{literal_name, uses_outer_scope};
 use super::ir::unwrap;
 use super::scope::ScopeKind;
 use super::{AliasDraft, Binder, ClassDraft, Frame, ModuleKey};
-use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, Meanings, VarKind};
+use crate::payload::binding::{AliasRef, DeclFlags, DeclKind, InterfaceFacts, Meanings, VarKind};
 use crate::spans::range;
 
 impl<'a> Binder<'a> {
@@ -196,6 +197,12 @@ impl<'a> Visit<'a> for Binder<'a> {
         decl.node = self.node(it.unstable_address());
         let index = self.add(decl, Some(ModuleKey::Interface));
         self.declare(self.scope, name, index, Meanings::TYPE, exported);
+        let extends = it
+            .extends
+            .iter()
+            .map(|base| self.heritage_type(&base.type_name, self.scope))
+            .collect();
+        self.interfaces.push(InterfaceFacts { decl: index, extends });
         self.link_declaration(range(it.body.span), it.type_parameters.as_deref(), |binder| {
             binder.interface_heritage(&it.extends);
             for member in &it.body.body {
@@ -448,6 +455,7 @@ impl<'a> Visit<'a> for Binder<'a> {
         self.classes.push(ClassDraft {
             decl: index,
             heritage: None,
+            implements: Vec::new(),
             members: Vec::new(),
             private: Default::default(),
         });
@@ -474,6 +482,12 @@ impl<'a> Visit<'a> for Binder<'a> {
         let outer_container = self.container;
         self.container = self.new_container();
         self.type_parameters(it.type_parameters.as_deref());
+        let implements = it
+            .implements
+            .iter()
+            .map(|implemented| self.heritage_type(&implemented.expression, self.scope))
+            .collect();
+        self.classes[class as usize].implements = implements;
         if selected {
             self.class_heritage(it);
         }
@@ -660,7 +674,15 @@ impl<'a> Visit<'a> for Binder<'a> {
 
     fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
         walk::walk_simple_assignment_target(self, it);
+        if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = it {
+            self.assigned.push((id.name.as_str(), self.place()));
+        }
         self.member_target(it);
+    }
+
+    fn visit_assignment_target_property_identifier(&mut self, it: &AssignmentTargetPropertyIdentifier<'a>) {
+        walk::walk_assignment_target_property_identifier(self, it);
+        self.assigned.push((it.binding.name.as_str(), self.place()));
     }
 
     fn visit_unary_expression(&mut self, it: &UnaryExpression<'a>) {
@@ -690,6 +712,7 @@ impl<'a> Visit<'a> for Binder<'a> {
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         walk::walk_call_expression(self, it);
+        self.reflective_write(it);
         // Outside a condition, only a call to a type predicate narrows, and only a callee
         // written as a name path can be one.
         let callee = self.path_draft(&it.callee);

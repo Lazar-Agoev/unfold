@@ -236,14 +236,13 @@ impl Workspace {
         found
     }
 
-    /// The timings and engine settings the folder was opened with (discovery's ignore options
-    /// among them, which the Files view and search share).
+    /// The timings and engine settings the folder was opened with.
     pub fn options(&self) -> &WorkspaceOptions {
         &self.shared.options
     }
 
-    /// Reports changed folder-relative paths, as the watcher does. Useful where the watcher is
-    /// off, and after the app itself writes files the graph reads.
+    /// Reports changed folder-relative paths, as the watcher does: how tests that open folders
+    /// with the watcher off ([`WorkspaceOptions::watch`]) drive background updates.
     pub fn notify_changes(&self, paths: impl IntoIterator<Item = RepoPath>) {
         self.shared.add_changes(paths);
     }

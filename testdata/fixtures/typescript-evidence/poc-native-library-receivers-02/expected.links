@@ -5,4 +5,4 @@ library-objects.ts#use #3 types `ReadonlyArray` → builtin ecmascript
 library-objects.ts#use/call:map.get #0 calls `map.get` → builtin ecmascript
 library-objects.ts#use/call:set.has #0 calls `set.has` → builtin ecmascript
 library-objects.ts#use/call:date.getTime #0 calls `date.getTime` → builtin ecmascript
-library-objects.ts#use/call:array.forEach #0 calls `array.forEach` → builtin ecmascript
+library-objects.ts#use/call:array.forEach #0 calls `array.forEach` → unknown unknown_receiver

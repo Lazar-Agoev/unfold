@@ -2,8 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
-import { canUndo, closeBoard, editBoard, getOpenBoard, openBoard, undo } from "./boards";
-import { resetBoards } from "./boards/store";
+import { canUndo, getOpenBoard, openBoard, undo } from "./boards";
+import { closeBoard } from "./boards/open";
+import { editBoard, resetBoards } from "./boards/store";
 import { getShownBoard, hideBoard, reportShownBoard, showBoard, showHome, useShownBoardStore } from "./shownBoard";
 
 const P = "p-orders0000";

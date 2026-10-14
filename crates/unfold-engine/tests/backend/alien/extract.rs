@@ -555,16 +555,14 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         });
     }
 
-    let (imports, dependencies) = imports(&lowering)?;
+    let imports = imports(&lowering)?;
     let (type_refs, type_names) = type_names(&lowering, &outer, &inner);
     let types = typed(&lowering);
     let payload = Payload {
         decls,
         scopes,
         values: infos,
-        boundaries: syntax.boundaries.clone(),
         call_sites: call_sites(&syntax),
-        dependencies,
         types: type_names,
     };
     let graph = GraphFacts::new(lowering.nodes, values, calls, imports, type_refs, types)
@@ -891,8 +889,8 @@ fn record_values(
     (values, infos, value_of)
 }
 
-/// The `imports` links before linking, and their ranges for the census.
-fn imports(lowering: &Lowering<'_, '_>) -> Result<(Vec<ImportFact>, Vec<ByteRange>), SourceFailure> {
+/// The `imports` links before linking.
+fn imports(lowering: &Lowering<'_, '_>) -> Result<Vec<ImportFact>, SourceFailure> {
     let syntax = lowering.syntax;
     let mut imports = Vec::new();
     let mut stack = vec![0usize];
@@ -924,8 +922,7 @@ fn imports(lowering: &Lowering<'_, '_>) -> Result<(Vec<ImportFact>, Vec<ByteRang
         }
         stack.extend(syntax.node(node).children.iter().rev().copied());
     }
-    let dependencies = imports.iter().map(|import| import.range).collect();
-    Ok((imports, dependencies))
+    Ok(imports)
 }
 
 /// The written type names (each `:type` of a parameter or binding, and each `:base` and

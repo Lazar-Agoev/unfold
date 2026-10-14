@@ -55,16 +55,20 @@ poc = "185 of 232"
 
 # The upstream tag lacks the generated diagnostics map, whose 2,130 `diag()` calls all resolve, so
 # its recall sits below the 602-file corpus's; the floor is what Unfold reached when it was set.
+# Both TypeScript source floors dropped by 12 when written values stopped being proof: two calls
+# read a reassigned `let`'s initializer (`project.updateGraph`, `project.isClosed` in
+# `openExternalProject`), three a property the class reassigns (`Callbacks.invoke`), and seven a
+# property written through computed keys (`TestServerHost.getCurrentDirectory`, `host[prop] = …`).
 [[floor]]
 corpus = "typescript-6.0.3-src-upstream"
 language = "typescript"
-matched = 69151
+matched = 69139
 resolved = 71517
 
 [[floor]]
 corpus = "typescript-6.0.3-src"
 language = "typescript"
-matched = 71281
+matched = 71269
 resolved = 73647
 poc = "96.0% (70,717 of 73,649)"
 

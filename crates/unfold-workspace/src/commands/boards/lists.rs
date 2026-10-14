@@ -15,7 +15,7 @@ use crate::commands::{ProjectArgs, ProjectExtras, ProjectKeyArgs, count, key_arg
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
 use crate::projects::ProjectId;
-use crate::state::{LocalState, read_json};
+use crate::state::LocalState;
 
 /// The most boards `list_boards` lists.
 const MAX_BOARDS: usize = 2_000;
@@ -84,7 +84,7 @@ pub fn list_boards(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<BoardList>
             Some((project.extras(), Source::live(&workspace)?)),
         ),
         None => (
-            read_json::<LocalState>(&project.layout().state_file()).empty_folders,
+            LocalState::read(&project.layout().state_file()).empty_folders,
             None,
         ),
     };

@@ -1,12 +1,15 @@
 //! Declaration semantics (the proof of concept's `frontend/typescript-shared/semantics.ts`):
 //! concrete bodies per value context, parameters, binding stability, accessors, class-member
-//! facts, overload signatures, and provenance facts.
+//! facts, overload signatures, provenance facts, and the variables assigned after their
+//! declaration.
 
+use rustc_hash::FxHashSet;
 use unfold_engine::evidence::{ConcreteTarget, MemberFact, OriginDeclaration, Stability, ValueContext};
 use unfold_engine::{DeclRef, FileId, NodeRef, ValueRef};
 
+use super::Walk;
 use crate::link::TypeScriptLinked;
-use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, VarKind};
+use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, Meanings, VarKind};
 
 impl TypeScriptLinked<'_> {
     fn node_ref(file: FileId, local: Option<u32>) -> Option<NodeRef> {
@@ -119,6 +122,9 @@ impl TypeScriptLinked<'_> {
                 if decl.kind == DeclKind::Variable && decl.var_kind != Some(VarKind::Const) {
                     return None;
                 }
+                if self.tables.written_fields.contains(&declaration) {
+                    return None;
+                }
                 let (inline, class) = self.inline_initializer(declaration, decl)?;
                 if class && decl.kind == DeclKind::Property {
                     return None;
@@ -155,12 +161,14 @@ impl TypeScriptLinked<'_> {
     }
 
     /// Whether a declaration's binding can be reassigned: `const` is stable, `let` and `var`
-    /// are not, and a written member of a constant object literal is not either.
+    /// are not, and neither is a written member of a constant object literal or a class
+    /// property whose initializer is written over.
     pub(crate) fn stability(&self, declaration: DeclRef) -> Stability {
         let Some(decl) = self.decl(declaration) else {
             return Stability::Unknown;
         };
-        if self.member_written(decl, declaration.file) {
+        let overwritten = decl.initializer.is_some() && self.tables.written_fields.contains(&declaration);
+        if overwritten || self.member_written(decl, declaration.file) {
             return Stability::Rebindable;
         }
         let variable = decl.kind == DeclKind::Variable
@@ -173,6 +181,29 @@ impl TypeScriptLinked<'_> {
             Some(VarKind::Let | VarKind::Var) => Stability::Rebindable,
             _ => Stability::Unknown,
         }
+    }
+
+    /// The variables assigned to anywhere after their declaration: what each assigned name
+    /// denotes where it is assigned.
+    pub(crate) fn find_reassigned(&self) -> FxHashSet<DeclRef> {
+        let mut reassigned = FxHashSet::default();
+        for index in 0..self.program().files().len() {
+            let file = FileId(index as u32);
+            let Some(binding) = self.binding(file) else {
+                continue;
+            };
+            for assignment in &binding.assignments {
+                let target = self.symbol_lookup(
+                    &mut Walk::default(),
+                    file,
+                    &assignment.name,
+                    assignment.lookup,
+                    Meanings::VALUE,
+                );
+                reassigned.extend(target.declarations);
+            }
+        }
+        reassigned
     }
 
     /// Whether a declaration is a getter or setter.

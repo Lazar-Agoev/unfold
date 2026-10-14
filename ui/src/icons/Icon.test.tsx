@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ICON_NAMES, Icon, StateGlyph } from ".";
+import { Icon, StateGlyph } from ".";
+import { ICON_NAMES } from "./glyphs";
 
 /** The icons the screens use. */
 const PLANNED = [

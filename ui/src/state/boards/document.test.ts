@@ -10,14 +10,12 @@ import {
   isFreeId,
   isOpen,
   movePage,
-  nameTexts,
   nextPageId,
   openPaths,
   removeCard,
   removeCombined,
   setCardDescription,
   setCardView,
-  setDefaultView,
   setName,
   toggleOpen,
   uniqueId,
@@ -111,12 +109,6 @@ describe("an agent's words", () => {
   });
 });
 
-describe("the page's default view", () => {
-  it("is set for the cards without their own", () => {
-    expect(onPage((draft) => { setDefaultView(draft, "expanded"); }).defaultView).toBe("expanded");
-  });
-});
-
 describe("names", () => {
   it("are one per key, sorted as the file writes them, replaced by new text, cleared by blank text", () => {
     const named = onPage((draft) => {
@@ -125,7 +117,7 @@ describe("names", () => {
       setName(draft, "key-k", "Valid?", "person:me");
     });
     expect(named.names.map((name) => name.key)).toEqual(["key-a", "key-k"]);
-    expect(nameTexts(named.names)).toEqual({ "key-a": "First?", "key-k": "Valid?" });
+    expect(named.names.map((name) => name.text)).toEqual(["First?", "Valid?"]);
     const cleared = onPage((draft) => { setName(draft, "key-k", "", "person:me"); }, named);
     expect(cleared.names).toHaveLength(1);
   });

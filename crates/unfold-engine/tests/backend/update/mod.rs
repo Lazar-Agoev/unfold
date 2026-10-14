@@ -288,16 +288,8 @@ impl Census for Wrapped<'_> {
     fn language(&self) -> CoreLanguage {
         self.inner.language()
     }
-    fn is_token_range(&self, path: &RepoPath, range: ByteRange) -> bool {
-        self.inner
-            .census()
-            .is_some_and(|census| census.is_token_range(path, range))
-    }
     fn call_sites(&self, _path: &RepoPath) -> Option<&[CallSite]> {
         Some(SKEWED_SITES)
-    }
-    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
-        self.inner.census()?.module_dependencies(path)
     }
 }
 

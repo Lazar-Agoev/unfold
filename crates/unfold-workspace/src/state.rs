@@ -73,12 +73,15 @@ pub struct LocalState {
 }
 
 impl LocalState {
-    /// The state in the file at `path` ([`read_json`]), without folder names a folder can't
-    /// have (folders are one level deep).
+    /// The state in the file at `path` ([`read_json`]). A file naming a folder a folder can't be
+    /// (folders are one level deep) is invalid, so it reads as the defaults like any other.
     pub(crate) fn read(path: &Path) -> Self {
-        let mut state: Self = read_json(path);
-        state.empty_folders.retain(|folder| is_folder_name(folder));
-        state
+        let state: Self = read_json(path);
+        if state.empty_folders.iter().all(|folder| is_folder_name(folder)) {
+            state
+        } else {
+            Self::default()
+        }
     }
 }
 
@@ -204,9 +207,9 @@ mod tests {
         )
         .expect("write");
         assert_eq!(
-            LocalState::read(&path).empty_folders,
-            ["Refunds"],
-            "nested and invalid names go"
+            LocalState::read(&path),
+            LocalState::default(),
+            "a nested or invalid name makes the file invalid"
         );
         for invalid in ["{ not json", r#"{"version": 1, "emptyFolders": ["Refunds"]}"#] {
             std::fs::write(&path, invalid).expect("write");

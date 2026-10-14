@@ -43,6 +43,8 @@ pub struct Binding {
     pub type_links: Vec<u32>,
     /// Every class (declaration or expression) of the file.
     pub classes: Vec<ClassFacts>,
+    /// Every interface declaration of the file.
+    pub interfaces: Vec<InterfaceFacts>,
     /// Constant object literals: the members a `const` initialized with one declares.
     pub objects: Vec<ObjectFacts>,
     /// Symbols declared at file scope. In a script they are global to the configuration group.
@@ -53,9 +55,13 @@ pub struct Binding {
     pub namespace_chains: Vec<Vec<u32>>,
     /// Sites that can narrow a receiver (`instanceof`, type-predicate calls).
     pub narrowing: Narrowing,
-    /// Member writes (`obj.name = …`, `delete obj.name`, `obj[key] = …`), for the mutation
-    /// census.
+    /// Member writes (`obj.name = …`, `obj.#name = …`, `delete obj.name`, `obj[key] = …`, and the
+    /// reflective `Object.defineProperty(obj, "name", …)` and its kin), for the mutation census
+    /// and the class properties written after their declaration.
     pub writes: Vec<MemberWrite>,
+    /// Names assigned to after their declaration (`x = …`, `x += …`, `x++`, `[x] = …`,
+    /// `({ x } = …)`, `for (x of …)`).
+    pub assignments: Vec<Assignment>,
 }
 
 /// What a declaration declares, in the proof of concept's syntax categories.
@@ -468,9 +474,21 @@ pub struct ClassFacts {
     pub decl: u32,
     /// The `extends` expression, if written.
     pub heritage: Option<u32>,
+    /// The type names its `implements` clause writes ([`TypeRef::Names`] in
+    /// [`Binding::types`]).
+    pub implements: Vec<u32>,
     /// Its members in written order (constructors, methods, accessors, properties), then its
     /// parameter properties.
     pub members: Vec<u32>,
+}
+
+/// One interface declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InterfaceFacts {
+    /// The interface declaration.
+    pub decl: u32,
+    /// The type names its `extends` clause writes ([`TypeRef::Names`] in [`Binding::types`]).
+    pub extends: Vec<u32>,
 }
 
 /// The members a `const` object literal declares.
@@ -537,6 +555,15 @@ pub struct NamePath {
     pub lookup: Lookup,
     /// The property names after it.
     pub rest: Vec<Box<str>>,
+}
+
+/// A name assigned to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Assignment {
+    /// The name.
+    pub name: Box<str>,
+    /// What it names where it is assigned.
+    pub lookup: Lookup,
 }
 
 /// A write to a member of some object.

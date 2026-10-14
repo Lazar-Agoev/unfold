@@ -140,13 +140,7 @@ fn extract_here(
     if parsed.fatal_error {
         return Err(failure("the file could not be parsed", None));
     }
-    let mut census = CensusRecord::take(
-        &parsed.program,
-        &parsed.tokens,
-        file.len(),
-        options.verbatim_module_syntax,
-    )
-    .map_err(|_| {
+    let mut census = CensusRecord::take(&parsed.program).map_err(|_| {
         failure(
             format!("syntax is nested more than {} levels deep", census::MAX_DEPTH),
             None,

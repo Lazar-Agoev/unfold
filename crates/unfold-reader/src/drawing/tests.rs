@@ -1316,8 +1316,7 @@ fn the_compiled_tree_prints_every_block_with_its_key() {
 }
 
 /// Every definition of a playground, drawn with no overlay and printed as agent text.
-fn playground_flows(name: &str) -> String {
-    let playground = Playground::load(name);
+fn playground_flows(playground: &Playground) -> String {
     let trees = playground.trees();
     let overlay = Overlay::default();
     let mut out = String::new();
@@ -1342,8 +1341,15 @@ fn playground_flows(name: &str) -> String {
 #[test]
 fn the_playgrounds_draw_as_their_goldens() {
     for name in ["ts-orders", "py-orders"] {
-        assert_golden(format!("goldens/{name}.flows.txt"), &playground_flows(name));
+        assert_golden(
+            format!("goldens/{name}.flows.txt"),
+            &playground_flows(&Playground::load(name)),
+        );
     }
+    assert_golden(
+        "goldens/mixed-playground.flows.txt",
+        &playground_flows(&Playground::mixed()),
+    );
 }
 
 /// `t.py`: tries whose body only returns or raises, with a `finally` and code after.

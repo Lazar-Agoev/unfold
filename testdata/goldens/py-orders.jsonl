@@ -792,7 +792,7 @@
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:failures.append","seq":0,"kind":"calls","range":[723,738],"text":"failures.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/call:len","seq":0,"kind":"calls","range":[835,838],"text":"len","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/call:logger.info","seq":0,"kind":"calls","range":[854,865],"text":"logger.info","outcome":"project","to":"src/orders_playground/lib/logger.py#Logger.info","bound":1}
-{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]/call:ExceptionGroup","seq":0,"kind":"calls","range":[933,947],"text":"ExceptionGroup","outcome":"unknown","to":"unknown_name"}
+{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]/call:ExceptionGroup","seq":0,"kind":"calls","range":[933,947],"text":"ExceptionGroup","outcome":"builtin","to":"python:builtins"}
 {"t":"signature","node":"src/orders_playground/jobs/import_orders.py#import_orders","returns":"dict[str, int]","returns_range":[213,227]}
 {"t":"parameter","node":"src/orders_playground/jobs/import_orders.py#import_orders","index":0,"range":[183,208],"kind":"positional","name":"path","default":true,"type":"str","type_range":[189,192]}
 {"t":"argument","call":"src/orders_playground/jobs/import_orders.py#import_orders/with[0]/call:Path().open","index":0,"range":[254,270],"keyword":"encoding"}

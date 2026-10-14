@@ -154,6 +154,10 @@ pub(crate) struct ClassTables {
     /// For each class, every class that descends from it through its known bases (itself
     /// included), in program order.
     pub(crate) descendants: Vec<Vec<u32>>,
+    /// For each standard-library class (by qualified name), the members of the project classes
+    /// that derive from it: the names their bodies bind, their instance fields, and the members
+    /// written on them from outside (`*` for all).
+    pub(crate) library_overrides: FxHashMap<&'static str, FxHashSet<Sym>>,
 }
 
 /// The whole-program binder.

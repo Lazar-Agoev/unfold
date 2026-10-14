@@ -137,24 +137,6 @@ pub struct Discovery {
     pub problems: Vec<Problem>,
 }
 
-impl Discovery {
-    /// The indexed sources of one language.
-    pub fn sources_of(&self, language: Language) -> impl Iterator<Item = &SourceFile> {
-        self.sources.iter().filter(move |file| file.language == language)
-    }
-
-    /// Whether `path` is an indexed source.
-    pub fn is_source(&self, path: &RepoPath) -> bool {
-        self.sources.binary_search_by(|file| file.path.cmp(path)).is_ok()
-    }
-
-    /// Why `path` isn't indexed, if it is a walked, unindexed source-like file.
-    pub fn unindexed_reason(&self, path: &RepoPath) -> Option<Unindexed> {
-        let index = self.unindexed.binary_search_by(|file| file.path.cmp(path)).ok()?;
-        Some(self.unindexed[index].reason)
-    }
-}
-
 /// Why discovery couldn't start.
 #[derive(Debug, thiserror::Error)]
 pub enum DiscoveryError {

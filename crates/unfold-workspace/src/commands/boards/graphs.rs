@@ -17,7 +17,7 @@ use crate::workspace::Workspace;
 pub(super) struct HealthKey {
     /// The board file's revision.
     pub(super) revision: Revision,
-    stamp: Option<i64>,
+    stamp: i64,
 }
 
 /// A project's stored graph.
@@ -57,14 +57,13 @@ impl Source {
         self.load(&board.references())
     }
 
-    /// The key of the health of a board read from a file with `revision`; `None` while the
-    /// project has no graph (health needs a graph: before the first Compile every card would
+    /// The key of the health of a board read from a file with `revision`; `None` until the
+    /// project's first Compile commits a graph (health needs a graph: before it every card would
     /// read as missing).
     pub(super) fn key(&self, revision: Revision) -> Option<HealthKey> {
-        self.pool.as_ref()?;
         Some(HealthKey {
             revision,
-            stamp: self.stamp,
+            stamp: self.stamp?,
         })
     }
 }

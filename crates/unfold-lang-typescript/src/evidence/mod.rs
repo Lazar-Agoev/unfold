@@ -11,6 +11,9 @@
 //!   declared return types (evidence level 4), with the library tables.
 //! - [`narrowing`]: receivers narrowed by `instanceof` or type predicates, which withhold a
 //!   declared receiver.
+//! - [`builtins`]: what can make a library member reach project code: project classes that may
+//!   be instances of a library type (`overridden`), and project writes to ECMAScript's own
+//!   objects (`dynamic`).
 //! - [`assemble`]: the evidence the shared policy reads, import bindings, and annotations.
 //! - [`declarations`]: declaration semantics (concrete targets, parameters, stability,
 //!   members, overloads, provenance).
@@ -19,6 +22,7 @@
 //! tables built once per link, so answers never depend on query order or thread.
 
 mod assemble;
+mod builtins;
 mod classes;
 mod declarations;
 mod narrowing;
@@ -30,6 +34,7 @@ use smallvec::SmallVec;
 use unfold_engine::evidence::ExternalLocation;
 use unfold_engine::{DeclRef, FileId};
 
+pub(crate) use builtins::{Lineage, Patches};
 pub(crate) use classes::{Base, ClassIndex};
 pub(crate) use narrowing::RootId;
 
@@ -156,8 +161,12 @@ pub(crate) struct Receiver {
     /// The library array object (its indexed elements are unknown).
     pub(crate) array: bool,
     /// The ECMAScript type whose methods it has (`String`, `Array`, `Map`, `JSON`,
-    /// `ObjectConstructor`), as the methods table spells it.
+    /// `ObjectConstructor`), or the ECMAScript class type it was written with (`Error`), as the
+    /// tables spell it.
     pub(crate) builtin: Option<&'static str>,
+    /// A written library type: the value may be an instance of a project class that extends or
+    /// implements it ([`builtins`]).
+    pub(crate) nominal: bool,
     pub(crate) is_static: bool,
     pub(crate) unbound_this: bool,
 }
@@ -284,4 +293,13 @@ pub(crate) struct Tables {
     pub(crate) written: FxHashMap<DeclRef, WrittenMembers>,
     /// Merged script namespaces with several tables, by their first table.
     pub(crate) merged_namespaces: FxHashMap<(FileId, u32), MergedNamespace>,
+    /// Variables assigned to after their declaration (anywhere, closures included).
+    pub(crate) reassigned: FxHashSet<DeclRef>,
+    /// Class properties written after their declaration, or redeclared by a subclass.
+    pub(crate) written_fields: FxHashSet<DeclRef>,
+    /// The project's writes to ECMAScript's own objects.
+    pub(crate) patches: Patches,
+    /// Member name (`*` for an unknown name) → the library types the project classes declaring
+    /// a member of that name (or inheriting one from a project base) may be instances of.
+    pub(crate) library_overrides: FxHashMap<Box<str>, Lineage>,
 }

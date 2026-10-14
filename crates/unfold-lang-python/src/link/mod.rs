@@ -89,16 +89,12 @@ impl<'a> PythonLinked<'a> {
             .files
             .iter_mut()
             .map(|bind| {
-                bind.as_mut().map(|bind| {
-                    (
-                        std::mem::take(&mut bind.imports),
-                        std::mem::take(&mut bind.census),
-                    )
-                })
+                bind.as_mut()
+                    .map(|bind| (std::mem::take(&mut bind.imports), std::mem::take(&mut bind.calls)))
             })
             .collect();
         for ((id, file), written) in files.iter().zip(written) {
-            let (Some(facts), Some((syntax, census_data))) = (file.facts.as_deref(), written) else {
+            let (Some(facts), Some((syntax, calls))) = (file.facts.as_deref(), written) else {
                 dependencies.push(Vec::new());
                 kept.push(Vec::new());
                 continue;
@@ -168,14 +164,7 @@ impl<'a> PythonLinked<'a> {
             }
             // Imports the payload doesn't describe (a corrupt payload) stay unsupported.
             targets.resize(facts.graph.imports().len(), ModuleTarget::Unsupported);
-            let ranges = children.iter().filter_map(|&index| {
-                facts
-                    .graph
-                    .imports()
-                    .get(index as usize)
-                    .map(|import| import.range)
-            });
-            census.add(file.path.clone(), &census_data, ranges);
+            census.add(file.path.clone(), &calls);
             dependencies.push(targets);
             kept.push(children);
         }

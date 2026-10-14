@@ -1,12 +1,10 @@
 /**
- * Hover layers in the popover style. A Tooltip names a control or explains
- * a mark (the problems dot's count, the state line's notes); a HoverCard shows richer, delayed detail.
- * Both open on hover after a delay and on keyboard
- * focus, close on Escape, and wrap their trigger without adding a box to the layout.
+ * A hover layer in the popover style. A Tooltip names a control or explains a mark (the problems
+ * dot's count, the state line's notes). It opens on hover after a delay and on keyboard focus,
+ * closes on Escape, and wraps its trigger without adding a box to the layout.
  */
 
 import {
-  useCallback,
   useEffect,
   useId,
   useRef,
@@ -17,16 +15,12 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { cx } from "./internal/dom";
 import { useFloatingPosition, type Align, type Side } from "./internal/floating";
 import { Portal } from "./internal/layers";
 import "./Tooltip.css";
 
 interface HoverLayerOptions {
   readonly openDelay: number;
-  readonly closeDelay: number;
-  /** Whether the pointer may move into the layer (hover cards) without it closing. */
-  readonly interactive: boolean;
   readonly disabled: boolean;
 }
 
@@ -42,7 +36,7 @@ function focusIsVisible(element: Element): boolean {
   }
 }
 
-function useHoverLayer({ openDelay, closeDelay, interactive, disabled }: HoverLayerOptions) {
+function useHoverLayer({ openDelay, disabled }: HoverLayerOptions) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const wrapper = useRef<HTMLSpanElement>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -56,7 +50,7 @@ function useHoverLayer({ openDelay, closeDelay, interactive, disabled }: HoverLa
     if (disabled || !(target instanceof HTMLElement)) {
       return;
     }
-    const warm = !interactive && Date.now() - lastClosedAt < WARM_WINDOW_MS;
+    const warm = Date.now() - lastClosedAt < WARM_WINDOW_MS;
     timer.current = window.setTimeout(
       () => {
         setAnchor(target);
@@ -64,16 +58,16 @@ function useHoverLayer({ openDelay, closeDelay, interactive, disabled }: HoverLa
       warm ? 0 : delay,
     );
   };
-  const hide = (delay: number) => {
+  const hide = () => {
     clear();
     timer.current = window.setTimeout(() => {
       setAnchor((current) => {
-        if (current && !interactive) {
+        if (current) {
           lastClosedAt = Date.now();
         }
         return null;
       });
-    }, delay);
+    }, 0);
   };
   useEffect(() => clear, []);
 
@@ -88,7 +82,7 @@ function useHoverLayer({ openDelay, closeDelay, interactive, disabled }: HoverLa
       },
       onPointerOut: (event: PointerEvent) => {
         if (outside(event.relatedTarget)) {
-          hide(closeDelay);
+          hide();
         }
       },
       onFocus: (event: FocusEvent) => {
@@ -97,29 +91,18 @@ function useHoverLayer({ openDelay, closeDelay, interactive, disabled }: HoverLa
         }
       },
       onBlur: () => {
-        hide(0);
+        hide();
       },
       onPointerDown: () => {
-        hide(0);
+        hide();
       },
       onKeyDown: (event: KeyboardEvent) => {
         if (event.key === "Escape" && anchor) {
           event.stopPropagation();
-          hide(0);
+          hide();
         }
       },
     },
-    layerProps: interactive
-      ? {
-          onPointerEnter: clear,
-          onPointerLeave: () => {
-            hide(closeDelay);
-          },
-        }
-      : {},
-    close: useCallback(() => {
-      setAnchor(null);
-    }, []),
   };
 }
 
@@ -163,12 +146,7 @@ export interface TooltipProps {
 /** Names a control after a short delay. Nearby tooltips open at once while one was just showing. */
 export function Tooltip({ content, side = "bottom", align, describe = true, disabled = false, children }: TooltipProps) {
   const id = useId();
-  const { anchor, wrapper, triggerProps } = useHoverLayer({
-    openDelay: 500,
-    closeDelay: 0,
-    interactive: false,
-    disabled,
-  });
+  const { anchor, wrapper, triggerProps } = useHoverLayer({ openDelay: 500, disabled });
   useDescribedBy(wrapper, `${id}-description`, describe);
   const layer = useFloatingPosition<HTMLDivElement>(anchor, { side, ...(align ? { align } : {}) }, anchor !== null);
 
@@ -190,74 +168,6 @@ export function Tooltip({ content, side = "bottom", align, describe = true, disa
         <Portal>
           <div ref={layer} className="tooltip" role="tooltip" aria-hidden="true">
             <span>{content}</span>
-          </div>
-        </Portal>
-      ) : null}
-    </>
-  );
-}
-
-export interface HoverCardProps {
-  /** Rendered only while open, so it may fetch what it shows. */
-  readonly content: ReactNode;
-  readonly side?: Side;
-  readonly align?: Align;
-  readonly openDelay?: number;
-  readonly disabled?: boolean;
-  readonly className?: string;
-  readonly children: ReactNode;
-}
-
-/** Richer hover detail; the pointer can move into it, and it stays while hovered. */
-export function HoverCard({
-  content,
-  side = "bottom",
-  align = "start",
-  openDelay = 400,
-  disabled = false,
-  className,
-  children,
-}: HoverCardProps) {
-  const id = useId();
-  const { anchor, wrapper, triggerProps, layerProps, close } = useHoverLayer({
-    openDelay,
-    closeDelay: 150,
-    interactive: true,
-    disabled,
-  });
-  const layer = useFloatingPosition<HTMLDivElement>(anchor, { side, align }, anchor !== null);
-  useEffect(() => {
-    const target = wrapper.current?.firstElementChild;
-    if (!anchor || !target) {
-      return undefined;
-    }
-    target.setAttribute("aria-describedby", id);
-    return () => {
-      target.removeAttribute("aria-describedby");
-    };
-  }, [anchor, wrapper, id]);
-
-  return (
-    <>
-      <span className="hover-trigger" ref={wrapper} {...triggerProps}>
-        {children}
-      </span>
-      {anchor ? (
-        <Portal>
-          <div
-            ref={layer}
-            id={id}
-            className={cx("hovercard", className)}
-            role="tooltip"
-            {...layerProps}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                close();
-              }
-            }}
-          >
-            {content}
           </div>
         </Portal>
       ) : null}

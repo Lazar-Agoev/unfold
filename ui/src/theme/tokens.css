@@ -16,13 +16,11 @@
   --color-chrome: #ffffff;
   --color-surface: #ffffff;
   --color-control: #ffffff;
-  --color-track: #ecedf0;
   --color-pressed: #eef0f3;
 
   /* Rows: hover is one step lighter than selection */
   --color-hover: #f3f5fd;
   --color-selection: #edf0fc;
-  --color-selection-line: #d5d9f2;
 
   /* Text and icons */
   --color-text: #202126;
@@ -35,9 +33,6 @@
   --color-border-shell: #e0e2e7;
   --color-card-rule: #e0e2e7;
   --color-card-rule-soft: #f0f1f4;
-  /* Soft rules between rows */
-  --color-rule-soft: #eef0f3;
-  --color-placeholder: #f1f2f5;
   --color-placeholder-line: #b6bcc8;
 
   /* Accent: indigo */
@@ -46,7 +41,6 @@
   --color-on-accent: #ffffff;
   --color-accent-ring: rgb(88 98 192 / 0.12);
   --color-accent-soft: #a0a8e0;
-  --color-match-current: rgb(88 98 192 / 0.22);
   --color-arrow: #5862c0;
   --color-focus-ring: #5862c0;
 
@@ -82,8 +76,6 @@
   --color-scrim: rgb(15 23 42 / 0.18);
   --color-scroll-thumb: rgb(15 23 42 / 0.14);
   --shadow-float: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.1);
-  --shadow-segment: 0 1px 2px rgb(15 23 42 / 0.08);
-  --shadow-ring: 0 0 0 3px var(--color-accent-ring);
 
   /* Syntax (v7 reader) */
   --color-syntax-plain: #202126;
@@ -94,7 +86,6 @@
   --color-syntax-type: #7a5c14;
   --color-syntax-number: #b4530a;
   --color-syntax-comment: #8c8c8c;
-  --color-syntax-external: #db2777;
   /* The code panel's ground, and a call's expression marked in it */
   --color-editor: #fbfbfc;
   --color-mark: #fff0b8;

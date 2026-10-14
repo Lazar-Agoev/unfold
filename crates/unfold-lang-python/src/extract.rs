@@ -12,13 +12,12 @@ use unfold_engine::facts::{CallFact, FileFacts, GraphFacts, TypeFacts, TypeRefFa
 use unfold_engine::settings::PythonVersion;
 
 use crate::analysis::{self, Analysis};
-use crate::ast::bytes;
 use crate::bind::ir::{BindFacts, ExprId};
 use crate::bind::{self, TypeName, TypeSite, alias_address};
 use crate::census;
 use crate::lower::{self, Lowered, Truncated, address};
 use crate::parse::{self, Module, failure};
-use crate::payload::{CensusData, ImportSyntax, PAYLOAD_VERSION, Payload};
+use crate::payload::{ImportSyntax, PAYLOAD_VERSION, Payload};
 use crate::tokens::Tokens;
 use crate::values::Values;
 
@@ -30,8 +29,7 @@ pub fn extract(file: &Snapshot, version: PythonVersion) -> Result<FileFacts, Sou
     let module = parse::parse_module(text, version)
         .ok_or_else(|| failure("the parser did not produce a module", None))?;
     let syntax_error = parse::syntax_error(&module);
-    let tokens = Tokens::new(module.tokens());
-    let analysis = analysis::analyze(module.syntax(), tokens, version >= PythonVersion::V3_14);
+    let analysis = analysis::analyze(module.syntax(), version >= PythonVersion::V3_14);
     let result = match (syntax_error, &analysis.failure) {
         (Some(problem), _) => Err(problem),
         (None, Some(problem)) => Err(problem.clone()),
@@ -94,7 +92,7 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
         imports.push(import.fact);
         written.push(syntax);
     }
-    let payload = payload(text, analysis, &truncated, written, bind)
+    let payload = payload(text, &truncated, written, bind)
         .to_bytes()
         .map_err(|error| failure(error.to_string(), None))?;
     let types = TypeFacts::new(signatures, parameters, members);
@@ -166,28 +164,16 @@ fn innermost(candidates: &[(u32, ByteRange)], range: ByteRange) -> Option<u32> {
         .map(|&(id, _)| id)
 }
 
-/// The payload: the census from a fresh lexer pass and the pre-pass's dependencies (both
-/// without what truncated blocks hide), the written imports, and the binder facts.
-fn payload(
-    text: &str,
-    analysis: &Analysis,
-    truncated: &[Truncated],
-    imports: Vec<ImportSyntax>,
-    bind: BindFacts,
-) -> Payload {
-    let scan = census::scan(text);
-    let shown = |range: &ByteRange| !truncated.iter().any(|truncated| truncated.hides(*range));
-    let calls = scan.calls.into_iter().filter(shown).collect();
-    let dependencies = analysis
-        .proofs
-        .dependencies()
-        .iter()
-        .map(|&range| bytes(range))
-        .filter(shown)
+/// The payload: the call sites from a fresh lexer pass (without those truncated blocks hide),
+/// the written imports, and the binder facts.
+fn payload(text: &str, truncated: &[Truncated], imports: Vec<ImportSyntax>, bind: BindFacts) -> Payload {
+    let calls = census::calls(text)
+        .into_iter()
+        .filter(|range| !truncated.iter().any(|truncated| truncated.hides(*range)))
         .collect();
     Payload {
         version: PAYLOAD_VERSION,
-        census: CensusData::new(&scan.starts, &scan.ends, calls, dependencies),
+        calls,
         imports,
         bind,
     }

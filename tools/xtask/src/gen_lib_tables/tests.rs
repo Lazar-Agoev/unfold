@@ -101,7 +101,9 @@ fn files_and_references_are_recognized() {
     assert!(!is_library_file("lib.d.ts"));
     assert!(!is_library_file("typescript.d.ts"));
     assert!(is_ecmascript_file("lib.es5.d.ts"));
-    assert!(is_ecmascript_file("lib.esnext.iterator.d.ts"));
+    assert!(is_ecmascript_file("lib.es2025.iterator.d.ts"));
+    assert!(!is_ecmascript_file("lib.esnext.temporal.d.ts"));
+    assert!(!is_ecmascript_file("lib.esnext.d.ts"));
     assert!(!is_ecmascript_file("lib.dom.d.ts"));
     assert!(!is_ecmascript_file("lib.decorators.d.ts"));
     let text = "/// <reference path=\"globals.d.ts\" />\n///<reference path='fs/promises.d.ts'/>\n\
@@ -122,6 +124,9 @@ fn rendering_is_sorted_compact_and_versioned() {
         files: 1,
         globals: vec!["JSON".into()],
         value_types: vec![("Object".into(), "ObjectConstructor".into())],
+        types: vec!["Map".into(), "Iterable".into()],
+        classes: vec!["Map".into(), "Array".into()],
+        supertypes: vec![("AggregateError".into(), vec!["Error".into()])],
         methods: vec![("Array".into(), vec!["map".into(), "at".into()])],
     };
     let text = render(
@@ -135,6 +140,9 @@ fn rendering_is_sorted_compact_and_versioned() {
     assert!(text.contains("`lib.es*.d.ts` files alone (1 files)"));
     assert!(text.contains("    (\"Object\", \"ObjectConstructor\"),\n"));
     assert!(text.contains("    (\"Array\", &[\n        \"at\", \"map\",\n    ]),\n"));
+    assert!(text.contains("ECMASCRIPT_CLASSES: &[&str] = &[\n    \"Array\", \"Map\",\n];"));
+    assert!(text.contains("ECMASCRIPT_TYPES: &[&str] = &[\n    \"Iterable\", \"Map\",\n];"));
+    assert!(text.contains("    (\"AggregateError\", &[\n        \"Error\",\n    ]),\n"));
     assert!(text.contains("pub(crate) const TYPESCRIPT_VERSION: &str = \"6.0.3\";"));
     assert!(text.contains("    \"A\", \"B\",\n"));
     assert!(text.lines().all(|line| line.len() <= 110));
@@ -191,4 +199,46 @@ fn methods_merge_across_declarations_and_follow_extends() {
 fn a_namespace_and_an_interface_with_methods_cannot_share_a_name() {
     let file = "interface Clash { m(): void; } declare namespace Clash { function f(): void; }";
     assert!(model(&[file]).methods().is_err());
+}
+
+#[test]
+fn class_types_construct_their_own_type_and_supertypes_are_transitive() {
+    let file = "interface Map<K, V> { get(k: K): V; } \
+                interface MapConstructor { readonly prototype: Map<any, any>; } \
+                declare var Map: MapConstructor; \
+                interface Array<T> {} interface ArrayConstructor { new (n?: number): any[]; } \
+                declare var Array: ArrayConstructor; \
+                interface Error {} interface ErrorConstructor { new (m?: string): Error; } \
+                declare var Error: ErrorConstructor; \
+                interface AggregateError extends Error {} \
+                interface AggregateErrorConstructor extends ErrorConstructor { new (): AggregateError; } \
+                declare var AggregateError: AggregateErrorConstructor; \
+                interface Iterator<T> { next(): T; } interface IteratorConstructor { from(): unknown; } \
+                declare var Iterator: IteratorConstructor; \
+                interface ProxyConstructor { new <T>(target: T): T; } declare var Proxy: ProxyConstructor; \
+                interface Wrapped {} declare var Wrapped: { new (): Wrapped }; \
+                interface Deep extends AggregateError {} \
+                declare namespace Intl { interface Collator {} \
+                interface CollatorConstructor { new (): Collator; } var Collator: CollatorConstructor; }";
+    let model = model(&[file]);
+    // `Iterator` constructs nothing of its own, `Proxy` constructs its target, and `Wrapped`'s
+    // type isn't written as a name; an `AggregateError` is constructed through its own signature.
+    assert_eq!(
+        model.classes(),
+        ["AggregateError", "Array", "Error", "Intl.Collator", "Map"]
+    );
+    assert_eq!(
+        model.supertypes(),
+        [
+            ("AggregateError".to_owned(), vec!["Error".to_owned()]),
+            (
+                "AggregateErrorConstructor".to_owned(),
+                vec!["ErrorConstructor".to_owned()]
+            ),
+            (
+                "Deep".to_owned(),
+                vec!["AggregateError".to_owned(), "Error".to_owned()]
+            ),
+        ]
+    );
 }

@@ -103,11 +103,6 @@ impl Layout {
         &self.root
     }
 
-    /// `<folder>/.unfold/`.
-    pub fn unfold_dir(&self) -> PathBuf {
-        self.root.join(UNFOLD_DIR)
-    }
-
     /// `<folder>/unfold.toml`.
     pub fn config(&self) -> PathBuf {
         self.root.join(CONFIG_PATH)

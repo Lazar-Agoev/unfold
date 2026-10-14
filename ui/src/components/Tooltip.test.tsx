@@ -3,7 +3,7 @@ import "../test/dom";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { vi } from "vitest";
-import { HoverCard, Tooltip } from "./Tooltip";
+import { Tooltip } from "./Tooltip";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -34,27 +34,5 @@ describe("Tooltip", () => {
       vi.advanceTimersByTime(0);
     });
     expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
-  });
-});
-
-describe("HoverCard", () => {
-  it("shows richer detail on hover and keeps it while the pointer is inside", () => {
-    render(
-      <HoverCard content={<p>processRefund · jobs/queues.ts:41</p>}>
-        <button type="button">refund</button>
-      </HoverCard>,
-    );
-    fireEvent.pointerOver(screen.getByRole("button", { name: "refund" }));
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
-    const card = screen.getByRole("tooltip");
-    expect(card.classList.contains("hovercard")).toBe(true);
-    fireEvent.pointerOut(screen.getByRole("button", { name: "refund" }), { relatedTarget: card });
-    fireEvent.pointerEnter(card);
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-    expect(screen.getByRole("tooltip")).toBeTruthy();
   });
 });

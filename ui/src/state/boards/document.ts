@@ -305,11 +305,6 @@ export function setCardDescription(page: Page, cardId: string, text: string, aut
   }
 }
 
-/** The page's names, by block key. */
-export function nameTexts(names: readonly NameEntry[]): Record<Key, string> {
-  return Object.fromEntries(names.map((name) => [name.key, name.text]));
-}
-
 /** Sets or clears (blank text) the page's name for block `key`. Names sort by key, as the file writes them. */
 export function setName(page: Page, key: Key, text: string, author: string): void {
   const index = page.names.findIndex((name) => name.key === key);
@@ -390,11 +385,6 @@ export function removeCombined(page: Page, combinedId: string): void {
 /** Removes a connection; a note attached to it stays where it was. */
 export function removeLink(page: Page, linkId: string): void {
   removeItems(page, [linkId]);
-}
-
-/** Sets the view of the page's cards that have none of their own. */
-export function setDefaultView(page: Page, view: View): void {
-  page.defaultView = view;
 }
 
 export function setTitle(document: BoardDocument, title: string): void {

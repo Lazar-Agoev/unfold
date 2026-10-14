@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 use smallvec::smallvec;
 use unfold_core::validate::{CallSite as CensusSite, Census};
 use unfold_core::vocab::Language as LanguageId;
-use unfold_core::{ByteRange, ModuleLabel, RepoPath};
+use unfold_core::{ModuleLabel, RepoPath};
 use unfold_engine::evidence::{
     Candidate, ClassMember, ClassShape, ConcreteTarget, Evidence, ExternalLocation, ImportBinding,
     ImportTarget, MemberFact, ModuleTarget, Origin, OriginDeclaration, Refusal, Stability, ValueContext,
@@ -68,8 +68,7 @@ impl<'a> AlienLinked<'a> {
             .iter()
             .map(|(file, _)| linked.file_dependencies(file))
             .collect();
-        let census = AlienCensus::new(program, &linked.payloads, |import| linked.keeps_import(import));
-        linked.census = census;
+        linked.census = AlienCensus::new(program, &linked.payloads);
         linked
     }
 
@@ -794,45 +793,20 @@ impl Linked for AlienLinked<'_> {
     }
 }
 
-/// One file's token boundaries, call sites, and module dependencies.
-type CensusFile = (Vec<u32>, Vec<CensusSite>, Vec<ByteRange>);
-
-/// The alien census, from the payload's token boundaries and the parser's own call sites and
-/// dependencies (not from the lowering).
+/// The alien census, from the parser's own call sites (not from the lowering).
 #[derive(Debug, Default)]
 pub struct AlienCensus {
-    files: FxHashMap<RepoPath, CensusFile>,
+    files: FxHashMap<RepoPath, Vec<CensusSite>>,
 }
 
 impl AlienCensus {
-    /// The census of every alien file; the dependencies of conditional imports `keeps` rejects
-    /// are left out, as their links are.
-    fn new(program: &FactsSet, payloads: &[Option<Payload>], keeps: impl Fn(ImportRef) -> bool) -> Self {
+    /// The census of every alien file.
+    fn new(program: &FactsSet, payloads: &[Option<Payload>]) -> Self {
         let mut files = FxHashMap::default();
-        for ((id, file), payload) in program.iter().zip(payloads) {
-            let (Some(payload), Some(facts)) = (payload, file.facts.as_deref()) else {
+        for ((_, file), payload) in program.iter().zip(payloads) {
+            let Some(payload) = payload else {
                 continue;
             };
-            let dropped: Vec<ByteRange> = facts
-                .graph
-                .imports()
-                .iter()
-                .enumerate()
-                .filter(|(index, fact)| {
-                    let import = ImportRef {
-                        file: id,
-                        import: *index as u32,
-                    };
-                    fact.conditional && !keeps(import)
-                })
-                .map(|(_, fact)| fact.range)
-                .collect();
-            let dependencies = payload
-                .dependencies
-                .iter()
-                .copied()
-                .filter(|range| !dropped.contains(range))
-                .collect();
             let sites = payload
                 .call_sites
                 .iter()
@@ -841,10 +815,7 @@ impl AlienCensus {
                     form: site.form,
                 })
                 .collect();
-            files.insert(
-                file.path.clone(),
-                (payload.boundaries.clone(), sites, dependencies),
-            );
+            files.insert(file.path.clone(), sites);
         }
         Self { files }
     }
@@ -855,19 +826,7 @@ impl Census for AlienCensus {
         LanguageId::TypeScript
     }
 
-    fn is_token_range(&self, path: &RepoPath, range: ByteRange) -> bool {
-        self.files.get(path).is_some_and(|(boundaries, _, _)| {
-            boundaries.binary_search(&range.start).is_ok() && boundaries.binary_search(&range.end).is_ok()
-        })
-    }
-
     fn call_sites(&self, path: &RepoPath) -> Option<&[CensusSite]> {
-        self.files.get(path).map(|(_, sites, _)| sites.as_slice())
-    }
-
-    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
-        self.files
-            .get(path)
-            .map(|(_, _, dependencies)| dependencies.as_slice())
+        self.files.get(path).map(Vec::as_slice)
     }
 }

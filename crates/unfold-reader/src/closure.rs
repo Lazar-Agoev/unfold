@@ -1,7 +1,7 @@
 //! Closures: the definitions reached at least from a set of seeds, following what each
 //! definition reaches ([`crate::index`]). It is a conservative static set, shown as "reached at
 //! least from", never a claim about what runs. The closure of a seed set is the union of its
-//! seeds' closures, so callers may cache per seed.
+//! seeds' closures, so callers cache per seed.
 
 use crate::index::{GraphIndex, NodeId};
 
@@ -44,12 +44,4 @@ pub(crate) fn closure(index: &GraphIndex, seeds: &[NodeId]) -> Vec<NodeId> {
     }
     reached.sort_unstable();
     reached
-}
-
-/// The union of sorted, deduplicated node lists, sorted and deduplicated.
-pub(crate) fn union(lists: &[&[NodeId]]) -> Vec<NodeId> {
-    let mut all: Vec<NodeId> = lists.iter().flat_map(|list| list.iter().copied()).collect();
-    all.sort_unstable();
-    all.dedup();
-    all
 }

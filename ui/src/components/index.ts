@@ -17,5 +17,5 @@ export { StateIndicator } from "./StateIndicator";
 export { Switch } from "./Switch";
 export { SearchField, TextField } from "./TextField";
 export { Toaster, dismissToast, showToast } from "./Toast";
-export { HoverCard, Tooltip } from "./Tooltip";
+export { Tooltip } from "./Tooltip";
 export { isModalOpen } from "./internal/layers";

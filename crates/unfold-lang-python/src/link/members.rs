@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use unfold_engine::evidence::Refusal;
 
 use super::binder::{Binder, Ctx, Seen};
-use super::library::Stub;
+use super::library::{self, Stub};
 use super::program::{NodeRef, Sym};
 use super::value::Value;
 use crate::stubs::StubClass;
@@ -171,7 +171,7 @@ impl Binder<'_> {
             }
             match (value.class, value.stub) {
                 (Some(class), _) if value.instance => assigned.push(Held::Class(class)),
-                (None, Some(Stub::Instance(class))) => assigned.push(Held::Library(class)),
+                (None, Some(Stub::Instance(instance))) => assigned.push(Held::Library(instance.class)),
                 _ => return Some(Value::default()),
             }
         }
@@ -183,7 +183,7 @@ impl Binder<'_> {
                     instance: true,
                     ..Value::default()
                 },
-                Held::Library(class) => Value::library_instance(Some(class)),
+                Held::Library(class) => Value::library_instance(library::instance(class, false)),
             }),
             _ => Some(Value::default()),
         }

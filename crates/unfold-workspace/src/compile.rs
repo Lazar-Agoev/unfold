@@ -71,11 +71,6 @@ impl CompileTicket {
         self.cancel.cancel();
     }
 
-    /// The token that cancels this compile, for a caller that keeps it apart from the ticket.
-    pub fn cancel_token(&self) -> CancelToken {
-        self.cancel.clone()
-    }
-
     /// Waits for the compile to finish.
     pub fn wait(self) -> Result<CompileOutcome> {
         self.result.recv().unwrap_or(Err(WorkspaceError::Closed))

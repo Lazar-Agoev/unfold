@@ -512,7 +512,7 @@
   ⋯ 1 line
   ▸ logger.info   key=src/orders_playground/jobs/import_orders.py#import_orders/call:logger.info
   IF failures   key=src/orders_playground/jobs/import_orders.py#import_orders/if[1] src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then
-      RAISE ExceptionGroup ? → the caller   key=src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]
+      RAISE ExceptionGroup → the caller   key=src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]
   RETURN summary → End   key=src/orders_playground/jobs/import_orders.py#import_orders/return[0]
 ( End )
 

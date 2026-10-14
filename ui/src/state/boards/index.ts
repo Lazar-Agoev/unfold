@@ -33,14 +33,11 @@ export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
 export {
   PROPOSAL_REASON_MAX,
   PROPOSAL_TITLE_MAX,
-  addProposal,
   findProposal,
   proposalReason,
   proposalTitle,
   removeProposal,
   updateProposal,
-  type NewProposal,
-  type ProposalChange,
   type ProposalPlace,
 } from "./proposals";
 export { findResource } from "./resources";
@@ -54,11 +51,8 @@ export {
   findPage,
   isOpen,
   moveItems,
-  nameTexts,
-  openPaths,
   setCardView,
   toggleOpen,
-  type CombinedChange,
 } from "./document";
 export { MAX_FRAME_DEPTH, findFrame, frameItems, frameOf, moveFrame } from "./frames";
 export { installAgentChannel, setAgentChannelReady } from "./agent/channel";
@@ -66,18 +60,14 @@ export { useWorkingAgents, useWorkingItems, workingText } from "./agent/working"
 export { installBoardEvents } from "./events";
 export { deleteBoard, deleteFolder, exportPagePng, renameBoard, renameFolder, repairBoard, setBoardFolder } from "./files";
 export { itemsFor, kindWord, repairEffect, repairLabel, repairSpec } from "./health";
-export { boardKey, cardRefKey, pageKey, sameBoard } from "./keys";
-export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reopenBoards } from "./open";
+export { boardKey, cardRefKey } from "./keys";
+export { closeBoardsOfProject, newBoard, openBoard, reopenBoards } from "./open";
 export { addPage, deletePage, movePage, renamePage } from "./pages";
 export {
   canUndo,
-  editBoard,
   editPage,
-  flushAllBoards,
-  flushBoard,
   getOpenBoard,
   getPageView,
-  isDirty,
   redo,
   requestCardFocus,
   saveBoard,
@@ -89,18 +79,12 @@ export {
   useBoards,
   useOpenBoard,
   usePageView,
-  type EditOptions,
 } from "./store";
 export type {
-  BoardId,
   BoardRef,
   Camera,
-  CardSize,
-  FocusRequest,
-  OpenBoard,
   PageId,
   PageTarget,
-  PageView,
   SelectedCalls,
   SelectedLine,
   Selection,

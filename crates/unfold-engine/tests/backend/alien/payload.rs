@@ -11,10 +11,8 @@ pub struct Payload {
     pub scopes: Vec<Scope>,
     /// Aligned with the neutral value table.
     pub values: Vec<ValueInfo>,
-    /// Token boundaries, call sites, and module dependencies for the census, from the parser.
-    pub boundaries: Vec<u32>,
+    /// Call sites for the census, from the parser.
     pub call_sites: Vec<CallSite>,
-    pub dependencies: Vec<ByteRange>,
     /// Aligned with the neutral type names: the scope each name is looked up from, and the
     /// name.
     pub types: Vec<(u32, String)>,

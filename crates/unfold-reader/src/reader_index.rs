@@ -1,5 +1,4 @@
-//! Graph-wide answers for requests: owners, closures, and Reached from, from one index per
-//! graph version.
+//! Graph-wide answers for requests: owners and Reached from, from one index per graph version.
 //!
 //! Cards are served from the store: per-card data comes from per-file queries, and callers from
 //! the store's reverse index ([`crate::relations::callers`]). What needs the whole graph (owners
@@ -7,8 +6,8 @@
 //! (or built from the in-memory graph the workspace just committed) and shared through a
 //! [`ReaderCache`] until the next commit invalidates it.
 //!
-//! Closures are cached per seed: the closure of a seed set is the union of its seeds'
-//! closures, and many entrances share code, so Reached from for every definition costs one walk
+//! Closures are cached per seed: an entrance reaches a definition when one of its seeds' closures
+//! holds it, and many entrances share code, so Reached from for every definition costs one walk
 //! per distinct seed in the life of the index.
 
 use std::sync::{Arc, Mutex, PoisonError};
@@ -17,7 +16,7 @@ use rustc_hash::FxHashMap;
 use unfold_core::{Graph, Key};
 use unfold_store::{ReadPool, Reader};
 
-use crate::closure::{closure, union};
+use crate::closure::closure;
 use crate::error::Result;
 use crate::index::{GraphIndex, NodeId};
 
@@ -82,33 +81,6 @@ impl ReaderIndex {
                 .map(|start| start.key.clone())
                 .collect(),
         )
-    }
-
-    /// The closure of the blocks with `seeds` (each standing for its definition), as definition
-    /// keys in graph order. Unknown keys are ignored.
-    pub fn closure(&self, seeds: &[&str]) -> Vec<Key> {
-        let ids: Vec<NodeId> = seeds.iter().filter_map(|key| self.index.id(key)).collect();
-        self.keys(&self.closure_ids(&ids))
-    }
-
-    /// The closure of the app or entrance with `key`: of every `code` target it starts at that
-    /// names a definition. `None` when no app or entrance has that key.
-    pub fn start_closure(&self, key: &str) -> Option<Vec<Key>> {
-        let start = self
-            .index
-            .starts()
-            .iter()
-            .find(|start| start.key.as_str() == key)?;
-        Some(self.keys(&self.closure_ids(&start.seeds)))
-    }
-
-    fn keys(&self, ids: &[NodeId]) -> Vec<Key> {
-        ids.iter().map(|&id| self.index.key(id).clone()).collect()
-    }
-
-    fn closure_ids(&self, seeds: &[NodeId]) -> Vec<NodeId> {
-        let per_seed: Vec<Arc<[NodeId]>> = seeds.iter().map(|&seed| self.seed_closure(seed)).collect();
-        union(&per_seed.iter().map(|list| &list[..]).collect::<Vec<_>>())
     }
 
     /// The closure of one seed, computed once per index.

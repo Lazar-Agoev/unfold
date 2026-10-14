@@ -1,0 +1,53 @@
+{
+  "text": "( create_order )   key=py-orders/src/orders_playground/routes/orders.py#create_order\n  · request.json ? → draft   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json\n  IF request.headers.get(\"prefer\") == \"respond-async\"   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0] py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then\n      · celery_app.signature().delay ? → job   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay\n      RETURN JSONResponse → End   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]\n  ▸ order_service.place → order   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place\n      ( place )   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place\n        ▸ validate_order → draft   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:validate_order\n        · self.payments.charge ?, uuid4, datetime.now().isoformat   3 calls, 1 unknown   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4 py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat\n        ▸ self.repo.insert   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert\n        ▸ events.emit   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:events.emit\n        RETURN order → returns   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/return[0]\n      ( returns )\n  ▸ slack.post   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post\n  RETURN JSONResponse → End   key=py-orders/src/orders_playground/routes/orders.py#create_order/return[0]\n( End )\n",
+  "labels": [
+    {
+      "label": "call:request.json",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json"
+    },
+    {
+      "label": "if[0]",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]"
+    },
+    {
+      "label": "if[0]/then",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then"
+    },
+    {
+      "label": "if[0]/then/call:request.headers.get",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get"
+    },
+    {
+      "label": "if[0]/then/call:celery_app.signature().delay",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay"
+    },
+    {
+      "label": "if[0]/then/call:celery_app.signature().delay/call:celery_app.signature",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay/call:celery_app.signature"
+    },
+    {
+      "label": "if[0]/then/return[0]",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]"
+    },
+    {
+      "label": "if[0]/then/return[0]/call:JSONResponse",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]/call:JSONResponse"
+    },
+    {
+      "label": "call:order_service.place",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place"
+    },
+    {
+      "label": "call:slack.post",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post"
+    },
+    {
+      "label": "return[0]",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]"
+    },
+    {
+      "label": "return[0]/call:JSONResponse",
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]/call:JSONResponse"
+    }
+  ]
+}

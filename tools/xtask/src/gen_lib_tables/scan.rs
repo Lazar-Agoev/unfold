@@ -33,6 +33,10 @@ pub(crate) struct Symbol {
     pub(crate) methods: BTreeSet<String>,
     /// The names its interface declarations extend, as written (`IteratorObject`), merged.
     pub(crate) extends: BTreeSet<String>,
+    /// The types its interface declarations construct, as written: what a `prototype` property
+    /// or a construct signature is written with (`Map` for `readonly prototype: Map<any, any>`,
+    /// `Collator` for `new (…): Collator`, `Array` for `any[]`), merged.
+    pub(crate) constructs: BTreeSet<String>,
     /// The types its variable declarations are written with, when each is a plain type
     /// reference (`declare var Object: ObjectConstructor`).
     pub(crate) value_types: BTreeSet<String>,
@@ -256,12 +260,32 @@ impl<'a> Walker<'_, 'a> {
                         .map(|heritage| heritage.type_name.to_string()),
                 );
                 for signature in &interface.body.body {
-                    if let TSSignature::TSMethodSignature(method) = signature
-                        && method.kind == TSMethodSignatureKind::Method
-                        && !method.computed
-                        && let Some(name) = method.key.static_name()
-                    {
-                        symbol.methods.insert(name.into_owned());
+                    match signature {
+                        TSSignature::TSMethodSignature(method)
+                            if method.kind == TSMethodSignatureKind::Method && !method.computed =>
+                        {
+                            if let Some(name) = method.key.static_name() {
+                                symbol.methods.insert(name.into_owned());
+                            }
+                        }
+                        TSSignature::TSPropertySignature(property)
+                            if !property.computed
+                                && property.key.static_name().as_deref() == Some("prototype") =>
+                        {
+                            let written = property
+                                .type_annotation
+                                .as_ref()
+                                .and_then(|annotation| constructed_name(&annotation.type_annotation));
+                            symbol.constructs.extend(written);
+                        }
+                        TSSignature::TSConstructSignatureDeclaration(construct) => {
+                            let written = construct
+                                .return_type
+                                .as_ref()
+                                .and_then(|annotation| constructed_name(&annotation.type_annotation));
+                            symbol.constructs.extend(written);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -347,6 +371,16 @@ fn binding_names<'a>(pattern: &'a BindingPattern<'_>) -> Vec<&'a str> {
         .into_iter()
         .map(|id| id.name.as_str())
         .collect()
+}
+
+/// The type name a constructed type is written with: a type reference's name, or `Array` for
+/// an array type (`T[]` is `Array<T>`).
+fn constructed_name(ty: &TSType<'_>) -> Option<String> {
+    match ty {
+        TSType::TSTypeReference(reference) => Some(reference.type_name.to_string()),
+        TSType::TSArrayType(_) => Some("Array".to_owned()),
+        _ => None,
+    }
 }
 
 /// Whether a namespace declaration is instantiated (TypeScript's module instance state is not
@@ -533,6 +567,62 @@ impl Model {
     }
 }
 
+impl Model {
+    /// The class types: each global value (qualified through namespaces) whose declared type,
+    /// with the interfaces it extends, constructs the type of the same name (its `prototype` or
+    /// a construct signature is written with it: `Map`, `Error`, `Array`, `Intl.Collator`).
+    /// Sorted by name.
+    pub(crate) fn classes(&self) -> Vec<String> {
+        let mut symbols = BTreeMap::new();
+        qualified_symbols(&self.globals, "", &mut symbols, 0);
+        let mut classes = Vec::new();
+        for (name, symbol) in &symbols {
+            let [written] = symbol.value_types.iter().collect::<Vec<_>>()[..] else {
+                continue;
+            };
+            if !symbol.value || !symbol.class_or_interface {
+                continue;
+            }
+            let Some(constructor) = resolve_type(&symbols, name, written) else {
+                continue;
+            };
+            let mut family = BTreeSet::from([constructor.clone()]);
+            supertypes_of(&symbols, &constructor, &mut family);
+            let constructs = family.iter().any(|member| {
+                symbols.get(member).is_some_and(|found| {
+                    found
+                        .constructs
+                        .iter()
+                        .any(|built| resolve_type(&symbols, member, built).as_deref() == Some(name))
+                })
+            });
+            if constructs {
+                classes.push(name.clone());
+            }
+        }
+        classes
+    }
+
+    /// Every class or interface (qualified) that extends others, with all the interfaces it
+    /// extends, directly or not, sorted by name.
+    pub(crate) fn supertypes(&self) -> Vec<(String, Vec<String>)> {
+        let mut symbols = BTreeMap::new();
+        qualified_symbols(&self.globals, "", &mut symbols, 0);
+        let mut supertypes = Vec::new();
+        for (name, symbol) in &symbols {
+            if !symbol.class_or_interface {
+                continue;
+            }
+            let mut found = BTreeSet::new();
+            supertypes_of(&symbols, name, &mut found);
+            if !found.is_empty() {
+                supertypes.push((name.clone(), found.into_iter().collect()));
+            }
+        }
+        supertypes
+    }
+}
+
 /// The function names a symbol's namespace exports.
 fn namespace_functions(symbol: &Symbol) -> BTreeSet<String> {
     symbol.namespace.as_ref().map_or_else(BTreeSet::new, |namespace| {
@@ -567,8 +657,7 @@ fn qualified_symbols<'s>(
     }
 }
 
-/// Adds the methods of the interface `name` and of every interface it extends to `out`. An
-/// extended name is looked up in the namespaces around `name`, innermost first, then globally.
+/// Adds the methods of the interface `name` and of every interface it extends to `out`.
 fn inherited_methods(
     symbols: &BTreeMap<String, &Symbol>,
     name: &str,
@@ -583,26 +672,46 @@ fn inherited_methods(
     };
     out.extend(symbol.methods.iter().cloned());
     for parent in &symbol.extends {
-        let mut prefix = name;
-        let found = loop {
-            prefix = prefix.rfind('.').map_or("", |dot| &prefix[..dot]);
-            let candidate = if prefix.is_empty() {
-                parent.clone()
-            } else {
-                format!("{prefix}.{parent}")
-            };
-            if symbols
-                .get(&candidate)
-                .is_some_and(|symbol| symbol.class_or_interface)
-            {
-                break Some(candidate);
-            }
-            if prefix.is_empty() {
-                break None;
-            }
-        };
-        if let Some(parent) = found {
+        if let Some(parent) = resolve_type(symbols, name, parent) {
             inherited_methods(symbols, &parent, out, seen);
+        }
+    }
+}
+
+/// Adds the qualified names of every interface `name` extends, directly or not, to `out`.
+fn supertypes_of(symbols: &BTreeMap<String, &Symbol>, name: &str, out: &mut BTreeSet<String>) {
+    let Some(symbol) = symbols.get(name) else {
+        return;
+    };
+    for parent in &symbol.extends {
+        if let Some(parent) = resolve_type(symbols, name, parent)
+            && parent != name
+            && out.insert(parent.clone())
+        {
+            supertypes_of(symbols, &parent, out);
+        }
+    }
+}
+
+/// The qualified class or interface a name written in the declaration of `context` refers to:
+/// looked up in the namespaces around `context`, innermost first, then globally.
+fn resolve_type(symbols: &BTreeMap<String, &Symbol>, context: &str, written: &str) -> Option<String> {
+    let mut prefix = context;
+    loop {
+        prefix = prefix.rfind('.').map_or("", |dot| &prefix[..dot]);
+        let candidate = if prefix.is_empty() {
+            written.to_owned()
+        } else {
+            format!("{prefix}.{written}")
+        };
+        if symbols
+            .get(&candidate)
+            .is_some_and(|symbol| symbol.class_or_interface)
+        {
+            return Some(candidate);
+        }
+        if prefix.is_empty() {
+            return None;
         }
     }
 }

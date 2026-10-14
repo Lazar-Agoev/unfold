@@ -3,9 +3,9 @@
 
 use oxc_allocator::{GetAddress, UnstableAddress};
 use oxc_ast::ast::{
-    BindingIdentifier, ClassElement, Expression, MethodDefinitionKind, ObjectExpression, ObjectPropertyKind,
-    PropertyKey, PropertyKind, SimpleAssignmentTarget, StaticBlock, TSNamespaceDeclaration,
-    TSNamespaceDeclarationBody,
+    Argument, BindingIdentifier, CallExpression, ClassElement, Expression, MethodDefinitionKind,
+    ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, SimpleAssignmentTarget, StaticBlock,
+    TSNamespaceDeclaration, TSNamespaceDeclarationBody,
 };
 use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
@@ -336,6 +336,38 @@ impl<'a> Binder<'a> {
         self.writes.push(MemberWrite { object, name });
     }
 
+    /// Records the write of a reflective call that changes members of its first argument:
+    /// `Object.defineProperty` and `Reflect.defineProperty`, `Reflect.set`, and
+    /// `Reflect.deleteProperty` write the member their literal second argument names (any member
+    /// otherwise); `Object.defineProperties`, `Object.assign`, and `Object.setPrototypeOf` and
+    /// `Reflect.setPrototypeOf` may write any member. The callee is matched as written: a
+    /// shadowed `Object` only adds a write, which can withhold a target but never prove one.
+    pub(super) fn reflective_write(&mut self, call: &CallExpression<'a>) {
+        let Expression::StaticMemberExpression(callee) = unwrap(&call.callee) else {
+            return;
+        };
+        let Expression::Identifier(owner) = unwrap(&callee.object) else {
+            return;
+        };
+        let keyed = match (owner.name.as_str(), callee.property.name.as_str()) {
+            ("Object" | "Reflect", "defineProperty") | ("Reflect", "set" | "deleteProperty") => true,
+            ("Object", "defineProperties" | "assign" | "setPrototypeOf") | ("Reflect", "setPrototypeOf") => {
+                false
+            }
+            _ => return,
+        };
+        let Some(object) = call.arguments.first().and_then(Argument::as_expression) else {
+            return;
+        };
+        let name = call
+            .arguments
+            .get(1)
+            .and_then(Argument::as_expression)
+            .filter(|_| keyed)
+            .and_then(|key| literal_name(unwrap(key)));
+        self.write(object, name);
+    }
+
     pub(super) fn member_target(&mut self, target: &SimpleAssignmentTarget<'a>) {
         match target {
             SimpleAssignmentTarget::StaticMemberExpression(it) => {
@@ -344,6 +376,9 @@ impl<'a> Binder<'a> {
             SimpleAssignmentTarget::ComputedMemberExpression(it) => {
                 let name = literal_name(&it.expression);
                 self.write(&it.object, name);
+            }
+            SimpleAssignmentTarget::PrivateFieldExpression(it) => {
+                self.write(&it.object, Some(format!("#{}", it.field.name).into()));
             }
             _ => {}
         }

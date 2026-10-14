@@ -9,18 +9,21 @@
 //! def`'s through `await`); nothing is inferred from a body. The standard library's stubs
 //! ([`super::library`]) type what the covered modules' functions and classes give, the
 //! standard-library classes written as annotations or return types, and literals, and their
-//! instances' members are looked up through the stub classes. It only ever withholds: a value
-//! it cannot prove is empty, ambiguous, or refused.
+//! instances' members are looked up through the stub classes: only a member the class has, and
+//! only while the stubs write its type, so a further hop on a value they write no type for is
+//! unknown. A member of an instance of a written type is overridden when another class may
+//! define it: any class for `object` and protocols, and a project class that derives from the
+//! written class and defines the member. It only ever withholds: a value it cannot prove is
+//! empty, ambiguous, or refused.
 
 use smallvec::SmallVec;
 use unfold_engine::evidence::Refusal;
 
 use super::binder::{Binder, Ctx, Seen, SeenKey};
-use super::library::{self, Stub};
+use super::library::{self, Instance, Known, Stub};
 use super::modules::Module;
 use super::program::{ExprRef, Imported, NodeRef, Sym};
 use crate::bind::ir::{Argument, ExprKind, NodeKind, WriteKind};
-use crate::stdlib::BUILTIN_NAMES;
 use crate::stubs::StubClass;
 
 /// An origin outside the repository: a module specifier and a dotted member path (`*` for the
@@ -107,11 +110,16 @@ impl Value {
     }
 
     /// An instance of a standard-library class.
-    pub(crate) fn library_instance(class: Option<&'static StubClass>) -> Self {
+    pub(crate) fn library_instance(instance: Option<Instance>) -> Self {
         Self {
-            stub: class.map(Stub::Instance),
+            stub: instance.map(Stub::Instance),
             ..Self::default()
         }
+    }
+
+    /// An instance of exactly a standard-library class: a literal or a display.
+    fn exact(class: Option<&'static StubClass>) -> Self {
+        Self::library_instance(class.and_then(|class| library::instance(class, true)))
     }
 
     pub(crate) fn declared(node: NodeRef, binding: u32) -> Self {
@@ -164,7 +172,7 @@ impl Binder<'_> {
                     return Value::ambiguous();
                 }
                 let text = program.text(sym);
-                if BUILTIN_NAMES.contains(&text) {
+                if library::builtin(text) {
                     return Value::external("builtins", text);
                 }
                 Value::default()
@@ -181,14 +189,14 @@ impl Binder<'_> {
             ExprKind::Ternary => Value::ambiguous(),
             &ExprKind::Await(inner) => self.resolve_in(local(inner), true, seen, ctx),
             ExprKind::Index { .. } => Value::refused(Refusal::Dynamic),
-            ExprKind::Str(_) => Value::library_instance(library::class("builtins.str")),
-            &ExprKind::Sequence { tuple, .. } => Value::library_instance(library::class(if tuple {
+            ExprKind::Str(_) => Value::exact(library::class("builtins.str")),
+            &ExprKind::Sequence { tuple, .. } => Value::exact(library::class(if tuple {
                 "builtins.tuple"
             } else {
                 "builtins.list"
             })),
-            ExprKind::Dict(_) => Value::library_instance(library::class("builtins.dict")),
-            &ExprKind::Literal(literal) => Value::library_instance(library::literal(literal)),
+            ExprKind::Dict(_) => Value::exact(library::class("builtins.dict")),
+            &ExprKind::Literal(literal) => Value::exact(library::literal(literal)),
             ExprKind::Chain(_) | ExprKind::Other => Value::default(),
         }
     }
@@ -264,8 +272,8 @@ impl Binder<'_> {
         if let Some(returned) = self.returned(&value, awaited, seen, ctx) {
             return returned;
         }
-        if let Some(class) = library_call(&value, awaited) {
-            return Value::library_instance(Some(class));
+        if let Some(instance) = library_call(&value, awaited) {
+            return Value::library_instance(Some(instance));
         }
         Value {
             ambiguous: value.ambiguous,
@@ -312,7 +320,7 @@ impl Binder<'_> {
         }
         let class = self.resolve_seen(written(returns.class), &mut seen.clone(), ctx);
         if let Some(library) = library_class(&class) {
-            return Some(Value::library_instance(Some(library)));
+            return Some(Value::library_instance(library::instance(library, false)));
         }
         let proven = class.class.filter(|_| {
             !class.instance
@@ -520,7 +528,10 @@ impl Binder<'_> {
                 value.class = Some(class);
                 value.instance = true;
             } else {
-                value.stub = self.annotated_library(annotation, seen, ctx).map(Stub::Instance);
+                value.stub = self
+                    .annotated_library(annotation, seen, ctx)
+                    .and_then(|class| library::instance(class, false))
+                    .map(Stub::Instance);
             }
         }
         value
@@ -748,16 +759,11 @@ impl Binder<'_> {
         if let Some(module) = &receiver.module {
             return self.module_member(module, member, seen, ctx);
         }
-        if let Some(Stub::Instance(class)) = receiver.stub {
-            match library_member(class, self.program.text(member)) {
-                Some(found) => return found,
-                None if receiver.external.is_none() => return Value::default(),
-                None => {}
-            }
+        if let Some(Stub::Instance(instance)) = receiver.stub {
+            return self.library_member(instance, member);
         }
         if let Some(external) = &receiver.external {
-            let path = dotted(&external.member, self.program.text(member));
-            return Value::external(&external.module, &path);
+            return self.external_member(external, member);
         }
         if let Some(owner) = receiver.super_owner {
             return self.super_member(owner, member, ctx);
@@ -766,6 +772,71 @@ impl Binder<'_> {
             Some(owner) => self.class_member(&receiver, owner, member, seen, ctx),
             None => Value::default(),
         }
+    }
+
+    /// Member `member` of an external origin the stubs prove no instance: a member of a module,
+    /// or of anything outside the stubs, is a longer path; so is a member a stub class has; a
+    /// module variable's member is looked up on its class. Anything else (a member a class
+    /// doesn't have, a member of a function or of a value the stubs write no type for) is
+    /// unknown.
+    fn external_member(&self, external: &External, member: Sym) -> Value {
+        let name = self.program.text(member);
+        let longer = || Value::external(&external.module, &dotted(&external.member, name));
+        match library::known(external) {
+            Known::Stub(Stub::Module(_)) | Known::Uncovered => longer(),
+            Known::Stub(Stub::Class(class)) if library::lookup(class, name).is_some() => longer(),
+            Known::Stub(Stub::Instance(instance)) => self.library_member(instance, member),
+            Known::Stub(Stub::Class(_) | Stub::Function { .. }) | Known::Untyped => Value::default(),
+        }
+    }
+
+    /// Member `member` of an instance of a standard-library class: an external origin in the
+    /// class's module, with what the stubs prove it is. A class that declares `__getattr__`
+    /// along its linearization makes a member it doesn't declare dynamic; any other member it
+    /// doesn't have is unknown. On an instance of a written type, a member another class may
+    /// define ([`Binder::library_overridden`]) is overridden, and nothing more is known of it.
+    fn library_member(&self, instance: Instance, member: Sym) -> Value {
+        let class = instance.class;
+        let name = self.program.text(member);
+        let Some(found) = library::lookup(class, name) else {
+            return if library::lookup(class, "__getattr__").is_some() {
+                Value::refused(Refusal::Dynamic)
+            } else {
+                Value::default()
+            };
+        };
+        let external = Some(library::member_origin(class, name));
+        if !instance.exact && self.library_overridden(class, member) {
+            return Value {
+                external,
+                overridden: true,
+                ..Value::default()
+            };
+        }
+        Value {
+            external,
+            stub: library::on_instance(instance, found).filter(|stub| !matches!(stub, Stub::Class(_))),
+            ..Value::default()
+        }
+    }
+
+    /// Whether a class other than a written standard-library `class` may define `member` for its
+    /// instances: any class, for `object` and protocols ([`library::open`]); else a project
+    /// class that derives from it and defines the member, binds every member through
+    /// `__getattribute__`, or has its members written from outside.
+    fn library_overridden(&self, class: &StubClass, member: Sym) -> bool {
+        if library::open(class) {
+            return true;
+        }
+        let known = &self.program.known;
+        self.classes
+            .library_overrides
+            .get(class.name)
+            .is_some_and(|members| {
+                members.contains(&member)
+                    || members.contains(&known.star)
+                    || members.contains(&known.getattribute)
+            })
     }
 }
 
@@ -780,10 +851,11 @@ fn library_class(value: &Value) -> Option<&'static StubClass> {
     }
 }
 
-/// The standard-library class an instance of which calling `callee` gives: a method looked up
-/// on an instance, or a stub function or class its external origin denotes.
-fn library_call(callee: &Value, awaited: bool) -> Option<&'static StubClass> {
-    if callee.ambiguous || callee.refusal.is_some() {
+/// The standard-library instance calling `callee` gives: through a method looked up on an
+/// instance, or a stub function or class its external origin denotes. Nothing is known of a
+/// call through an overridden method.
+fn library_call(callee: &Value, awaited: bool) -> Option<Instance> {
+    if callee.ambiguous || callee.refusal.is_some() || callee.overridden {
         return None;
     }
     let stub = match callee.stub {
@@ -791,18 +863,4 @@ fn library_call(callee: &Value, awaited: bool) -> Option<&'static StubClass> {
         _ => library::external(callee.external.as_ref()?)?,
     };
     library::called(stub, awaited)
-}
-
-/// Member `name` of an instance of a standard-library class: an external origin in the class's
-/// module, with what the stubs prove it is. A class that declares `__getattr__` along its
-/// linearization makes a member it doesn't declare dynamic; `None` when it has no such member.
-fn library_member(class: &'static StubClass, name: &str) -> Option<Value> {
-    let Some(found) = library::lookup(class, name) else {
-        return library::lookup(class, "__getattr__").map(|_| Value::refused(Refusal::Dynamic));
-    };
-    Some(Value {
-        external: Some(library::member_origin(class, name)),
-        stub: library::on_instance(class, found).filter(|stub| !matches!(stub, Stub::Class(_))),
-        ..Value::default()
-    })
 }

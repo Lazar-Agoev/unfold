@@ -10,8 +10,8 @@ use super::scope::{ScopeKind, Scopes};
 use super::{AliasDraft, Binder, Input, KeyDraft, RootDraft, TypeSite};
 use crate::payload::DeclarationKind;
 use crate::payload::binding::{
-    Alias, Binding, ClassFacts, Decl, DeclFlags, DeclKind, Expr, Key, KeyRoot, Lookup, Meanings, NamePath,
-    Namespace, Narrowing, NarrowingCall, Symbol, TypeRef,
+    Alias, Assignment, Binding, ClassFacts, Decl, DeclFlags, DeclKind, Expr, Key, KeyRoot, Lookup, Meanings,
+    NamePath, Namespace, Narrowing, NarrowingCall, Symbol, TypeRef,
 };
 use crate::values::Values;
 
@@ -211,6 +211,7 @@ impl<'a> Binder<'a> {
             .map(|class| ClassFacts {
                 decl: class.decl,
                 heritage: class.heritage,
+                implements: class.implements.clone(),
                 members: class.members.clone(),
             })
             .collect();
@@ -252,6 +253,14 @@ impl<'a> Binder<'a> {
                 alias: self.alias_refs.get(&(index as u32)).copied(),
             });
         }
+        let assignments = self
+            .assigned
+            .iter()
+            .map(|&(name, place)| Assignment {
+                name: name.into(),
+                lookup: self.lookup(name, place, Meanings::VALUE),
+            })
+            .collect();
         let file_symbols = symbols_in(&self.scopes, |kind| kind == ScopeKind::File);
         let global_symbols = symbols_in(&self.scopes, |kind| kind == ScopeKind::Global);
         let binding = Binding {
@@ -265,12 +274,14 @@ impl<'a> Binder<'a> {
             types: std::mem::take(&mut self.types),
             type_links: sites.iter().map(|site| site.ty).collect(),
             classes,
+            interfaces: std::mem::take(&mut self.interfaces),
             objects: std::mem::take(&mut self.objects),
             file_symbols,
             global_symbols,
             namespace_chains: self.namespace_chains.take(),
             narrowing,
             writes,
+            assignments,
         };
         (binding, sites)
     }

@@ -9,7 +9,7 @@ import type { ProjectId } from "../../ipc/generated";
 import { hideBoard, showBoard } from "../shownBoard";
 import { call } from "./engine";
 import { boardKey } from "./keys";
-import { adoptBoardState, adoptOutsideChange, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, openBoards, setActivePage } from "./store";
+import { adoptBoardState, adoptOutsideChange, flushAllBoards, flushBoard, forgetBoard, getOpenBoard, isDirty, openBoards, setActivePage } from "./store";
 import type { BoardRef, PageId } from "./types";
 
 const opening = new Map<string, Promise<BoardRef>>();
@@ -95,7 +95,8 @@ export async function reopenBoards(): Promise<void> {
     const { ref } = board;
     try {
       const state = await call("open_board", { project: ref.project, id: ref.id });
-      if (state.revision !== board.revision) {
+      // Edits made while the engine was gone couldn't be saved: they're kept, as while a save fails.
+      if (state.revision !== board.revision && !isDirty(board)) {
         adoptOutsideChange(state);
       }
     } catch (cause) {

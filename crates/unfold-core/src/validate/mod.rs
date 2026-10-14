@@ -121,19 +121,10 @@ pub trait Census: Sync {
     /// The language this census covers.
     fn language(&self) -> Language;
 
-    /// Whether `range` in `path` starts at the first byte of a token and ends immediately after
-    /// the last byte of a token.
-    fn is_token_range(&self, path: &RepoPath, range: ByteRange) -> bool;
-
     /// Every call in `path`'s parse tree (calls, constructions, decorators, and tagged
     /// templates), or `None` if the census doesn't cover `path`. Each must be exactly one call
     /// node, and each call node exactly one of them.
     fn call_sites(&self, path: &RepoPath) -> Option<&[CallSite]>;
-
-    /// The range of every runtime module dependency in `path` (each import's specifier,
-    /// dynamic imports included), or `None` if the census doesn't cover `path`. Each must be
-    /// exactly one `imports` link's range, and each `imports` link's range exactly one of them.
-    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]>;
 }
 
 /// One call found by a [`Census`].

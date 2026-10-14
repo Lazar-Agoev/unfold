@@ -1,6 +1,5 @@
-//! The independent census validation compares Python files with: token boundaries and call
-//! sites from a fresh run of the lexer (never the syntax tree or lowering), plus the file's
-//! runtime module dependencies.
+//! The independent census validation compares Python files with: call sites from a fresh run of
+//! the lexer (never the syntax tree or lowering).
 //!
 //! The call scanner is the proof of concept's primary-chain scanner (`token-census.ts`) over
 //! Ruff's tokens. It tracks, for every token that can end a primary expression, where that
@@ -17,17 +16,6 @@ use ruff_python_parser::{Mode, lexer};
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 use unfold_core::text::ByteRange;
-
-/// What the lexer pass found in one file.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Scan {
-    /// Sorted, distinct token starts (plus 0 and the text's length).
-    pub(crate) starts: Vec<u32>,
-    /// Sorted, distinct token ends (plus 0 and the text's length).
-    pub(crate) ends: Vec<u32>,
-    /// Call sites, sorted.
-    pub(crate) calls: Vec<ByteRange>,
-}
 
 /// Tokens that carry no syntax for the scanner. Logical newlines stay: they end statements.
 fn ignored(kind: TokenKind) -> bool {
@@ -94,30 +82,13 @@ pub(crate) fn lex(text: &str) -> Vec<(TokenKind, TextRange)> {
     tokens
 }
 
-/// Lexes `text` once and scans it.
-pub(crate) fn scan(text: &str) -> Scan {
+/// Lexes `text` once and finds its call sites, sorted.
+pub(crate) fn calls(text: &str) -> Vec<ByteRange> {
     let tokens: Vec<(TokenKind, TextRange)> = lex(text)
         .into_iter()
         .filter(|(kind, _)| !ignored(*kind))
         .collect();
-    let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
-    let mut starts = vec![0, len];
-    let mut ends = vec![0, len];
-    for &(kind, range) in &tokens {
-        if kind != TokenKind::Newline && kind != TokenKind::Unknown && !range.is_empty() {
-            starts.push(range.start().to_u32());
-            ends.push(range.end().to_u32());
-        }
-    }
-    starts.sort_unstable();
-    starts.dedup();
-    ends.sort_unstable();
-    ends.dedup();
-    Scan {
-        starts,
-        ends,
-        calls: calls(&tokens),
-    }
+    call_sites(&tokens)
 }
 
 /// The `(` tokens that are not calls: `def`/`class` headers and parenthesized `match`
@@ -190,7 +161,7 @@ struct Open {
     invocation: bool,
 }
 
-fn calls(tokens: &[(TokenKind, TextRange)]) -> Vec<ByteRange> {
+fn call_sites(tokens: &[(TokenKind, TextRange)]) -> Vec<ByteRange> {
     let (headers, patterns) = exclusions(tokens);
     let mut starts: Vec<Option<u32>> = vec![None; tokens.len()];
     let mut stack: Vec<Open> = Vec::new();
@@ -294,37 +265,12 @@ fn encloses(tokens: &[(TokenKind, TextRange)]) -> bool {
     false
 }
 
-/// Encodes sorted offsets as gaps, which postcard stores in a byte or two each.
-pub(crate) fn delta_encode(sorted: &[u32]) -> Vec<u32> {
-    let mut previous = 0;
-    sorted
-        .iter()
-        .map(|&offset| {
-            let gap = offset.wrapping_sub(previous);
-            previous = offset;
-            gap
-        })
-        .collect()
-}
-
-/// Decodes [`delta_encode`]'s output.
-pub(crate) fn delta_decode(gaps: &[u32]) -> Vec<u32> {
-    let mut offset = 0u32;
-    gaps.iter()
-        .map(|&gap| {
-            offset = offset.wrapping_add(gap);
-            offset
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn texts(text: &str) -> Vec<&str> {
-        scan(text)
-            .calls
+        calls(text)
             .into_iter()
             .map(|range| &text[range.as_usize()])
             .collect()
@@ -359,13 +305,5 @@ mod tests {
             texts(text),
             ["property", "app.task(queue=\"q\")", "handlers[0]", "((f))(1)"]
         );
-    }
-
-    #[test]
-    fn boundaries_skip_layout_and_comments() {
-        let scanned = scan("x = 1  # note\n");
-        assert_eq!(scanned.starts, [0, 2, 4, 14]);
-        assert_eq!(scanned.ends, [0, 1, 3, 5, 14]);
-        assert_eq!(delta_decode(&delta_encode(&scanned.ends)), scanned.ends);
     }
 }

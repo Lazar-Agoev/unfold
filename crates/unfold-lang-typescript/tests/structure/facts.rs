@@ -242,29 +242,7 @@ fn linking_resolves_imports_calls_and_passed_definitions() {
 }
 
 #[test]
-fn the_census_checks_token_boundaries_from_the_payload() {
-    let source = "const total = sum(a, b); // done\n";
-    let payload = Payload::from_bytes(&facts(source).payload).expect("decodes");
-    let path = RepoPath::new("a.ts").expect("path");
-    let census = TypeScriptCensus::new([(path.clone(), payload.census)]);
-    let range = |start: u32, end: u32| ByteRange { start, end };
-    assert!(census.is_token_range(&path, range(6, 23)), "total = sum(a, b)");
-    assert!(census.is_token_range(&path, range(14, 23)), "sum(a, b)");
-    assert!(
-        !census.is_token_range(&path, range(5, 23)),
-        "starts at whitespace"
-    );
-    assert!(!census.is_token_range(&path, range(14, 21)), "ends at whitespace");
-    assert!(!census.is_token_range(&path, range(25, 32)), "inside a comment");
-    assert!(!census.is_token_range(&RepoPath::new("b.ts").expect("path"), range(6, 23)));
-    let sites = census.call_sites(&path).expect("sites");
-    assert_eq!(sites.len(), 1);
-    assert_eq!(sites[0].range, range(14, 23));
-    assert_eq!(sites[0].form, Some(Form::Call));
-}
-
-#[test]
-fn the_census_lists_every_call_and_dependency() {
+fn the_census_lists_every_call() {
     let source = "import a from './a.js';\n@deco class C { @Field() x = 1; }\nnew C(import('./b.js'), tag`t`);\ntype T = ReturnType<typeof f>;\n";
     let payload = Payload::from_bytes(&facts(source).payload).expect("decodes");
     let path = RepoPath::new("a.ts").expect("path");
@@ -287,13 +265,6 @@ fn the_census_lists_every_call_and_dependency() {
             ("tag`t`", Some(Form::Call)),
         ]
     );
-    let dependencies: Vec<&str> = census
-        .module_dependencies(&path)
-        .expect("dependencies")
-        .iter()
-        .map(|&range| text(range))
-        .collect();
-    assert_eq!(dependencies, ["'./a.js'", "'./b.js'"]);
 }
 
 #[test]

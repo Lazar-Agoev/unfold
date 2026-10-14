@@ -1,12 +1,17 @@
 //! Receiver evidence from what the syntax states (the proof of concept's
 //! `frontend/native/declared-types.ts`, evidence level 4): written annotations of variables,
-//! parameters, properties, and getters; explicit `new`, assertion, and call initializers; `as`
-//! and `<T>` assertions; declared return types of callees, and through `await` the `Promise`
-//! type arguments `async` callees declare; and member chains through class members' declared
-//! types. Library receivers (`string`, arrays, `Map`, `NodeJS.Process`, …) come from the
-//! generated tables, and so does the ECMAScript type whose methods a receiver has: a primitive
-//! or array type, an ECMAScript type written by name, an ECMAScript global (`JSON`, `Object`)
-//! or what `new` of one constructs, and a literal. There is no inference, substitution,
+//! parameters, properties, and getters; explicit `new`, assertion, and call initializers of a
+//! `const` or a variable never assigned again; `as` and `<T>` assertions; declared return types
+//! of callees, and through `await` the `Promise` type arguments `async` callees declare; and
+//! member chains through class members' declared types. Library receivers (`string`, arrays,
+//! `Map`, `NodeJS.Process`, …) come from the generated tables, and so does the ECMAScript type
+//! whose methods a receiver has: a primitive or array type, an ECMAScript class type written by
+//! name, an ECMAScript global (`JSON`, `Object`) or what `new` of one constructs, and a literal.
+//! A written library type is read nominally, so a project class may still be its value
+//! ([`builtins`](super::builtins)); an ECMAScript protocol (`Iterator`, `PromiseLike`,
+//! `ReadonlyArray`), `Object`, `object`, or `Function`, which values of any type implement, gives
+//! no receiver, and neither does a type query of an ECMAScript global (`typeof Array`), whose
+//! static members a project subclass may override. There is no inference, substitution,
 //! contextual typing, or flow narrowing: an unknown constituent, disagreeing declarations, or a
 //! narrowed receiver give no receiver.
 
@@ -16,7 +21,9 @@ use unfold_engine::{DeclRef, FileId};
 
 use super::{Receiver, Target, Walk};
 use crate::link::TypeScriptLinked;
-use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef, VarKind};
+use crate::payload::binding::{
+    BuiltinType, Decl, DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef, VarKind,
+};
 use crate::tables;
 
 /// A member access whose receiver is being evaluated.
@@ -32,12 +39,7 @@ struct Access<'e> {
 }
 
 /// The library types whose values are arrays.
-const ARRAYS: [&str; 4] = [
-    "Array",
-    "ReadonlyArray",
-    "globalThis.Array",
-    "globalThis.ReadonlyArray",
-];
+const ARRAYS: [&str; 2] = ["Array", "globalThis.Array"];
 
 /// Where a library type is declared: Node's own namespace comes from `@types/node` (so a
 /// receiver of that type is labeled `node`, never `global`: C-6); everything else is the
@@ -297,7 +299,9 @@ impl TypeScriptLinked<'_> {
     }
 
     /// A declaration's declared receiver: its written type, or an explicit `new`, assertion,
-    /// call, or `await` initializer.
+    /// call, or `await` initializer of a variable that is a `const` or is never assigned again,
+    /// or of a property never written after its declaration (a parameter's default is not what
+    /// an argument passes).
     pub(crate) fn declaration_type(&self, walk: &mut Walk, declaration: DeclRef) -> Receiver {
         let Some(decl) = self.decl(declaration) else {
             return Receiver::default();
@@ -311,7 +315,16 @@ impl TypeScriptLinked<'_> {
         if let Some(ty) = decl.ty {
             return self.type_at(walk, declaration.file, ty);
         }
-        let Some(mut init) = decl.initializer else {
+        let held = match decl.kind {
+            DeclKind::Variable => {
+                matches!(decl.var_kind, Some(VarKind::Const | VarKind::Using))
+                    || !self.tables.reassigned.contains(&declaration)
+            }
+            DeclKind::Parameter => false,
+            DeclKind::Property => !self.tables.written_fields.contains(&declaration),
+            _ => true,
+        };
+        let Some(mut init) = decl.initializer.filter(|_| held) else {
             return Receiver::default();
         };
         while let Some(Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner)) =
@@ -339,8 +352,10 @@ impl TypeScriptLinked<'_> {
             Some(TypeRef::Array) => Receiver {
                 array: true,
                 builtin: tables::ecmascript_type("Array"),
+                nominal: true,
                 ..Receiver::external([ExternalLocation::Library], false)
             },
+            Some(TypeRef::Primitive(BuiltinType::Object)) => Receiver::default(),
             Some(TypeRef::Primitive(builtin)) => Receiver {
                 builtin: tables::ecmascript_type(builtin.interface()),
                 ..Receiver::external([ExternalLocation::Library], false)
@@ -383,15 +398,30 @@ impl TypeScriptLinked<'_> {
             if shadow || !tables::is_library_type(&qualified) {
                 return Receiver::default();
             }
-            let builtin = if value {
-                tables::ecmascript_value_type(qualified.strip_prefix("globalThis.").unwrap_or(&qualified))
-            } else {
-                tables::ecmascript_type(&qualified)
+            if value {
+                // A project class that extends an ECMAScript global may override its static
+                // members, and other objects may match its type.
+                if tables::is_ecmascript_global(qualified.strip_prefix("globalThis.").unwrap_or(&qualified)) {
+                    return Receiver::default();
+                }
+                return Receiver::external([library_location(&qualified)], true);
+            }
+            // An ECMAScript type is a receiver only as a class type: values of any type implement
+            // a protocol, every value is an `Object`, and every function and class a `Function`.
+            let builtin = match tables::ecmascript_type_name(&qualified) {
+                Some(_) => match tables::ecmascript_class(&qualified)
+                    .filter(|class| !matches!(*class, "Object" | "Function"))
+                {
+                    Some(class) => Some(class),
+                    None => return Receiver::default(),
+                },
+                None => None,
             };
             return Receiver {
                 array: ARRAYS.contains(&qualified.as_str()),
                 builtin,
-                ..Receiver::external([library_location(&qualified)], value)
+                nominal: true,
+                ..Receiver::external([library_location(&qualified)], false)
             };
         };
         for name in rest {
@@ -563,6 +593,7 @@ fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
             && item.excluded == first.excluded
             && item.array == first.array
             && item.builtin == first.builtin
+            && item.nominal == first.nominal
             && item.is_static == first.is_static
             && !item.unbound_this
     });

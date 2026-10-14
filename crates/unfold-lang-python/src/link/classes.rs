@@ -2,7 +2,7 @@
 //! headers, concrete bases), member lookup through linearizations and instance fields, `super()`
 //! agreement across every linearization that can reach it, and virtual dispatch.
 //!
-//! A base may also be a builtin exception class ([`crate::stdlib::BUILTIN_EXCEPTIONS`]): it
+//! A base may also be a builtin exception class ([`library::builtin_exception`]): it
 //! stands in the linearization as a node of no file ([`NodeRef::builtin_exception`]), with its
 //! own chain up to `BaseException`, and is concrete. A linearization is kept only when every
 //! builtin class follows every user class, so a member the user's classes define is found before
@@ -13,12 +13,13 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::binder::{Binder, ClassTables, Ctx, Guard};
+use super::binder::{Binder, ClassTables, Ctx, Guard, Seen};
+use super::library::{self, Stub};
 use super::memo::Mro;
 use super::program::{ExprRef, NodeRef, Sym};
 use super::value::Value;
-use crate::bind::ir::{ClassFact, ExprKind, NodeKind};
-use crate::stdlib::{BUILTIN_EXCEPTIONS, builtin_exception};
+use crate::bind::ir::{ClassFact, NodeKind};
+use crate::stubs::StubClass;
 
 impl Binder<'_> {
     pub(crate) fn class_fact(&self, class: NodeRef) -> Option<&ClassFact> {
@@ -68,11 +69,7 @@ impl Binder<'_> {
             {
                 continue;
             }
-            let written = ExprRef {
-                file: class.file,
-                expr: argument.value,
-            };
-            if let Some(builtin) = self.builtin_exception_base(written, &value) {
+            if let Some(builtin) = builtin_exception_base(&value) {
                 bases.push(builtin);
                 continue;
             }
@@ -91,52 +88,11 @@ impl Binder<'_> {
         Some(bases)
     }
 
-    /// The builtin exception class a base expression names: its proven external identity
-    /// `builtins.<name>`, or a plain name that nothing binds where it is written (no binding,
-    /// no unknown star import), as the builtins table names it.
-    fn builtin_exception_base(&self, base: ExprRef, value: &Value) -> Option<NodeRef> {
-        let name = match &value.external {
-            Some(external) if &*external.module == "builtins" => {
-                if value.ambiguous || value.refusal.is_some() || value.instance {
-                    return None;
-                }
-                &*external.member
-            }
-            Some(_) => return None,
-            None => {
-                let fact = self.program.expr(base)?;
-                let &ExprKind::Name(name) = &fact.kind else {
-                    return None;
-                };
-                let sym = self.program.sym(base.file, name);
-                if self.program.lookup(base.file, fact.scope, sym).is_some()
-                    || self.program.unknown_star(base.file, fact.scope)
-                {
-                    return None;
-                }
-                self.program.text(sym)
-            }
-        };
-        builtin_exception(name).map(|index| NodeRef::builtin_exception(index as u32))
-    }
-
     /// The linearization of a builtin exception class's stand-in: its chain of bases up to
     /// `BaseException` (`object` is skipped, as for user classes).
     fn builtin_mro(builtin: NodeRef) -> Option<Arc<[NodeRef]>> {
-        let mut chain = Vec::new();
-        let mut current = Some(builtin.node as usize);
-        while let Some(index) = current {
-            let &(_, base) = BUILTIN_EXCEPTIONS.get(index)?;
-            chain.push(NodeRef::builtin_exception(index as u32));
-            if chain.len() > BUILTIN_EXCEPTIONS.len() {
-                return None;
-            }
-            current = match base {
-                "" => None,
-                base => Some(builtin_exception(base)?),
-            };
-        }
-        Some(Arc::from(chain))
+        let chain = library::exception_chain(builtin.node)?;
+        Some(chain.into_iter().map(NodeRef::builtin_exception).collect())
     }
 
     /// Whether constructing `class` without a direct constructor is proven to take no
@@ -222,7 +178,84 @@ impl Binder<'_> {
                 pending.extend(bases[class as usize].iter().copied());
             }
         }
-        ClassTables { index, descendants }
+        let library_overrides = self.library_overrides(&descendants);
+        ClassTables {
+            index,
+            descendants,
+            library_overrides,
+        }
+    }
+
+    /// The members project classes define, by each standard-library class they derive from: a
+    /// class derives from the stub classes its bases name, everything along their
+    /// linearizations, and whatever its project bases derive from.
+    fn library_overrides(&self, descendants: &[Vec<u32>]) -> FxHashMap<&'static str, FxHashSet<Sym>> {
+        let classes = &self.program.classes;
+        let mut overrides: FxHashMap<&'static str, FxHashSet<Sym>> = FxHashMap::default();
+        for (&class, descendants) in classes.iter().zip(descendants) {
+            let ancestors: FxHashSet<&'static str> = self
+                .library_bases(class)
+                .into_iter()
+                .flat_map(library::linearization)
+                .copied()
+                .collect();
+            if ancestors.is_empty() {
+                continue;
+            }
+            for &descendant in descendants {
+                let Some(&descendant) = classes.get(descendant as usize) else {
+                    continue;
+                };
+                let members = self.defined_members(descendant);
+                for &ancestor in &ancestors {
+                    overrides
+                        .entry(ancestor)
+                        .or_default()
+                        .extend(members.iter().copied());
+                }
+            }
+        }
+        overrides
+    }
+
+    /// The standard-library classes a class's positional, unexpanded bases name, their type
+    /// arguments left out.
+    fn library_bases(&self, class: NodeRef) -> Vec<&'static StubClass> {
+        let Some(fact) = self.class_fact(class) else {
+            return Vec::new();
+        };
+        let mut ctx = Ctx::new();
+        fact.arguments
+            .iter()
+            .filter(|argument| argument.keyword.is_none() && !argument.expansion)
+            .filter_map(|argument| {
+                let written = ExprRef {
+                    file: class.file,
+                    expr: argument.value,
+                };
+                self.annotated_library(written, &Seen::default(), &mut ctx)
+            })
+            .collect()
+    }
+
+    /// The members a class defines for its instances: the names its body binds, its instance
+    /// fields, and the members written on it from outside.
+    fn defined_members(&self, class: NodeRef) -> Vec<Sym> {
+        let mut members: Vec<Sym> = self.class_fact(class).map_or_else(Vec::new, |fact| {
+            self.program
+                .bindings_in(class.file, fact.body)
+                .iter()
+                .map(|&binding| self.program.binding(binding).name)
+                .collect()
+        });
+        members.extend(
+            self.fields
+                .get(&class)
+                .into_iter()
+                .flat_map(|fields| fields.keys().copied()),
+        );
+        members.extend(self.invalid_members.get(&class).into_iter().flatten().copied());
+        members
     }
 
     /// The classes that descend from `owner` (itself included), in program order.
@@ -455,6 +488,19 @@ impl Binder<'_> {
         })
         .0
     }
+}
+
+/// The builtin exception class a base is: its proven external identity in `builtins`
+/// ([`library::builtin_exception`]).
+fn builtin_exception_base(value: &Value) -> Option<NodeRef> {
+    let external = value.external.as_ref()?;
+    if &*external.module != "builtins" || value.ambiguous || value.refusal.is_some() || value.instance {
+        return None;
+    }
+    let Some(Stub::Class(class)) = library::external(external) else {
+        return None;
+    };
+    library::builtin_exception(class).map(NodeRef::builtin_exception)
 }
 
 /// Whether every builtin exception stand-in of a linearization follows every user class, so a

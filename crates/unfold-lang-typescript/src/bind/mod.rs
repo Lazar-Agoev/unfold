@@ -34,8 +34,8 @@ use unfold_engine::facts::TypeUse;
 
 use crate::config::BindingContext;
 use crate::payload::binding::{
-    AliasRef, Binding, Context, Decl, DeclFlags, DeclKind, Expr, Lookup, Meanings, MemberWrite, ObjectFacts,
-    TypeRef,
+    AliasRef, Binding, Context, Decl, DeclFlags, DeclKind, Expr, InterfaceFacts, Lookup, Meanings,
+    MemberWrite, ObjectFacts, TypeRef,
 };
 use crate::payload::{DeclarationKind, ModuleFacts};
 use crate::values::Values;
@@ -85,6 +85,7 @@ pub(crate) struct TypeSite {
 struct ClassDraft<'a> {
     decl: u32,
     heritage: Option<u32>,
+    implements: Vec<u32>,
     members: Vec<u32>,
     /// Private names → the members declaring them.
     private: FxHashMap<&'a str, SmallVec<[u32; 1]>>,
@@ -220,6 +221,9 @@ pub(crate) struct Binder<'a> {
     instanceof: Vec<KeyDraft<'a>>,
     calls: Vec<(Option<PathDraft<'a>>, bool, Vec<KeyDraft<'a>>)>,
     writes: Vec<MemberWrite>,
+    /// Names assigned to, and where.
+    assigned: Vec<(&'a str, Place)>,
+    interfaces: Vec<InterfaceFacts>,
 }
 
 impl<'a> Binder<'a> {
@@ -293,6 +297,8 @@ impl<'a> Binder<'a> {
             instanceof: Vec::new(),
             calls: Vec::new(),
             writes: Vec::new(),
+            assigned: Vec::new(),
+            interfaces: Vec::new(),
         }
     }
 

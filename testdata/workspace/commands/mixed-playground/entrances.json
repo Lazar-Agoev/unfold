@@ -1,0 +1,786 @@
+{
+  "resolved": true,
+  "apps": [
+    {
+      "key": "entrance:typescript-server",
+      "name": "TypeScript server",
+      "run": "cd ts-orders && npm run start",
+      "code": {
+        "key": "ts-orders/src/server.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:typescript-server/health-check",
+          "name": "Health check",
+          "on": "GET /health",
+          "code": [
+            {
+              "key": "ts-orders/src/server.ts#healthCheck",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            19,
+            19
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/status",
+          "name": "Status",
+          "on": "GET /v1/status",
+          "code": [
+            {
+              "key": "ts-orders/src/server.ts#status",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            20,
+            20
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/list-orders",
+          "name": "List orders",
+          "on": "GET /orders",
+          "code": [
+            {
+              "key": "ts-orders/src/routes/orders.ts#listOrders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            21,
+            21
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/get-an-order",
+          "name": "Get an order",
+          "on": "GET /orders/:id",
+          "code": [
+            {
+              "key": "ts-orders/src/routes/orders.ts#getOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            22,
+            22
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/place-an-order",
+          "name": "Place an order",
+          "on": "POST /orders",
+          "code": [
+            {
+              "key": "ts-orders/src/routes/middleware.ts#requireUser",
+              "state": "found"
+            },
+            {
+              "key": "ts-orders/src/routes/middleware.ts#validateBody",
+              "state": "found"
+            },
+            {
+              "key": "ts-orders/src/routes/orders.ts#createOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            23,
+            23
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/cancel-an-order",
+          "name": "Cancel an order",
+          "on": "DELETE /orders/:id",
+          "code": [
+            {
+              "key": "ts-orders/src/routes/middleware.ts#requireUser",
+              "state": "found"
+            },
+            {
+              "key": "ts-orders/src/routes/orders.ts#cancelOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            24,
+            24
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/liveness",
+          "name": "Liveness",
+          "on": "GET /health/live",
+          "code": [
+            {
+              "key": "ts-orders/src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            25,
+            25
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/admin-stats",
+          "name": "Admin stats",
+          "on": "GET /admin/stats",
+          "code": [
+            {
+              "key": "ts-orders/src/server.ts#adminStats",
+              "state": "missing",
+              "fix": {
+                "kind": "moved_definition",
+                "code": "ts-orders/src/routes/admin.ts#adminStats",
+                "path": "ts-orders/src/routes/admin.ts"
+              }
+            }
+          ],
+          "lines": [
+            28,
+            28
+          ]
+        },
+        {
+          "key": "entrance:typescript-server/shut-down",
+          "name": "Shut down",
+          "on": "SIGTERM",
+          "code": [
+            {
+              "key": "ts-orders/src/server.ts#shutdown",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            29,
+            29
+          ]
+        }
+      ],
+      "lines": [
+        14,
+        30
+      ]
+    },
+    {
+      "key": "entrance:typescript-dev-server",
+      "name": "TypeScript dev server",
+      "run": "cd ts-orders && npm run dev",
+      "code": {
+        "key": "ts-orders/src/server.ts#",
+        "state": "found"
+      },
+      "about": "The server run from source, restarted on every change.",
+      "entrances": [],
+      "lines": [
+        32,
+        36
+      ]
+    },
+    {
+      "key": "entrance:typescript-worker",
+      "name": "TypeScript worker",
+      "run": "cd ts-orders && npm run worker",
+      "code": {
+        "key": "ts-orders/src/worker.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:typescript-worker/send-an-email",
+          "name": "Send an email",
+          "on": "queue emails",
+          "code": [
+            {
+              "key": "ts-orders/src/queues/email-worker.ts#/call:Worker(\"emails\")/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            43,
+            43
+          ]
+        },
+        {
+          "key": "entrance:typescript-worker/process-an-order",
+          "name": "Process an order",
+          "on": "queue orders",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/process-order.ts#processOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            44,
+            44
+          ]
+        },
+        {
+          "key": "entrance:typescript-worker/build-a-report",
+          "name": "Build a report",
+          "on": "queue reports",
+          "code": [
+            {
+              "key": "ts-orders/report-processor.js#",
+              "state": "not_analyzed"
+            }
+          ],
+          "lines": [
+            45,
+            45
+          ]
+        }
+      ],
+      "lines": [
+        38,
+        46
+      ]
+    },
+    {
+      "key": "entrance:typescript-scheduler",
+      "name": "TypeScript scheduler",
+      "run": "cd ts-orders && npm run scheduler",
+      "code": {
+        "key": "ts-orders/src/scheduler.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:typescript-scheduler/clean-up-expired-orders",
+          "name": "Clean up expired orders",
+          "on": "0 2 * * *",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/cleanup.ts#cleanupExpiredOrders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            53,
+            53
+          ]
+        },
+        {
+          "key": "entrance:typescript-scheduler/report-metrics",
+          "name": "Report metrics",
+          "on": "*/15 * * * *",
+          "code": [
+            {
+              "key": "ts-orders/src/scheduler.ts#/call:schedule(\"*/15 * * * *\")/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            54,
+            54
+          ]
+        }
+      ],
+      "lines": [
+        48,
+        55
+      ]
+    },
+    {
+      "key": "entrance:typescript-orders-cli",
+      "name": "TypeScript orders CLI",
+      "run": "orders <command>",
+      "code": {
+        "key": "ts-orders/src/cli.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:typescript-orders-cli/import-orders",
+          "name": "Import orders",
+          "on": "orders import",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/import-orders.ts#importOrders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            62,
+            62
+          ]
+        },
+        {
+          "key": "entrance:typescript-orders-cli/print-a-report",
+          "name": "Print a report",
+          "on": "orders report",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/report.ts#printReport",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            63,
+            63
+          ]
+        },
+        {
+          "key": "entrance:typescript-orders-cli/replay-failed-orders",
+          "name": "Replay failed orders",
+          "on": "orders replay",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/retry-failed.ts#retryFailed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            64,
+            64
+          ]
+        },
+        {
+          "key": "entrance:typescript-orders-cli/retry-failed-orders",
+          "name": "Retry failed orders",
+          "on": "orders retry",
+          "code": [
+            {
+              "key": "ts-orders/src/jobs/retry-failed.ts#retryFailed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            65,
+            65
+          ]
+        }
+      ],
+      "lines": [
+        57,
+        66
+      ]
+    },
+    {
+      "key": "entrance:typescript-dev-cli",
+      "name": "TypeScript dev CLI",
+      "run": "cd ts-orders && npm run cli -- <command>",
+      "code": {
+        "key": "ts-orders/src/cli.ts#",
+        "state": "found"
+      },
+      "about": "The orders command run from source.",
+      "entrances": [],
+      "lines": [
+        68,
+        72
+      ]
+    },
+    {
+      "key": "entrance:typescript-legacy-export",
+      "name": "TypeScript legacy export",
+      "run": "cd ts-orders && npm run legacy:export",
+      "code": {
+        "key": "ts-orders/scripts/export.js#",
+        "state": "not_analyzed"
+      },
+      "entrances": [],
+      "lines": [
+        74,
+        77
+      ]
+    },
+    {
+      "key": "entrance:python-server",
+      "name": "Python server",
+      "run": "orders-api",
+      "code": {
+        "key": "py-orders/src/orders_playground/server.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:python-server/health-check",
+          "name": "Health check",
+          "on": "GET /health",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/server.py#health_check",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            84,
+            84
+          ]
+        },
+        {
+          "key": "entrance:python-server/status",
+          "name": "Status",
+          "on": "GET /v1/status",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/server.py#status",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            85,
+            85
+          ]
+        },
+        {
+          "key": "entrance:python-server/list-orders",
+          "name": "List orders",
+          "on": "GET /orders",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/routes/orders.py#list_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            86,
+            86
+          ]
+        },
+        {
+          "key": "entrance:python-server/get-an-order",
+          "name": "Get an order",
+          "on": "GET /orders/{order_id}",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/routes/orders.py#get_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            87,
+            87
+          ]
+        },
+        {
+          "key": "entrance:python-server/place-an-order",
+          "name": "Place an order",
+          "on": "POST /orders",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/routes/middleware.py#require_user",
+              "state": "found"
+            },
+            {
+              "key": "py-orders/src/orders_playground/routes/middleware.py#validate_body",
+              "state": "found"
+            },
+            {
+              "key": "py-orders/src/orders_playground/routes/orders.py#create_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            88,
+            88
+          ]
+        },
+        {
+          "key": "entrance:python-server/cancel-an-order",
+          "name": "Cancel an order",
+          "on": "DELETE /orders/{order_id}",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/routes/middleware.py#require_user",
+              "state": "found"
+            },
+            {
+              "key": "py-orders/src/orders_playground/routes/orders.py#cancel_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            89,
+            89
+          ]
+        },
+        {
+          "key": "entrance:python-server/liveness",
+          "name": "Liveness",
+          "on": "GET /health/live",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            90,
+            90
+          ]
+        },
+        {
+          "key": "entrance:python-server/admin-stats",
+          "name": "Admin stats",
+          "on": "GET /admin/stats",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/server.py#admin_stats",
+              "state": "missing",
+              "fix": {
+                "kind": "moved_definition",
+                "code": "py-orders/src/orders_playground/routes/admin.py#admin_stats",
+                "path": "py-orders/src/orders_playground/routes/admin.py"
+              }
+            }
+          ],
+          "lines": [
+            93,
+            93
+          ]
+        },
+        {
+          "key": "entrance:python-server/shut-down",
+          "name": "Shut down",
+          "on": "SIGTERM",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/server.py#shutdown",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            94,
+            94
+          ]
+        }
+      ],
+      "lines": [
+        79,
+        95
+      ]
+    },
+    {
+      "key": "entrance:python-dev-server",
+      "name": "Python dev server",
+      "run": "orders-api-dev",
+      "code": {
+        "key": "py-orders/src/orders_playground/server.py#main",
+        "state": "found"
+      },
+      "entrances": [],
+      "lines": [
+        97,
+        100
+      ]
+    },
+    {
+      "key": "entrance:python-worker",
+      "name": "Python worker",
+      "run": "orders-worker",
+      "code": {
+        "key": "py-orders/src/orders_playground/worker.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:python-worker/send-an-email",
+          "name": "Send an email",
+          "on": "queue emails",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/queues/email_worker.py#email_task",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            107,
+            107
+          ]
+        },
+        {
+          "key": "entrance:python-worker/process-an-order",
+          "name": "Process an order",
+          "on": "queue orders",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/process_order.py#process_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            108,
+            108
+          ]
+        },
+        {
+          "key": "entrance:python-worker/build-a-report",
+          "name": "Build a report",
+          "on": "queue reports",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/report.py#print_report",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            109,
+            109
+          ]
+        }
+      ],
+      "lines": [
+        102,
+        110
+      ]
+    },
+    {
+      "key": "entrance:python-scheduler",
+      "name": "Python scheduler",
+      "run": "orders-scheduler",
+      "code": {
+        "key": "py-orders/src/orders_playground/scheduler.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:python-scheduler/clean-up-expired-orders",
+          "name": "Clean up expired orders",
+          "on": "0 2 * * *",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/cleanup.py#cleanup_expired_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            117,
+            117
+          ]
+        },
+        {
+          "key": "entrance:python-scheduler/report-metrics",
+          "name": "Report metrics",
+          "on": "*/15 * * * *",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            118,
+            118
+          ]
+        }
+      ],
+      "lines": [
+        112,
+        119
+      ]
+    },
+    {
+      "key": "entrance:python-orders-cli",
+      "name": "Python orders CLI",
+      "run": "orders <command>",
+      "code": {
+        "key": "py-orders/src/orders_playground/cli.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:python-orders-cli/import-orders",
+          "name": "Import orders",
+          "on": "orders import",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/import_orders.py#import_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            126,
+            126
+          ]
+        },
+        {
+          "key": "entrance:python-orders-cli/print-a-report",
+          "name": "Print a report",
+          "on": "orders report",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/cli.py#report_command",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            127,
+            127
+          ]
+        },
+        {
+          "key": "entrance:python-orders-cli/replay-failed-orders",
+          "name": "Replay failed orders",
+          "on": "orders replay",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            128,
+            128
+          ]
+        },
+        {
+          "key": "entrance:python-orders-cli/retry-failed-orders",
+          "name": "Retry failed orders",
+          "on": "orders retry",
+          "code": [
+            {
+              "key": "py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            129,
+            129
+          ]
+        }
+      ],
+      "lines": [
+        121,
+        130
+      ]
+    },
+    {
+      "key": "entrance:python-cli-alias",
+      "name": "Python CLI alias",
+      "run": "orders-cli <command>",
+      "code": {
+        "key": "py-orders/src/orders_playground/cli.py#main",
+        "state": "found"
+      },
+      "about": "The orders command under its longer name.",
+      "entrances": [],
+      "lines": [
+        132,
+        136
+      ]
+    },
+    {
+      "key": "entrance:python-legacy-export",
+      "name": "Python legacy export",
+      "run": "orders-legacy-export",
+      "code": {
+        "key": "py-orders/legacy/orders_legacy/export.py#main",
+        "state": "not_analyzed"
+      },
+      "entrances": [],
+      "lines": [
+        138,
+        141
+      ]
+    }
+  ]
+}

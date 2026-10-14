@@ -7,10 +7,11 @@
 //! links label `global`, are a separate table generated from the library files alone
 //! (`cargo xtask gen-lib-tables <lib-dir> --aliases`; the version is in [`aliases`]).
 //!
-//! The ECMAScript tables come from the `lib.es*.d.ts` files alone: the language's own globals
-//! (`JSON`, `Math`, `Promise`; not the DOM's or Node's `console`), the type of each, and the
-//! methods of its built-in types (`Array`, `String`, `ObjectConstructor`), so a built-in method
-//! can be named on a literal or a written type.
+//! The ECMAScript tables come from the standard editions' `lib.es*.d.ts` files alone (not the
+//! `lib.esnext.*` proposals): the language's own globals (`JSON`, `Math`, `Promise`; not the
+//! DOM's or Node's `console`), the type of each, its class types (`Array`, `Map`, `Error`) and
+//! what each of its types extends, and the methods of its built-in types (`Array`, `String`,
+//! `ObjectConstructor`), so a built-in method can be named on a literal or a written type.
 //!
 //! Each table is a sorted static array searched by bisection.
 
@@ -52,7 +53,42 @@ pub fn is_builtin_module(specifier: &str) -> bool {
 /// `parseInt`, `globalThis`, `undefined`), declared by the `lib.es*.d.ts` files: not a DOM or Node
 /// global such as `console`, `fetch`, or `setTimeout`.
 pub fn is_ecmascript_global(name: &str) -> bool {
-    generated::ECMASCRIPT_GLOBALS.binary_search(&name).is_ok()
+    ecmascript_global(name).is_some()
+}
+
+/// ECMAScript's own global value `name`, as the table spells it.
+pub fn ecmascript_global(name: &str) -> Option<&'static str> {
+    let table = generated::ECMASCRIPT_GLOBALS;
+    table.get(table.binary_search(&name).ok()?).copied()
+}
+
+/// The ECMAScript class or interface `name` (or `name` prefixed with `globalThis.`), as the
+/// table spells it (`Iterable`, `Map`, `Intl.Collator`).
+pub fn ecmascript_type_name(name: &str) -> Option<&'static str> {
+    let name = name.strip_prefix("globalThis.").unwrap_or(name);
+    let table = generated::ECMASCRIPT_TYPES;
+    table.get(table.binary_search(&name).ok()?).copied()
+}
+
+/// The ECMAScript class type `name` (or `name` prefixed with `globalThis.`), as the table spells
+/// it: the type a global constructor constructs (`Array`, `Map`, `Error`, `Intl.Collator`), not a
+/// protocol only values of other types implement (`Iterator`, `PromiseLike`, `ReadonlyArray`).
+pub fn ecmascript_class(name: &str) -> Option<&'static str> {
+    let name = name.strip_prefix("globalThis.").unwrap_or(name);
+    let table = generated::ECMASCRIPT_CLASSES;
+    table.get(table.binary_search(&name).ok()?).copied()
+}
+
+/// Every ECMAScript interface the ECMAScript type `name` extends, directly or not
+/// (`AggregateError` → `Error`).
+pub fn ecmascript_supertypes(name: &str) -> &'static [&'static str] {
+    let name = name.strip_prefix("globalThis.").unwrap_or(name);
+    let table = generated::ECMASCRIPT_SUPERTYPES;
+    table
+        .binary_search_by(|(key, _)| (*key).cmp(name))
+        .ok()
+        .and_then(|index| table.get(index))
+        .map_or(&[], |(_, supertypes)| supertypes)
 }
 
 /// The type whose methods an ECMAScript global value has: the type its declaration writes
@@ -103,9 +139,16 @@ mod tests {
             generated::LIBRARY_TYPES,
             generated::BUILTIN_MODULES,
             generated::ECMASCRIPT_GLOBALS,
+            generated::ECMASCRIPT_CLASSES,
+            generated::ECMASCRIPT_TYPES,
             aliases::TYPE_ALIASES,
         ] {
             assert!(table.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+        let supertypes = generated::ECMASCRIPT_SUPERTYPES;
+        assert!(supertypes.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        for (_, names) in supertypes {
+            assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
         }
         let types = generated::ECMASCRIPT_VALUE_TYPES;
         assert!(types.windows(2).all(|pair| pair[0].0 < pair[1].0));
@@ -149,9 +192,57 @@ mod tests {
             "Buffer",
             "document",
             "window",
+            "Temporal",
+            "DisposableStack",
         ] {
             assert!(!is_ecmascript_global(name), "{name}");
         }
+        assert_eq!(ecmascript_global("JSON"), Some("JSON"));
+        for name in [
+            "Array",
+            "Map",
+            "Promise",
+            "Error",
+            "AggregateError",
+            "String",
+            "globalThis.Set",
+        ] {
+            assert!(ecmascript_class(name).is_some(), "{name}");
+        }
+        for name in [
+            "Iterator",
+            "IteratorObject",
+            "PromiseLike",
+            "ArrayLike",
+            "ReadonlyArray",
+            "Iterable",
+            "Disposable",
+            "JSON",
+            "Math",
+        ] {
+            assert!(ecmascript_class(name).is_none(), "{name}");
+        }
+        for name in [
+            "Iterable",
+            "PromiseLike",
+            "Map",
+            "Intl.Collator",
+            "globalThis.Iterator",
+        ] {
+            assert!(ecmascript_type_name(name).is_some(), "{name}");
+        }
+        for name in [
+            "HTMLElement",
+            "NodeJS.Process",
+            "Temporal.Instant",
+            "Disposable",
+            "Partial",
+        ] {
+            assert!(ecmascript_type_name(name).is_none(), "{name}");
+        }
+        assert_eq!(ecmascript_supertypes("AggregateError"), ["Error"]);
+        assert_eq!(ecmascript_supertypes("RegExpMatchArray"), ["Array"]);
+        assert!(ecmascript_supertypes("Map").is_empty());
         assert_eq!(ecmascript_value_type("Object"), Some("ObjectConstructor"));
         assert_eq!(ecmascript_value_type("JSON"), Some("JSON"));
         assert_eq!(ecmascript_value_type("Reflect"), Some("Reflect"));

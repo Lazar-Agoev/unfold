@@ -56,9 +56,13 @@ fn playgrounds_know_their_unindexed_files() {
         &testdata().join("playgrounds/py-orders"),
         "[scope]\nexclude = [\"legacy/**\", \"scripts/**\", \"tests/**\"]\n",
     );
-    let legacy = RepoPath::new("legacy/orders_legacy/export.py").unwrap();
-    assert_eq!(py.unindexed_reason(&legacy), Some(Unindexed::Excluded));
-    assert!(py.is_source(&RepoPath::new("src/orders_playground/server.py").unwrap()));
+    let legacy = py
+        .unindexed
+        .iter()
+        .find(|file| file.path.as_str() == "legacy/orders_legacy/export.py")
+        .map(|file| file.reason);
+    assert_eq!(legacy, Some(Unindexed::Excluded));
+    assert!(sources(&py).contains(&"src/orders_playground/server.py"));
 }
 
 #[test]
@@ -223,7 +227,11 @@ fn files_are_classified_with_stamps() {
         sources(&discovery),
         ["src/a.ts", "src/b.tsx", "src/c.mts", "src/d.cts", "src/g.py"]
     );
-    assert_eq!(discovery.sources_of(Language::Python).count(), 1);
+    let python = discovery
+        .sources
+        .iter()
+        .filter(|file| file.language == Language::Python);
+    assert_eq!(python.count(), 1);
     assert_eq!(discovery.sources[0].stamp.size, 11);
     assert!(discovery.sources[0].stamp.modified.is_some());
     let context: Vec<&str> = discovery.context.iter().map(|file| file.path.as_str()).collect();

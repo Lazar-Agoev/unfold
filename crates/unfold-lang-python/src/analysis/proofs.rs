@@ -20,10 +20,6 @@ pub(crate) struct Proofs {
     /// Calls proven to be `importlib.import_module` with a literal module name, by range, with
     /// the decoded name and the literal's range.
     pub(super) dynamic: FxHashMap<TextRange, (Box<str>, TextRange)>,
-    /// The specifier of every runtime module dependency, sorted: each `import` item's module,
-    /// each `from … import` statement's module path, and each proven dynamic import's literal.
-    /// Imports a proven `TYPE_CHECKING` guard erases are not dependencies.
-    pub(super) dependencies: Vec<TextRange>,
 }
 
 impl Proofs {
@@ -46,11 +42,6 @@ impl Proofs {
         self.dynamic
             .get(&call.range())
             .map(|(name, literal)| (&**name, *literal))
-    }
-
-    /// The ranges of every runtime module dependency, sorted, for the census.
-    pub(crate) fn dependencies(&self) -> &[TextRange] {
-        &self.dependencies
     }
 }
 

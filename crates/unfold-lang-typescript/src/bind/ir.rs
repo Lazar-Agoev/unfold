@@ -182,6 +182,19 @@ impl<'a> Binder<'a> {
         index
     }
 
+    /// Records a type name written in a heritage clause (`implements A.B`); its first name is
+    /// looked up from `scope` after the walk.
+    pub(super) fn heritage_type(&mut self, name: &TSTypeName<'a>, scope: u32) -> u32 {
+        let converted = names(name, false);
+        let named = matches!(converted, TypeRef::Names { .. });
+        self.types.push(converted);
+        let index = (self.types.len() - 1) as u32;
+        if named {
+            self.type_places.push((index, scope));
+        }
+        index
+    }
+
     /// A receiver's narrowing key: an identifier or a bound `this`, then property names and
     /// direct string or numeric keys, through any wrapper.
     pub(super) fn key_draft(&self, mut expression: &Expression<'a>) -> Option<KeyDraft<'a>> {

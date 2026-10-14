@@ -20,9 +20,9 @@ a.ts#written #3 types `Array` → builtin ecmascript
 a.ts#written #4 types `Row` → project a.ts#Row
 a.ts#written/call:s.trim #0 calls `s.trim` → builtin ecmascript
 a.ts#written/call:rows.map #0 calls `rows.map` → builtin ecmascript
-a.ts#written/call:list.forEach #0 calls `list.forEach` → builtin ecmascript
+a.ts#written/call:list.forEach #0 calls `list.forEach` → unknown unknown_receiver
 a.ts#written/call:n.toFixed #0 calls `n.toFixed` → builtin ecmascript
-a.ts#written/call:o.hasOwnProperty #0 calls `o.hasOwnProperty` → builtin ecmascript
+a.ts#written/call:o.hasOwnProperty #0 calls `o.hasOwnProperty` → unknown unknown_receiver
 a.ts#written/call:rows2.filter #0 calls `rows2.filter` → builtin ecmascript
 a.ts#written/call:s.missing #0 calls `s.missing` → library global
 a.ts#literals/call:"".trim #0 calls `(…).trim` → builtin ecmascript

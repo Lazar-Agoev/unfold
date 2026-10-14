@@ -2,19 +2,29 @@ use std::collections::BTreeMap;
 
 use super::stubs::{Loader, Truth, absolute_module, condition};
 use super::table::{self, Member, Returns, Table, TableClass};
-use super::{Header, TYPESHED_COMMIT, render};
+use super::{Header, MODULES, TYPESHED_COMMIT, generate, render};
 
-/// A typeshed folder with `files` (paths under `stdlib/` and their text) and the table of `roots`.
-fn table(files: &[(&str, &str)], roots: &[&str]) -> Table {
+/// A `stdlib/` folder with `files` (paths under it and their text).
+fn stdlib(files: &[(&str, &str)]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("temp dir");
-    let stdlib = dir.path().join("stdlib");
     for (path, text) in files {
-        let path = stdlib.join(path);
+        let path = dir.path().join(path);
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("folders");
         std::fs::write(path, text).expect("written");
     }
-    let mut loader = Loader::new(stdlib, (3, 14));
+    dir
+}
+
+/// The table of `roots` in a typeshed folder with `files`, read for Python `version`.
+fn table_for(files: &[(&str, &str)], roots: &[&str], version: (u64, u64)) -> Table {
+    let dir = stdlib(files);
+    let mut loader = Loader::new(dir.path().to_owned(), version);
     table::build(&mut loader, roots).expect("builds")
+}
+
+/// The table of `roots` in a typeshed folder with `files`, read for Python 3.14.
+fn table(files: &[(&str, &str)], roots: &[&str]) -> Table {
+    table_for(files, roots, (3, 14))
 }
 
 fn members<'t>(table: &'t Table, module: &str) -> &'t BTreeMap<String, Member> {
@@ -100,6 +110,8 @@ class Repo:
     def name(self) -> str: ...
     @name.setter
     def name(self, value: str) -> None: ...
+    @property
+    def parent(self) -> Self: ...
     size: int
     @overload
     def agree(self, x: int) -> Repo: ...
@@ -145,6 +157,7 @@ from typing_extensions import LiteralString
         ("fetch", Member::Function(Returns::AwaitInstance("m.Repo".into()))),
         ("__aenter__", Member::Function(Returns::AwaitReceiver)),
         ("name", Member::Variable(Some("builtins.str".into()))),
+        ("parent", Member::SelfVariable),
         ("size", Member::Variable(Some("builtins.int".into()))),
         ("agree", instance("m.Repo")),
         ("differ", Member::Function(Returns::Unknown)),
@@ -372,13 +385,15 @@ fn rendering_is_sorted_compact_and_versioned() {
     let text = render(
         &Header {
             commit: "abc",
-            python_version: "3.14",
+            python_versions: "3.12–3.14",
             files: 3,
             digest: "def",
         },
         &table,
     );
-    assert!(text.contains("typeshed abc (`stdlib/`, 3 files),\n//! read without generics for Python 3.14."));
+    assert!(text.contains(
+        "typeshed abc (`stdlib/`, 3 files),\n//! read without generics for each of Python 3.12–3.14."
+    ));
     assert!(text.contains("use Member::{Class, Function};\nuse Returns::Instance;\n"));
     assert!(text.contains(
         "    StubModule { name: \"m\", members: &[\n        (\"A\", Class(\"m.A\")), (\"B\", Class(\"m.B\")), (\"f\", Function(Instance(\"m.B\"))),\n    ] },\n"
@@ -394,4 +409,129 @@ fn the_commit_is_the_one_stdlib_pins() {
     let stdlib = std::fs::read_to_string(crate::repo::root().join("crates/unfold-lang-python/src/stdlib.rs"))
         .expect("stdlib.rs");
     assert!(stdlib.contains(TYPESHED_COMMIT));
+}
+
+#[test]
+fn protocols_are_marked() {
+    let module = "\
+from typing import Generic, Protocol, TypeVar
+_T = TypeVar('_T')
+class Plain(Protocol):
+    def a(self) -> int: ...
+class Generic_(Protocol[_T]):
+    def b(self) -> int: ...
+class Nominal(Plain):
+    def c(self) -> int: ...
+class Box(Generic[_T]): ...
+def plain() -> Plain: ...
+def generic() -> Generic_: ...
+def nominal() -> Nominal: ...
+def box() -> Box: ...
+";
+    let table = table(
+        &[
+            ("builtins.pyi", BUILTINS),
+            ("typing.pyi", TYPING),
+            ("m.pyi", module),
+        ],
+        &["m"],
+    );
+    assert!(class(&table, "m.Plain").protocol);
+    assert!(class(&table, "m.Generic_").protocol);
+    // Deriving from a protocol makes an ordinary class.
+    assert!(!class(&table, "m.Nominal").protocol);
+    assert_eq!(class(&table, "m.Nominal").bases, ["m.Plain"]);
+    assert!(!class(&table, "m.Box").protocol);
+}
+
+#[test]
+fn versions_intersect_to_what_every_version_has() {
+    let module = "\
+import sys
+from n import Old
+class Path:
+    def stem(self) -> str: ...
+    if sys.version_info >= (3, 14):
+        def copy(self) -> Path: ...
+        def changed(self) -> Path: ...
+        size: int
+    else:
+        def changed(self) -> str: ...
+        size: str
+if sys.version_info >= (3, 13):
+    def new() -> Path: ...
+    def kind() -> int: ...
+else:
+    def old() -> Path: ...
+    kind: int
+if sys.version_info >= (3, 14):
+    held: Old
+else:
+    def held() -> Old: ...
+def path() -> Path: ...
+";
+    let files = [
+        ("builtins.pyi", BUILTINS),
+        ("typing.pyi", TYPING),
+        ("m.pyi", module),
+        ("n.pyi", "class Old: ...\n"),
+    ];
+    let tables = [(3, 12), (3, 13), (3, 14)]
+        .into_iter()
+        .map(|version| table_for(&files, &["m"], version))
+        .collect();
+    let table = table::intersect(tables).expect("intersects");
+    let m = members(&table, "m");
+    assert_eq!(m["path"], instance("m.Path"));
+    for gated in ["new", "old"] {
+        assert!(!m.contains_key(gated), "{gated}");
+    }
+    // A function in some versions and a variable in others is a variable of unknown type.
+    assert_eq!(m["kind"], Member::Variable(None));
+    assert_eq!(m["held"], Member::Variable(None));
+    let path = &class(&table, "m.Path").members;
+    assert_eq!(path["stem"], instance("builtins.str"));
+    assert!(!path.contains_key("copy"), "3.14 only");
+    assert_eq!(path["changed"], Member::Function(Returns::Unknown));
+    assert_eq!(path["size"], Member::Variable(None));
+    // Every version reaches `Old`, but only through a member whose versions disagree.
+    assert!(table.classes.iter().all(|class| class.name != "n.Old"));
+}
+
+#[test]
+fn versions_with_different_bases_fail() {
+    let module = "\
+import sys
+class A: ...
+class B: ...
+if sys.version_info >= (3, 14):
+    class C(A): ...
+else:
+    class C(B): ...
+";
+    let files = [
+        ("builtins.pyi", BUILTINS),
+        ("typing.pyi", TYPING),
+        ("m.pyi", module),
+    ];
+    let tables = [(3, 13), (3, 14)]
+        .into_iter()
+        .map(|version| table_for(&files, &["m"], version))
+        .collect();
+    let error = table::intersect(tables).expect_err("bases differ");
+    assert!(error.to_string().contains("`m.C`"), "{error}");
+}
+
+#[test]
+fn another_typeshed_is_refused() {
+    let mut files = vec![("builtins.pyi", BUILTINS), ("typing.pyi", TYPING)];
+    let modules: Vec<String> = MODULES
+        .iter()
+        .filter(|module| **module != "builtins")
+        .map(|module| format!("{module}.pyi"))
+        .collect();
+    files.extend(modules.iter().map(|module| (module.as_str(), "")));
+    let dir = stdlib(&files);
+    let error = generate(dir.path()).expect_err("not the pinned stub set");
+    assert!(error.to_string().contains(TYPESHED_COMMIT), "{error}");
 }

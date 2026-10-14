@@ -403,9 +403,8 @@ pub trait Linked: Send + Sync {
         Vec::new()
     }
 
-    /// The independent census of token boundaries, call sites, and module dependencies that
-    /// validation compares this language's files with: every call in the parse tree must be
-    /// exactly one call node, and every kept module dependency exactly one `imports` link.
+    /// The independent census of call sites that validation compares this language's files
+    /// with: every call in the parse tree must be exactly one call node.
     fn census(&self) -> Option<&dyn Census> {
         None
     }

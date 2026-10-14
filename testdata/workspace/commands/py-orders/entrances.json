@@ -1,0 +1,395 @@
+{
+  "resolved": true,
+  "apps": [
+    {
+      "key": "entrance:server",
+      "name": "Server",
+      "run": "orders-api",
+      "code": {
+        "key": "src/orders_playground/server.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:server/health-check",
+          "name": "Health check",
+          "on": "GET /health",
+          "code": [
+            {
+              "key": "src/orders_playground/server.py#health_check",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            21,
+            21
+          ]
+        },
+        {
+          "key": "entrance:server/status",
+          "name": "Status",
+          "on": "GET /v1/status",
+          "code": [
+            {
+              "key": "src/orders_playground/server.py#status",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            22,
+            22
+          ]
+        },
+        {
+          "key": "entrance:server/list-orders",
+          "name": "List orders",
+          "on": "GET /orders",
+          "code": [
+            {
+              "key": "src/orders_playground/routes/orders.py#list_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            23,
+            23
+          ]
+        },
+        {
+          "key": "entrance:server/get-an-order",
+          "name": "Get an order",
+          "on": "GET /orders/{order_id}",
+          "code": [
+            {
+              "key": "src/orders_playground/routes/orders.py#get_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            24,
+            24
+          ]
+        },
+        {
+          "key": "entrance:server/place-an-order",
+          "name": "Place an order",
+          "on": "POST /orders",
+          "code": [
+            {
+              "key": "src/orders_playground/routes/middleware.py#require_user",
+              "state": "found"
+            },
+            {
+              "key": "src/orders_playground/routes/middleware.py#validate_body",
+              "state": "found"
+            },
+            {
+              "key": "src/orders_playground/routes/orders.py#create_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            25,
+            25
+          ]
+        },
+        {
+          "key": "entrance:server/cancel-an-order",
+          "name": "Cancel an order",
+          "on": "DELETE /orders/{order_id}",
+          "code": [
+            {
+              "key": "src/orders_playground/routes/middleware.py#require_user",
+              "state": "found"
+            },
+            {
+              "key": "src/orders_playground/routes/orders.py#cancel_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            26,
+            26
+          ]
+        },
+        {
+          "key": "entrance:server/liveness",
+          "name": "Liveness",
+          "on": "GET /health/live",
+          "code": [
+            {
+              "key": "src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            27,
+            27
+          ]
+        },
+        {
+          "key": "entrance:server/admin-stats",
+          "name": "Admin stats",
+          "on": "GET /admin/stats",
+          "code": [
+            {
+              "key": "src/orders_playground/server.py#admin_stats",
+              "state": "missing",
+              "fix": {
+                "kind": "moved_definition",
+                "code": "src/orders_playground/routes/admin.py#admin_stats",
+                "path": "src/orders_playground/routes/admin.py"
+              }
+            }
+          ],
+          "lines": [
+            30,
+            30
+          ]
+        },
+        {
+          "key": "entrance:server/shut-down",
+          "name": "Shut down",
+          "on": "SIGTERM",
+          "code": [
+            {
+              "key": "src/orders_playground/server.py#shutdown",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            31,
+            31
+          ]
+        }
+      ],
+      "lines": [
+        16,
+        32
+      ]
+    },
+    {
+      "key": "entrance:dev-server",
+      "name": "Dev server",
+      "run": "orders-api-dev",
+      "code": {
+        "key": "src/orders_playground/server.py#main",
+        "state": "found"
+      },
+      "entrances": [],
+      "lines": [
+        34,
+        37
+      ]
+    },
+    {
+      "key": "entrance:worker",
+      "name": "Worker",
+      "run": "orders-worker",
+      "code": {
+        "key": "src/orders_playground/worker.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:worker/send-an-email",
+          "name": "Send an email",
+          "on": "queue emails",
+          "code": [
+            {
+              "key": "src/orders_playground/queues/email_worker.py#email_task",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            44,
+            44
+          ]
+        },
+        {
+          "key": "entrance:worker/process-an-order",
+          "name": "Process an order",
+          "on": "queue orders",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/process_order.py#process_order",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            45,
+            45
+          ]
+        },
+        {
+          "key": "entrance:worker/build-a-report",
+          "name": "Build a report",
+          "on": "queue reports",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/report.py#print_report",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            46,
+            46
+          ]
+        }
+      ],
+      "lines": [
+        39,
+        47
+      ]
+    },
+    {
+      "key": "entrance:scheduler",
+      "name": "Scheduler",
+      "run": "orders-scheduler",
+      "code": {
+        "key": "src/orders_playground/scheduler.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:scheduler/clean-up-expired-orders",
+          "name": "Clean up expired orders",
+          "on": "0 2 * * *",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/cleanup.py#cleanup_expired_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            54,
+            54
+          ]
+        },
+        {
+          "key": "entrance:scheduler/report-metrics",
+          "name": "Report metrics",
+          "on": "*/15 * * * *",
+          "code": [
+            {
+              "key": "src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            55,
+            55
+          ]
+        }
+      ],
+      "lines": [
+        49,
+        56
+      ]
+    },
+    {
+      "key": "entrance:orders-cli",
+      "name": "Orders CLI",
+      "run": "orders <command>",
+      "code": {
+        "key": "src/orders_playground/cli.py#main",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:orders-cli/import-orders",
+          "name": "Import orders",
+          "on": "orders import",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/import_orders.py#import_orders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            63,
+            63
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/print-a-report",
+          "name": "Print a report",
+          "on": "orders report",
+          "code": [
+            {
+              "key": "src/orders_playground/cli.py#report_command",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            64,
+            64
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/replay-failed-orders",
+          "name": "Replay failed orders",
+          "on": "orders replay",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/retry_failed.py#retry_failed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            65,
+            65
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/retry-failed-orders",
+          "name": "Retry failed orders",
+          "on": "orders retry",
+          "code": [
+            {
+              "key": "src/orders_playground/jobs/retry_failed.py#retry_failed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            66,
+            66
+          ]
+        }
+      ],
+      "lines": [
+        58,
+        67
+      ]
+    },
+    {
+      "key": "entrance:cli-alias",
+      "name": "CLI alias",
+      "run": "orders-cli <command>",
+      "code": {
+        "key": "src/orders_playground/cli.py#main",
+        "state": "found"
+      },
+      "about": "The orders command under its longer name.",
+      "entrances": [],
+      "lines": [
+        69,
+        73
+      ]
+    },
+    {
+      "key": "entrance:legacy-export",
+      "name": "Legacy export",
+      "run": "orders-legacy-export",
+      "code": {
+        "key": "legacy/orders_legacy/export.py#main",
+        "state": "not_analyzed"
+      },
+      "entrances": [],
+      "lines": [
+        75,
+        78
+      ]
+    }
+  ]
+}

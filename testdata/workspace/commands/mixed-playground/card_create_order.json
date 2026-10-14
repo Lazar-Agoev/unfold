@@ -1,0 +1,323 @@
+{
+  "type": "definition",
+  "flow": {
+    "header": {
+      "key": "ts-orders/src/routes/orders.ts#createOrder",
+      "kind": "function",
+      "form": "function",
+      "label": "createOrder",
+      "signature": "async function createOrder(req: Request, res: Response): Promise<void>",
+      "path": "ts-orders/src/routes/orders.ts",
+      "line": 25,
+      "async": true,
+      "generator": false,
+      "definedWith": [],
+      "imports": [],
+      "actions": {
+        "combine": {
+          "with": "steps",
+          "body": "ts-orders/src/routes/orders.ts#"
+        },
+        "after": true,
+        "start": true,
+        "open": false
+      }
+    },
+    "combinable": [
+      "ts-orders/src/routes/orders.ts#createOrder/if[0]",
+      "ts-orders/src/routes/orders.ts#createOrder/call:orderService.place",
+      "ts-orders/src/routes/orders.ts#createOrder/call:slack.post",
+      "ts-orders/src/routes/orders.ts#createOrder/call:res.status().json"
+    ],
+    "steps": {
+      "steps": [
+        {
+          "id": 1,
+          "state": "reached",
+          "gap": {
+            "count": 1,
+            "lines": [
+              26,
+              26
+            ],
+            "hidden": []
+          },
+          "kind": "decision",
+          "key": "ts-orders/src/routes/orders.ts#createOrder/if[0]",
+          "form": "if",
+          "headerCalls": [],
+          "lanes": [
+            {
+              "id": 2,
+              "key": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then",
+              "form": "then",
+              "label": "req.header(\"prefer\") === \"respond-async\"",
+              "lines": [
+                27,
+                31
+              ],
+              "state": "reached",
+              "test": {
+                "text": "req.header(\"prefer\") === \"respond-async\"",
+                "calls": []
+              },
+              "types": [],
+              "fallsThrough": false,
+              "combinable": [
+                "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add",
+                "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json",
+                "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/return[0]"
+              ],
+              "steps": {
+                "steps": [
+                  {
+                    "id": 3,
+                    "state": "reached",
+                    "kind": "thin",
+                    "calls": [
+                      {
+                        "key": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add",
+                        "callee": "ordersQueue.add",
+                        "form": "call",
+                        "to": {
+                          "outcome": "library",
+                          "module": "bullmq",
+                          "note": "bullmq"
+                        },
+                        "binds": "job",
+                        "awaited": true,
+                        "sometimes": false,
+                        "inside": [],
+                        "actions": {
+                          "combine": {
+                            "with": "steps",
+                            "body": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then"
+                          },
+                          "after": true,
+                          "start": false,
+                          "open": false
+                        }
+                      },
+                      {
+                        "key": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json",
+                        "callee": "res.status().json",
+                        "form": "call",
+                        "to": {
+                          "outcome": "unknown",
+                          "reason": "unknown_receiver",
+                          "note": "receiver type unknown"
+                        },
+                        "awaited": false,
+                        "sometimes": false,
+                        "inside": [],
+                        "actions": {
+                          "combine": {
+                            "with": "steps",
+                            "body": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then"
+                          },
+                          "after": true,
+                          "start": false,
+                          "open": false
+                        }
+                      }
+                    ],
+                    "lines": [
+                      28,
+                      29
+                    ],
+                    "unknown": 1
+                  },
+                  {
+                    "id": 5,
+                    "state": "reached",
+                    "kind": "exit",
+                    "key": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/return[0]",
+                    "form": "return",
+                    "actions": {
+                      "combine": {
+                        "with": "steps",
+                        "body": "ts-orders/src/routes/orders.ts#createOrder/if[0]/then"
+                      },
+                      "after": true,
+                      "start": false,
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "after": false,
+                "start": true,
+                "open": false
+              }
+            }
+          ],
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "ts-orders/src/routes/orders.ts#createOrder"
+            },
+            "after": true,
+            "start": false,
+            "open": false
+          }
+        },
+        {
+          "id": 6,
+          "state": "reached",
+          "kind": "call",
+          "key": "ts-orders/src/routes/orders.ts#createOrder/call:orderService.place",
+          "callee": "orderService.place",
+          "form": "call",
+          "to": {
+            "outcome": "project",
+            "key": "ts-orders/src/services/order-service.ts#OrderService.place"
+          },
+          "binds": "order",
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "ts-orders/src/routes/orders.ts#createOrder"
+            },
+            "after": true,
+            "start": false,
+            "open": true
+          }
+        },
+        {
+          "id": 7,
+          "state": "reached",
+          "kind": "call",
+          "key": "ts-orders/src/routes/orders.ts#createOrder/call:slack.post",
+          "callee": "slack.post",
+          "form": "call",
+          "to": {
+            "outcome": "project",
+            "key": "ts-orders/src/lib/slack.ts#slack.post"
+          },
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "ts-orders/src/routes/orders.ts#createOrder"
+            },
+            "after": true,
+            "start": false,
+            "open": true
+          }
+        },
+        {
+          "id": 8,
+          "state": "reached",
+          "kind": "thin",
+          "calls": [
+            {
+              "key": "ts-orders/src/routes/orders.ts#createOrder/call:res.status().json",
+              "callee": "res.status().json",
+              "form": "call",
+              "to": {
+                "outcome": "unknown",
+                "reason": "unknown_receiver",
+                "note": "receiver type unknown"
+              },
+              "awaited": false,
+              "sometimes": false,
+              "inside": [],
+              "actions": {
+                "combine": {
+                  "with": "steps",
+                  "body": "ts-orders/src/routes/orders.ts#createOrder"
+                },
+                "after": true,
+                "start": false,
+                "open": false
+              }
+            }
+          ],
+          "lines": [
+            34,
+            34
+          ],
+          "unknown": 1
+        }
+      ]
+    },
+    "routes": [
+      {
+        "from": 0,
+        "kind": "on",
+        "to": {
+          "step": 1
+        },
+        "through": []
+      },
+      {
+        "from": 1,
+        "kind": "on",
+        "to": {
+          "step": 2
+        },
+        "through": []
+      },
+      {
+        "from": 2,
+        "kind": "yes",
+        "to": {
+          "step": 3
+        },
+        "through": []
+      },
+      {
+        "from": 2,
+        "kind": "no",
+        "to": {
+          "step": 6
+        },
+        "through": []
+      },
+      {
+        "from": 3,
+        "kind": "on",
+        "to": {
+          "step": 5
+        },
+        "through": []
+      },
+      {
+        "from": 5,
+        "kind": "return",
+        "to": "end",
+        "through": []
+      },
+      {
+        "from": 6,
+        "kind": "on",
+        "to": {
+          "step": 7
+        },
+        "through": []
+      },
+      {
+        "from": 7,
+        "kind": "on",
+        "to": {
+          "step": 8
+        },
+        "through": []
+      },
+      {
+        "from": 8,
+        "kind": "on",
+        "to": "end",
+        "through": []
+      }
+    ]
+  }
+}

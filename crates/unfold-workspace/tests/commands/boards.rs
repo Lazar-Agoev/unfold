@@ -310,22 +310,43 @@ fn boards_are_files_saved_over_whatever_they_hold() {
 }
 
 #[test]
-fn a_project_without_a_graph_has_no_board_health() {
-    // Adding compiles at once; a project whose `.unfold/local` went away while it rested has
-    // no graph until its next Compile.
+fn a_project_without_a_graph_has_board_health_once_it_compiles() {
+    // A project whose `.unfold/local` went away while it rested has no graph; opening one of
+    // its boards wakes it, which queues a Compile.
     let harness = Harness::with("ts-orders", restless());
     eventually("the project rests", || {
         harness.row(&harness.project)["live"] == false
     });
     std::fs::remove_dir_all(harness.root.join(".unfold/local")).expect("remove local");
-    harness.write(".unfold/boards/order-placement.json", &sample_board());
-    // A teammate's board opens, but health needs a graph: no labels, no Problems.
+    // Enough code that the Compile is still running when the board opens.
+    let code = "export function f(value: number): number { return value; }\n".repeat(20);
+    for index in 0..400 {
+        harness.write(&format!("src/generated/file{index:04}.ts"), &code);
+    }
+    // A teammate's board with one card (and its three named blocks) whose code is gone.
+    let board = sample_board().replace("middleware.ts#requireUser", "middleware.ts#requireAdmin");
+    harness.write(".unfold/boards/order-placement.json", &board);
     let id = ".unfold/boards/order-placement.json";
     assert_eq!(harness.on(1, "open_board", id)["id"], id);
+    assert_eq!(harness.row(&harness.project)["state"]["kind"], "compiling");
+
+    // While it compiles, health has no graph to judge the board by: no label, no Problems.
     assert_eq!(harness.listed(id)["label"], Value::Null);
     let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
     assert_eq!(summary["health"]["boards"], json!([]));
-    assert!(!harness.path(".unfold/local").exists(), "nothing was written");
+
+    // Once the graph commits, the board's health is its real one.
+    eventually("the board's health arrives", || {
+        harness.listed(id)["label"] == "4 missing"
+    });
+    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+    assert_eq!(
+        summary["health"]["boards"],
+        json!([{ "id": id, "title": "Order placement", "items": 4 }])
+    );
+    let health = harness.on(1, "board_health", id);
+    assert_eq!(health["health"]["missing"], 4);
+    assert_eq!(health["health"]["items"][0]["target"]["card"], "middleware-0");
 }
 
 #[test]

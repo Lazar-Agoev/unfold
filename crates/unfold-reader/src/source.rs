@@ -13,9 +13,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use unfold_core::text::OffsetError;
-use unfold_core::{
-    ByteRange, ContentHash, LineIndex, LineSpan, RepoPath, Snapshot, Utf16Index, text::Utf16Range,
-};
+use unfold_core::{ByteRange, ContentHash, LineIndex, RepoPath, Snapshot, Utf16Index, text::Utf16Range};
 
 use crate::error::{ReaderError, Result};
 
@@ -68,14 +66,6 @@ impl Source {
         self.text()
             .get(range.as_usize())
             .ok_or_else(|| self.invalid(range))
-    }
-
-    /// The lines stored range `range` starts and ends on.
-    pub fn line_span(&self, range: ByteRange) -> Result<LineSpan> {
-        if range.start > range.end || range.end > self.snapshot.len() {
-            return Err(self.invalid(range));
-        }
-        Ok(self.lines.span(range))
     }
 
     /// Stored range `range` in UTF-16 code units, for rendering.
@@ -211,7 +201,6 @@ mod tests {
         assert_eq!(source.slice(b).unwrap(), "b");
         assert_eq!(source.to_utf16(b).unwrap(), Utf16Range { start: 10, end: 11 });
         assert_eq!(source.to_utf8(Utf16Range { start: 10, end: 11 }).unwrap(), b);
-        assert_eq!(source.line_span(b).unwrap(), LineSpan { start: 2, end: 2 });
         // A range inside 😀, or past the end, never fits.
         let inside = ByteRange { start: 7, end: 8 };
         assert!(matches!(
@@ -219,6 +208,6 @@ mod tests {
             Err(ReaderError::InvalidRange { .. })
         ));
         assert!(source.to_utf16(inside).is_err());
-        assert!(source.line_span(ByteRange { start: 0, end: 99 }).is_err());
+        assert!(source.slice(ByteRange { start: 0, end: 99 }).is_err());
     }
 }

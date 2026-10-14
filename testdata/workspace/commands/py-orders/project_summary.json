@@ -1,0 +1,30 @@
+{
+  "project": "<project>",
+  "name": "py-orders",
+  "path": "<folder>",
+  "state": {
+    "kind": "current"
+  },
+  "status": {
+    "state": {
+      "kind": "current",
+      "files": 50,
+      "languages": [
+        "python"
+      ]
+    },
+    "watching": "off",
+    "complete": true
+  },
+  "updatedAtMs": 0,
+  "files": 50,
+  "languages": [
+    "python"
+  ],
+  "health": {
+    "doesntParse": 0,
+    "boardsNeedingReview": 0,
+    "boards": [],
+    "entrancesToCheck": 2
+  }
+}

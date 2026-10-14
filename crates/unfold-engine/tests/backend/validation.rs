@@ -5,11 +5,12 @@ use unfold_core::vocab::NodeKind;
 use crate::alien::Project;
 
 #[test]
-fn the_census_catches_ranges_off_token_boundaries() {
+fn the_census_catches_a_call_node_off_its_call_site() {
     let project = Project::new().file("a.alien", "(fn work (call (ref work)))");
     let mut graph = project.compile().valid().graph;
     assert!(project.validate(&graph).is_empty());
-    // Move the call's start inside its `call` atom: still inside its parent, but not a token.
+    // Move the call's start inside its `call` atom: still inside its parent, but no longer the
+    // call the parser found.
     let call = graph.files[0]
         .nodes
         .iter_mut()
@@ -20,14 +21,14 @@ fn the_census_catches_ranges_off_token_boundaries() {
     assert!(
         violations
             .iter()
-            .any(|violation| violation.message.contains("token boundaries")),
+            .any(|violation| violation.message.contains("needs exactly one call node")),
         "{violations:?}"
     );
     assert!(
         violations
             .iter()
-            .any(|violation| violation.message.contains("call site")),
-        "the census call site no longer matches a node: {violations:?}"
+            .any(|violation| violation.message.contains("does not match exactly one call site")),
+        "{violations:?}"
     );
 }
 

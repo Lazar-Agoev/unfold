@@ -13,7 +13,7 @@
 //! let reader = playground.reader();
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use unfold_core::testkit::{GraphBuilder, testdata_dir};
@@ -38,10 +38,20 @@ pub(crate) struct Playground {
 impl Playground {
     /// The golden graph of `testdata/playgrounds/<name>`, with that folder as its source.
     pub fn load(name: &str) -> Self {
+        Self::golden(name, &testdata_dir().join("playgrounds").join(name))
+    }
+
+    /// The golden graph of the mixed playground (`testdata/playgrounds`, both playgrounds).
+    pub fn mixed() -> Self {
+        Self::golden("mixed-playground", &testdata_dir().join("playgrounds"))
+    }
+
+    /// The golden graph `testdata/goldens/<name>.jsonl`, with `root` as its source.
+    fn golden(name: &str, root: &Path) -> Self {
         let text = std::fs::read_to_string(testdata_dir().join(format!("goldens/{name}.jsonl")))
             .expect("read the golden graph");
         let graph = canonical::read(&text).expect("parse the golden graph");
-        Self::new(graph, testdata_dir().join("playgrounds").join(name), None)
+        Self::new(graph, root.to_path_buf(), None)
     }
 
     /// A hand-built graph, with its sources written to a temporary folder.

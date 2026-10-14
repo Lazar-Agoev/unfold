@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { describe, expect, it } from "vitest";
 import { Popover } from "./Popover";
 
-function Switcher() {
+function AddAsEntrance() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>
@@ -15,18 +15,18 @@ function Switcher() {
           setAnchor(event.currentTarget);
         }}
       >
-        main
+        Add as entrance
       </button>
       <Popover
         open={anchor !== null}
         anchor={anchor}
-        label="Worktrees"
-        width={264}
+        label="Add as entrance"
+        width={340}
         onClose={() => {
           setAnchor(null);
         }}
       >
-        <button type="button">feat/cart-v2</button>
+        <button type="button">Add</button>
       </Popover>
     </>
   );
@@ -34,26 +34,26 @@ function Switcher() {
 
 describe("Popover", () => {
   it("takes focus when it opens and gives it back on Escape", () => {
-    render(<Switcher />);
-    const trigger = screen.getByRole("button", { name: "main" });
+    render(<AddAsEntrance />);
+    const trigger = screen.getByRole("button", { name: "Add as entrance" });
     trigger.focus();
     fireEvent.click(trigger);
-    const panel = screen.getByRole("dialog", { name: "Worktrees" });
-    expect(panel.style.width).toBe("264px");
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "feat/cart-v2" }));
+    const panel = screen.getByRole("dialog", { name: "Add as entrance" });
+    expect(panel.style.width).toBe("340px");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add" }));
     fireEvent.keyDown(panel, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
   it("closes on a press outside but not on its anchor", () => {
-    render(<Switcher />);
-    const trigger = screen.getByRole("button", { name: "main" });
+    render(<AddAsEntrance />);
+    const trigger = screen.getByRole("button", { name: "Add as entrance" });
     fireEvent.click(trigger);
     act(() => {
       trigger.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     });
-    expect(screen.getByRole("dialog", { name: "Worktrees" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Add as entrance" })).toBeTruthy();
     act(() => {
       document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     });

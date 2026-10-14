@@ -1,0 +1,294 @@
+{
+  "file": "src/orders_playground/routes/orders.py",
+  "state": "current",
+  "lines": [
+    {
+      "number": 24,
+      "text": "async def create_order(request: Request) -> JSONResponse:",
+      "tokens": [
+        [
+          0,
+          5,
+          "keyword"
+        ],
+        [
+          6,
+          9,
+          "keyword"
+        ],
+        [
+          10,
+          22,
+          "function"
+        ],
+        [
+          32,
+          39,
+          "type"
+        ],
+        [
+          44,
+          56,
+          "type"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order",
+      "calls": []
+    },
+    {
+      "number": 25,
+      "text": "    draft = await request.json()",
+      "tokens": [
+        [
+          12,
+          17,
+          "keyword"
+        ],
+        [
+          26,
+          30,
+          "function"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/call:request.json",
+      "calls": [
+        {
+          "start": 18,
+          "end": 30,
+          "key": "src/orders_playground/routes/orders.py#create_order/call:request.json"
+        }
+      ]
+    },
+    {
+      "number": 26,
+      "text": "    if request.headers.get(\"prefer\") == \"respond-async\":",
+      "tokens": [
+        [
+          4,
+          6,
+          "keyword"
+        ],
+        [
+          15,
+          22,
+          "property"
+        ],
+        [
+          23,
+          26,
+          "function"
+        ],
+        [
+          27,
+          35,
+          "string"
+        ],
+        [
+          40,
+          55,
+          "string"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/if[0]",
+      "calls": [
+        {
+          "start": 7,
+          "end": 26,
+          "key": "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get"
+        }
+      ]
+    },
+    {
+      "number": 27,
+      "text": "        job = celery_app.signature(\"orders.process\", args=[draft], queue=\"orders\").delay()",
+      "tokens": [
+        [
+          25,
+          34,
+          "function"
+        ],
+        [
+          35,
+          51,
+          "string"
+        ],
+        [
+          73,
+          81,
+          "string"
+        ],
+        [
+          83,
+          88,
+          "function"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay",
+      "calls": [
+        {
+          "start": 14,
+          "end": 34,
+          "key": "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay/call:celery_app.signature"
+        },
+        {
+          "start": 83,
+          "end": 88,
+          "key": "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay"
+        }
+      ]
+    },
+    {
+      "number": 28,
+      "text": "        return JSONResponse({\"job_id\": job.id}, status_code=202)",
+      "tokens": [
+        [
+          8,
+          14,
+          "keyword"
+        ],
+        [
+          15,
+          27,
+          "function"
+        ],
+        [
+          29,
+          37,
+          "string"
+        ],
+        [
+          43,
+          45,
+          "property"
+        ],
+        [
+          60,
+          63,
+          "number"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]",
+      "calls": [
+        {
+          "start": 15,
+          "end": 27,
+          "key": "src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]/call:JSONResponse"
+        }
+      ]
+    },
+    {
+      "number": 29,
+      "text": "    order = order_service.place(draft)",
+      "tokens": [
+        [
+          26,
+          31,
+          "function"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/call:order_service.place",
+      "calls": [
+        {
+          "start": 12,
+          "end": 31,
+          "key": "src/orders_playground/routes/orders.py#create_order/call:order_service.place"
+        }
+      ]
+    },
+    {
+      "number": 30,
+      "text": "    slack.post(\"#orders\", f\"Order {order['id']} placed\")",
+      "tokens": [
+        [
+          10,
+          14,
+          "function"
+        ],
+        [
+          15,
+          24,
+          "string"
+        ],
+        [
+          26,
+          28,
+          "string"
+        ],
+        [
+          28,
+          34,
+          "string"
+        ],
+        [
+          41,
+          45,
+          "string"
+        ],
+        [
+          47,
+          54,
+          "string"
+        ],
+        [
+          54,
+          55,
+          "string"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/call:slack.post",
+      "calls": [
+        {
+          "start": 4,
+          "end": 14,
+          "key": "src/orders_playground/routes/orders.py#create_order/call:slack.post"
+        }
+      ]
+    },
+    {
+      "number": 31,
+      "text": "    return JSONResponse(order, status_code=201)",
+      "tokens": [
+        [
+          4,
+          10,
+          "keyword"
+        ],
+        [
+          11,
+          23,
+          "function"
+        ],
+        [
+          43,
+          46,
+          "number"
+        ]
+      ],
+      "block": "src/orders_playground/routes/orders.py#create_order/return[0]",
+      "calls": [
+        {
+          "start": 11,
+          "end": 23,
+          "key": "src/orders_playground/routes/orders.py#create_order/return[0]/call:JSONResponse"
+        }
+      ]
+    }
+  ],
+  "path": [
+    {
+      "label": "src/orders_playground/routes/orders.py",
+      "showing": false
+    },
+    {
+      "label": "create_order",
+      "key": "src/orders_playground/routes/orders.py#create_order",
+      "showing": true
+    }
+  ],
+  "definitions": [
+    {
+      "line": 24,
+      "key": "src/orders_playground/routes/orders.py#create_order"
+    }
+  ]
+}

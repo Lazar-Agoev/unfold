@@ -29,8 +29,8 @@ pub(crate) struct NodeRef {
 const BUILTIN_EXCEPTIONS: FileId = FileId(u32::MAX);
 
 impl NodeRef {
-    /// The node standing for the builtin exception class at `index` of
-    /// [`crate::stdlib::BUILTIN_EXCEPTIONS`].
+    /// The node standing for the builtin exception class at `index` of [`crate::stubs::CLASSES`]
+    /// ([`super::library::builtin_exception`]).
     pub(crate) const fn builtin_exception(index: u32) -> Self {
         Self {
             file: BUILTIN_EXCEPTIONS,
@@ -91,7 +91,7 @@ pub(crate) struct FileBind {
     pub(crate) effects: Vec<Effect>,
     pub(crate) stars: Vec<StarFact>,
     pub(crate) imports: Vec<ImportSyntax>,
-    pub(crate) census: crate::payload::CensusData,
+    pub(crate) calls: Vec<unfold_core::ByteRange>,
     /// Each local name's program-wide symbol.
     pub(crate) syms: Vec<Sym>,
     /// Scopes holding a star import whose names are unknown.
@@ -214,10 +214,7 @@ impl<'a> Program<'a> {
 
     fn add_file(&mut self, id: FileId, payload: Payload, modules: &mut Modules<'_>) -> FileBind {
         let Payload {
-            census,
-            imports,
-            bind,
-            ..
+            calls, imports, bind, ..
         } = payload;
         let BindFacts {
             names,
@@ -289,7 +286,7 @@ impl<'a> Program<'a> {
             effects,
             stars,
             imports,
-            census,
+            calls,
             syms,
             unsupported: false,
         }

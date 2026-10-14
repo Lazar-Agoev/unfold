@@ -4,17 +4,20 @@
 //!
 //! The stubs are read at the typeshed commit pinned in `crates/unfold-lang-python/src/stdlib.rs`
 //! (the copy bundled with Pyright 1.1.407), from a checkout of typeshed or Pyright's
-//! `typeshed-fallback` folder, parsed with Ruff ([`stubs`]), never imported or run. The table
-//! ([`table`]) holds each module's members, with the written types of its functions and
-//! variables, and every class those reach through members, return types, attributes, and bases,
-//! wherever typeshed defines it (`asyncio.Task` is `_asyncio.Task`). It is written to
-//! `crates/unfold-lang-python/src/stubs.rs` as sorted static arrays, with the commit, the Python
-//! version, and a SHA-256 of the files read in its header. With `--check`, the file is compared
-//! instead of written.
+//! `typeshed-fallback` folder, parsed with Ruff ([`stubs`]), never imported or run. The files
+//! read must hash to [`STUB_SET_SHA256`], so no other typeshed is written under the pinned
+//! commit. The table ([`table`]) holds each module's members, with the written types of its
+//! functions and variables, and every class those reach through members, return types,
+//! attributes, and bases, wherever typeshed defines it (`asyncio.Task` is `_asyncio.Task`). It is
+//! read once for each Python version a project may declare and intersected, so it holds only
+//! what every version has. It is written to `crates/unfold-lang-python/src/stubs.rs` as sorted
+//! static arrays, with the commit, the Python versions, and the stub set's SHA-256 in its header.
+//! With `--check`, the file is compared instead of written.
 
 mod stubs;
 mod table;
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -23,11 +26,16 @@ use sha2::{Digest, Sha256};
 use unfold_engine::settings::PythonVersion;
 
 use crate::repo;
-use stubs::{File, Loader};
+use stubs::Loader;
 use table::{Member, Returns, Table};
 
 /// The typeshed commit the table is read from, as pinned in `unfold-lang-python`'s `stdlib.rs`.
 const TYPESHED_COMMIT: &str = "a205439338a4ad3debec1eeae7d300e3781c066d";
+
+/// The SHA-256 of the stub files the table is read from at [`TYPESHED_COMMIT`] ([`digest`]).
+/// Reading other files (another typeshed, or a generator that follows more modules) fails until
+/// this is updated from a checkout of the pinned commit.
+const STUB_SET_SHA256: &str = "da36d0a6d4ccca027f9306f358ca33cc6f7c67c98e1533b683c3bcf89794716d";
 
 /// The modules the table covers. A submodule a covered module binds (`os.path`) is covered too.
 const MODULES: &[&str] = &[
@@ -71,17 +79,34 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
 
 /// The generated Rust file for the `stdlib/` folder.
 fn generate(stdlib: &Path) -> anyhow::Result<String> {
-    let version = PythonVersion::default().as_str();
-    let mut loader = Loader::new(stdlib.to_owned(), parse_version(version)?);
-    let table = table::build(&mut loader, MODULES)?;
+    let mut tables = Vec::new();
+    let mut files = BTreeMap::new();
+    for version in PythonVersion::ALL {
+        let mut loader = Loader::new(stdlib.to_owned(), parse_version(version.as_str())?);
+        tables.push(table::build(&mut loader, MODULES)?);
+        for file in loader.files {
+            files.entry(file.name).or_insert(file.text);
+        }
+    }
+    let digest = digest(&files);
+    if digest != STUB_SET_SHA256 {
+        bail!(
+            "the stub files read hash to {digest}, not {STUB_SET_SHA256}: {} is not typeshed {TYPESHED_COMMIT}",
+            stdlib.display()
+        );
+    }
+    let (first, last) = match PythonVersion::ALL {
+        [first, .., last] => (first.as_str(), last.as_str()),
+        _ => bail!("the table needs at least two Python versions"),
+    };
     Ok(render(
         &Header {
             commit: TYPESHED_COMMIT,
-            python_version: version,
-            files: loader.files.len(),
-            digest: &digest(&loader.files),
+            python_versions: &format!("{first}–{last}"),
+            files: files.len(),
+            digest: &digest,
         },
-        &table,
+        &table::intersect(tables)?,
     ))
 }
 
@@ -93,15 +118,13 @@ fn parse_version(version: &str) -> anyhow::Result<(u64, u64)> {
     Ok((major.parse()?, minor.parse()?))
 }
 
-/// SHA-256 over the files (sorted by name): each name, NUL, its bytes, NUL.
-fn digest(files: &[File]) -> String {
-    let mut files: Vec<&File> = files.iter().collect();
-    files.sort_by(|a, b| a.name.cmp(&b.name));
+/// SHA-256 over the files (by name, sorted): each name, NUL, its text, NUL.
+fn digest(files: &BTreeMap<String, String>) -> String {
     let mut hasher = Sha256::new();
-    for file in files {
-        hasher.update(file.name.as_bytes());
+    for (name, text) in files {
+        hasher.update(name.as_bytes());
         hasher.update([0]);
-        hasher.update(file.text.as_bytes());
+        hasher.update(text.as_bytes());
         hasher.update([0]);
     }
     hasher.finalize().iter().fold(String::new(), |mut hex, byte| {
@@ -113,7 +136,8 @@ fn digest(files: &[File]) -> String {
 /// What the generated file's header says.
 struct Header<'a> {
     commit: &'a str,
-    python_version: &'a str,
+    /// The Python versions the table holds for (`3.12–3.14`).
+    python_versions: &'a str,
     files: usize,
     digest: &'a str,
 }
@@ -149,6 +173,8 @@ pub(crate) enum Member {
     Module(&'static str),
     /// A variable, attribute, or property, with its written class when it has one.
     Variable(Option<&'static str>),
+    /// A property written `Self`: the instance it is read on.
+    SelfVariable,
 }
 
 /// A covered standard module and its members, sorted by name.
@@ -159,12 +185,14 @@ pub(crate) struct StubModule {
 }
 
 /// A class: its qualified name (where typeshed defines it: `_asyncio.Task`), its base classes in
-/// written order (`Generic[…]` and `Protocol[…]` left out; `object` only where written), and the
-/// members its own body declares, sorted by name.
+/// written order (`Generic[…]` and `Protocol[…]` left out; `object` only where written), whether
+/// it is a protocol (`Protocol` among its written bases), and the members its own body declares,
+/// sorted by name.
 #[derive(Debug)]
 pub(crate) struct StubClass {
     pub(crate) name: &'static str,
     pub(crate) bases: &'static [&'static str],
+    pub(crate) protocol: bool,
     pub(crate) members: &'static [(&'static str, Member)],
 }
 "#;
@@ -174,20 +202,20 @@ fn render(header: &Header<'_>, table: &Table) -> String {
     out.push_str("//! Generated by `cargo xtask gen-py-stubs <typeshed-dir>`; do not edit by hand.\n");
     let _ = writeln!(
         out,
-        "//! Source: typeshed {} (`stdlib/`, {} files),\n//! read without generics for Python {}.",
-        header.commit, header.files, header.python_version
+        "//! Source: typeshed {} (`stdlib/`, {} files),\n//! read without generics for each of Python {}.",
+        header.commit, header.files, header.python_versions
     );
     let _ = writeln!(out, "//! Stub-set SHA-256: {}.", header.digest);
     out.push_str(
         "//!\n\
-         //! Eight standard modules and every class their members reach. A written type is kept when\n\
-         //! it is a class (type arguments dropped), a class or `None`, or `Self`, and every overload\n\
-         //! and platform branch agrees on it; otherwise it is unknown.\n",
+         //! Eight standard modules and every class their members reach, in every version. A written\n\
+         //! type is kept when it is a class (type arguments dropped), a class or `None`, or `Self`, and\n\
+         //! every overload, platform branch, and version agrees on it; otherwise it is unknown.\n",
     );
     out.push_str(TYPES);
     out.push('\n');
     let used = used_variants(table);
-    let members: Vec<&str> = ["Class", "Function", "Module", "Variable"]
+    let members: Vec<&str> = ["Class", "Function", "Module", "SelfVariable", "Variable"]
         .into_iter()
         .filter(|variant| used.contains(variant))
         .collect();
@@ -230,9 +258,10 @@ fn render(header: &Header<'_>, table: &Table) -> String {
         let bases: Vec<String> = class.bases.iter().map(|base| format!("{base:?}")).collect();
         let _ = writeln!(
             out,
-            "    StubClass {{ name: {:?}, bases: &[{}], members: &[",
+            "    StubClass {{ name: {:?}, bases: &[{}], protocol: {}, members: &[",
             class.name,
-            bases.join(", ")
+            bases.join(", "),
+            class.protocol
         );
         member_rows(&mut out, &class.members);
         out.push_str("    ] },\n");
@@ -242,7 +271,7 @@ fn render(header: &Header<'_>, table: &Table) -> String {
 }
 
 /// The members, as many to a line as fit.
-fn member_rows(out: &mut String, members: &std::collections::BTreeMap<String, Member>) {
+fn member_rows(out: &mut String, members: &BTreeMap<String, Member>) {
     let indent = "       ";
     let mut line = String::from(indent);
     for (name, member) in members {
@@ -268,6 +297,7 @@ fn member_text(member: &Member) -> String {
         Member::Module(module) => format!("Module({module:?})"),
         Member::Variable(Some(class)) => format!("Variable(Some({class:?}))"),
         Member::Variable(None) => "Variable(None)".to_owned(),
+        Member::SelfVariable => "SelfVariable".to_owned(),
     }
 }
 
@@ -295,6 +325,7 @@ fn used_variants(table: &Table) -> Vec<&'static str> {
             Member::Class(_) => ("Class", None),
             Member::Module(_) => ("Module", None),
             Member::Variable(_) => ("Variable", None),
+            Member::SelfVariable => ("SelfVariable", None),
         };
         used.push(kind);
         if let Some(returns) = returns {

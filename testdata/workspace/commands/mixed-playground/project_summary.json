@@ -1,0 +1,32 @@
+{
+  "project": "<project>",
+  "name": "playgrounds",
+  "path": "<folder>",
+  "state": {
+    "kind": "current"
+  },
+  "status": {
+    "state": {
+      "kind": "current",
+      "files": 84,
+      "languages": [
+        "typescript",
+        "python"
+      ]
+    },
+    "watching": "off",
+    "complete": true
+  },
+  "updatedAtMs": 0,
+  "files": 84,
+  "languages": [
+    "typescript",
+    "python"
+  ],
+  "health": {
+    "doesntParse": 0,
+    "boardsNeedingReview": 0,
+    "boards": [],
+    "entrancesToCheck": 5
+  }
+}

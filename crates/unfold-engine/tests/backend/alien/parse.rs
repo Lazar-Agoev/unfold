@@ -24,8 +24,6 @@ pub struct Node<'s> {
 #[derive(Debug, Clone)]
 pub struct Syntax<'s> {
     pub nodes: Vec<Node<'s>>,
-    /// The start and end of every token, sorted.
-    pub boundaries: Vec<u32>,
 }
 
 /// A syntax error and its offset.
@@ -112,7 +110,6 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
         children: Vec::new(),
         parent: None,
     }];
-    let mut boundaries = vec![];
     // Open forms, and whether each has read its head yet.
     let mut open: Vec<(usize, bool)> = vec![(0, true)];
     let bytes = text.as_bytes();
@@ -142,7 +139,6 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
                 let node = nodes.len() - 1;
                 nodes[parent].children.push(node);
                 open.push((node, false));
-                boundaries.extend([at, at + 1]);
                 index += 1;
             }
             b')' => {
@@ -154,7 +150,6 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
                     return Err(error("empty form"));
                 }
                 nodes[node].range.end = at + 1;
-                boundaries.extend([at, at + 1]);
                 index += 1;
             }
             _ => {
@@ -171,13 +166,6 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
                 }
                 let atom = &text[start..index];
                 let end = index as u32;
-                boundaries.extend([at, end]);
-                // An option's value (`:type=Cart`) is a token of its own, as a written type.
-                if atom.starts_with(':')
-                    && let Some(equals) = atom.find('=')
-                {
-                    boundaries.push(at + equals as u32 + 1);
-                }
                 let (form, head) = *open.last().ok_or(error("unbalanced"))?;
                 if !head {
                     if atom.starts_with('"') || atom.starts_with(':') {
@@ -205,9 +193,5 @@ pub fn parse(text: &str) -> Result<Syntax<'_>, ParseError> {
             offset: len,
         });
     }
-    boundaries.push(0);
-    boundaries.push(len);
-    boundaries.sort_unstable();
-    boundaries.dedup();
-    Ok(Syntax { nodes, boundaries })
+    Ok(Syntax { nodes })
 }

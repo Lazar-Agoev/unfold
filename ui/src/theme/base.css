@@ -103,17 +103,6 @@ pre {
   white-space: nowrap;
 }
 
-/* While a pane edge is dragged, the whole window shows the resize cursor. */
-body[data-resizing="column"],
-body[data-resizing="column"] * {
-  cursor: col-resize !important;
-}
-
-body[data-resizing="row"],
-body[data-resizing="row"] * {
-  cursor: row-resize !important;
-}
-
 /* Floating layers (tooltips, menus, popovers, dialogs) fade in with this. */
 @keyframes hover-layer-in {
   from {

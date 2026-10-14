@@ -6,8 +6,7 @@
 //! - takes a per-file write census ([`scope`]) and proves the identities that shape structure
 //!   ([`Proofs`]): `builtins.property` (getter and setter forms), `typing.TYPE_CHECKING`
 //!   (erased imports), and `importlib.import_module` (literal dynamic imports, which are calls
-//!   with an `imports` link);
-//! - lists the file's runtime module dependencies for the census, independently of lowering.
+//!   with an `imports` link).
 //!
 //! **Per file by design.** These proofs decide which forms and links exist, so they must be
 //! settled at extraction, which sees one file. The proof of concept decided them with its
@@ -33,7 +32,6 @@ pub(crate) use self::proofs::Proofs;
 use self::proofs::{Identities, member_form};
 use self::scope::{Census, MODULE, Origin, ScopeKind, Write};
 use crate::ast::{expr_children, single_name_argument, string_literal};
-use crate::tokens::Tokens;
 
 /// What the pre-pass found.
 #[derive(Debug)]
@@ -95,9 +93,6 @@ struct Walker<'a> {
     guards: Vec<Guard<'a>>,
     definitions: Vec<(&'a StmtFunctionDef, u32)>,
     imports: Vec<(TextSize, u32)>,
-    /// Each import statement's start with the specifier of one runtime dependency it declares.
-    import_ranges: Vec<(TextSize, TextRange)>,
-    tokens: Tokens<'a>,
     failure: Option<SourceFailure>,
     /// Calls that may be dynamic imports: the call, its scope, the literal, and its range.
     dynamic: Vec<(&'a ExprCall, u32, &'a str, TextRange)>,
@@ -109,7 +104,7 @@ struct Walker<'a> {
 /// Walks `module` once: checks, depth, census, and proofs. `pep765` turns on the grammar 3.14
 /// checks for transfers out of `finally`. The walk always completes, even after a failure, so
 /// the depth is known whatever the tree.
-pub(crate) fn analyze<'a>(module: &'a ModModule, tokens: Tokens<'a>, pep765: bool) -> Analysis {
+pub(crate) fn analyze(module: &ModModule, pep765: bool) -> Analysis {
     let mut walker = Walker {
         census: Census::new(),
         stack: Vec::new(),
@@ -118,8 +113,6 @@ pub(crate) fn analyze<'a>(module: &'a ModModule, tokens: Tokens<'a>, pep765: boo
         guards: Vec::new(),
         definitions: Vec::new(),
         imports: Vec::new(),
-        import_ranges: Vec::new(),
-        tokens,
         failure: None,
         dynamic: Vec::new(),
         evaluations: Vec::new(),
@@ -333,7 +326,6 @@ impl<'a> Walker<'a> {
             Stmt::Import(node) => {
                 self.imports.push((node.range.start(), context.guard));
                 for alias in &node.names {
-                    self.import_ranges.push((node.range.start(), alias.name.range));
                     let (bound, origin) = match &alias.asname {
                         Some(asname) => (asname.id.as_str(), alias.name.id.as_str()),
                         None => {
@@ -347,10 +339,6 @@ impl<'a> Walker<'a> {
             }
             Stmt::ImportFrom(node) => {
                 self.imports.push((node.range.start(), context.guard));
-                let module_end = node.module.as_ref().map(|module| module.range.end());
-                if let Some(path) = self.tokens.import_module_path(node.range.start(), module_end) {
-                    self.import_ranges.push((node.range.start(), path));
-                }
                 for alias in &node.names {
                     if alias.name.id.as_str() == "*" {
                         continue;
@@ -599,16 +587,6 @@ impl<'a> Walker<'a> {
                 proofs.dynamic.insert(call.range(), (name.into(), literal));
             }
         }
-        proofs.dependencies = self
-            .import_ranges
-            .iter()
-            .filter(|(start, _)| !proofs.erased.contains(start))
-            .map(|&(_, range)| range)
-            .chain(proofs.dynamic.values().map(|&(_, literal)| literal))
-            .collect();
-        proofs
-            .dependencies
-            .sort_by_key(|range| (range.start(), range.end()));
         proofs
     }
 

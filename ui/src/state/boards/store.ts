@@ -8,9 +8,9 @@
  *   folder is Rust's), written over the board's file; saves never overlap, and edits made during one are
  *   saved right after. A failed save keeps the edits, and the next edit or Retry writes them.
  * - An outside change to the file arrives as `board_reloaded`: the board takes the file's version and
- *   its undo history starts over, except while it has edits not yet saved or a save is in flight (the
- *   person's version is written over the file then). A file deleted outside is written back by the
- *   next save.
+ *   its undo history starts over, dropping edits waiting for the autosave, except while its save is
+ *   failing or in flight (the person's version is written over the file then). A file deleted outside
+ *   is written back by the next save.
  * - View state (each page's camera and selection, and the active page) lasts only while the app runs;
  *   view changes are never undo steps.
  * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
@@ -638,15 +638,15 @@ export function saveAllNow(): void {
 
 /**
  * Handles `board_reloaded` with the board as its file now holds it: the session takes that version,
- * and its undo history starts over. Ignored while the board has edits not yet saved (waiting for the
- * autosave, or failing to save): the pending save, or Retry, writes the person's version over the file.
- * Ignored too while a save is in flight: the engine sends the event while holding the board's session,
- * so that save is written after the outside change, and the file holds the person's version.
+ * and its undo history starts over. Edits waiting for the autosave go with it. Ignored while the
+ * board's save is failing: Retry writes the person's version over the file. Ignored too while a save
+ * is in flight: the engine sends the event while holding the board's session, so that save is written
+ * after the outside change, and the file holds the person's version.
  */
 export function adoptOutsideChange(state: BoardState): void {
   const ref = { project: state.project, id: state.id };
   const board = getOpenBoard(ref);
-  if (!board || board.readOnly || inflight.has(boardKey(ref)) || isDirty(board)) {
+  if (!board || board.readOnly || inflight.has(boardKey(ref)) || board.saveError !== null) {
     return;
   }
   cancelSaveTimer(ref);

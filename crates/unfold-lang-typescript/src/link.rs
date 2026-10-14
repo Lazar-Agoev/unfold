@@ -292,6 +292,8 @@ impl<'a> TypeScriptLinked<'a> {
         self.tables.objects = objects;
         self.tables.classes = self.index_classes();
         self.tables.narrowed = self.find_narrowed();
+        self.tables.reassigned = self.find_reassigned();
+        self.tables.patches = self.find_patches();
         let mut classes: Vec<DeclRef> = self.tables.classes.keys().copied().collect();
         classes.sort_unstable();
         let bases: FxHashMap<DeclRef, crate::evidence::Base> = classes
@@ -300,7 +302,9 @@ impl<'a> TypeScriptLinked<'a> {
             .collect();
         self.tables.bases = bases;
         self.tables.unknown_overrides = self.find_unknown_overrides();
+        self.tables.library_overrides = self.find_library_overrides();
         self.tables.written = self.find_writes();
+        self.tables.written_fields = self.find_written_fields();
         self.shapes = self.class_shapes();
     }
 

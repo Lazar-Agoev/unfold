@@ -61,7 +61,7 @@ fn every_call_in_the_parse_tree_is_one_call_node() {
     let linked = Python.link(&program, &inputs);
     let census = linked.census().expect("Python has a census");
     let mut decorators = 0;
-    for (id, file) in program.iter() {
+    for (_, file) in program.iter() {
         let Some(facts) = file.facts.as_deref() else {
             continue;
         };
@@ -90,27 +90,6 @@ fn every_call_in_the_parse_tree_is_one_call_node() {
             .iter()
             .filter(|node| node.role == Some(unfold_core::vocab::CallRole::Decorator))
             .count();
-        let mut imports: Vec<ByteRange> = facts
-            .graph
-            .imports()
-            .iter()
-            .enumerate()
-            .filter(|(index, import)| {
-                !import.conditional
-                    || linked.keeps_import(unfold_engine::ImportRef {
-                        file: id,
-                        import: u32::try_from(*index).expect("few imports"),
-                    })
-            })
-            .map(|(_, import)| import.range)
-            .collect();
-        imports.sort_unstable();
-        let mut dependencies = census
-            .module_dependencies(&file.path)
-            .expect("the census covers the file")
-            .to_vec();
-        dependencies.sort_unstable();
-        assert_eq!(imports, dependencies, "{}", file.path);
     }
     assert!(decorators > 0, "decorators are calls the census finds");
 }
@@ -191,9 +170,9 @@ fn incremental_updates_equal_a_full_compile() {
             None => std::fs::remove_file(&file).expect("remove"),
         }
         let changed = vec![RepoPath::new(path).expect("a path")];
-        incremental
-            .update(UpdateRequest::background(changed).with_verify(Verify::Contents))
-            .expect("an incremental update");
+        let mut request = UpdateRequest::background(changed);
+        request.verify = Verify::Contents;
+        incremental.update(request).expect("an incremental update");
     }
     let mut full = engine(root);
     full.update(UpdateRequest::compile()).expect("compile");

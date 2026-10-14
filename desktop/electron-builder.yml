@@ -2,9 +2,7 @@
 #
 #   just bundle-dir   # the unpacked app
 
-# PLACEHOLDER (release naming): the bundle identifier is chosen together with the trademark check of
-# the name Unfold. Changing appId later changes which macOS keychain items the app owns, so settle
-# it before the first public release.
+# The bundle identifier. The macOS keychain items the app owns belong to it.
 appId: dev.unfold.app
 productName: Unfold
 # The app's package name (the workspace calls it @unfold/desktop).
@@ -67,8 +65,7 @@ electronFuses:
   # Ignores NODE_OPTIONS / NODE_EXTRA_CA_CERTS, and --inspect flags and SIGUSR1.
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
-  # Checks app.asar against the hash recorded at build time (macOS and Windows; Electron has no
-  # Linux implementation, so there it has no effect).
+  # Checks app.asar against the hash recorded at build time.
   enableEmbeddedAsarIntegrityValidation: true
   # Loads the app only from app.asar, never from a loose `app` folder.
   onlyLoadAppFromAsar: true

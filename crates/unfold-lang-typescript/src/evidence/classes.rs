@@ -375,6 +375,74 @@ impl TypeScriptLinked<'_> {
         }
     }
 
+    /// The class properties written after their declaration, so their initializers are not
+    /// their values: an assignment, update, `delete`, or reflective write whose object is the
+    /// class or an instance of it, as written or under any assertion (a write with an unknown
+    /// key writes every property), and a subclass member of the same name. A write through an
+    /// object whose class isn't known writes nothing known, as in Python.
+    pub(crate) fn find_written_fields(&self) -> FxHashSet<DeclRef> {
+        let mut written = FxHashSet::default();
+        for index in 0..self.program().files().len() {
+            let file = FileId(index as u32);
+            let Some(binding) = self.binding(file) else {
+                continue;
+            };
+            for write in &binding.writes {
+                let mut walk = Walk::default();
+                let unwrapped = self.unwrap_expr(file, write.object);
+                for object in [write.object, unwrapped] {
+                    let receiver = self.class_receiver(&mut walk, file, object);
+                    let Some(class) = receiver.class.filter(|_| !receiver.unbound_this) else {
+                        continue;
+                    };
+                    match &write.name {
+                        Some(name) => written.extend(
+                            self.lookup_member(&mut walk, class, name, receiver.is_static)
+                                .declarations,
+                        ),
+                        None => written.extend(self.lineage_members(&mut walk, class)),
+                    }
+                }
+            }
+        }
+        let mut classes: Vec<DeclRef> = self.tables.classes.keys().copied().collect();
+        classes.sort_unstable();
+        for class in classes {
+            let mut walk = Walk::default();
+            let Some(base) = self.base_of(&mut walk, class).class else {
+                continue;
+            };
+            for member in self.class_members(class) {
+                let Some(decl) = self.decl(member) else {
+                    continue;
+                };
+                // A private name is its own class's.
+                let Some(name) = decl.name.as_deref().filter(|name| !name.starts_with('#')) else {
+                    continue;
+                };
+                let is_static = decl.flags.has(DeclFlags::STATIC);
+                written.extend(self.lookup_member(&mut walk, base, name, is_static).declarations);
+            }
+        }
+        written.retain(|&declaration| {
+            self.decl(declaration)
+                .is_some_and(|decl| decl.kind == DeclKind::Property)
+        });
+        written
+    }
+
+    /// The members of a class and of its known bases.
+    fn lineage_members(&self, walk: &mut Walk, class: DeclRef) -> Vec<DeclRef> {
+        let mut members = Vec::new();
+        let mut visited = FxHashSet::default();
+        let mut current = Some(class);
+        while let Some(owner) = current.filter(|&owner| visited.insert(owner)) {
+            members.extend(self.class_members(owner));
+            current = self.base_of(walk, owner).class;
+        }
+        members
+    }
+
     /// Classes whose base chain reaches an unknown base, by the names of their overriding
     /// members (`*` for a member whose name isn't known).
     pub(crate) fn find_unknown_overrides(&self) -> FxHashMap<Box<str>, SmallVec<[DeclRef; 2]>> {

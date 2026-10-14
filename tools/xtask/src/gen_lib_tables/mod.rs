@@ -5,8 +5,9 @@
 //! ([`scan`]), never from a running compiler: every `lib.*.d.ts` of a TypeScript package
 //! (the proof of concept used TypeScript 6.0.3's `built/local`), plus `@types/node`'s `index.d.ts`
 //! and every file it reaches through `/// <reference path="…" />`. The ECMAScript tables (the
-//! globals of the language itself, their types, and the built-in types' methods) come from the
-//! `lib.es*.d.ts` files alone, without the DOM and Node. The result is written to
+//! globals of the language itself, their types, the class types and what each type extends, and
+//! the built-in types' methods) come from the standard editions' files alone (`lib.es5.d.ts`,
+//! `lib.es2015.*` to the latest year), without the DOM, Node, or `lib.esnext.*` proposals. The result is written to
 //! `crates/unfold-lang-typescript/src/tables/generated.rs` as sorted static arrays, with the
 //! source versions and a SHA-256 of the declaration set in its header. With `--check`, the file
 //! is compared instead of written.
@@ -198,6 +199,9 @@ impl Sources {
                 .count(),
             globals: ecmascript_model.global_values(),
             value_types: ecmascript_model.global_value_types(),
+            types: ecmascript_model.library_types(),
+            classes: ecmascript_model.classes(),
+            supertypes: ecmascript_model.supertypes(),
             methods: ecmascript_model.methods()?,
         };
         Ok(render(
@@ -220,10 +224,10 @@ impl Sources {
     }
 }
 
-/// Whether a default-library file declares ECMAScript itself (`lib.es5.d.ts`, `lib.es2015.*`,
-/// `lib.esnext.*`), not a host such as the DOM.
+/// Whether a default-library file declares a standard edition of ECMAScript (`lib.es5.d.ts`,
+/// `lib.es2015.*`, …), not a host such as the DOM or a proposal (`lib.esnext.*`).
 fn is_ecmascript_file(name: &str) -> bool {
-    is_library_file(name) && name.starts_with("lib.es")
+    is_library_file(name) && name.starts_with("lib.es") && !name.starts_with("lib.esnext")
 }
 
 /// Whether a file name is a default-library file: `lib.<something>.d.ts` (not `lib.d.ts`).
@@ -332,11 +336,14 @@ struct Header<'a> {
     digest: &'a str,
 }
 
-/// The ECMAScript tables, from the `lib.es*.d.ts` files alone.
+/// The ECMAScript tables, from the standard editions' `lib.es*.d.ts` files alone.
 struct Ecmascript {
     files: usize,
     globals: Vec<String>,
     value_types: Vec<(String, String)>,
+    types: Vec<String>,
+    classes: Vec<String>,
+    supertypes: Vec<(String, Vec<String>)>,
     methods: Vec<(String, Vec<String>)>,
 }
 
@@ -359,7 +366,7 @@ fn render(
     );
     let _ = writeln!(
         out,
-        "//! The ECMAScript tables come from the `lib.es*.d.ts` files alone ({} files).",
+        "//! The ECMAScript tables come from the standard editions' `lib.es*.d.ts` files alone ({} files).",
         ecmascript.files
     );
     let _ = writeln!(out, "//! Declaration-set SHA-256: {}.", header.digest);
@@ -400,8 +407,8 @@ fn render(
     array(
         &mut out,
         "/// ECMAScript's own global value names (`JSON`, `Math`, `Promise`, `parseInt`), declared in the\n\
-         /// `lib.es*.d.ts` files: not the DOM's or Node's (`console`, `fetch`, `setTimeout`). Sorted by\n\
-         /// bytes.",
+         /// standard editions' `lib.es*.d.ts` files: not the DOM's or Node's (`console`, `fetch`,\n\
+         /// `setTimeout`), nor a proposal's (`Temporal`). Sorted by bytes.",
         "ECMASCRIPT_GLOBALS",
         &ecmascript.globals,
     );
@@ -412,6 +419,28 @@ fn render(
          /// (`Reflect`). Sorted by name.",
         "ECMASCRIPT_VALUE_TYPES",
         &ecmascript.value_types,
+    );
+    array(
+        &mut out,
+        "/// ECMAScript's class and interface names, qualified through namespaces (`Iterable`,\n\
+         /// `Intl.Collator`), sorted by bytes.",
+        "ECMASCRIPT_TYPES",
+        &ecmascript.types,
+    );
+    array(
+        &mut out,
+        "/// ECMAScript's class types: each global value, qualified through namespaces, whose type\n\
+         /// constructs the type of the same name (`Array`, `Map`, `Error`, `Intl.Collator`). Sorted by\n\
+         /// bytes.",
+        "ECMASCRIPT_CLASSES",
+        &ecmascript.classes,
+    );
+    lists(
+        &mut out,
+        "/// Each ECMAScript class or interface that extends others (`AggregateError`), with every\n\
+         /// interface it extends, directly or not (`Error`). Sorted by name, each list sorted by bytes.",
+        "ECMASCRIPT_SUPERTYPES",
+        &ecmascript.supertypes,
     );
     lists(
         &mut out,

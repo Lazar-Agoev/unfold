@@ -22,7 +22,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
  * with a translucent value are checked only where both are opaque.
  */
 const TEXT_PAIRS: readonly (readonly [string, string])[] = [
-  ...["canvas", "home", "sidebar", "chrome", "surface", "control", "track", "pressed", "hover", "selection", "step"].map(
+  ...["canvas", "home", "sidebar", "chrome", "surface", "control", "pressed", "hover", "selection", "step"].map(
     (ground) => ["text", ground] as const,
   ),
   ...[
@@ -32,12 +32,10 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
     "chrome",
     "surface",
     "control",
-    "track",
     "pressed",
     "hover",
     "selection",
     "step",
-    "placeholder",
   ].map((ground) => ["muted", ground] as const),
   ["subtle", "surface"],
   ["syntax-plain", "editor"],

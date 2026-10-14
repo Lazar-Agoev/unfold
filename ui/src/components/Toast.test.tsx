@@ -24,10 +24,10 @@ describe("Toast", () => {
     const run = vi.fn();
     render(<Toaster />);
     act(() => {
-      showToast({ title: "storefront-web compiled", body: "6 entrances found", action: { label: "Open Home", run } });
+      showToast({ title: "Arranged 4 cards by call depth.", body: "Callers left, callees right.", action: { label: "Undo", run } });
     });
-    expect(screen.getByText("6 entrances found")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    expect(screen.getByText("Callers left, callees right.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(run).toHaveBeenCalledTimes(1);
     expect(titles()).toEqual([]);
   });

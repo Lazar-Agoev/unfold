@@ -312,27 +312,6 @@ fn entrances_reach_what_their_code_runs() {
     );
     assert!(index.reached_from("src/absent.ts#").is_none());
 
-    let place = index.start_closure("entrance:server/place-an-order").unwrap();
-    assert_eq!(place.len(), 10);
-    assert!(
-        place
-            .iter()
-            .any(|key| key.as_str() == "src/lib/validate.ts#validateOrder")
-    );
-    // An app's start reaches the whole process.
-    assert_eq!(index.start_closure("entrance:server").unwrap().len(), 61);
-    assert!(
-        index
-            .start_closure("entrance:server/admin-stats")
-            .unwrap()
-            .is_empty()
-    );
-    assert!(index.start_closure("entrance:absent").is_none());
-    assert_eq!(
-        index.closure(&["src/routes/orders.ts#createOrder"]),
-        index.closure(&["src/routes/orders.ts#createOrder/call:slack.post"])
-    );
-
     let py = Playground::load("py-orders");
     let index = py.index();
     let reached: Vec<String> = index

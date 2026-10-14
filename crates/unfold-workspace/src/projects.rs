@@ -24,8 +24,8 @@
 //! interest(p) = a board of p is open || the window has p selected || a compile of p is running
 //! wake(p)     on a command that uses p's engine (ProjectHandle::wake), select_project, and
 //!             gaining interest otherwise (the reaper's next tick); opens the Workspace (readable
-//!             at once; the reopen check runs in the background). A wake that fails marks the row
-//!             unavailable.
+//!             at once; the reopen check runs in the background, or a Compile for a folder with
+//!             no cache). A wake that fails marks the row unavailable.
 //! lease       every wake and every loss of interest: lease_until = max(lease_until, now + rest_after)
 //! rest(p)     live && !interest && now >= lease_until && the engine is idle: remembers the row's
 //!             state in workspace.json (lastKnown), closes the Workspace, drops the extras
@@ -537,6 +537,7 @@ impl Projects {
         let root = canonical_folder(path)?;
         let text = root.to_string_lossy().into_owned();
         let writable = check_writable(&root);
+        let cached;
         let entry = {
             let mut inner = lock(&self.inner);
             if let Some(existing) = inner.file.projects.iter().find(|record| record.path == text) {
@@ -551,6 +552,7 @@ impl Projects {
             if inner.file.projects.len() >= MAX_PROJECTS {
                 return Err(WorkspaceError::TooManyProjects(MAX_PROJECTS));
             }
+            cached = Layout::new(&root).is_compiled();
             let id = ProjectId::generate(|id| inner.entries.contains_key(id));
             inner.file.projects.push(ProjectRecord {
                 id: id.clone(),
@@ -565,8 +567,11 @@ impl Projects {
             entry
         };
         self.announce();
-        // A folder that can't be opened leaves the row unavailable, which the row says.
-        if let Ok(workspace) = self.wake(&entry) {
+        // A folder that can't be opened leaves the row unavailable, which the row says. Opening
+        // compiles a folder with no cache; one with a cache compiles here.
+        if let Ok(workspace) = self.wake(&entry)
+            && cached
+        {
             workspace.compile(None);
         }
         Ok(AddedProject {
@@ -759,6 +764,11 @@ impl Projects {
                     state.unavailable = None;
                     state.extras = Arc::default();
                     state.lease_until = state.lease_until.max(Instant::now() + self.options.rest_after);
+                }
+                // A folder with no cache (never compiled, or `.unfold/local/` deleted) compiles
+                // as it opens, as an added one does.
+                if !workspace.is_compiled() {
+                    workspace.compile(None);
                 }
                 (self.on_wake)(&entry.id);
                 Ok(workspace)
@@ -1103,6 +1113,45 @@ mod tests {
         );
         let second = ProjectId::generate(|id| *id == first);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn a_project_without_a_cache_compiles_when_it_opens() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let folder = dir.path().join("orders");
+        std::fs::create_dir_all(&folder).expect("mkdir");
+        std::fs::write(folder.join("a.ts"), "export function place() {}\n").expect("write");
+        // A project whose `.unfold/local/` is gone, as after `git clean -fdx`.
+        std::fs::create_dir_all(dir.path().join("app")).expect("mkdir");
+        let record = format!(
+            r#"{{"projects": [{{"id": "p-aaaaaaaaaa", "path": {}, "expanded": true, "addedAtMs": 0, "lastKnown": null}}]}}"#,
+            serde_json::to_string(&folder.canonicalize().expect("canonical")).expect("json")
+        );
+        std::fs::write(dir.path().join("app/workspace.json"), record).expect("write");
+        let mut options = WorkspaceOptions {
+            watch: false,
+            ..WorkspaceOptions::default()
+        };
+        options.engine.compile_threads = 1;
+        let projects = Projects::new(
+            AppConfig {
+                app_data_dir: dir.path().join("app"),
+                logs_dir: dir.path().join("logs"),
+            },
+            Arc::new(Silent),
+            options,
+            Box::new(|_| {}),
+        );
+        let entry = lock(&projects.inner)
+            .entries
+            .get(&ProjectId::new_unchecked("p-aaaaaaaaaa"))
+            .cloned()
+            .expect("the project");
+        let workspace = projects.wake(&entry).expect("opens");
+        assert!(workspace.wait_idle(Duration::from_secs(60)));
+        assert!(workspace.layout().is_compiled(), "the cache is rebuilt");
+        assert_eq!(workspace.project_state(), ProjectState::Current);
+        projects.shutdown();
     }
 
     #[test]

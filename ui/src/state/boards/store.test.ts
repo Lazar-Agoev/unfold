@@ -563,18 +563,18 @@ describe("outside changes", () => {
     expect(store.canUndo(REF)).toBe(true);
   });
 
-  it("are ignored while edits wait for the autosave, which then writes the person's version over the file", async () => {
+  it("replace edits waiting for the autosave, which then saves nothing over the file", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r10"));
     edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.adoptOutsideChange(state(theirs, "r9"));
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
-    expect(store.canUndo(REF)).toBe(true);
+    const board = store.getOpenBoard(REF);
+    expect(board?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["x"]);
+    expect(board?.revision).toBe("r9");
+    expect(board && store.isDirty(board)).toBe(false);
+    expect(store.canUndo(REF)).toBe(false);
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
-    const [command, args] = engine.call.mock.calls.at(-1) as [string, SaveBoardArgs];
-    expect(command).toBe("save_board");
-    expect(args.board.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
-    expect(store.getOpenBoard(REF)?.revision).toBe("r10");
+    expect(engine.call.mock.calls.filter(([command]) => command === "save_board")).toEqual([]);
   });
 
   it("are ignored while the board's save is failing; the next save writes the person's version over the file", async () => {

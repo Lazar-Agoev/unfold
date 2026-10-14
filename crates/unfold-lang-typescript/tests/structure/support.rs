@@ -1,6 +1,6 @@
 //! Compiles TypeScript sources with TypeScript linking and validates the graph against the
-//! sources and the TypeScript census, so every test checks token boundaries, call sites, and
-//! module dependencies independently of extraction.
+//! sources and the TypeScript census, so every test checks that every call in the parse tree is
+//! one call node, independently of extraction.
 
 use std::collections::BTreeMap;
 use std::path::Path;

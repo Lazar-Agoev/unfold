@@ -416,11 +416,6 @@ impl GraphBuilder {
         });
     }
 
-    /// The app, to fill in its optional fields.
-    pub fn app_mut(&mut self, app: AppRef) -> &mut App {
-        &mut self.apps[app.0]
-    }
-
     /// Snapshots of every file and input, for source-aware validation.
     pub fn snapshots(&self) -> Vec<Snapshot> {
         let files = self.files.iter().map(|draft| draft.snapshot.clone());

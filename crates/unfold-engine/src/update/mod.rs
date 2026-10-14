@@ -164,12 +164,6 @@ impl<'a> UpdateRequest<'a> {
         self.progress = Some(progress);
         self
     }
-
-    /// Checks possibly changed files with `verify`.
-    pub fn with_verify(mut self, verify: Verify) -> Self {
-        self.verify = verify;
-        self
-    }
 }
 
 /// What kind of problem a [`Problem`] is. File failures are on the files' records instead.

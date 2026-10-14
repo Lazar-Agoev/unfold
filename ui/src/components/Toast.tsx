@@ -20,7 +20,7 @@ export interface ToastOptions {
   readonly body?: string;
   /** The leading slot: a progress ring, a monogram. Danger toasts default to a warning icon. */
   readonly leading?: ReactNode;
-  /** One action link, e.g. "Open Home". Choosing it dismisses the toast. */
+  /** One action link, e.g. "Undo". Choosing it dismisses the toast. */
   readonly action?: { readonly label: string; readonly run: () => void };
   /** Milliseconds before it hides itself; null keeps it until dismissed. Default 5 s, 8 s for danger. */
   readonly duration?: number | null;

@@ -20,7 +20,7 @@ pub mod binding;
 pub use binding::Binding;
 
 /// The version of TypeScript extraction: the payload format and every rule that shapes facts.
-pub const PAYLOAD_VERSION: u32 = 11;
+pub const PAYLOAD_VERSION: u32 = 12;
 
 /// One file's TypeScript facts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub struct Payload {
     pub imports: Vec<ImportKind>,
     /// Module-scope declarations, import bindings, and export entries.
     pub module: ModuleFacts,
-    /// Token boundaries, call sites, and module dependencies, found independently of lowering.
+    /// Call sites, found independently of lowering.
     pub census: CensusRecord,
     /// Declarations, symbols, and the expressions evidence evaluates.
     pub binding: Binding,

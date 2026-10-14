@@ -1,15 +1,17 @@
 //! The evidence the shared policy reads for a value (the proof of concept's
 //! `expressionEvidence` and `annotationEvidence`): candidates from the value's target, the
 //! receiver class, static and `super` access, an unbound `this`, ambiguity from members that
-//! may override through an unknown base, and the access root's import binding. A written type
+//! may override through an unknown base, a library member a project class may override or the
+//! project may have patched, and the access root's import binding. A written type
 //! name's evidence ([`TypeScriptLinked::type_facts`]) is looked up in the type meaning, with
 //! undeclared library types and global type aliases external.
 
 use std::borrow::Cow;
 
-use unfold_engine::evidence::{Candidate, Evidence, ImportBinding, ImportTarget, Origin};
+use unfold_engine::evidence::{Candidate, Evidence, ImportBinding, ImportTarget, Origin, Refusal};
 use unfold_engine::{DeclRef, FileId, TypeRef as TypeName};
 
+use super::builtins::Dispatch;
 use super::{Target, Walk};
 use crate::link::{TypeScriptLinked, import_kind};
 use crate::modules::Resolved;
@@ -77,11 +79,27 @@ impl TypeScriptLinked<'_> {
             && overridable
             && name.is_some_and(|name| self.may_have_unknown_override(receiver_class, name));
         let import_binding = root_name.and_then(|(_, lookup)| self.import_binding(file, lookup));
+        // A library member, or an ECMAScript global by name.
+        let library = target.declarations.is_empty() && !target.external.is_empty();
+        let dispatch = match (access, &receiver, name) {
+            (Some(object), Some(receiver), Some(name)) if library => {
+                self.library_dispatch(file, object, receiver, name)
+            }
+            (None, _, _)
+                if library
+                    && self
+                        .global_value(file, expression)
+                        .is_some_and(|global| self.global_replaced(global)) =>
+            {
+                Dispatch::Patched
+            }
+            _ => Dispatch::Library,
+        };
         Evidence {
             candidates: candidates.into_iter().collect(),
-            refusal: None,
+            refusal: (dispatch == Dispatch::Patched).then_some(Refusal::Dynamic),
             ambiguous: target.ambiguous || unknown_override,
-            overridden: false,
+            overridden: dispatch == Dispatch::Overridden,
             receiver_class,
             super_access,
             static_access,

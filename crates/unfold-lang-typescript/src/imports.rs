@@ -8,9 +8,6 @@
 //! | `export * from`, `export * as ns from` | Yes, unless `export type *` |
 //! | `import x = require("x")` | Yes, unless `import type x = …`; `import x = A.B` is not a module |
 //! | Dynamic `import(…)` | Yes (a non-literal specifier is `dynamic`) |
-//!
-//! Extraction and the independent census both ask these questions, so an `imports` link and a
-//! census dependency are always found by the same rules.
 
 use oxc_ast::ast::{
     ExportAllDeclaration, ExportFromDeclaration, ImportDeclaration, ImportDeclarationSpecifier,

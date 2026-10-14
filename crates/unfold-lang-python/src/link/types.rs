@@ -12,7 +12,7 @@
 //! | import | followed: a module, an external origin (`typing.Optional` → `python:typing`), or a module member looked up as a type |
 //! | assignment, parameter, any other write | that declaration, not its value |
 //! | competing writes | as for values: the policy decides (`mutable_binding`, or `ambiguous` for competing imports) |
-//! | none | `ambiguous` under a star import with unknown names; external `builtins` for a name typeshed's `builtins` defines ([`crate::stdlib::TYPE_BUILTIN_NAMES`]); else nothing (`unknown_name`) |
+//! | none | `ambiguous` under a star import with unknown names; external `builtins` for a name the stubs' `builtins` binds ([`library::builtin`]); else nothing (`unknown_name`) |
 //!
 //! A qualified name resolves its receiver in the type meaning too (a module, a class for a
 //! nested class, an external origin), then the member: a module's member as above, a class's
@@ -33,10 +33,10 @@ use unfold_engine::evidence::{Evidence, Refusal};
 
 use super::answers::import_binding;
 use super::binder::{Binder, Ctx, Seen, SeenKey};
+use super::library;
 use super::program::{ExprRef, NodeRef, Sym};
 use super::value::{Meaning, Value, dotted};
 use crate::bind::ir::{ExprKind, NodeKind, WriteKind};
-use crate::stdlib::is_builtin_type_name;
 
 impl Binder<'_> {
     /// The expression a written type name resolves through.
@@ -93,7 +93,7 @@ impl Binder<'_> {
                     return Value::ambiguous();
                 }
                 let text = program.text(sym);
-                if is_builtin_type_name(text) {
+                if library::builtin(text) {
                     return Value::external("builtins", text);
                 }
                 Value::default()

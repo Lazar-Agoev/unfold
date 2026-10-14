@@ -59,11 +59,6 @@ impl FolderPath {
             .map_err(FolderPathError::Invalid)
     }
 
-    /// The folder as a path, or `None` for the open folder itself.
-    pub fn as_repo_path(&self) -> Option<&RepoPath> {
-        self.0.as_ref()
-    }
-
     /// The folder as written canonically: `.` or a relative path.
     pub fn as_str(&self) -> &str {
         self.0.as_ref().map_or(".", RepoPath::as_str)

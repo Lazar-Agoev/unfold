@@ -6,7 +6,7 @@
 import type { BoardDocument, Health, Key, ProjectId } from "../../ipc/generated";
 
 /** A board's id: the folder-relative path of its file. */
-export type BoardId = string;
+type BoardId = string;
 /** A page's id, unique in its board (`page-1`). */
 export type PageId = string;
 
@@ -75,7 +75,7 @@ export interface SelectedCalls {
 }
 
 /** A request for the canvas to bring cards into view once they are measured. */
-export interface FocusRequest {
+interface FocusRequest {
   readonly seq: number;
   readonly cardIds: readonly string[];
   /** `center` puts one card in view at a readable zoom; `fit` shows all of `cardIds` (all cards when empty). */

@@ -174,7 +174,7 @@ export function combinedExits(routes: readonly Route[], inset: boolean): Combine
   return exits;
 }
 
-/** A part's section title (`Try`, `Except`, `Else`, `Finally`) and its note or clause. */
+/** A part's section title (`Try`, `Except`, `Except*`, `Catch`, `Else`, `Finally`) and its note or clause. */
 export interface SectionWords {
   readonly title: string;
   /** A handler's clause as written, without its keyword. */
@@ -189,8 +189,14 @@ export function sectionWords(lane: Lane, loop: boolean): SectionWords {
     case "except":
     case "catch": {
       const written = lane.test?.text;
-      const clause = written?.startsWith(lane.form) ? written.slice(lane.form.length).trim() : written;
-      return { title: lane.form === "except" ? "Except" : "Catch", clause: clause !== undefined && clause.length > 0 ? clause : null, note: null };
+      let clause = written?.startsWith(lane.form) ? written.slice(lane.form.length).trim() : written;
+      // An `except*` handler (`except* Group`, `except *Group`) keeps its star in the title.
+      const group = lane.form === "except" && clause?.startsWith("*") === true;
+      if (group) {
+        clause = clause?.slice(1).trim();
+      }
+      const title = lane.form === "catch" ? "Catch" : group ? "Except*" : "Except";
+      return { title, clause: clause !== undefined && clause.length > 0 ? clause : null, note: null };
     }
     case "else":
       return { title: "Else", clause: null, note: loop ? "when the loop ends without break" : "when the try body raised nothing" };

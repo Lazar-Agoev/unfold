@@ -5,7 +5,8 @@
 //!
 //! - **source changes**: paths that pass the always-excluded folders and the ignore files
 //!   (`IgnoreRules`, rebuilt when an ignore file changes). They feed the scheduler's pending
-//!   set (the background update) and a `files_changed` event (the Files view);
+//!   set (the background update) and a `files_changed` event (cards, the code panel, and file
+//!   search show a changed file at once);
 //! - **`unfold.toml`**: `config_changed`, and a pending path so the next update reloads
 //!   the settings (or, when only its `[[app]]` tables changed, resolves the entrances again);
 //!   the app's own edits queue their own work;

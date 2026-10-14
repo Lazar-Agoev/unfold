@@ -84,44 +84,33 @@ fn renumber(file: &mut FileGraph) {
     }
 }
 
-/// A census computed from the graph itself: every range is a token, every call node is a call
-/// site (with its form, for TypeScript), and every `imports` link is a module dependency.
+/// A census computed from the graph itself: every call node is a call site (with its form, for
+/// TypeScript).
 struct GraphCensus {
     language: Language,
     calls: BTreeMap<RepoPath, Vec<CallSite>>,
-    dependencies: BTreeMap<RepoPath, Vec<ByteRange>>,
-    not_tokens: Vec<ByteRange>,
 }
 
 impl GraphCensus {
     fn of(graph: &Graph, language: Language) -> Self {
-        let mut census = Self {
-            language,
-            calls: BTreeMap::new(),
-            dependencies: BTreeMap::new(),
-            not_tokens: Vec::new(),
-        };
-        for file in graph.files.iter().filter(|file| file.file.language == language) {
-            let path = file.file.path.clone();
-            let calls = file
-                .nodes
-                .iter()
-                .filter(|node| node.kind() == NodeKind::Call)
-                .map(|node| CallSite {
-                    range: node.range,
-                    form: (language == Language::TypeScript).then_some(node.form),
-                })
-                .collect();
-            census.calls.insert(path.clone(), calls);
-            let dependencies = file
-                .links
-                .iter()
-                .filter(|link| link.kind == LinkKind::Imports)
-                .map(|link| link.range)
-                .collect();
-            census.dependencies.insert(path, dependencies);
-        }
-        census
+        let calls = graph
+            .files
+            .iter()
+            .filter(|file| file.file.language == language)
+            .map(|file| {
+                let calls = file
+                    .nodes
+                    .iter()
+                    .filter(|node| node.kind() == NodeKind::Call)
+                    .map(|node| CallSite {
+                        range: node.range,
+                        form: (language == Language::TypeScript).then_some(node.form),
+                    })
+                    .collect();
+                (file.file.path.clone(), calls)
+            })
+            .collect();
+        Self { language, calls }
     }
 }
 
@@ -130,16 +119,8 @@ impl Census for GraphCensus {
         self.language
     }
 
-    fn is_token_range(&self, _path: &RepoPath, range: ByteRange) -> bool {
-        !self.not_tokens.contains(&range)
-    }
-
     fn call_sites(&self, path: &RepoPath) -> Option<&[CallSite]> {
         self.calls.get(path).map(Vec::as_slice)
-    }
-
-    fn module_dependencies(&self, path: &RepoPath) -> Option<&[ByteRange]> {
-        self.dependencies.get(path).map(Vec::as_slice)
     }
 }
 
@@ -629,7 +610,7 @@ fn app_and_entrance_keys_are_derived_and_unique() {
 }
 
 #[test]
-fn censuses_find_every_call_and_module_dependency() {
+fn censuses_find_every_call() {
     let graph = sample();
     let sources = sources(&shop());
     let validate = |census: &GraphCensus| {
@@ -652,25 +633,8 @@ fn censuses_find_every_call_and_module_dependency() {
     let mut census = GraphCensus::of(&graph, Language::TypeScript);
     let orders = RepoPath::new("src/orders.ts").unwrap();
     census.calls.get_mut(&orders).unwrap()[0].form = Some(Form::New);
-    census.dependencies.get_mut(&orders).unwrap().clear();
-    let found = validate(&census);
-    assert!(found.contains(
-        &"node src/orders.ts#/call:Router: the node is a call, but the front end found a new".to_owned()
-    ));
-    assert!(
-        found.contains(
-            &"link 0 of src/orders.ts#: the `imports` link does not match exactly one module dependency"
-                .to_owned()
-        )
-    );
-
-    let mut census = GraphCensus::of(&graph, Language::TypeScript);
-    let route = graph.file("src/orders.ts").unwrap().nodes[2].range;
-    census.not_tokens.push(route);
     assert_eq!(
         validate(&census),
-        [format!(
-            "node src/orders.ts#/call:Router: range {route} is not on token boundaries"
-        )]
+        ["node src/orders.ts#/call:Router: the node is a call, but the front end found a new"]
     );
 }

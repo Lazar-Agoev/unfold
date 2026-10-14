@@ -129,7 +129,14 @@ pub(crate) fn resolve(
     if evidence.effective().any(Candidate::is_unindexed_repository) {
         return unresolved(Reason::NotIndexed);
     }
-    let external = || labels::external_label(resolver, expr, &evidence).map(Outcome::External);
+    // An external target the receiver may dispatch elsewhere (another class may define the
+    // member) is overridden.
+    let external = || {
+        if evidence.overridden {
+            return unresolved(Reason::Overridden);
+        }
+        labels::external_label(resolver, expr, &evidence).map(Outcome::External)
+    };
     // 6: a proven package-import root, unless an indexed candidate contradicts it.
     let package = labels::external_package_binding(linked, expr.file(), evidence.import_binding.as_ref());
     if package.is_some()
