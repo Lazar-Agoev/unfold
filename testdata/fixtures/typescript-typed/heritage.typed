@@ -12,9 +12,9 @@
 {"t":"link","from":"a.ts#Qualified","seq":0,"kind":"extends","range":[669,677],"text":"ns.Inner","outcome":"project","to":"a.ts#ns.Inner"}
 {"t":"signature","node":"a.ts#mixin","returns":"C","returns_range":[709,710]}
 {"t":"parameter","node":"a.ts#mixin","index":0,"range":[699,706],"kind":"positional","name":"base","type":"C","type_range":[705,706]}
-{"t":"member","node":"a.ts#Base","index":0,"kind":"property","name":"value","type":"T","type_range":[230,231]}
-{"t":"member","node":"a.ts#Named","index":0,"kind":"property","name":"name","type":"string","type_range":[258,264]}
-{"t":"member","node":"a.ts#Root","index":0,"kind":"property","name":"root","type":"R","type_range":[346,347]}
-{"t":"member","node":"a.ts#Leaf","index":0,"kind":"property","name":"name","default":true}
-{"t":"member","node":"a.ts#Leaf","index":1,"kind":"property","name":"value","type":"Leaf<L>","type_range":[437,444]}
+{"t":"member","node":"a.ts#Base","index":0,"range":[223,231],"kind":"property","name":"value","type":"T","type_range":[230,231]}
+{"t":"member","node":"a.ts#Named","index":0,"range":[252,264],"kind":"property","name":"name","type":"string","type_range":[258,264]}
+{"t":"member","node":"a.ts#Root","index":0,"range":[339,347],"kind":"property","name":"root","type":"R","type_range":[346,347]}
+{"t":"member","node":"a.ts#Leaf","index":0,"range":[416,426],"kind":"property","name":"name","default":true}
+{"t":"member","node":"a.ts#Leaf","index":1,"range":[429,445],"kind":"property","name":"value","type":"Leaf<L>","type_range":[437,444]}
 {"t":"argument","call":"a.ts#/call:mixin","index":0,"range":[474,478],"parameter":0}

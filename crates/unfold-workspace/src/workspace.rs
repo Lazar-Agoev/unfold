@@ -12,7 +12,8 @@ use std::time::Duration;
 use unfold_core::RepoPath;
 use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{FileState, Language as LanguageId};
-use unfold_engine::settings::{SETTINGS_PATH, Settings, SettingsError};
+use unfold_engine::settings::edit::{SettingsEdit, apply_edits};
+use unfold_engine::settings::{SETTINGS_PATH, SettingsError, SettingsFile};
 use unfold_engine::{CancelToken, Language};
 use unfold_reader::ReaderIndex;
 use unfold_store::{Opened, ReadPool};
@@ -26,8 +27,7 @@ use crate::layout::Layout;
 use crate::options::{WorkspaceOptions, store_version};
 use crate::problems::ProblemItem;
 use crate::projects::ProjectId;
-use crate::settings_edit::{SettingsEdit, apply_edits};
-use crate::shared::{Job, Shared, lock};
+use crate::shared::{Job, Resolved, Shared, lock};
 use crate::state::{LocalState, write_atomically, write_json};
 use crate::status::{Activity, GraphCounts, GraphStatus, ProjectState};
 use crate::storage::open_store;
@@ -54,8 +54,10 @@ pub struct SettingsEditOutcome {
     pub written: bool,
     /// The file's text after the edit.
     pub text: String,
-    /// The validated settings it holds.
-    pub settings: Settings,
+    /// The validated settings and apps it holds.
+    pub file: SettingsFile,
+    /// The unified diff from the old text to the new; empty when nothing changed.
+    pub diff: String,
 }
 
 /// One live project's folder. See the [module documentation](self) and the crate documentation
@@ -206,15 +208,12 @@ impl Workspace {
     pub fn compile(&self, progress: Option<ProgressFn>) -> CompileTicket {
         let (reply, result) = mpsc::channel();
         let cancel = CancelToken::new();
-        if lock(&self.shared.sched).shutdown {
-            let _ = reply.send(Err(WorkspaceError::Closed));
-        } else {
-            self.shared.push_job(Job::Compile(CompileJob {
-                cancel: cancel.clone(),
-                progress,
-                reply,
-            }));
-        }
+        // A closed workspace drops the job, and the ticket resolves as closed.
+        self.shared.push_job(Job::Compile(CompileJob {
+            cancel: cancel.clone(),
+            progress,
+            reply,
+        }));
         CompileTicket::new(cancel, result)
     }
 
@@ -290,21 +289,29 @@ impl Workspace {
         settings_text(&self.shared.root)
     }
 
-    /// The settings on disk now, validated.
-    pub fn settings(&self) -> Result<Settings> {
+    /// The settings file on disk now, validated.
+    pub fn settings(&self) -> Result<SettingsFile> {
         load_settings(&self.shared.root)
     }
 
     /// Applies validated settings edits, preserving comments and formatting, and writes the file
     /// atomically when it changes (never when an absent file would hold only defaults). Sends
-    /// `config_changed` and queues the settings for the next background update.
+    /// `config_changed`. An edit that leaves the compile settings as they were (it changed only
+    /// `[[app]]` tables) resolves the entrances again without compiling, and returns once they
+    /// are (`entrances_changed` follows when they changed); any other edit queues the settings
+    /// for the next background update.
     pub fn edit_settings(&self, edits: &[SettingsEdit]) -> Result<SettingsEditOutcome> {
         let _editing = lock(&self.shared.settings_edit);
         let current = self.settings_text()?;
         let edited = apply_edits(current.as_deref(), edits)?;
         let unchanged = current.as_deref() == Some(edited.text.as_str())
-            || (current.is_none() && edited.settings == Settings::default());
+            || (current.is_none() && edited.file == SettingsFile::default());
         if !unchanged {
+            let before = match current.as_deref() {
+                // `apply_edits` refuses a file that doesn't parse.
+                Some(text) => SettingsFile::parse(text).map_err(settings_error)?,
+                None => SettingsFile::default(),
+            };
             // An `unfold.toml` link that leaves the folder must never be written through.
             confine(&self.shared.root, crate::layout::CONFIG_PATH)?;
             let path = self.shared.layout.config();
@@ -315,15 +322,29 @@ impl Workspace {
             self.shared.emit(&WorkspaceEvent::ConfigChanged {
                 project: self.shared.project.clone(),
             });
-            if let Ok(settings_path) = RepoPath::new(SETTINGS_PATH) {
-                self.shared.add_changes([settings_path]);
+            if before.settings == edited.file.settings {
+                let (reply, resolved) = mpsc::channel();
+                // A closed workspace queues nothing, and a closing one drops the reply: there
+                // is nothing to wait for then.
+                if self.shared.push_job(Job::ResolveEntrances(reply)) {
+                    let _ = resolved.recv();
+                }
+            } else {
+                self.shared.add_changes(RepoPath::new(SETTINGS_PATH).ok());
             }
         }
         Ok(SettingsEditOutcome {
             written: !unchanged,
             text: edited.text,
-            settings: edited.settings,
+            file: edited.file,
+            diff: edited.diff,
         })
+    }
+
+    /// The entrances the engine last resolved; `None` until it has read `unfold.toml` (just
+    /// after the project wakes, or before its first Compile).
+    pub(crate) fn entrances(&self) -> Option<Arc<Resolved>> {
+        self.shared.entrances()
     }
 
     /// The project's remembered state (`.unfold/local/state.json`).
@@ -362,9 +383,12 @@ impl Workspace {
         self.languages.iter().find(|language| language.id() == id)
     }
 
-    /// The highlighter for a language's Code view (the reader takes it as a trait object).
-    pub fn highlighter(&self, id: LanguageId) -> Option<&dyn Highlighter> {
-        self.language(id).map(|language| language.highlighter())
+    /// Every registered language's highlighter, for the code panel.
+    pub fn highlighters(&self) -> Vec<&dyn Highlighter> {
+        self.languages
+            .iter()
+            .map(|language| language.highlighter())
+            .collect()
     }
 
     /// Notes that the app is about to write `bytes` to `path` (`None`: delete it), so the
@@ -413,9 +437,14 @@ pub(crate) fn settings_text(root: &Path) -> Result<Option<String>> {
     }
 }
 
-/// The settings of the folder at `root` on disk now, validated.
-pub(crate) fn load_settings(root: &Path) -> Result<Settings> {
-    Settings::load(root).map_err(|error| match error {
+/// The settings file of the folder at `root` on disk now, validated.
+pub(crate) fn load_settings(root: &Path) -> Result<SettingsFile> {
+    SettingsFile::load(root).map_err(settings_error)
+}
+
+/// A settings file that can't be read or is invalid, with its position.
+pub(crate) fn settings_error(error: SettingsError) -> WorkspaceError {
+    match error {
         SettingsError::Invalid {
             message,
             line,
@@ -431,7 +460,7 @@ pub(crate) fn load_settings(root: &Path) -> Result<Settings> {
             line: None,
             column: None,
         },
-    })
+    }
 }
 
 /// Counts for Home's state line from the stored graph's files.

@@ -240,6 +240,8 @@ impl Apply<'_, '_> {
                 file_id,
                 member.node,
                 member.index,
+                member.range.start,
+                member.range.end,
                 member.kind.as_str(),
                 member.name.as_deref(),
                 flags,

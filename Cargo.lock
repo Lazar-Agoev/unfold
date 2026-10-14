@@ -2545,7 +2545,6 @@ dependencies = [
 name = "unfold-workspace"
 version = "0.1.0"
 dependencies = [
- "ignore",
  "nix",
  "notify",
  "notify-debouncer-full",
@@ -2972,8 +2971,6 @@ dependencies = [
  "toml",
  "unfold-core",
  "unfold-engine",
- "unfold-lang-python",
- "unfold-lang-typescript",
  "unfold-store",
  "unfold-workspace",
 ]

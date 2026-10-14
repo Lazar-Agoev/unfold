@@ -858,11 +858,12 @@ fn orders(g: &mut GraphBuilder) {
     node.body = Some(body);
     node.doc = Some(doc);
     for (index, (member, ty)) in [("id", "string"), ("total", "number")].into_iter().enumerate() {
-        let from = g.find_in(interface, &format!("{member}: ")).start;
-        let ty = g.written_from(interface, ty, from);
+        let range = g.find_in(interface, &format!("{member}: {ty};"));
+        let ty = g.written_from(interface, ty, range.start);
         g.types(interface).members.push(Member {
             node: interface.local_id(),
             index: u32::try_from(index).expect("two members"),
+            range,
             kind: MemberKind::Property,
             name: Some(member.into()),
             optional: false,

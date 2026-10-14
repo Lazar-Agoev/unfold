@@ -1,268 +1,395 @@
 {
-  "view": "overview",
-  "project": "<project>",
-  "counts": {
-    "applications": 5,
-    "launches": 7,
-    "routes": 8,
-    "entrances": 25
-  },
-  "categories": [
+  "resolved": true,
+  "apps": [
     {
-      "category": "services",
-      "applications": [
+      "key": "entrance:server",
+      "name": "Server",
+      "run": "npm run start",
+      "code": {
+        "key": "src/server.ts#",
+        "state": "found"
+      },
+      "entrances": [
         {
-          "id": "src/server.ts#",
-          "name": "server",
-          "description": null,
-          "origin": "inferred",
-          "entrances": 11,
-          "routes": 8,
-          "alsoIn": [],
-          "launches": [
+          "key": "entrance:server/health-check",
+          "name": "Health check",
+          "on": "GET /health",
+          "code": [
             {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"start\",\"dist/server.js\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run start",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/server.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 37,
-              "routes": 8,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 9
-              },
-              "editable": "override"
-            },
-            {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"dev\",\"src/server.ts\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run dev",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/server.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 37,
-              "routes": 8,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 10
-              },
-              "editable": "override"
+              "key": "src/server.ts#healthCheck",
+              "state": "found"
             }
-          ]
-        }
-      ]
-    },
-    {
-      "category": "workers",
-      "applications": [
-        {
-          "id": "src/cli.ts#",
-          "name": "cli",
-          "description": null,
-          "origin": "inferred",
-          "entrances": 6,
-          "routes": 0,
-          "alsoIn": [],
-          "launches": [
-            {
-              "key": "entrance:[\"package.bin\",\"process\",\"\",\"orders\",\"dist/cli.js\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "orders",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/cli.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 27,
-              "routes": null,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 5
-              },
-              "editable": "override"
-            },
-            {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"cli\",\"src/cli.ts\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run cli",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/cli.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 27,
-              "routes": null,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 13
-              },
-              "editable": "override"
-            }
+          ],
+          "lines": [
+            11,
+            11
           ]
         },
         {
-          "id": "entrance:[\"package.script\",\"process\",\"\",\"legacy:export\",\"scripts/export.js\"]",
-          "name": "legacy:export",
-          "description": null,
-          "origin": "inferred",
-          "entrances": 1,
-          "routes": 0,
-          "alsoIn": [],
-          "launches": [
+          "key": "entrance:server/status",
+          "name": "Status",
+          "on": "GET /v1/status",
+          "code": [
             {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"legacy:export\",\"scripts/export.js\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run legacy:export",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "not_indexed",
-              "problem": null,
-              "note": "scripts/export.js is JavaScript, which isn't indexed",
-              "targetSetByHand": false,
-              "starts": null,
-              "importPaths": [],
-              "reaches": 0,
-              "routes": null,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 14
-              },
-              "editable": "override"
+              "key": "src/server.ts#status",
+              "state": "found"
             }
+          ],
+          "lines": [
+            12,
+            12
           ]
         },
         {
-          "id": "src/worker.ts#",
-          "name": "worker",
-          "description": null,
-          "origin": "inferred",
-          "entrances": 4,
-          "routes": 0,
-          "alsoIn": [],
-          "launches": [
+          "key": "entrance:server/list-orders",
+          "name": "List orders",
+          "on": "GET /orders",
+          "code": [
             {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"worker\",\"src/worker.ts\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run worker",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/worker.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 26,
-              "routes": null,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 11
-              },
-              "editable": "override"
+              "key": "src/routes/orders.ts#listOrders",
+              "state": "found"
             }
+          ],
+          "lines": [
+            13,
+            13
+          ]
+        },
+        {
+          "key": "entrance:server/get-an-order",
+          "name": "Get an order",
+          "on": "GET /orders/:id",
+          "code": [
+            {
+              "key": "src/routes/orders.ts#getOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            14,
+            14
+          ]
+        },
+        {
+          "key": "entrance:server/place-an-order",
+          "name": "Place an order",
+          "on": "POST /orders",
+          "code": [
+            {
+              "key": "src/routes/middleware.ts#requireUser",
+              "state": "found"
+            },
+            {
+              "key": "src/routes/middleware.ts#validateBody",
+              "state": "found"
+            },
+            {
+              "key": "src/routes/orders.ts#createOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            15,
+            15
+          ]
+        },
+        {
+          "key": "entrance:server/cancel-an-order",
+          "name": "Cancel an order",
+          "on": "DELETE /orders/:id",
+          "code": [
+            {
+              "key": "src/routes/middleware.ts#requireUser",
+              "state": "found"
+            },
+            {
+              "key": "src/routes/orders.ts#cancelOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            16,
+            16
+          ]
+        },
+        {
+          "key": "entrance:server/liveness",
+          "name": "Liveness",
+          "on": "GET /health/live",
+          "code": [
+            {
+              "key": "src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            17,
+            17
+          ]
+        },
+        {
+          "key": "entrance:server/admin-stats",
+          "name": "Admin stats",
+          "on": "GET /admin/stats",
+          "code": [
+            {
+              "key": "src/server.ts#adminStats",
+              "state": "missing",
+              "fix": {
+                "kind": "moved_definition",
+                "code": "src/routes/admin.ts#adminStats"
+              }
+            }
+          ],
+          "lines": [
+            20,
+            20
+          ]
+        },
+        {
+          "key": "entrance:server/shut-down",
+          "name": "Shut down",
+          "on": "SIGTERM",
+          "code": [
+            {
+              "key": "src/server.ts#shutdown",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            21,
+            21
           ]
         }
+      ],
+      "lines": [
+        6,
+        22
       ]
     },
     {
-      "category": "scheduled",
-      "applications": [
+      "key": "entrance:dev-server",
+      "name": "Dev server",
+      "run": "npm run dev",
+      "code": {
+        "key": "src/server.ts#",
+        "state": "found"
+      },
+      "about": "The server run from source, restarted on every change.",
+      "entrances": [],
+      "lines": [
+        24,
+        28
+      ]
+    },
+    {
+      "key": "entrance:worker",
+      "name": "Worker",
+      "run": "npm run worker",
+      "code": {
+        "key": "src/worker.ts#",
+        "state": "found"
+      },
+      "entrances": [
         {
-          "id": "src/scheduler.ts#",
-          "name": "scheduler",
-          "description": null,
-          "origin": "inferred",
-          "entrances": 3,
-          "routes": 0,
-          "alsoIn": [],
-          "launches": [
+          "key": "entrance:worker/send-an-email",
+          "name": "Send an email",
+          "on": "queue emails",
+          "code": [
             {
-              "key": "entrance:[\"package.script\",\"process\",\"\",\"scheduler\",\"scheduler.ts\"]",
-              "id": null,
-              "label": null,
-              "folder": "ts-orders",
-              "command": "npm run scheduler",
-              "schedule": null,
-              "scheduleGloss": null,
-              "description": null,
-              "status": "ok",
-              "problem": null,
-              "note": null,
-              "targetSetByHand": false,
-              "starts": {
-                "path": "src/scheduler.ts",
-                "name": null,
-                "kind": "Node file"
-              },
-              "importPaths": [],
-              "reaches": 23,
-              "routes": null,
-              "declaredIn": {
-                "path": "package.json",
-                "line": 12
-              },
-              "editable": "override"
+              "key": "src/queues/email-worker.ts#/call:Worker(\"emails\")/callback[0]",
+              "state": "found"
             }
+          ],
+          "lines": [
+            35,
+            35
+          ]
+        },
+        {
+          "key": "entrance:worker/process-an-order",
+          "name": "Process an order",
+          "on": "queue orders",
+          "code": [
+            {
+              "key": "src/jobs/process-order.ts#processOrder",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            36,
+            36
+          ]
+        },
+        {
+          "key": "entrance:worker/build-a-report",
+          "name": "Build a report",
+          "on": "queue reports",
+          "code": [
+            {
+              "key": "report-processor.js#",
+              "state": "not_analyzed"
+            }
+          ],
+          "lines": [
+            37,
+            37
           ]
         }
+      ],
+      "lines": [
+        30,
+        38
+      ]
+    },
+    {
+      "key": "entrance:scheduler",
+      "name": "Scheduler",
+      "run": "npm run scheduler",
+      "code": {
+        "key": "src/scheduler.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:scheduler/clean-up-expired-orders",
+          "name": "Clean up expired orders",
+          "on": "0 2 * * *",
+          "code": [
+            {
+              "key": "src/jobs/cleanup.ts#cleanupExpiredOrders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            45,
+            45
+          ]
+        },
+        {
+          "key": "entrance:scheduler/report-metrics",
+          "name": "Report metrics",
+          "on": "*/15 * * * *",
+          "code": [
+            {
+              "key": "src/scheduler.ts#/call:schedule(\"*/15 * * * *\")/callback[0]",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            46,
+            46
+          ]
+        }
+      ],
+      "lines": [
+        40,
+        47
+      ]
+    },
+    {
+      "key": "entrance:orders-cli",
+      "name": "Orders CLI",
+      "run": "orders <command>",
+      "code": {
+        "key": "src/cli.ts#",
+        "state": "found"
+      },
+      "entrances": [
+        {
+          "key": "entrance:orders-cli/import-orders",
+          "name": "Import orders",
+          "on": "orders import",
+          "code": [
+            {
+              "key": "src/jobs/import-orders.ts#importOrders",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            54,
+            54
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/print-a-report",
+          "name": "Print a report",
+          "on": "orders report",
+          "code": [
+            {
+              "key": "src/jobs/report.ts#printReport",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            55,
+            55
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/replay-failed-orders",
+          "name": "Replay failed orders",
+          "on": "orders replay",
+          "code": [
+            {
+              "key": "src/jobs/retry-failed.ts#retryFailed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            56,
+            56
+          ]
+        },
+        {
+          "key": "entrance:orders-cli/retry-failed-orders",
+          "name": "Retry failed orders",
+          "on": "orders retry",
+          "code": [
+            {
+              "key": "src/jobs/retry-failed.ts#retryFailed",
+              "state": "found"
+            }
+          ],
+          "lines": [
+            57,
+            57
+          ]
+        }
+      ],
+      "lines": [
+        49,
+        58
+      ]
+    },
+    {
+      "key": "entrance:dev-cli",
+      "name": "Dev CLI",
+      "run": "npm run cli -- <command>",
+      "code": {
+        "key": "src/cli.ts#",
+        "state": "found"
+      },
+      "about": "The orders command run from source.",
+      "entrances": [],
+      "lines": [
+        60,
+        64
+      ]
+    },
+    {
+      "key": "entrance:legacy-export",
+      "name": "Legacy export",
+      "run": "npm run legacy:export",
+      "code": {
+        "key": "scripts/export.js#",
+        "state": "not_analyzed"
+      },
+      "entrances": [],
+      "lines": [
+        66,
+        69
       ]
     }
-  ],
-  "unreached": 0
+  ]
 }

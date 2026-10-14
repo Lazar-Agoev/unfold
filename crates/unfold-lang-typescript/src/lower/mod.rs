@@ -271,6 +271,7 @@ struct Saved {
     conditional: bool,
     statement: Option<ByteRange>,
     enclosing: Option<ByteRange>,
+    export: Option<u32>,
     breakables: Vec<Breakable>,
     labels: Vec<Box<str>>,
 }
@@ -422,6 +423,7 @@ impl Lowering<'_> {
             conditional: std::mem::take(&mut self.conditional),
             statement: self.statement.take(),
             enclosing: self.enclosing.take(),
+            export: self.export.take(),
             breakables: std::mem::take(&mut self.breakables),
             labels: std::mem::take(&mut self.labels),
         }
@@ -432,6 +434,7 @@ impl Lowering<'_> {
         self.conditional = saved.conditional;
         self.statement = saved.statement;
         self.enclosing = saved.enclosing;
+        self.export = saved.export;
         self.breakables = saved.breakables;
         self.labels = saved.labels;
     }
@@ -563,11 +566,11 @@ impl<'a> Visit<'a> for Lowering<'_> {
     // --- Definitions ------------------------------------------------------------------------
 
     fn visit_function(&mut self, it: &Function<'a>, _flags: ScopeFlags) {
-        self.function(it, None);
+        self.function(it, None, None);
     }
 
     fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
-        self.arrow(it, None);
+        self.arrow(it, None, None);
     }
 
     fn visit_class(&mut self, it: &Class<'a>) {

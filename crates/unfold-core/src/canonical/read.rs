@@ -127,6 +127,7 @@ struct ParameterIn {
 struct MemberIn {
     node: Box<str>,
     index: u32,
+    range: ByteRange,
     kind: MemberKind,
     name: Option<Box<str>>,
     optional: Option<bool>,
@@ -559,6 +560,7 @@ impl Reader {
         let member = Member {
             node: self.local_id(&member.node)?,
             index: member.index,
+            range: member.range,
             kind: member.kind,
             name: member.name,
             optional: flag(member.optional, "optional")?,

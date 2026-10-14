@@ -7,7 +7,8 @@
 //!   (`IgnoreRules`, rebuilt when an ignore file changes). They feed the scheduler's pending
 //!   set (the background update) and a `files_changed` event (the Files view);
 //! - **`unfold.toml`**: `config_changed`, and a pending path so the next update reloads
-//!   the settings;
+//!   the settings (or, when only its `[[app]]` tables changed, resolves the entrances again);
+//!   the app's own edits queue their own work;
 //! - **`.unfold/boards/`**: `boards_changed` with the board ids, for edits made outside the app
 //!   (writes the app noted itself are not reported);
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
@@ -198,8 +199,11 @@ impl Filter {
             return;
         };
         if text == CONFIG_PATH {
-            batch.config |= !own();
-            batch.pending.insert(relative);
+            // The app's own edits queue their own work (`Workspace::edit_settings`).
+            if !own() {
+                batch.config = true;
+                batch.pending.insert(relative);
+            }
             return;
         }
         if let Some(name) = text

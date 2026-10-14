@@ -56,7 +56,7 @@
 {"t":"parameter","node":"a.ts#generic","index":1,"range":[546,552],"kind":"positional","name":"b","type":"U[]","type_range":[549,552]}
 {"t":"parameter","node":"a.ts#generic","index":2,"range":[554,570],"kind":"positional","name":"c","type":"Map<T, Local>","type_range":[557,570]}
 {"t":"parameter","node":"a.ts#Self.other","index":0,"range":[1143,1151],"kind":"positional","name":"value","type":"S","type_range":[1150,1151]}
-{"t":"member","node":"a.ts#Local","index":0,"kind":"property","name":"a","type":"number","type_range":[129,135]}
-{"t":"member","node":"a.ts#Generic","index":0,"kind":"property","name":"item","type":"T","type_range":[836,837]}
-{"t":"member","node":"a.ts#Generic","index":1,"kind":"property","name":"list","type":"Array<T>","type_range":[847,855]}
-{"t":"member","node":"a.ts#Generic","index":2,"kind":"method","name":"method","type":"<M>(m: M): T","type_range":[865,877]}
+{"t":"member","node":"a.ts#Local","index":0,"range":[126,135],"kind":"property","name":"a","type":"number","type_range":[129,135]}
+{"t":"member","node":"a.ts#Generic","index":0,"range":[830,838],"kind":"property","name":"item","type":"T","type_range":[836,837]}
+{"t":"member","node":"a.ts#Generic","index":1,"range":[841,856],"kind":"property","name":"list","type":"Array<T>","type_range":[847,855]}
+{"t":"member","node":"a.ts#Generic","index":2,"range":[859,878],"kind":"method","name":"method","type":"<M>(m: M): T","type_range":[865,877]}

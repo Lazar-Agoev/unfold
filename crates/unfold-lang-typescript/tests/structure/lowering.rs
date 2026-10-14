@@ -96,6 +96,62 @@ boot();
     );
 }
 
+/// The `export` and the JSDoc of `export let sys = (() => { … })();` belong to the
+/// declaration: a function declared inside the arrow starts at its own `function` keyword, and
+/// its doc is only a JSDoc written directly before it.
+#[test]
+fn an_exported_declaration_ends_at_nested_functions() {
+    let source = r#"/** The system. */
+export let sys: System = (() => {
+    function getNodeSystem() {
+        return load();
+    }
+
+    /** Wraps the node system. */
+    function wrap() {}
+
+    return wrap();
+})();
+"#;
+    let compiled = compile_source("a.ts", source).valid();
+    let lines = outline(compiled.file("a.ts"), source);
+    // A node's outline: its key line and the indented lines below it.
+    let node = |key: &str| -> Vec<&str> {
+        let start = lines
+            .iter()
+            .position(|line| line.starts_with(key))
+            .unwrap_or_else(|| panic!("no {key} in:\n{}", lines.join("\n")));
+        let end = lines[start + 1..]
+            .iter()
+            .position(|line| !line.starts_with(' '))
+            .map_or(lines.len(), |offset| start + 1 + offset);
+        lines[start..end].iter().map(String::as_str).collect()
+    };
+    assert_eq!(
+        node("a.ts#/call:(…)/lambda[0].getNodeSystem "),
+        [
+            "a.ts#/call:(…)/lambda[0].getNodeSystem function",
+            "  range `function getNodeSystem() {⏎        return load();⏎    }`",
+            "  head `function getNodeSystem()`",
+            "  body `{⏎        return load();⏎    }`",
+            "  stmt `function getNodeSystem() {⏎        return load();⏎    }`",
+            "  name `getNodeSystem`",
+        ],
+    );
+    assert_eq!(
+        node("a.ts#/call:(…)/lambda[0].wrap "),
+        [
+            "a.ts#/call:(…)/lambda[0].wrap function",
+            "  range `function wrap() {}`",
+            "  head `function wrap()`",
+            "  body `{}`",
+            "  doc `/** Wraps the node system. */`",
+            "  stmt `function wrap() {}`",
+            "  name `wrap`",
+        ],
+    );
+}
+
 #[test]
 fn functions_in_every_form() {
     assert_tree_at(

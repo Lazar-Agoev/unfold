@@ -5,8 +5,9 @@
 //! reconnects; a missing one stays on the page (health: missing); a guarded reference whose kind
 //! or owner changed, or a position-based reference whose code changed, is held for review
 //! instead of silently attaching its text to different code. A rename or move leaves the old key
-//! missing, and [`Repair::Reconnect`] is the repair. For a missing app or entrance, health offers
-//! the one app or entrance that has the same `code` ([`HealthItem::reconnect`]).
+//! missing, and [`Repair::Reconnect`] is the repair; it moves the references to the blocks inside
+//! the old key along with it, when those blocks are inside the new key. For a missing app or entrance, health offers the one app or
+//! entrance that has the same `code` ([`HealthItem::reconnect`]).
 //!
 //! | Health | About |
 //! | --- | --- |
@@ -589,7 +590,10 @@ pub enum Repair {
     /// Replace reference `from` with `to` everywhere on the page: card references, opened calls,
     /// names, combined steps' members, proposed steps' places, resource cards' types and
     /// anchors, and connections' steps, carried types, and anchors; a fresh guard is saved.
-    /// Only the key itself moves: a key inside a reconnected card is a reference of its own.
+    /// Every reference to a block inside `from` moves to the same block inside `to`
+    /// ([`Key::rebase`]) with a fresh guard when that block is in the graph, and otherwise
+    /// stays at its old key, missing as before. A combined step's members, and an open path's
+    /// keys, move together or not at all.
     Reconnect {
         /// The missing key.
         from: String,
@@ -767,33 +771,54 @@ fn reconnect(page: &mut Page, graph: &BoardGraph, from: &str, to: &str) -> Resul
             "the new reference is not in the graph or is a different kind of reference",
         ));
     }
-    let new_key = Key::from_text(to);
-    let replace = |key: &mut Key| {
+    let (old_key, new_key) = (Key::from_text(from), Key::from_text(to));
+    // `from` becomes `to`, and a block inside `from` the same block inside `to`.
+    let target = |key: &Key| {
         if is(key) {
-            *key = new_key.clone();
+            Some(new_key.clone())
+        } else {
+            key.rebase(&old_key, &new_key)
+        }
+    };
+    // A reference moves only when its new key is in the graph; one that isn't stays at its old
+    // key, missing as it already was.
+    let moved = |key: &Key| target(key).filter(|key| graph.exists(key.as_str()));
+    let replace = |key: &mut Key| {
+        if let Some(moved) = moved(key) {
+            *key = moved;
+        }
+    };
+    // Keys that go together (a combined step's members, an open path) move all at once, or
+    // not at all when any of them isn't in the graph under its new key.
+    let replace_together = |keys: &mut Vec<Key>| {
+        let targets: Vec<Option<Key>> = keys.iter().map(target).collect();
+        if targets.iter().flatten().all(|key| graph.exists(key.as_str())) {
+            for (key, target) in keys.iter_mut().zip(targets) {
+                if let Some(target) = target {
+                    *key = target;
+                }
+            }
         }
     };
     for card in &mut page.cards {
-        if is(card.reference.key()) {
-            card.reference = card.reference.with_key(new_key.clone());
+        if let Some(key) = moved(card.reference.key()) {
+            card.reference = card.reference.with_key(key);
         }
-        for path in &mut card.open {
-            path.iter_mut().for_each(replace);
-        }
+        card.open.iter_mut().for_each(replace_together);
         first_of_each(&mut card.open);
     }
-    if page.name_entry(from).is_some() {
-        // The moved name replaces one the new key had: names are unique per key.
-        page.names.retain(|entry| entry.key.as_str() != to);
-        page.names.iter_mut().for_each(|entry| replace(&mut entry.key));
-    }
+    // Moved names replace the ones their new keys had: names are unique per key.
+    let renamed: Vec<Key> = page.names.iter().filter_map(|entry| moved(&entry.key)).collect();
+    page.names
+        .retain(|entry| moved(&entry.key).is_some() || !renamed.contains(&entry.key));
+    page.names.iter_mut().for_each(|entry| replace(&mut entry.key));
     for combined in &mut page.combined {
-        combined.members.iter_mut().for_each(replace);
+        replace_together(&mut combined.members);
         first_of_each(&mut combined.members);
     }
     for proposal in &mut page.proposals {
-        if is(proposal.place.key()) {
-            proposal.place = proposal.place.with_key(new_key.clone());
+        if let Some(key) = moved(proposal.place.key()) {
+            proposal.place = proposal.place.with_key(key);
         }
     }
     let reconnect_anchors = |anchors: &mut Vec<Anchor>| {
@@ -813,9 +838,22 @@ fn reconnect(page: &mut Page, graph: &BoardGraph, from: &str, to: &str) -> Resul
         connection.carries.iter_mut().for_each(replace);
         reconnect_anchors(&mut connection.anchors);
     }
-    page.guards.retain(|entry| entry.key.as_str() != from);
-    if let Some(guard) = current_guard(graph, to) {
-        put_guard(page, guard);
+    // Like `to`, each guarded block that moved gets a fresh guard; the rest keep theirs.
+    let mut guarded = Vec::new();
+    page.guards.retain(|entry| match moved(&entry.key) {
+        Some(key) => {
+            guarded.push(key);
+            false
+        }
+        None => true,
+    });
+    if !guarded.contains(&new_key) {
+        guarded.push(new_key.clone());
+    }
+    for key in guarded {
+        if let Some(guard) = current_guard(graph, key.as_str()) {
+            put_guard(page, guard);
+        }
     }
     Ok(())
 }

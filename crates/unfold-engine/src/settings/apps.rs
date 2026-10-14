@@ -2,8 +2,8 @@
 //! apps and their entrances as written, each with its span and, when it is wrong, its problem.
 //!
 //! A problem marks only its own entry: an unknown field, a value of the wrong type, a missing
-//! `name` (or, for an entrance, `code`), a name with no letters or digits, or a key another
-//! entry has already. The entry is still listed, but it stays out of the graph; an app's problem
+//! `name` (or, for an entrance, `code`), a name with no letters or digits, an empty `code` key,
+//! or a key another entry has already. The entry is still listed, but it stays out of the graph; an app's problem
 //! keeps its entrances out too. The rest of the file works.
 
 use std::ops::Range;
@@ -92,7 +92,7 @@ pub enum EntryProblemKind {
     MissingName,
     /// An entrance with no `code`, or with an empty list.
     MissingCode,
-    /// A name with no letters or digits, which makes no key.
+    /// A name with no letters or digits, which makes no key, or an empty `code` key.
     EmptyKey,
     /// Another app, or another entrance in the same app, has the same key.
     DuplicateKey,
@@ -150,7 +150,7 @@ fn app(value: Spanned<DeValue<'_>>, source: &Source<'_>) -> AppEntry {
     let mut fields = Fields::new(value, source, "an `[[app]]` entry must be a table");
     let name = fields.text("name");
     let run = fields.text("run");
-    let code = fields.text("code").map(|code| Key::from_text(&code));
+    let code = fields.key("code");
     let about = fields.text("about");
     let entrances = fields.take("entrances");
     fields.unknown(APP_FIELDS);
@@ -279,21 +279,34 @@ impl<'s, 'i> Fields<'s, 'i> {
         }
     }
 
-    /// A key, or a nonempty list of keys.
+    /// A key: a string that isn't empty.
+    fn key(&mut self, field: &str) -> Option<Key> {
+        let span = self.table.get(field)?.span();
+        let text = self.text(field)?;
+        if text.is_empty() {
+            self.empty_key(field, span);
+        }
+        Some(Key::from_text(&text))
+    }
+
+    /// A key, or a nonempty list of keys, none of them empty.
     fn keys(&mut self, field: &str) -> Option<Vec<Key>> {
         let value = self.take(field)?;
         let span = value.span();
-        let keys = match value.get_ref() {
-            DeValue::String(text) => Some(vec![Key::from_text(text)]),
-            DeValue::Array(items) => items
-                .iter()
-                .map(|item| match item.get_ref() {
-                    DeValue::String(text) => Some(Key::from_text(text)),
-                    _ => None,
-                })
-                .collect(),
+        let items = match value.get_ref() {
+            DeValue::String(_) => Some(std::slice::from_ref(&value)),
+            DeValue::Array(items) => Some(&items[..]),
             _ => None,
         };
+        let keys: Option<Vec<_>> = items.and_then(|items| {
+            items
+                .iter()
+                .map(|item| match item.get_ref() {
+                    DeValue::String(text) => Some((Key::from_text(text), item.span())),
+                    _ => None,
+                })
+                .collect()
+        });
         match keys {
             Some(keys) if keys.is_empty() => {
                 self.fail(
@@ -303,7 +316,12 @@ impl<'s, 'i> Fields<'s, 'i> {
                 );
                 None
             }
-            Some(keys) => Some(keys),
+            Some(keys) => {
+                if let Some((_, span)) = keys.iter().find(|(key, _)| key.as_str().is_empty()) {
+                    self.empty_key(field, span.clone());
+                }
+                Some(keys.into_iter().map(|(key, _)| key).collect())
+            }
             None => {
                 self.fail(
                     EntryProblemKind::WrongType,
@@ -313,6 +331,14 @@ impl<'s, 'i> Fields<'s, 'i> {
                 None
             }
         }
+    }
+
+    fn empty_key(&mut self, field: &str, span: Range<usize>) {
+        self.fail(
+            EntryProblemKind::EmptyKey,
+            span,
+            format!("`{field}` can't be an empty key"),
+        );
     }
 
     /// Marks the first field left over as unknown.

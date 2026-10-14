@@ -14,7 +14,7 @@
 //! | `invalid_folder` | A board folder name breaks the folder rules (one name, no `/`) |
 //! | `folder_exists` / `folder_not_empty` | A board folder rename's target is taken / a deleted board folder has boards |
 //! | `board_invalid` | A board file or document breaks the `unfold-board` format |
-//! | `board_problem` | A save would introduce a missing reference, broken group, or held reference |
+//! | `board_problem` | A save would introduce a missing reference, broken combined step, or held reference, or break the overlay rules |
 //! | `name_taken` | Another board took a new board's file name meanwhile |
 //! | `editor_not_found` | `open_in_editor` can't find the editor command's program (set its full path) |
 //! | `cancelled` | The request was cancelled |

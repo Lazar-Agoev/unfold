@@ -1,17 +1,18 @@
 //! The Python oracle: the proof of concept's saved Pyright 1.1.407 evaluator rows, converted onto
-//! Unfold's blocks. Each row is one call site with Pyright's canonical targets; a site's target
+//! Unfold's nodes. Each row is one call site with Pyright's canonical targets; a site's target
 //! counts only when there is exactly one and it is indexed, as the proof of concept's
 //! `comparePythonCalls` counted it (`compilers/codegraph/test/python-reference.ts`). Offsets go from
-//! UTF-16 to UTF-8 bytes through each file's text, and every site and target is named by the
-//! Unfold block with exactly its range.
+//! UTF-16 to UTF-8 bytes through each file's text. A site is named by the Unfold call node with
+//! exactly its range, and a target by the Unfold definition with exactly its range.
 
+use std::ops::RangeInclusive;
 use std::path::Path;
 
 use anyhow::{Context, bail};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use unfold_core::text::Utf16Range;
-use unfold_core::vocab::{BlockKind, Language};
+use unfold_core::vocab::{Language, NodeKind};
 use unfold_core::{ByteRange, ContentHash, Graph, RepoPath, Snapshot, Utf16Index, canonical};
 
 use super::corpora::{Lock, OracleCorpus, PathMapping, PyrightRows};
@@ -129,38 +130,39 @@ fn poc_source_sha256(graph: &Graph, paths: &[PathMapping]) -> anyhow::Result<Str
     Ok(ContentHash::of(serde_json::to_string(&sources)?.as_bytes()).to_string())
 }
 
-/// A file path and an exact byte range.
-type Place<'a> = (&'a str, u32, u32);
+/// A node's start, kind, and key.
+type Placed<'a> = (u32, NodeKind, &'a str);
 
-/// The Python blocks of the graph by file and exact byte range.
-struct Blocks<'a> {
-    by_range: FxHashMap<Place<'a>, Vec<(BlockKind, &'a str)>>,
+/// The Python nodes of the graph by file and end.
+struct Nodes<'a> {
+    by_end: FxHashMap<(&'a str, u32), Vec<Placed<'a>>>,
 }
 
-impl<'a> Blocks<'a> {
+impl<'a> Nodes<'a> {
     fn new(graph: &'a Graph) -> Self {
-        let mut by_range: FxHashMap<_, Vec<_>> = FxHashMap::default();
+        let mut by_end: FxHashMap<_, Vec<_>> = FxHashMap::default();
         for file in graph
             .files
             .iter()
             .filter(|file| file.file.language == Language::Python)
         {
-            for block in &file.blocks {
-                by_range
-                    .entry((file.file.path.as_str(), block.range.start, block.range.end))
+            for node in &file.nodes {
+                by_end
+                    .entry((file.file.path.as_str(), node.range.end))
                     .or_default()
-                    .push((block.kind, block.key.as_str()));
+                    .push((node.range.start, node.kind(), node.key.as_str()));
             }
         }
-        Self { by_range }
+        Self { by_end }
     }
 
-    fn find(&self, path: &str, start: u32, end: u32, accept: impl Fn(BlockKind) -> bool) -> Option<&'a str> {
-        self.by_range
-            .get(&(path, start, end))?
+    /// The key of the node of `kind` that ends at `end` and starts in `starts`.
+    fn find(&self, path: &str, starts: RangeInclusive<u32>, end: u32, kind: NodeKind) -> Option<&'a str> {
+        self.by_end
+            .get(&(path, end))?
             .iter()
-            .find(|(kind, _)| accept(*kind))
-            .map(|(_, key)| *key)
+            .find(|(start, found, _)| *found == kind && starts.contains(start))
+            .map(|(_, _, key)| *key)
     }
 }
 
@@ -202,7 +204,7 @@ pub(crate) fn import(
         );
     }
 
-    let blocks = Blocks::new(graph);
+    let nodes = Nodes::new(graph);
     let mut texts: FxHashMap<String, Utf16Index> = FxHashMap::default();
     let mut convert = |path: &str, start: u32, end: u32| -> anyhow::Result<(u32, u32)> {
         if !texts.contains_key(path) {
@@ -219,9 +221,7 @@ pub(crate) fn import(
         let path = map_path(&rows.paths, &row.file_path)
             .with_context(|| format!("{} is outside the corpus's path mapping", row.file_path))?;
         let (start, end) = convert(&path, row.start, row.end)?;
-        let site = blocks
-            .find(&path, start, end, |kind| kind == BlockKind::Call)
-            .or_else(|| blocks.find(&path, start, end, BlockKind::is_occurrence));
+        let site = nodes.find(&path, start..=start, end, NodeKind::Call);
         let mut call = CallRow::default();
         match site {
             Some(site) => call.site = Some(site.into()),
@@ -231,7 +231,7 @@ pub(crate) fn import(
             }
         }
         match row.canonical.single_indexed() {
-            Some(target) => match target_key(target, &rows.paths, &blocks, &mut convert)? {
+            Some(target) => match target_key(target, &rows.paths, &nodes, &mut convert)? {
                 Ok(key) => call.target = Some(key.into()),
                 Err(detail) => {
                     call.outcome = Some("unmapped".into());
@@ -246,9 +246,9 @@ pub(crate) fn import(
                 continue;
             };
             let Some(site) = site else {
-                bail!("{path}:{start}: a resolved argument at a site with no Unfold block");
+                bail!("{path}:{start}: a resolved argument at a site with no Unfold call");
             };
-            match target_key(target, &rows.paths, &blocks, &mut convert)? {
+            match target_key(target, &rows.paths, &nodes, &mut convert)? {
                 Ok(key) => references.push((
                     (path.clone(), start, end),
                     ReferenceRow {
@@ -310,24 +310,25 @@ fn order(a: &(String, u32, u32), b: &(String, u32, u32)) -> std::cmp::Ordering {
         .then(a.2.cmp(&b.2))
 }
 
-/// The Unfold block a Pyright target denotes: its decorated start to its end, a `class` for a
-/// class and a function-like block for a function. `Err` describes a target with no such block.
+/// The Unfold definition a Pyright target denotes: a class for a class and a function for a
+/// function, ending where the target ends and starting between the target's statement (its first
+/// decorator, or `async`) and its `def` or `class` keyword. An Unfold definition starts after its
+/// decorators and at `async`. `Err` describes a target with no such node.
 fn target_key<'a>(
     target: &Target,
     paths: &[PathMapping],
-    blocks: &Blocks<'a>,
+    nodes: &Nodes<'a>,
     convert: &mut impl FnMut(&str, u32, u32) -> anyhow::Result<(u32, u32)>,
 ) -> anyhow::Result<Result<&'a str, String>> {
     let path = map_path(paths, &target.file_path)
         .with_context(|| format!("target {} is outside the corpus's path mapping", target.file_path))?;
-    let (start, end) = convert(&path, target.decorated_start.unwrap_or(target.start), target.end)?;
-    let class = target.kind == "class";
-    let key = blocks.find(&path, start, end, |kind| {
-        if class {
-            kind == BlockKind::Class
-        } else {
-            kind.is_function_like()
-        }
-    });
-    Ok(key.ok_or_else(|| format!("{} {path}:{start}-{end} is no Unfold block", target.kind)))
+    let (first, end) = convert(&path, target.decorated_start.unwrap_or(target.start), target.end)?;
+    let (start, _) = convert(&path, target.start, target.end)?;
+    let kind = if target.kind == "class" {
+        NodeKind::Class
+    } else {
+        NodeKind::Function
+    };
+    let key = nodes.find(&path, first..=start, end, kind);
+    Ok(key.ok_or_else(|| format!("{} {path}:{start}-{end} is no Unfold definition", target.kind)))
 }

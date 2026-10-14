@@ -1,0 +1,362 @@
+{
+  "file": "src/routes/orders.ts",
+  "state": "current",
+  "lines": [
+    {
+      "number": 25,
+      "text": "export async function createOrder(req: Request, res: Response): Promise<void> {",
+      "tokens": [
+        [
+          0,
+          6,
+          "keyword"
+        ],
+        [
+          7,
+          12,
+          "keyword"
+        ],
+        [
+          13,
+          21,
+          "keyword"
+        ],
+        [
+          22,
+          33,
+          "function"
+        ],
+        [
+          39,
+          46,
+          "type"
+        ],
+        [
+          53,
+          61,
+          "type"
+        ],
+        [
+          64,
+          71,
+          "type"
+        ],
+        [
+          72,
+          76,
+          "keyword"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder",
+      "calls": []
+    },
+    {
+      "number": 26,
+      "text": "  const draft: OrderDraft = req.body;",
+      "tokens": [
+        [
+          2,
+          7,
+          "keyword"
+        ],
+        [
+          15,
+          25,
+          "type"
+        ],
+        [
+          32,
+          36,
+          "property"
+        ]
+      ],
+      "calls": []
+    },
+    {
+      "number": 27,
+      "text": "  if (req.header(\"prefer\") === \"respond-async\") {",
+      "tokens": [
+        [
+          2,
+          4,
+          "keyword"
+        ],
+        [
+          10,
+          16,
+          "function"
+        ],
+        [
+          17,
+          25,
+          "string"
+        ],
+        [
+          31,
+          46,
+          "string"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/if[0]",
+      "calls": [
+        {
+          "start": 6,
+          "end": 16,
+          "key": "src/routes/orders.ts#createOrder/if[0]/then/call:req.header"
+        }
+      ]
+    },
+    {
+      "number": 28,
+      "text": "    const job = await ordersQueue.add(\"place-order\", { order: draft });",
+      "tokens": [
+        [
+          4,
+          9,
+          "keyword"
+        ],
+        [
+          16,
+          21,
+          "keyword"
+        ],
+        [
+          34,
+          37,
+          "function"
+        ],
+        [
+          38,
+          51,
+          "string"
+        ],
+        [
+          55,
+          60,
+          "property"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add",
+      "calls": [
+        {
+          "start": 22,
+          "end": 37,
+          "key": "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add"
+        }
+      ]
+    },
+    {
+      "number": 29,
+      "text": "    res.status(202).json({ jobId: job.id });",
+      "tokens": [
+        [
+          8,
+          14,
+          "function"
+        ],
+        [
+          15,
+          18,
+          "number"
+        ],
+        [
+          20,
+          24,
+          "function"
+        ],
+        [
+          27,
+          32,
+          "property"
+        ],
+        [
+          38,
+          40,
+          "property"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json",
+      "calls": [
+        {
+          "start": 4,
+          "end": 14,
+          "key": "src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json/call:res.status"
+        },
+        {
+          "start": 20,
+          "end": 24,
+          "key": "src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json"
+        }
+      ]
+    },
+    {
+      "number": 30,
+      "text": "    return;",
+      "tokens": [
+        [
+          4,
+          10,
+          "keyword"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/if[0]/then/return[0]",
+      "calls": []
+    },
+    {
+      "number": 31,
+      "text": "  }",
+      "tokens": [],
+      "calls": []
+    },
+    {
+      "number": 32,
+      "text": "  const order = orderService.place(draft);",
+      "tokens": [
+        [
+          2,
+          7,
+          "keyword"
+        ],
+        [
+          29,
+          34,
+          "function"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/call:orderService.place",
+      "calls": [
+        {
+          "start": 16,
+          "end": 34,
+          "key": "src/routes/orders.ts#createOrder/call:orderService.place"
+        }
+      ]
+    },
+    {
+      "number": 33,
+      "text": "  slack.post(\"#orders\", `Order ${order.id} placed for ${order.customerId}`);",
+      "tokens": [
+        [
+          8,
+          12,
+          "function"
+        ],
+        [
+          13,
+          22,
+          "string"
+        ],
+        [
+          24,
+          31,
+          "string"
+        ],
+        [
+          31,
+          33,
+          "keyword"
+        ],
+        [
+          39,
+          41,
+          "property"
+        ],
+        [
+          41,
+          42,
+          "keyword"
+        ],
+        [
+          42,
+          54,
+          "string"
+        ],
+        [
+          54,
+          56,
+          "keyword"
+        ],
+        [
+          62,
+          72,
+          "property"
+        ],
+        [
+          72,
+          73,
+          "keyword"
+        ],
+        [
+          73,
+          74,
+          "string"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/call:slack.post",
+      "calls": [
+        {
+          "start": 2,
+          "end": 12,
+          "key": "src/routes/orders.ts#createOrder/call:slack.post"
+        }
+      ]
+    },
+    {
+      "number": 34,
+      "text": "  res.status(201).json(order);",
+      "tokens": [
+        [
+          6,
+          12,
+          "function"
+        ],
+        [
+          13,
+          16,
+          "number"
+        ],
+        [
+          18,
+          22,
+          "function"
+        ]
+      ],
+      "block": "src/routes/orders.ts#createOrder/call:res.status().json",
+      "calls": [
+        {
+          "start": 2,
+          "end": 12,
+          "key": "src/routes/orders.ts#createOrder/call:res.status().json/call:res.status"
+        },
+        {
+          "start": 18,
+          "end": 22,
+          "key": "src/routes/orders.ts#createOrder/call:res.status().json"
+        }
+      ]
+    },
+    {
+      "number": 35,
+      "text": "}",
+      "tokens": [],
+      "calls": []
+    }
+  ],
+  "path": [
+    {
+      "label": "src/routes/orders.ts",
+      "showing": false
+    },
+    {
+      "label": "createOrder",
+      "key": "src/routes/orders.ts#createOrder",
+      "showing": true
+    }
+  ],
+  "definitions": [
+    {
+      "line": 25,
+      "key": "src/routes/orders.ts#createOrder"
+    }
+  ]
+}

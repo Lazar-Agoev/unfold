@@ -1,32 +1,22 @@
-//! Claims on boards (docs/reader.md › Boards): resource cards and connections grounded in
-//! `ts-orders` (the connections of design §4.7 and an `orders` table backed by `interface
-//! Order`), the example board saved to itself with real signatures, and evidence files: anchors
-//! into them are signed, go outdated when the file changes, and are repaired.
+//! Claims on boards: resource cards and connections grounded in `ts-orders` (queues, a call
+//! Unfold can't follow, and an `orders` table backed by `interface Order`), the example board
+//! saved to itself with real signatures, and evidence files: anchors into them are signed, go
+//! outdated when the file changes, and are repaired. The reader's tests cover every grounding
+//! rule; these cover the save path.
 
 use serde_json::{Value, json};
 use unfold_core::testkit::{assert_golden, testdata_dir};
 
-use crate::boards::{card, edit_of, id_of};
+use crate::boards::{card, edit_of, entrance_card, id_of};
 use crate::common::Harness;
 
-const CREATE_ORDER: &str = "src/routes/orders.ts#function:createOrder";
-const PROCESS_ORDER: &str = "src/jobs/process-order.ts#function:processOrder";
-const PLACE: &str = "src/services/order-service.ts#class:OrderService/method:place";
-const NOTIFY: &str = "src/services/notifier.ts#function:notifyCustomer";
-const STRIPE_CHARGE: &str = "src/services/payment.ts#class:StripeProvider/method:charge";
-const ORDERS_QUEUE: &str = "src/queues/queues.ts#variable:ordersQueue";
-const EMAIL_QUEUE: &str = "src/queues/queues.ts#variable:emailQueue";
-const ORDER: &str = "src/types.ts#interface:Order";
-
-/// The key of the worker entrance on queue `queue`.
-fn worker(harness: &Harness, queue: &str) -> String {
-    harness
-        .entrance_rows(Some(queue))
-        .into_iter()
-        .find(|row| row["kind"] == "worker" && row["trigger"] == queue)
-        .and_then(|row| row["key"].as_str().map(str::to_owned))
-        .unwrap_or_else(|| panic!("no worker on {queue}"))
-}
+const CREATE_ORDER: &str = "src/routes/orders.ts#createOrder";
+const PROCESS_ORDER: &str = "src/jobs/process-order.ts#processOrder";
+const PLACE: &str = "src/services/order-service.ts#OrderService.place";
+const STRIPE_CHARGE: &str = "src/services/payment.ts#StripeProvider.charge";
+const ORDERS_QUEUE: &str = "src/queues/queues.ts#/call:Queue";
+const EMAIL_QUEUE: &str = "src/queues/queues.ts#/call:Queue[1]";
+const ORDER: &str = "src/types.ts#Order";
 
 /// An agent's connection.
 fn connection(id: &str, kind: &str, from: &str, to: &str, step: Option<&str>, anchors: &[&str]) -> Value {
@@ -45,7 +35,7 @@ fn orders_table(marks: &[&str]) -> Value {
     json!({
         "id": "orders-table", "kind": "table", "name": "orders", "type": ORDER,
         "columns": marks.iter().map(|name| json!({ "name": name, "key": "primary" })).collect::<Vec<_>>(),
-        "anchors": [{ "key": "src/db/repository.ts#class:OrderRepository" }],
+        "anchors": [{ "key": "src/db/repository.ts#OrderRepository" }],
         "at": [800, 400], "author": "agent:claude"
     })
 }
@@ -89,53 +79,41 @@ fn the_example_board_saves_to_itself() {
 }
 
 #[test]
-fn the_design_connections_are_grounded_in_ts_orders() {
+fn connections_are_grounded_in_ts_orders() {
     let harness = Harness::compiled("ts-orders");
     let id = id_of(&harness.new_board(1, "Orders"));
-    let mut page = json!({
-        "title": "Placing an order", "defaultView": "diagram", "groups": [],
+    let page = json!({
+        "title": "Placing an order", "defaultView": "expanded",
         "cards": [
             card("create", CREATE_ORDER), card("process", PROCESS_ORDER), card("place", PLACE),
-            card("notify", NOTIFY), card("stripe", STRIPE_CHARGE),
-            card("orders-worker", &worker(&harness, "orders")), card("emails-worker", &worker(&harness, "emails")),
+            card("stripe", STRIPE_CHARGE),
+            entrance_card("orders-worker", "entrance:worker/process-an-order"),
+            entrance_card("emails-worker", "entrance:worker/send-an-email"),
         ],
         "resources": [orders_table(&["id", "customerId"])],
         "links": [
             connection("enqueue-order", "queue", "create", "orders-worker",
-                Some("src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]"), &[ORDERS_QUEUE]),
+                Some("src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add"),
+                &[ORDERS_QUEUE, "entrance:worker/process-an-order"]),
             connection("enqueue-email", "queue", "process", "emails-worker",
-                Some("src/jobs/process-order.ts#function:processOrder/expression_statement[0]/call[0]"), &[EMAIL_QUEUE]),
-            connection("order-placed", "event", "place", "notify",
-                Some("src/services/order-service.ts#class:OrderService/method:place/expression_statement[2]/call[0]"),
-                &["src/services/notifier.ts#expression_statement[0]"]),
+                Some("src/jobs/process-order.ts#processOrder/call:emailQueue.add"),
+                &[EMAIL_QUEUE, "entrance:worker/send-an-email"]),
             connection("charge", "calls", "place", "stripe",
-                Some("src/services/order-service.ts#class:OrderService/method:place/expression_statement[0]/call[0]"),
-                &["src/services/payment.ts#function:createProvider", "src/services/order-service.ts#variable:orderService"]),
+                Some("src/services/order-service.ts#OrderService.place/call:this.payments.charge"),
+                &["src/services/payment.ts#createProvider"]),
             connection("insert", "writes", "place", "orders-table",
-                Some("src/services/order-service.ts#class:OrderService/method:place/expression_statement[1]/call[0]"), &[]),
+                Some("src/services/order-service.ts#OrderService.place/call:this.repo.insert"), &[]),
         ],
     });
-    page["links"][0]["carries"] = json!("src/types.ts#interface:OrderJob");
-    page["links"][1]["carries"] = json!("src/types.ts#interface:EmailJob");
-    page["links"][2]["channel"] = json!("order.placed");
     let saved = harness
         .save_page(&id, page.clone())
         .expect("every connection is grounded");
     assert_eq!(saved["health"]["items"], json!([]));
-    let links = &saved["document"]["pages"][0]["links"];
-    let channel = |id: &str| {
-        links
-            .as_array()
-            .expect("links")
-            .iter()
-            .find(|link| link["id"] == id)
-            .map(|link| (link["channel"].clone(), link["signature"].is_string()))
-    };
-    // The workers give their queues as the channels; every connection that cites code is signed.
-    assert_eq!(channel("enqueue-order"), Some((json!("orders"), true)));
-    assert_eq!(channel("enqueue-email"), Some((json!("emails"), true)));
-    assert_eq!(channel("order-placed"), Some((json!("order.placed"), true)));
-    assert_eq!(channel("charge"), Some((Value::Null, true)));
+    let links = saved["document"]["pages"][0]["links"].as_array().expect("links");
+    assert!(
+        links.iter().all(|link| link["signature"].is_string()),
+        "every connection that cites code is signed: {links:?}"
+    );
     assert!(saved["document"]["pages"][0]["resources"][0]["signature"].is_string());
 
     let refused = |edit: &dyn Fn(&mut Value)| {
@@ -144,42 +122,29 @@ fn the_design_connections_are_grounded_in_ts_orders() {
         harness.save_page(&id, changed).expect_err("refused")
     };
     // A column no anchor mentions.
-    assert_eq!(
+    assert!(
         refused(&|page| {
             page["resources"][0] = json!({
                 "id": "orders-table", "kind": "table", "name": "orders",
                 "columns": [{ "name": "id" }, { "name": "customer_id" }],
-                "anchors": [{ "key": "src/db/repository.ts#class:OrderRepository" }],
+                "anchors": [{ "key": "src/db/repository.ts#OrderRepository" }],
                 "at": [800, 400], "author": "agent:claude"
             });
-        }),
-        "page `page-1`, resource `orders-table`: Can't add the table \"orders\": the column \"customer_id\" doesn't appear in its anchors (OrderRepository in src/db/repository.ts). Cite where the column is defined, or leave it out"
-    );
-    // A mark on a field `Order` doesn't have (it inherits `customerId` from `OrderDraft`).
-    assert_eq!(
-        refused(&|page| page["resources"][0] = orders_table(&["customer_id"])),
-        "page `page-1`, resource `orders-table`: Can't add the table \"orders\": \"customer_id\" isn't a field of Order (src/types.ts). A table backed by a type marks its fields; mark one of: id, status, createdAt, customerId, email, items"
-    );
-    // A runtime call from a call Unfold follows.
-    assert!(
-        refused(&|page| {
-            page["links"][3]["step"] =
-                json!("src/routes/orders.ts#function:createOrder/variable:order/call[0]");
-            page["links"][3]["from"] = json!("create");
         })
-        .contains(
-            "the call orderService.place (line 32) resolves to OrderService.place, so Unfold already draws it"
-        ),
+        .contains("customer_id"),
     );
-    // A carried type the sending code and the anchors never write.
+    // A mark on a field `Order` doesn't have.
+    assert!(refused(&|page| page["resources"][0] = orders_table(&["customer_id"])).contains("customer_id"));
+    // A `calls` connection starts at an unknown call, never one Unfold follows.
     assert!(
-        refused(&|page| page["links"][0]["carries"] = json!("src/types.ts#interface:EmailJob"))
-            .contains("EmailJob (src/types.ts) isn't used in createOrder or in its anchors"),
+        refused(&|page| page["links"][2]["step"] =
+            json!("src/routes/orders.ts#createOrder/call:orderService.place"))
+        .contains("orderService.place"),
     );
-    // A queue connection without its receiving side.
+    // A connection's step is a call.
     assert!(
-        refused(&|page| page["links"][1]["anchors"] = json!([]))
-            .contains("it has no anchors. A queue connection cites its receiving side"),
+        !refused(&|page| page["links"][3]["step"] = json!("src/routes/orders.ts#createOrder/if[0]"))
+            .is_empty()
     );
 }
 
@@ -236,7 +201,7 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
         (
             &json!("outdated"),
             &json!({ "resource": "customers" }),
-            &json!(["resign", "removeResource"])
+            &json!(["resign", "remove"])
         )
     );
     let repair = |repair: Value| {
@@ -263,6 +228,7 @@ fn evidence_files_anchor_claims_that_go_outdated_when_the_file_changes() {
         reconnected["document"]["pages"][0]["resources"][0]["anchors"],
         json!([{ "file": "db/schema.sql", "lines": [1, 3] }])
     );
-    let removed = repair(json!({ "page": "page-1", "kind": "remove_resource", "resource": "customers" }));
+    let removed =
+        repair(json!({ "page": "page-1", "kind": "remove", "target": { "resource": "customers" } }));
     assert!(removed["document"]["pages"][0].get("resources").is_none());
 }

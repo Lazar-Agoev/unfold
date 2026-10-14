@@ -11,8 +11,9 @@
 //!
 //! The project keeps a **session** per open board ([`session`]): the version last loaded or
 //! saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks them against
-//! the project's graph ([`graphs`]: no new missing reference, broken group, held reference, or
-//! broken link), signs new descriptions, labels, and link labels, and writes the board over its
+//! the project's graph ([`graphs`]: no new missing reference, broken combined step, held
+//! reference, or broken link, and the overlay rules), signs new descriptions, names, and
+//! combined steps, and writes the board over its
 //! file, whatever the file holds now. When the file changes outside the app (another program, a
 //! `git pull`), the session is reloaded from it and the window that opened the board gets
 //! `board_reloaded` ([`health::check_disk`]); while the window's save is failing, it ignores the

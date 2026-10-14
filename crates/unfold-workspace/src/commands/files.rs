@@ -1,5 +1,5 @@
-//! File commands: opening a project's file in the person's editor. The source a peek sheet
-//! shows is `file_view`.
+//! File commands: opening a project's file in the person's editor. The code panel's model is
+//! `code_view`.
 
 use std::fs::OpenOptions;
 use std::io::ErrorKind;

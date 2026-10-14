@@ -1,0 +1,106 @@
+app	entrance:typescript-server	cd ts-orders && npm run start
+	code	ts-orders/src/server.ts#	found
+entrance	entrance:typescript-server/health-check	GET /health
+	code	ts-orders/src/server.ts#healthCheck	found
+entrance	entrance:typescript-server/status	GET /v1/status
+	code	ts-orders/src/server.ts#status	found
+entrance	entrance:typescript-server/list-orders	GET /orders
+	code	ts-orders/src/routes/orders.ts#listOrders	found
+entrance	entrance:typescript-server/get-an-order	GET /orders/:id
+	code	ts-orders/src/routes/orders.ts#getOrder	found
+entrance	entrance:typescript-server/place-an-order	POST /orders
+	code	ts-orders/src/routes/middleware.ts#requireUser	found
+	code	ts-orders/src/routes/middleware.ts#validateBody	found
+	code	ts-orders/src/routes/orders.ts#createOrder	found
+entrance	entrance:typescript-server/cancel-an-order	DELETE /orders/:id
+	code	ts-orders/src/routes/middleware.ts#requireUser	found
+	code	ts-orders/src/routes/orders.ts#cancelOrder	found
+entrance	entrance:typescript-server/liveness	GET /health/live
+	code	ts-orders/src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]	found
+entrance	entrance:typescript-server/admin-stats	GET /admin/stats
+	code	ts-orders/src/server.ts#adminStats	missing	moved_definition	ts-orders/src/routes/admin.ts#adminStats
+entrance	entrance:typescript-server/shut-down	SIGTERM
+	code	ts-orders/src/server.ts#shutdown	found
+app	entrance:typescript-dev-server	cd ts-orders && npm run dev
+	code	ts-orders/src/server.ts#	found
+app	entrance:typescript-worker	cd ts-orders && npm run worker
+	code	ts-orders/src/worker.ts#	found
+entrance	entrance:typescript-worker/send-an-email	queue emails
+	code	ts-orders/src/queues/email-worker.ts#/call:Worker("emails")/callback[0]	found
+entrance	entrance:typescript-worker/process-an-order	queue orders
+	code	ts-orders/src/jobs/process-order.ts#processOrder	found
+entrance	entrance:typescript-worker/build-a-report	queue reports
+	code	ts-orders/report-processor.js#	not_analyzed
+app	entrance:typescript-scheduler	cd ts-orders && npm run scheduler
+	code	ts-orders/src/scheduler.ts#	found
+entrance	entrance:typescript-scheduler/clean-up-expired-orders	0 2 * * *
+	code	ts-orders/src/jobs/cleanup.ts#cleanupExpiredOrders	found
+entrance	entrance:typescript-scheduler/report-metrics	*/15 * * * *
+	code	ts-orders/src/scheduler.ts#/call:schedule("*/15 * * * *")/callback[0]	found
+app	entrance:typescript-orders-cli	orders <command>
+	code	ts-orders/src/cli.ts#	found
+entrance	entrance:typescript-orders-cli/import-orders	orders import
+	code	ts-orders/src/jobs/import-orders.ts#importOrders	found
+entrance	entrance:typescript-orders-cli/print-a-report	orders report
+	code	ts-orders/src/jobs/report.ts#printReport	found
+entrance	entrance:typescript-orders-cli/replay-failed-orders	orders replay
+	code	ts-orders/src/jobs/retry-failed.ts#retryFailed	found
+entrance	entrance:typescript-orders-cli/retry-failed-orders	orders retry
+	code	ts-orders/src/jobs/retry-failed.ts#retryFailed	found
+app	entrance:typescript-dev-cli	cd ts-orders && npm run cli -- <command>
+	code	ts-orders/src/cli.ts#	found
+app	entrance:typescript-legacy-export	cd ts-orders && npm run legacy:export
+	code	ts-orders/scripts/export.js#	not_analyzed
+app	entrance:python-server	orders-api
+	code	py-orders/src/orders_playground/server.py#main	found
+entrance	entrance:python-server/health-check	GET /health
+	code	py-orders/src/orders_playground/server.py#health_check	found
+entrance	entrance:python-server/status	GET /v1/status
+	code	py-orders/src/orders_playground/server.py#status	found
+entrance	entrance:python-server/list-orders	GET /orders
+	code	py-orders/src/orders_playground/routes/orders.py#list_orders	found
+entrance	entrance:python-server/get-an-order	GET /orders/{order_id}
+	code	py-orders/src/orders_playground/routes/orders.py#get_order	found
+entrance	entrance:python-server/place-an-order	POST /orders
+	code	py-orders/src/orders_playground/routes/middleware.py#require_user	found
+	code	py-orders/src/orders_playground/routes/middleware.py#validate_body	found
+	code	py-orders/src/orders_playground/routes/orders.py#create_order	found
+entrance	entrance:python-server/cancel-an-order	DELETE /orders/{order_id}
+	code	py-orders/src/orders_playground/routes/middleware.py#require_user	found
+	code	py-orders/src/orders_playground/routes/orders.py#cancel_order	found
+entrance	entrance:python-server/liveness	GET /health/live
+	code	py-orders/src/orders_playground/routes/health.py#/call:health_router.get()/callback[0]	found
+entrance	entrance:python-server/admin-stats	GET /admin/stats
+	code	py-orders/src/orders_playground/server.py#admin_stats	missing	moved_definition	py-orders/src/orders_playground/routes/admin.py#admin_stats
+entrance	entrance:python-server/shut-down	SIGTERM
+	code	py-orders/src/orders_playground/server.py#shutdown	found
+app	entrance:python-dev-server	orders-api-dev
+	code	py-orders/src/orders_playground/server.py#main	found
+app	entrance:python-worker	orders-worker
+	code	py-orders/src/orders_playground/worker.py#main	found
+entrance	entrance:python-worker/send-an-email	queue emails
+	code	py-orders/src/orders_playground/queues/email_worker.py#email_task	found
+entrance	entrance:python-worker/process-an-order	queue orders
+	code	py-orders/src/orders_playground/jobs/process_order.py#process_order	found
+entrance	entrance:python-worker/build-a-report	queue reports
+	code	py-orders/src/orders_playground/jobs/report.py#print_report	found
+app	entrance:python-scheduler	orders-scheduler
+	code	py-orders/src/orders_playground/scheduler.py#main	found
+entrance	entrance:python-scheduler/clean-up-expired-orders	0 2 * * *
+	code	py-orders/src/orders_playground/jobs/cleanup.py#cleanup_expired_orders	found
+entrance	entrance:python-scheduler/report-metrics	*/15 * * * *
+	code	py-orders/src/orders_playground/scheduler.py#/call:scheduler.add_job[1]/callback[0]	found
+app	entrance:python-orders-cli	orders <command>
+	code	py-orders/src/orders_playground/cli.py#main	found
+entrance	entrance:python-orders-cli/import-orders	orders import
+	code	py-orders/src/orders_playground/jobs/import_orders.py#import_orders	found
+entrance	entrance:python-orders-cli/print-a-report	orders report
+	code	py-orders/src/orders_playground/cli.py#report_command	found
+entrance	entrance:python-orders-cli/replay-failed-orders	orders replay
+	code	py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed	found
+entrance	entrance:python-orders-cli/retry-failed-orders	orders retry
+	code	py-orders/src/orders_playground/jobs/retry_failed.py#retry_failed	found
+app	entrance:python-cli-alias	orders-cli <command>
+	code	py-orders/src/orders_playground/cli.py#main	found
+app	entrance:python-legacy-export	orders-legacy-export
+	code	py-orders/legacy/orders_legacy/export.py#main	not_analyzed

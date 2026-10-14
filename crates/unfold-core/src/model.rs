@@ -58,8 +58,9 @@ pub struct Node {
     pub parent: Option<u32>,
     /// The written form, which decides the kind ([`Node::kind`]).
     pub form: Form,
-    /// A named definition's name, or a call's normalized callee
-    /// ([`crate::key::Callee::text`]); never empty.
+    /// A named definition's name, a call's normalized callee ([`crate::key::Callee::text`]), or
+    /// the property a callback is written as (`onSuccess` in `useMutation({ onSuccess: … })`),
+    /// which labels it while its key stays `callback[n]`; never empty.
     pub name: Option<Box<str>>,
     /// The whole block; the module spans the whole file.
     pub range: ByteRange,

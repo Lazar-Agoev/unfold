@@ -48,39 +48,43 @@ fn golden(harness: &Harness, name: &str, command: &str, mut args: Value) -> Valu
 fn representative_commands_match_their_goldens() {
     let harness = Harness::compiled("ts-orders");
     golden(&harness, "project_summary", "project_summary", json!({}));
-    golden(
-        &harness,
-        "file_view_orders_page",
-        "file_view",
-        json!({ "path": "src/routes/orders.ts", "range": { "startLine": 1, "endLine": 12 } }),
-    );
-    let map = golden(&harness, "entrances", "entrances", json!({}));
-    let create_order = json!({ "key": "src/routes/orders.ts#function:createOrder" });
+    golden(&harness, "entrances", "entrances", json!({}));
+    let create_order = json!({ "key": "src/routes/orders.ts#createOrder" });
     golden(&harness, "card_create_order", "card", create_order.clone());
     golden(
         &harness,
-        "relations_create_order",
-        "relations",
-        json!({ "key": "src/routes/orders.ts#function:createOrder", "onPage": [] }),
-    );
-    golden(&harness, "callers_create_order", "callers", create_order);
-    let application = &map["categories"][0]["applications"][0];
-    golden(
-        &harness,
-        "entrances_first_application",
-        "entrances",
-        json!({ "application": application["id"], "limit": 4 }),
-    );
-    let entrance = harness
-        .entrance_rows(None)
-        .into_iter()
-        .find(|row| row["id"] == "import")
-        .expect("ts-orders configures the import command");
-    golden(
-        &harness,
-        "card_first_entrance",
+        "card_place_an_order",
         "card",
-        json!({ "key": entrance["key"] }),
+        json!({ "key": "entrance:server/place-an-order" }),
+    );
+    golden(
+        &harness,
+        "code_view_create_order",
+        "code_view",
+        json!({ "target": { "kind": "block", "key": "src/routes/orders.ts#createOrder" } }),
+    );
+    golden(
+        &harness,
+        "code_text_create_order",
+        "code_text",
+        create_order.clone(),
+    );
+    golden(
+        &harness,
+        "flow_text_create_order",
+        "flow_text",
+        json!({
+            "key": "src/routes/orders.ts#createOrder",
+            "overlay": { "names": [{ "key": "src/routes/orders.ts#createOrder/if[0]/then", "text": "Asked to queue it?" }] },
+            "open": [["src/routes/orders.ts#createOrder/call:orderService.place"]],
+        }),
+    );
+    golden(&harness, "relations_create_order", "relations", create_order);
+    golden(
+        &harness,
+        "callers_place",
+        "callers",
+        json!({ "key": "src/services/order-service.ts#OrderService.place" }),
     );
     golden(&harness, "search_place", "search", json!({ "query": "place" }));
     golden(

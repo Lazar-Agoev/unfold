@@ -44,6 +44,9 @@ struct Definition<'s, 'a> {
     address: Address,
     form: Form,
     naming: Option<Naming>,
+    /// The property a callback is written as (`onSuccess` in `useMutation({ onSuccess: … })`),
+    /// which labels it; its key stays `callback[n]`.
+    property: Option<String>,
     range: ByteRange,
     head: ByteRange,
     flags: Flags,
@@ -54,8 +57,9 @@ struct Definition<'s, 'a> {
 }
 
 impl Lowering<'_> {
-    /// A function node: named, or else a callback in a call's arguments and a lambda anywhere
-    /// else. Its parameter defaults are its first code, then its body.
+    /// A function node: named, or else a callback in a call's arguments (with the name of the
+    /// property it is written as, if it is one) and a lambda anywhere else. Its parameter
+    /// defaults are its first code, then its body.
     fn define(&mut self, definition: Definition<'_, '_>) -> Option<u32> {
         let (child, form, name) = match &definition.naming {
             Some(naming) => (
@@ -63,9 +67,11 @@ impl Lowering<'_> {
                 definition.form,
                 Some(&*naming.name),
             ),
-            None if self.at.within == Within::Argument => {
-                (Child::Inline(Inline::Callback), Form::Lambda, None)
-            }
+            None if self.at.within == Within::Argument => (
+                Child::Inline(Inline::Callback),
+                Form::Lambda,
+                definition.property.as_deref(),
+            ),
             None => (Child::Inline(Inline::Lambda), Form::Lambda, None),
         };
         let id = self.push(self.at.parent, child, form, name, definition.range)?;
@@ -117,8 +123,14 @@ impl Lowering<'_> {
 
     /// A function declaration or expression. A declaration is named by its identifier (or the
     /// `naming` given, for an anonymous default export) and starts at its `export`; an
-    /// expression is named only by `naming`. One without a body has no code.
-    pub(super) fn function(&mut self, it: &Function<'_>, naming: Option<Naming>) -> Option<u32> {
+    /// expression is named only by `naming`, or labeled by the `property` it is written as. One
+    /// without a body has no code.
+    pub(super) fn function(
+        &mut self,
+        it: &Function<'_>,
+        naming: Option<Naming>,
+        property: Option<String>,
+    ) -> Option<u32> {
         let body = it.body.as_ref()?;
         let declaration = it.r#type == FunctionType::FunctionDeclaration;
         let span = range(it.span);
@@ -147,6 +159,7 @@ impl Lowering<'_> {
             address: it.unstable_address(),
             form,
             naming,
+            property,
             range: ByteRange { start, end: span.end },
             head: ByteRange {
                 start: span.start,
@@ -160,8 +173,14 @@ impl Lowering<'_> {
         })
     }
 
-    /// An arrow function, named only by `naming`. Its head runs through its `=>`.
-    pub(super) fn arrow(&mut self, it: &ArrowFunctionExpression<'_>, naming: Option<Naming>) -> Option<u32> {
+    /// An arrow function, named only by `naming`, or labeled by the `property` it is written as.
+    /// Its head runs through its `=>`.
+    pub(super) fn arrow(
+        &mut self,
+        it: &ArrowFunctionExpression<'_>,
+        naming: Option<Naming>,
+        property: Option<String>,
+    ) -> Option<u32> {
         let signature = Self::signature_end(&it.params, it.return_type.as_deref());
         let head_end = self
             .tokens
@@ -180,6 +199,7 @@ impl Lowering<'_> {
             address: it.unstable_address(),
             form: Form::Lambda,
             naming,
+            property,
             range: range(it.span),
             head: ByteRange {
                 start: it.span.start,
@@ -194,13 +214,15 @@ impl Lowering<'_> {
     }
 
     /// A method, constructor, or accessor of a class or object literal, at the oxc node
-    /// `address` (its member or property), written at `range`: named by `name`, or a lambda.
+    /// `address` (its member or property), written at `range`: named by `naming`, or a lambda
+    /// (labeled by its `property` when it is a callback).
     fn method(
         &mut self,
         address: Address,
         function: &Function<'_>,
         form: Form,
         naming: Option<Naming>,
+        property: Option<String>,
         range: ByteRange,
     ) -> Option<u32> {
         let body = function.body.as_ref()?;
@@ -215,6 +237,7 @@ impl Lowering<'_> {
             address,
             form,
             naming,
+            property,
             range,
             head: ByteRange {
                 start: range.start,
@@ -246,8 +269,8 @@ impl Lowering<'_> {
     /// Lowers `value` with this naming when it is a function, class, or object literal.
     fn named(&mut self, value: &Expression<'_>, naming: Naming) -> Option<u32> {
         match values::unwrap(value) {
-            Expression::FunctionExpression(it) => self.function(it, Some(naming)),
-            Expression::ArrowFunctionExpression(it) => self.arrow(it, Some(naming)),
+            Expression::FunctionExpression(it) => self.function(it, Some(naming), None),
+            Expression::ArrowFunctionExpression(it) => self.arrow(it, Some(naming), None),
             Expression::ClassExpression(it) => self.class(it, Some(naming)),
             Expression::ObjectExpression(it) => {
                 self.object(it, Some(&naming.name));
@@ -262,7 +285,8 @@ impl Lowering<'_> {
 
     /// An object literal. The members of one a declaration names (`name`) are named
     /// definitions qualified by it (`handlers.onCreate`); in any other, a method is an inline
-    /// function written from its key.
+    /// function written from its key, and in a call's arguments a function-valued property is a
+    /// callback labeled by its property name.
     pub(super) fn object(&mut self, it: &ObjectExpression<'_>, name: Option<&str>) {
         for property in &it.properties {
             match property {
@@ -287,6 +311,9 @@ impl Lowering<'_> {
                 name: format!("{object}.{key}"),
                 doc: Some(property.span.start),
             });
+        let label = (naming.is_none() && self.at.within == Within::Argument)
+            .then(|| forms::property_name(&property.key, property.computed))
+            .flatten();
         match &property.value {
             Expression::FunctionExpression(function)
                 if property.method || property.kind != PropertyKind::Init =>
@@ -301,14 +328,24 @@ impl Lowering<'_> {
                     function,
                     form,
                     naming,
+                    label,
                     range(property.span),
                 );
             }
-            value => match naming {
-                Some(naming) => {
+            value => match (naming, label) {
+                (Some(naming), _) => {
                     self.named(value, naming);
                 }
-                None => self.visit_expression(value),
+                (None, Some(label)) => match values::unwrap(value) {
+                    Expression::FunctionExpression(it) => {
+                        self.function(it, None, Some(label));
+                    }
+                    Expression::ArrowFunctionExpression(it) => {
+                        self.arrow(it, None, Some(label));
+                    }
+                    _ => self.visit_expression(value),
+                },
+                (None, None) => self.visit_expression(value),
             },
         }
     }
@@ -519,7 +556,7 @@ impl Lowering<'_> {
                 });
                 let start = self.after_decorators(it.span, &it.decorators);
                 let written = ByteRange { start, end: span.end };
-                let id = self.method(it.unstable_address(), &it.value, form, naming, written);
+                let id = self.method(it.unstable_address(), &it.value, form, naming, None, written);
                 self.belong(decorators, id);
             }
             ClassElement::PropertyDefinition(it) => {
@@ -704,7 +741,7 @@ impl Lowering<'_> {
         self.export = Some(start);
         match &it.declaration {
             ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                self.function(function, function.id.is_none().then(default));
+                self.function(function, function.id.is_none().then(default), None);
             }
             ExportDefaultDeclarationKind::ClassDeclaration(class) => {
                 self.class(class, class.id.is_none().then(default));

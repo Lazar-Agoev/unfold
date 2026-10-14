@@ -6,7 +6,7 @@
 //! | --- | --- | --- |
 //! | [`BoardExtras`] | [`super::ProjectExtras::boards`] | A live project's open board sessions, its boards' health cache, and the lock that orders disk checks; dropped when the project rests |
 //! | [`released`] | `Host::detach_window` | A closing window's boards of a project were closed: forget their sessions |
-//! | [`refresh_health`] | The coalesced health refresh (one thread per project) | After the project woke, and after `graph_updated` of the project |
+//! | [`refresh_health`] | The coalesced health refresh (one thread per project) | After the project woke, and after `graph_updated` or `entrances_changed` of the project |
 //! | [`boards_changed`] | The host, on `boards_changed` (its own thread) | Board files changed on disk: reload open sessions whose file changed (`board_reloaded`), refresh those boards' health |
 //! | [`health_rows`] | `project_summary` | Home's Health line: the boards that need review |
 //!

@@ -20,6 +20,7 @@
 //! are project calls or callbacks, at most 3 deep and 64 per card ([`check_open_paths`]).
 
 use rustc_hash::FxHashSet;
+use unfold_core::Key;
 
 use super::BoardError;
 use super::check::{
@@ -313,12 +314,12 @@ fn place_proposals(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> 
 /// Refuses a card that is new or changed since `previous` (in what it shows or opens) unless a
 /// block card shows a module, definition, or type, and its opened calls are project calls or
 /// callbacks drawn where they open, at most 3 deep and 64 per card ([`check_open_paths`]). A
-/// missing reference is health's to report.
+/// missing reference is health's to report, and an open path the card already had whose code
+/// is gone is kept as it was (a Reconnect leaves it at its old keys).
 fn check_cards(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
+    let before = |card: &Card| previous.and_then(|old| old.card(&card.id));
     let same = |card: &Card| {
-        previous
-            .and_then(|old| old.card(&card.id))
-            .is_some_and(|before| (&before.reference, &before.open) == (&card.reference, &card.open))
+        before(card).is_some_and(|before| (&before.reference, &before.open) == (&card.reference, &card.open))
     };
     for card in page.cards.iter().filter(|card| !same(card)) {
         let CardRef::Block { block: key } = &card.reference else {
@@ -338,7 +339,12 @@ fn check_cards(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> Resu
                 ),
             ));
         }
-        if let Err(error) = check_open_paths(graph, key, card.open.iter().map(Vec::as_slice)) {
+        let gone = |path: &Vec<Key>| {
+            before(card).is_some_and(|before| before.open.contains(path))
+                && path.iter().any(|key| !graph.exists(key.as_str()))
+        };
+        let paths = card.open.iter().filter(|path| !gone(path)).map(Vec::as_slice);
+        if let Err(error) = check_open_paths(graph, key, paths) {
             return Err(refuse(page, &target, &format!("Can't open it in place: {error}")));
         }
     }

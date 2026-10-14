@@ -5,8 +5,9 @@
 //!   [`definitions`] lists one file's for the store, which indexes them for search; it needs only
 //!   that file, so a commit recomputes the files it changes.
 //! - A definition's **label** is its name. A module's is its path. An inline function written in
-//!   a call's arguments is a `callback to <callee>`, after that call's written callee; any other
-//!   inline function is an `anonymous function`.
+//!   a call's arguments is labeled by the property it is written as when it is one (`onSuccess`
+//!   in `useMutation({ onSuccess: () => … })`), and is otherwise a `callback to <callee>`, after
+//!   that call's written callee; any other inline function is an `anonymous function`.
 //! - The **qualified name** puts the names of the enclosing named definitions before the label,
 //!   joined with `.` (`OrderService.place`). A module's is its path.
 //! - An app's start and its entrances are [`Start`]s, found by key with [`start`]. A start's
@@ -18,9 +19,10 @@ use unfold_store::Definition;
 
 use crate::tree::to_u32;
 
-/// Node `id`'s label: a definition's name, a module's path, `callback to <callee>` for an
-/// inline function written in a call's arguments, `anonymous function` for any other inline
-/// function. Any other node is labeled by its name (a call's callee) or its form.
+/// Node `id`'s label: a definition's name, a module's path, the property a callback is written
+/// as, `callback to <callee>` for any other inline function written in a call's arguments,
+/// `anonymous function` for any other inline function. Any other node is labeled by its name (a
+/// call's callee) or its form.
 pub fn label(nodes: &[Node], path: &RepoPath, id: u32) -> String {
     let node = &nodes[id as usize];
     if let Some(name) = &node.name {

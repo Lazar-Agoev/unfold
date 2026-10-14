@@ -33,5 +33,5 @@
 {"t":"parameter","node":"a.ts#literal.method","index":0,"range":[854,863],"kind":"positional","name":"x","type":"number","type_range":[857,863]}
 {"t":"parameter","node":"a.ts#untyped","index":0,"range":[934,935],"kind":"positional","name":"a"}
 {"t":"parameter","node":"a.ts#untyped","index":1,"range":[937,938],"kind":"positional","name":"b"}
-{"t":"member","node":"a.ts#Service","index":0,"kind":"property","name":"url","readonly":true,"type":"string","type_range":[548,554]}
-{"t":"member","node":"a.ts#Service","index":1,"kind":"property","name":"retries","optional":true,"type":"number","type_range":[573,579]}
+{"t":"member","node":"a.ts#Service","index":0,"range":[526,554],"kind":"property","name":"url","readonly":true,"type":"string","type_range":[548,554]}
+{"t":"member","node":"a.ts#Service","index":1,"range":[556,579],"kind":"property","name":"retries","optional":true,"type":"number","type_range":[573,579]}

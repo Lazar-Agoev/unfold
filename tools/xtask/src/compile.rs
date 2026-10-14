@@ -11,6 +11,7 @@ use unfold_core::canonical;
 use unfold_core::vocab::FileState;
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{Engine, EngineOptions, Language, UpdateOutcome, UpdateRequest};
+use unfold_workspace::default_languages;
 
 /// Arguments of `compile`.
 #[derive(clap::Args)]
@@ -35,17 +36,9 @@ pub(crate) struct ExportArgs {
     output: Option<PathBuf>,
 }
 
-/// Every language front end Unfold ships, as the workspace registers them.
-pub(crate) fn languages() -> Vec<Arc<dyn Language>> {
-    vec![
-        Arc::new(unfold_lang_typescript::TypeScript::new()),
-        Arc::new(unfold_lang_python::Python::new()),
-    ]
-}
-
 /// Compiles `folder` once, from nothing, with every language.
 pub(crate) fn compile_folder(folder: &Path, threads: usize) -> anyhow::Result<UpdateOutcome> {
-    compile_with(folder, languages(), threads)
+    compile_with(folder, default_languages(), threads)
 }
 
 /// Compiles `folder` once, from nothing, with `languages`.
@@ -112,10 +105,10 @@ pub(crate) fn run_export(args: &ExportArgs) -> anyhow::Result<()> {
             canonical::write(&outcome.graph, &mut file)?;
             file.flush()?;
             eprintln!(
-                "wrote {} ({} files, {} entrances)",
+                "wrote {} ({} files, {} apps)",
                 path.display(),
                 outcome.graph.files.len(),
-                outcome.graph.entrances.len()
+                outcome.graph.apps.len()
             );
         }
         None => {

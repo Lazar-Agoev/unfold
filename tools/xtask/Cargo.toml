@@ -21,8 +21,6 @@ tempfile = { workspace = true }
 toml = { workspace = true }
 unfold-core = { workspace = true }
 unfold-engine = { workspace = true }
-unfold-lang-python = { workspace = true }
-unfold-lang-typescript = { workspace = true }
 unfold-store = { workspace = true }
 unfold-workspace = { workspace = true }
 

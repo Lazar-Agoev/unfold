@@ -73,12 +73,12 @@ impl Tree {
     }
 }
 
-/// Whether a node is an expression block: a call, a ternary, a comprehension, or an inline
-/// (unnamed) function.
-fn is_expression(node: &Node) -> bool {
+/// Whether node `id` is an expression block: a call, a ternary, a comprehension, or an inline
+/// function (unnamed, or a callback labeled by the property it is written as).
+fn is_expression(tree: &Tree, id: u32, node: &Node) -> bool {
     match node.kind() {
         NodeKind::Call => true,
-        NodeKind::Function => node.name.is_none(),
+        NodeKind::Function => node.name.is_none() || tree.is_callback(id),
         _ => matches!(node.form, Form::Ternary | Form::Comprehension),
     }
 }
@@ -217,7 +217,7 @@ fn check_nodes(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
 
 /// The containment grammar: what a node may sit in.
 fn check_containment(checker: &mut Checker<'_>, tree: &Tree, id: u32, node: &Node, parent: &Node) {
-    let expression = is_expression(node);
+    let expression = is_expression(tree, id, node);
     let problem = match parent.kind() {
         NodeKind::Type => Some("a type contains nothing".to_owned()),
         kind if kind.is_control() => match node.kind() {
@@ -613,8 +613,18 @@ fn check_keys(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
         let callee;
         let child = match (node.kind(), &node.name, step) {
             (NodeKind::Module, ..) => return,
+            // A callback may carry the name of the property it is written as; its key is still
+            // its position.
+            (NodeKind::Function, name, Some(Segment::Inline { inline, .. })) => {
+                if name.is_some() && *inline != Inline::Callback {
+                    checker.report(
+                        subject(),
+                        "only a callback is named, by the property it is written as",
+                    );
+                }
+                Child::Inline(*inline)
+            }
             (NodeKind::Class | NodeKind::Type | NodeKind::Function, Some(name), _) => Child::Definition(name),
-            (NodeKind::Function, None, Some(Segment::Inline { inline, .. })) => Child::Inline(*inline),
             // Reported by the node checks.
             (NodeKind::Class | NodeKind::Type, None, _) => return,
             (NodeKind::Function, None, _) => {

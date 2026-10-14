@@ -3,6 +3,27 @@
 /* eslint-disable */
 
 /**
+ * What the overlay may do to a block. Any block can be named.
+ */
+export type Actions = { 
+/**
+ * What it can be combined with.
+ */
+combine?: CombineWith, 
+/**
+ * A proposed step can go after it.
+ */
+after: boolean, 
+/**
+ * A proposed step can go at the start of its body.
+ */
+start: boolean, 
+/**
+ * It opens in place.
+ */
+open: boolean, };
+
+/**
  * The arguments of `add_project`.
  */
 export type AddProjectArgs = { 
@@ -30,8 +51,8 @@ status: AddStatus,
 project: ProjectRow, };
 
 /**
- * What a resource card or a connection cites, which Unfold can verify: a block or entrance key,
- * or a line range of an evidence file.
+ * What a resource card or a connection cites, which Unfold can verify: a block, app, or
+ * entrance key, or a line range of an evidence file.
  */
 export type Anchor = { 
 /**
@@ -79,49 +100,6 @@ username: string,
 engineVersion: string, };
 
 /**
- * Where an application comes from.
- */
-export type AppOrigin = "declared" | "inferred";
-
-/**
- * One application.
- */
-export type AppRow = { 
-/**
- * Its ID: the `[[application]]` ID, or the startup's key for an inferred one. `entrances`
- * takes it as `application`.
- */
-id: string, 
-/**
- * Its name.
- */
-name: string, 
-/**
- * Its description.
- */
-description: string | null, 
-/**
- * Where it comes from.
- */
-origin: AppOrigin, 
-/**
- * Its launches and unique handler entrances (Add's count).
- */
-entrances: number, 
-/**
- * Its unique route declarations.
- */
-routes: number, 
-/**
- * The other applications that serve some of its routes, by name.
- */
-alsoIn: Array<string>, 
-/**
- * Its launches; empty for "No launch defined".
- */
-launches: Array<LaunchRow>, };
-
-/**
  * `settings.json` in the app-data folder.
  */
 export type AppSettings = { 
@@ -132,63 +110,68 @@ export type AppSettings = {
 editorCommand?: string, };
 
 /**
- * Who wrote something: `person:<name>` or `agent:<name>`.
+ * An `[[app]]` table as the editor submits it: everything but its entrances.
  */
-export type Author = string;
-
+export type AppSpec = { 
 /**
- * A block card's header.
- */
-export type BlockHeader = { 
-/**
- * The block's key.
- */
-key: string, 
-/**
- * Its kind.
- */
-kind: BlockKind, 
-/**
- * Its display label.
+ * The app's name, which addresses it.
  */
 name: string, 
 /**
- * Its qualified name.
+ * The command that starts it.
  */
-qualifiedName: string, 
+run: string | null, 
 /**
- * Its file.
+ * The block key where that command starts.
  */
-path: string, 
+code: string | null, 
 /**
- * Its first line.
+ * One sentence for its card.
  */
-startLine: number, 
-/**
- * Its last line.
- */
-endLine: number, 
-/**
- * The file's language.
- */
-language: Language, 
-/**
- * The file's state in the graph.
- */
-fileState: FileState, 
-/**
- * Whether the bytes on disk are the ones the graph was built from.
- */
-source: SourceState, 
-/**
- * The function, class, or file whose activation the block belongs to.
- */
-owner: string, };
+about: string | null, };
 
 /**
- * A selected syntax entity.
+ * One `[[app]]` table as written.
  */
-export type BlockKind = "file" | "function" | "class" | "method" | "constructor" | "getter" | "setter" | "variable" | "call" | "new" | "import" | "if" | "for" | "for_in" | "for_of" | "while" | "do_while" | "switch" | "case" | "default" | "try" | "catch" | "return" | "throw" | "break" | "continue" | "expression_statement" | "with" | "match" | "interface" | "type_alias" | "enum";
+export type AppView = { 
+/**
+ * Its key, `entrance:<slug>`; absent when its name makes none.
+ */
+key?: Key, 
+/**
+ * Its name; absent when the table has none.
+ */
+name?: string, 
+/**
+ * The command that starts it, as written.
+ */
+run?: string, 
+/**
+ * Where that command starts.
+ */
+code?: EntranceCode, 
+/**
+ * One sentence for its card.
+ */
+about?: string, 
+/**
+ * What it handles, in file order.
+ */
+entrances: Array<EntranceView>, 
+/**
+ * The table's first and last line in `unfold.toml`; absent when the file changed since it
+ * was read.
+ */
+lines?: [number, number], 
+/**
+ * Why it stays out of the graph, with its entrances.
+ */
+problem?: EntryProblemView, };
+
+/**
+ * Who wrote something: `person:<name>` or `agent:<name>`.
+ */
+export type Author = string;
 
 /**
  * An `unfold-board` document as the window edits it.
@@ -217,10 +200,10 @@ pages: Array<Page>, };
 
 /**
  * What a window saves: the title and the pages. The folder and the file framing are Rust's.
- * Labels, guards, and links (and frames, resources, and notes, as in the file) are optional on
- * input; signatures may be `""` (signed on save).
+ * A page's names, combined steps, guards, connections, frames, resources, notes, and proposed
+ * steps are optional on input, as in the file; signatures may be `""` (signed on save).
  */
-export type BoardEdit = { title: string; pages: Array<Omit<Page, "labels" | "guards" | "links"> & Partial<Pick<Page, "labels" | "guards" | "links">>> };
+export type BoardEdit = { title: string; pages: Array<Pick<Page, "id" | "title" | "defaultView" | "cards"> & Partial<Omit<Page, "id" | "title" | "defaultView" | "cards">>> };
 
 /**
  * A board whose health has items (Home's Health line).
@@ -337,7 +320,7 @@ id: string,
  */
 name: string, 
 /**
- * The board as last loaded or saved (descriptions and labels signed).
+ * The board as last loaded or saved (descriptions, names, and combined steps signed).
  */
 document: BoardDocument, 
 /**
@@ -401,161 +384,212 @@ label: string | null,
 error: string | null, };
 
 /**
- * The contract of one selected line: a resolved call or construction.
+ * A call drawn as a box.
+ */
+export type CallBox = { 
+/**
+ * The call.
+ */
+key: Key, 
+/**
+ * The written callee.
+ */
+callee: string, 
+/**
+ * The overlay's name, which replaces the callee (kept beside it).
+ */
+name?: string, 
+/**
+ * `call` or `new`.
+ */
+form: Form, 
+/**
+ * Where the call goes.
+ */
+to: LinkEnd, 
+/**
+ * The written target its value is assigned to.
+ */
+binds?: string, 
+/**
+ * Written under `await` (AWAIT).
+ */
+awaited: boolean, 
+/**
+ * Runs only sometimes inside its expression (SOMETIMES, drawn dashed).
+ */
+sometimes: boolean, 
+/**
+ * A decorator, base, or default (in the body it runs in when its definition is defined).
+ */
+role?: CallRole, 
+/**
+ * The call it is written in, which it feeds: it is drawn before it.
+ */
+feeds?: CallRef, 
+/**
+ * The library and unknown calls written inside it.
+ */
+calls: Array<OtherCall>, 
+/**
+ * The functions passed to it, as rows under it.
+ */
+callbacks: Array<Callback>, 
+/**
+ * Its callee's flow, when it is opened in place.
+ */
+inset?: DrawnFlow, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
+
+/**
+ * A call's contract.
  */
 export type CallContract = { 
 /**
- * The occurrence.
+ * The call.
  */
-source: Key, 
+call: Key, 
 /**
- * The edge's sequence (0: the call itself).
- */
-seq: number, 
-/**
- * The callee.
- */
-target: Key, 
-/**
- * The calling line.
- */
-callerLine: number, 
-/**
- * Each argument in written order, then each parameter no argument filled.
- */
-sends: Array<ContractSend>, 
-/**
- * Where the result lands and the callee's return type.
- */
-returns: ContractReturn, 
-/**
- * The callee's direct throws, in source order.
- */
-throws: Array<ContractThrow>, 
-/**
- * Whether the call sits in the body of a `try` with a `catch` handler in the caller.
- */
-caught: boolean, 
-/**
- * The callee lines the contract read: its parameters and return type (when its source
- * verifies) and its listed throws, ascending.
- */
-calleeLines: Array<number>, };
-
-/**
- * The arguments of `call_contract`.
- */
-export type CallContractArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * The occurrence block's key.
- */
-source: string, 
-/**
- * The edge's sequence (a contract exists for 0: the call or construction itself).
- */
-seq: number, };
-
-/**
- * One occurrence (call, construction, or import) in the shown text.
- */
-export type CallLink = { 
-/**
- * The occurrence block; an arrow for this call leaves from its line.
- */
-source: Key, 
-/**
- * The definition (or file) that owns the occurrence.
- */
-owner: Key, 
-/**
- * The relationship.
- */
-kind: EdgeKind, 
-/**
- * How it resolved.
- */
-resolution: Resolution, 
-/**
- * The target, when resolved.
- */
-target?: Key, 
-/**
- * The written callee or specifier.
- */
-text: string, 
-/**
- * The module or reason as display text.
- */
-note?: string, 
-/**
- * Why it is unresolved.
- */
-reason?: Reason, 
-/**
- * Where an external target comes from.
- */
-module?: ModuleLabel, 
-/**
- * The underlined range: the written callee, after any nested call that begins it, without
- * leading `.`, `?`, or whitespace. Absent when a shorter link already covers it.
- */
-span?: [number, number], 
-/**
- * The line the occurrence starts on.
- */
-line: number, };
-
-/**
- * One resolved edge into the definition, seen from its caller.
- */
-export type CallerView = { 
-/**
- * The definition (or file) that owns the calling occurrence.
- */
-owner: string, 
-/**
- * The owner's qualified name, or its file's path for a file-level call.
- */
-ownerName: string, 
-/**
- * The occurrence block.
- */
-source: string, 
-/**
- * The occurrence's file.
- */
-path: string, 
-/**
- * The occurrence's first line.
+ * Its first line.
  */
 line: number, 
 /**
- * The relationship.
+ * The callee as written.
  */
-kind: EdgeKind, 
+text: string, 
 /**
- * The argument position of a passed reference.
+ * What the call runs.
  */
-position: number | null, };
+callee: LinkEnd, 
+/**
+ * Each argument in written order, then each parameter no argument filled (when the
+ * pairings prove which were filled).
+ */
+sends: Array<ContractSend>, 
+/**
+ * What comes back and where it lands.
+ */
+returns: ContractReturn, 
+/**
+ * What a project callee raises or throws itself and doesn't catch, in source order.
+ */
+raises: Array<ContractRaise>, };
 
 /**
- * **Show callers**: the distinct definitions that call a block.
+ * A call's written name on one line.
+ */
+export type CallName = { 
+/**
+ * Where the name starts.
+ */
+start: number, 
+/**
+ * Where it ends.
+ */
+end: number, 
+/**
+ * The call.
+ */
+key: Key, };
+
+/**
+ * A call named by another step: a project call in a combined step, the call a call feeds.
+ */
+export type CallRef = { 
+/**
+ * The call.
+ */
+key: Key, 
+/**
+ * The written callee.
+ */
+callee: string, 
+/**
+ * The overlay's name.
+ */
+name?: string, };
+
+/**
+ * Why a call sits in the body it does: it is written in a part's test, or it runs when a
+ * definition is created (or, for a TypeScript default, when its function is called).
+ */
+export type CallRole = "test" | "decorator" | "default" | "base";
+
+/**
+ * A function passed to a call, drawn as a row under it.
+ */
+export type Callback = { 
+/**
+ * The callback.
+ */
+key: Key, 
+/**
+ * Its label: `callback to <callee>`.
+ */
+label: string, 
+/**
+ * The overlay's name.
+ */
+name?: string, 
+/**
+ * Its signature as written, on one line.
+ */
+signature?: string, 
+/**
+ * Its flow, when it is opened in place.
+ */
+inset?: DrawnFlow, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
+
+/**
+ * One call of the definition, seen from the caller.
+ */
+export type CallerView = { 
+/**
+ * The definition the call belongs to.
+ */
+owner: Key, 
+/**
+ * That definition's qualified name.
+ */
+ownerName: string, 
+/**
+ * The call.
+ */
+call: Key, 
+/**
+ * The call's file.
+ */
+path: RepoPath, 
+/**
+ * The call's first line.
+ */
+line: number, 
+/**
+ * `calls`, or `passes` when the call passes the definition as a value.
+ */
+kind: LinkKind, };
+
+/**
+ * **Show callers**: the distinct definitions that call a definition.
  */
 export type Callers = { 
 /**
- * The block's project.
+ * The definition's project.
  */
 project: ProjectId, 
 /**
- * The block's key.
+ * The definition's key.
  */
 key: string, 
 /**
- * How many distinct definitions call it.
+ * How many distinct definitions call it (among the first 20,000 calls).
  */
 total: number, 
 /**
@@ -568,11 +602,11 @@ callers: Array<CallingDefinition>, };
  */
 export type CallersArgs = { 
 /**
- * The block's project.
+ * The definition's project.
  */
 project: ProjectId, 
 /**
- * The block's key.
+ * The definition's key.
  */
 key: string, 
 /**
@@ -581,31 +615,31 @@ key: string,
 limit?: number, };
 
 /**
- * One definition (or file) that calls a block.
+ * One definition that calls a block.
  */
 export type CallingDefinition = { 
 /**
  * Its key.
  */
-key: string, 
+key: Key, 
 /**
- * Its display label (its file's path for a file-level call).
+ * Its display label.
  */
 name: string, 
 /**
- * Its qualified name (its file's path for a file-level call).
+ * Its qualified name.
  */
 qualifiedName: string, 
 /**
  * Its file.
  */
-path: string, 
+path: RepoPath, 
 /**
  * Its first line.
  */
 line: number, 
 /**
- * How many of its occurrences call the block.
+ * How many of its calls reach the block.
  */
 sites: number, };
 
@@ -639,20 +673,18 @@ at: [number, number],
  */
 view?: View, 
 /**
- * The card's description.
+ * The card's description, signed over its code.
  */
 description?: Description, 
 /**
- * Calls expanded in place in Diagram (docs/reader.md#boards): each a path of 1 to 3 keys,
- * outermost first. A key is a call occurrence of the block shown at that level (a `call`/`new`
- * occurrence block, as `CallLink.source` / `FlowChip.source` name it) or a callback written
- * there (`FlowCallback.key`). Presentation only: never guarded, never a claim; a key that no
- * longer resolves is ignored.
+ * The calls a block card opens in place: each a path of 1 to
+ * [`crate::overlay::MAX_OPEN_DEPTH`] keys of project calls or callbacks, outermost first,
+ * at most [`crate::overlay::MAX_OPEN_PATHS`]. Presentation only: never guarded.
  */
-expanded?: Array<Array<Key>>, };
+open?: Array<Array<Key>>, };
 
 /**
- * The arguments of `card`.
+ * The arguments of `card` and `flow_text`.
  */
 export type CardArgs = { 
 /**
@@ -660,21 +692,26 @@ export type CardArgs = {
  */
 project: ProjectId, 
 /**
- * The block or entrance key.
+ * The card's key: a module, definition, or type; or an app or entrance.
  */
 key: string, 
 /**
- * Which models to build for a block card (both when absent).
+ * The page's overlay (none when absent).
  */
-lens?: CardLens, };
+overlay?: OverlayArgs, 
+/**
+ * The calls and callbacks the card opens in place: at most 64 paths of 1 to 3 keys,
+ * outermost first.
+ */
+open?: Array<Array<string>>, 
+/**
+ * Whether builtin calls are drawn (Show all calls; off when absent).
+ */
+showAllCalls?: boolean, };
 
 /**
- * Which of a block card's models to build.
- */
-export type CardLens = "code" | "flow" | "both";
-
-/**
- * What a card shows: exactly one block or entrance of the board's project, by structural key.
+ * What a card shows: one block (a module, definition, or type) or one start (an app's start
+ * or an entrance) of the board's project, by key.
  */
 export type CardRef = { 
 /**
@@ -682,42 +719,18 @@ export type CardRef = {
  */
 block: Key, } | { 
 /**
- * The entrance's key.
+ * The app's or entrance's key.
  */
 entrance: Key, };
 
 /**
- * A card: an entrance with its evidence and targets, or a block with its Code and Flow.
+ * A card.
  */
-export type CardView = { "type": "block", 
+export type CardView = { "type": "definition", 
 /**
- * The header.
+ * The drawn flow.
  */
-header: BlockHeader, 
-/**
- * The Code model, unless only Flow was asked for.
- */
-code: CodeView | null, 
-/**
- * The Flow model ("Paths from written structure"), unless only Code was asked for.
- */
-flow: FlowModel | null, } | { "type": "entrance", 
-/**
- * The header.
- */
-header: EntranceHeader, 
-/**
- * Where it is declared.
- */
-evidence: EvidenceView, 
-/**
- * Its targets in registration order.
- */
-targets: Array<TargetView>, 
-/**
- * The applications it belongs to, by name.
- */
-applications: Array<string>, };
+flow: DrawnFlow, } | { "type": "start" } & StartCard;
 
 /**
  * How many rows of each table a `relates` connection joins.
@@ -725,104 +738,33 @@ applications: Array<string>, };
 export type Cardinality = "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
 
 /**
- * The catalog's totals.
+ * A one-candidate fix for a missing `code` key, offered and never applied.
  */
-export type CatalogCounts = { 
+export type CodeFix = { 
 /**
- * Applications.
+ * Why it fits.
  */
-applications: number, 
+kind: FixReason, 
 /**
- * Launches (process entrances).
+ * The key to write instead.
  */
-launches: number, 
-/**
- * Unique route declarations.
- */
-routes: number, 
-/**
- * Unique launches and unique other entrances, unreached ones included.
- */
-entrances: number, };
+code: Key, };
 
 /**
- * One entrance row.
+ * A block's short label and full key.
  */
-export type CatalogRow = { 
+export type CodeLabel = { 
 /**
- * The entrance's key (open its card with it).
+ * The label: the key's steps after the definition's, such as `try[0]/except[0]`.
  */
-key: string, 
+label: string, 
 /**
- * The `[[entrance]]` ID, for a configured entrance.
+ * The block's key.
  */
-id: string | null, 
-/**
- * Its section's position in `sections`.
- */
-section: number, 
-/**
- * Its kind.
- */
-kind: EntranceKind, 
-/**
- * The HTTP method.
- */
-method: HttpMethod | null, 
-/**
- * The trigger.
- */
-trigger: string | null, 
-/**
- * Its title.
- */
-title: string, 
-/**
- * The first resolved handler's name (`create_run`).
- */
-handler: string | null, 
-/**
- * The evidence file.
- */
-path: string, 
-/**
- * The evidence's first line, for source evidence.
- */
-line: number | null, 
-/**
- * The functions and classes it reaches; `None` while the project rests.
- */
-reaches: number | null, 
-/**
- * The other applications it belongs to, by name.
- */
-alsoIn: Array<string>, };
+key: Key, };
 
 /**
- * An application category, in display order.
- */
-export type Category = "needs_look" | "services" | "workers" | "scheduled";
-
-/**
- * One category's applications, by name.
- */
-export type CategoryGroup = { 
-/**
- * The category.
- */
-category: Category, 
-/**
- * Its applications.
- */
-applications: Array<AppRow>, };
-
-/**
- * The common outcome of every check of a folded `else if` chain.
- */
-export type ChainOutcome = "throw" | "return" | "mixed";
-
-/**
- * One line of the shown text.
+ * One shown line.
  */
 export type CodeLine = { 
 /**
@@ -830,91 +772,132 @@ export type CodeLine = {
  */
 number: number, 
 /**
- * Where the line starts.
- */
-start: number, 
-/**
- * Where the line ends, before its terminator.
- */
-end: number, 
-/**
- * The number of leading spaces and tabs.
- */
-indent: number, };
-
-/**
- * The source part of a [`CodeView`]: present only when the bytes verified.
- */
-export type CodeSource = { "state": "current" } & CodeText | { "state": "changed" } | { "state": "missing" };
-
-/**
- * One highlighted span: `[start, end, class]`.
- */
-export type CodeSpan = [number, number, TokenClass];
-
-/**
- * Verified text with everything the Code view draws on it.
- */
-export type CodeText = { 
-/**
- * The exact slice of the source.
+ * The line without its terminator, less the indentation the view shares.
  */
 text: string, 
 /**
- * The indentation every nonblank line shares, the first counted at its line's indentation
- * in the file (a method's class indentation, nothing for a top-level function). The view
- * may hide it from the lines after the first; `text` shows the first from the block's start.
- */
-dedent: number, 
-/**
- * The lines of `text`.
- */
-lines: Array<CodeLine>, 
-/**
  * Highlighted spans, sorted and non-overlapping; text outside them is plain.
  */
-spans: Array<CodeSpan>, 
+tokens: Array<Token>, 
 /**
- * The statement outline in preorder.
+ * The block hovering the line outlines: the first block of the statement it is in, or the
+ * block it opens (a definition's header, a control block's header, a part's opening line).
+ * Absent for a line no block covers, which lights up its gap tick.
  */
-outline: Array<OutlineItem>, 
+block?: Key, 
 /**
- * Call, construction, and import links in source order.
+ * The written names of the calls on the line; hovering one outlines that call.
  */
-links: Array<CallLink>, };
+calls: Array<CallName>, };
 
 /**
- * The render model of one block (or a file, through its root).
+ * Whether the shown lines can be trusted.
+ */
+export type CodeState = "current" | "changed" | "doesNotParse" | "notAnalyzed" | "notFound";
+
+/**
+ * What the code panel opens.
+ */
+export type CodeTarget = { "kind": "block", 
+/**
+ * The block's key.
+ */
+key: string, } | { "kind": "lines", 
+/**
+ * The file, relative to the project's folder.
+ */
+path: string, 
+/**
+ * The first and last line, one-based and inclusive.
+ */
+lines: [number, number], 
+/**
+ * The lines to mark, for a citation.
+ */
+mark?: [number, number], 
+/**
+ * A combined step's title, which labels it in the path.
+ */
+title?: string, } | { "kind": "field", 
+/**
+ * The class or type.
+ */
+key: string, 
+/**
+ * The member's index among its written members.
+ */
+index: number, } | { "kind": "file", 
+/**
+ * The file, relative to the project's folder.
+ */
+path: string, } | { "kind": "start", 
+/**
+ * The app's or entrance's key.
+ */
+key: string, };
+
+/**
+ * The compiled tree of a definition, for `read_code`.
+ */
+export type CodeText = { 
+/**
+ * The text: the definition's key, its kind, lines, and doc, then one line per block and
+ * per line of code that isn't a block.
+ */
+text: string, 
+/**
+ * Each block's short label (relative to the definition, as agents write it) and full key.
+ */
+labels: Array<CodeLabel>, };
+
+/**
+ * The code panel's model.
  */
 export type CodeView = { 
 /**
- * The shown block.
+ * The file; absent when the target no longer resolves.
  */
-key: Key, 
+file?: RepoPath, 
 /**
- * Its file.
+ * Whether the lines can be trusted.
  */
-path: RepoPath, 
+state: CodeState, 
 /**
- * The file's language.
+ * The shown lines, in order; empty when not found.
  */
-language: Language, 
+lines: Array<CodeLine>, 
 /**
- * The block's kind.
+ * What the selection marks inside the view.
  */
-kind: BlockKind, 
+mark?: Mark, 
 /**
- * The first line (one-based), from the stored facts.
+ * The file, then each block above the selection, then the selection; empty when not
+ * found.
  */
-startLine: number, 
+path: Array<PathStep>, 
 /**
- * The last line, from the stored facts.
+ * Each definition whose first line is shown, in written order, for `⊕` (the UI decides
+ * which have no card on the page).
  */
-endLine: number, 
+definitions: Array<DefinitionLine>, };
+
 /**
- * The verified source, or why there is none.
+ * The arguments of `code_view`.
  */
-source: CodeSource, };
+export type CodeViewArgs = { 
+/**
+ * The project.
+ */
+project: ProjectId, 
+/**
+ * The selection: it heads the path, and it stays marked.
+ */
+target: CodeTarget, 
+/**
+ * What to show instead of the selection's own lines, when the path widened the view: a
+ * block on the selection's path, the file, or the app of a selected entrance.
+ */
+show?: CodeTarget, };
 
 /**
  * One column of a table card. A table backed by a type lists marks only (`name`, `key`,
@@ -948,6 +931,120 @@ optional?: boolean, };
 export type ColumnKey = "primary" | "foreign" | "unique";
 
 /**
+ * One combined step of the overlay.
+ */
+export type CombineArg = { 
+/**
+ * Its id on the page.
+ */
+id: string, 
+/**
+ * Its title.
+ */
+title: string, 
+/**
+ * Its blocks: consecutive steps of one body, or one whole control block.
+ */
+members: Array<string>, 
+/**
+ * Whether it draws as one step.
+ */
+collapsed: boolean, };
+
+/**
+ * What a block can be combined with.
+ */
+export type CombineWith = { "with": "steps", 
+/**
+ * The definition or part whose body it is a step of.
+ */
+body: Key, } | { "with": "alone" };
+
+/**
+ * A combined step: consecutive blocks of one body, or one whole control block, under one
+ * title, wherever the page draws them.
+ */
+export type Combined = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * Its title.
+ */
+title: string, 
+/**
+ * The blocks' keys, in written order.
+ */
+members: Array<Key>, 
+/**
+ * Whether it draws as one step.
+ */
+collapsed: boolean, 
+/**
+ * Its description, signed over the same span as the step.
+ */
+description?: Description, 
+/**
+ * Who combined the blocks.
+ */
+author: Author, 
+/**
+ * The signature of the source from its first block's start to its last block's end;
+ * `None` until a save signs it (written as `""`).
+ */
+signature: string, };
+
+/**
+ * A combined step.
+ */
+export type CombinedStep = { 
+/**
+ * Its id on the page.
+ */
+id: string, 
+/**
+ * Its title.
+ */
+title: string, 
+/**
+ * Its blocks.
+ */
+members: Array<Key>, 
+/**
+ * Drawn as one step.
+ */
+collapsed: boolean, 
+/**
+ * The lines it covers: its blocks' statements and the code between them.
+ */
+lines: [number, number], 
+/**
+ * How many tests its decisions hold.
+ */
+conditions: number, 
+/**
+ * How many loops it holds.
+ */
+loops: number, 
+/**
+ * The project calls inside, in the order they run.
+ */
+calls: Array<CallRef>, 
+/**
+ * How many library calls it holds.
+ */
+library: number, 
+/**
+ * How many unknown calls it holds.
+ */
+unknown: number, 
+/**
+ * The original steps, when it is open.
+ */
+steps?: Sequence, };
+
+/**
  * A rejected command. See the [module documentation](self).
  */
 export type CommandError = { 
@@ -977,9 +1074,9 @@ changedFiles: number,
  */
 removedFiles: number, 
 /**
- * Entrances added, removed, or changed.
+ * Whether the apps, their entrances, or the states of their code changed.
  */
-changedEntrances: number, 
+entrancesChanged: boolean, 
 /**
  * Whether every discovered file is indexed.
  */
@@ -1012,6 +1109,78 @@ done: number,
 total: number, };
 
 /**
+ * A connection: a typed line between two items of a page for what the compiled graph can't
+ * show, with what it cites.
+ */
+export type Connection = { 
+/**
+ * Unique among the page's items.
+ */
+id: string, 
+/**
+ * The card, resource, or frame it starts at: the side that acts.
+ */
+from: string, 
+/**
+ * The card, resource, or frame it points at; never `from`.
+ */
+to: string, 
+/**
+ * What it stands for.
+ */
+kind: ConnectionKind, 
+/**
+ * Its label, signed over what it cites; an `other` connection has one.
+ */
+label?: Description, 
+/**
+ * The key of the call inside the `from` card's block it leaves from.
+ */
+step?: Key, 
+/**
+ * For `relates`: the column of the `from` table.
+ */
+fromColumn?: string, 
+/**
+ * For `relates`: the column of the `to` table.
+ */
+toColumn?: string, 
+/**
+ * What travels: the route, the queue, or the event.
+ */
+channel?: string, 
+/**
+ * The type it carries: a type declaration or class key.
+ */
+carries?: Key, 
+/**
+ * For `relates`: how many rows of each table it joins.
+ */
+cardinality?: Cardinality, 
+/**
+ * What it cites besides its step.
+ */
+anchors?: Array<Anchor>, 
+/**
+ * What it means, in words.
+ */
+description?: Description, 
+/**
+ * Who drew it.
+ */
+author: Author, 
+/**
+ * The signature of its step's and anchors' source; absent until a save signs it, and for
+ * a connection that cites nothing.
+ */
+signature?: Signature, };
+
+/**
+ * What a connection stands for: the seven kinds of line a person or an agent draws.
+ */
+export type ConnectionKind = "http" | "queue" | "reads" | "writes" | "calls" | "relates" | "other";
+
+/**
  * A parameter of the callee, as written.
  */
 export type ContractParameter = { 
@@ -1036,33 +1205,57 @@ optional: boolean,
  */
 default: boolean, 
 /**
- * Its written type.
+ * Its written type; absent when no annotation is written.
  */
 type?: TypeText, };
 
 /**
- * Where a call's value lands, and what the callee says it returns.
+ * One `raise` or `throw` of the callee's own code.
+ */
+export type ContractRaise = { 
+/**
+ * The exit.
+ */
+exit: Key, 
+/**
+ * Its first line.
+ */
+line: number, 
+/**
+ * What it constructs when its value is exactly a construction: the class, or the callee as
+ * written with its module or reason.
+ */
+type?: TypeText, 
+/**
+ * Its value as written (cut to 120 UTF-16 units), from the callee's verified source;
+ * absent for a bare `raise` or when the callee's file changed.
+ */
+value?: string, 
+/**
+ * The caller's enclosing `except` or `catch` part that catches it, if one does.
+ */
+caughtBy?: Key, };
+
+/**
+ * What comes back from a call, and where it lands.
  */
 export type ContractReturn = { 
 /**
- * Where the value lands.
+ * The callee's written return type, or the constructed class; absent when no return type
+ * is written (or the callee isn't a project definition).
  */
-binding: ResultBinding, 
+type?: TypeText, 
 /**
- * The variable's name (`variable`), or the outer call's written callee (`argument`).
- */
-text?: string, 
-/**
- * Whether the call is awaited.
+ * Whether the call is written under `await`.
  */
 awaited: boolean, 
 /**
- * The callee's written return type, or a constructed class's name.
+ * Where the value lands.
  */
-type?: TypeText, };
+lands: Landing, };
 
 /**
- * One row of a contract's Sends: an argument and the parameter it fills (or why it fills
+ * One row of what a call sends: an argument and the parameter it fills (or why it fills
  * none), or a parameter no argument filled.
  */
 export type ContractSend = { 
@@ -1080,35 +1273,21 @@ parameter?: ContractParameter,
 unpaired?: UnpairedArgument, };
 
 /**
- * One of the callee's direct throws.
+ * Where a definition starts, for `⊕`.
  */
-export type ContractThrow = { 
+export type DefinitionLine = { 
 /**
- * The thrown class's name (`declared` when it resolved), or the construction as written
- * with its module or reason.
+ * Its first line: its first decorator's, or its own.
  */
-type: TypeText, 
+line: number, 
 /**
- * The `throw` statement's first line.
+ * The definition.
  */
-line: number, };
+key: Key, };
 
 /**
- * Where a launch is declared.
- */
-export type DeclaredIn = { 
-/**
- * The file (`unfold.toml`, `apps/api/package.json`).
- */
-path: string, 
-/**
- * The first line of its declaration.
- */
-line: number | null, };
-
-/**
- * A description (of a card, group, frame, resource, or connection), a Flow label's text, or a
- * drawn link's label.
+ * Authored words: a description (of a card, combined step, frame, resource, or connection), a
+ * block's name, or a connection's label.
  */
 export type Description = { 
 /**
@@ -1126,86 +1305,44 @@ author: Author,
 signature: string, };
 
 /**
- * An entrance detector.
+ * A definition's drawn flow.
  */
-export type DetectorId = "manual" | "package.script" | "package.bin" | "express.route" | "bullmq.worker" | "node-cron.schedule" | "pyproject.script" | "fastapi.route" | "celery.task" | "apscheduler.job";
+export type DrawnFlow = { 
+/**
+ * The card's header; the start of the flow (id `0`).
+ */
+header: Header, 
+/**
+ * The steps of the definition's own body that can be combined, in written order (drawn or
+ * not), for [`CombineWith::Steps`].
+ */
+combinable: Array<Key>, 
+/**
+ * The definition's body.
+ */
+steps: Sequence, 
+/**
+ * Every route between the flow's ids.
+ */
+routes: Array<Route>, };
 
 /**
- * A relationship sourced at one occurrence.
+ * One `code` key as written, with what it names.
  */
-export type EdgeKind = "calls" | "constructs" | "imports" | "references";
-
+export type EntranceCode = { 
 /**
- * How a launch is edited.
+ * The block key.
  */
-export type Editable = "configured" | "override";
-
+key: Key, 
 /**
- * An entrance card's header.
+ * What it names after the last compile; absent for an entry with a problem (it stays out
+ * of the graph) and in `project_config`.
  */
-export type EntranceHeader = { 
+state?: TargetState, 
 /**
- * The entrance's key.
+ * The key to write instead, when the key is missing and exactly one candidate fits.
  */
-key: string, 
-/**
- * Its kind.
- */
-kind: EntranceKind, 
-/**
- * Its title: the label, or the method (or kind) and trigger.
- */
-title: string, 
-/**
- * The manual label, if any.
- */
-label: string | null, 
-/**
- * The HTTP method.
- */
-method: HttpMethod | null, 
-/**
- * The trigger (path, queue, schedule, command, …).
- */
-trigger: string | null, 
-/**
- * How much of the trigger is known.
- */
-triggerStatus: TriggerStatus, 
-/**
- * The detector that found it.
- */
-detector: DetectorId, 
-/**
- * The evidence file's language, when it is source.
- */
-language: Language | null, };
-
-/**
- * A declared way that a process or unit of work starts.
- */
-export type EntranceKind = "process" | "command" | "http" | "worker" | "schedule" | "event";
-
-/**
- * The catalog without entrance rows: applications by category, with their launches.
- */
-export type EntranceOverview = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * The totals.
- */
-counts: CatalogCounts, 
-/**
- * The categories that have applications, in display order.
- */
-categories: Array<CategoryGroup>, 
-/**
- * "Not reached from a launch": entrances other than launches that belong to no application.
- */
-unreached: number, };
+fix?: CodeFix, };
 
 /**
  * An entrance a definition is reached from.
@@ -1214,209 +1351,160 @@ export type EntranceRef = {
 /**
  * The entrance's key.
  */
-key: string, 
+key: Key, 
 /**
- * Its title.
+ * Its name.
  */
-title: string, 
+name: string, 
 /**
- * Its kind.
+ * Its app's name.
  */
-kind: EntranceKind, 
-/**
- * Its HTTP method.
- */
-method: HttpMethod | null, 
-/**
- * Its trigger.
- */
-trigger: string | null, 
-/**
- * Its evidence file.
- */
-path: string, };
+app: string, };
 
 /**
- * One scope's rows (an application, or the unreached entrances), filtered and paged.
- */
-export type EntranceScope = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * Every section of the filtered rows, in order; rows refer to them by position.
- */
-sections: Array<EntranceSection>, 
-/**
- * This page's rows, in order.
- */
-rows: Array<CatalogRow>, 
-/**
- * How many rows match.
- */
-total: number, 
-/**
- * The next page's cursor, when there is one.
- */
-nextCursor: string | null, };
-
-/**
- * A run of rows under one heading.
- */
-export type EntranceSection = { 
-/**
- * The heading (`Launch`, `/runs`, `Jobs and commands`).
- */
-title: string, 
-/**
- * What it holds.
- */
-kind: SectionKind, 
-/**
- * The router file its routes are mounted from, when that isn't the application's file.
- */
-mountedFrom: string | null, 
-/**
- * The other applications that serve its routes, by name.
- */
-alsoIn: Array<string>, 
-/**
- * How many of the filtered rows it holds.
- */
-count: number, };
-
-/**
- * A manual entrance as the editor submits it (docs/engine.md#shared-config `[[entrance]]`).
+ * One entrance as the editor submits it.
  */
 export type EntranceSpec = { 
 /**
- * The ID its key derives from.
+ * The entrance's name, which addresses it within its app.
  */
-id: string, 
+name: string, 
 /**
- * The entrance kind, such as `command`.
+ * What starts it.
  */
-kind: string, 
+on: string | null, 
 /**
- * The `[[application]]` it belongs to.
+ * The block keys it starts at, in order; at least one. One key is written as a string,
+ * several as a list.
  */
-application: string | null, 
+code: Array<string>, 
 /**
- * The trigger, if any.
+ * One sentence for its card.
  */
-trigger: string | null, 
-/**
- * The HTTP method (`http` entrances only).
- */
-method: string | null, 
-/**
- * A display label.
- */
-label: string | null, 
-/**
- * A description.
- */
-description: string | null, 
-/**
- * Handler locators, middleware first (every kind but `process`).
- */
-handler: Array<string>, 
-/**
- * The working folder (`process` only).
- */
-cwd: string | null, 
-/**
- * The command line (`process` only).
- */
-command: string | null, 
-/**
- * The startup locator (`process` only).
- */
-startup: string | null, 
-/**
- * The launch target (`process` only).
- */
-target: LaunchTargetSpec | null, 
-/**
- * The import path, in order (`process` only).
- */
-pythonPaths: Array<string> | null, 
-/**
- * Declared environment variables (`process` only); empty writes none.
- */
-env: { [key in string]: string }, 
-/**
- * The schedule, as written (`process` only).
- */
-schedule: string | null, };
+about: string | null, };
 
 /**
- * The arguments of `entrances`.
+ * One entrance of an app as written.
  */
-export type EntrancesArgs = { 
+export type EntranceView = { 
 /**
- * The project.
+ * Its key, `entrance:<app slug>/<entrance slug>`; absent when the names make none.
  */
-project: ProjectId, 
+key?: Key, 
 /**
- * The rows of the application with this ID.
+ * Its name; absent when the entry has none.
  */
-application?: string, 
+name?: string, 
 /**
- * The rows of the entrances no launch reaches.
+ * What starts it, as written.
  */
-unreached?: boolean, 
+on?: string, 
 /**
- * Only rows whose title, trigger, handler, or path contains this text (ignoring case).
+ * The blocks it starts at, in the order they run.
  */
-filter?: string, 
+code: Array<EntranceCode>, 
 /**
- * Rows per page (100 when absent; 1 to 500).
+ * One sentence for its card.
  */
-limit?: number, 
+about?: string, 
 /**
- * Where the page starts: the previous page's `nextCursor`.
+ * The entry's first and last line in `unfold.toml`; absent when the file changed since it
+ * was read.
  */
-cursor?: string, };
+lines?: [number, number], 
+/**
+ * Why it stays out of the graph.
+ */
+problem?: EntryProblemView, };
 
 /**
- * What `entrances` returns: the overview, or one scope's rows.
+ * The apps and entrances of a project.
  */
-export type EntrancesView = { "view": "overview" } & EntranceOverview | { "view": "scope" } & EntranceScope;
+export type EntrancesView = { 
+/**
+ * Whether the project's engine has read `unfold.toml`: `false` just after the project
+ * wakes and before its first Compile, with no apps listed; `entrances_changed` follows once
+ * it has.
+ */
+resolved: boolean, 
+/**
+ * The `[[app]]` tables, in file order.
+ */
+apps: Array<AppView>, };
 
 /**
- * Where an entrance is declared.
+ * The kinds of [`EntryProblemView`].
  */
-export type EvidenceView = { 
+export type EntryProblemReason = "unknown_field" | "wrong_type" | "missing_name" | "missing_code" | "empty_key" | "duplicate_key";
+
 /**
- * The source file or configuration input.
+ * What is wrong with one app or entrance.
  */
-path: string, 
+export type EntryProblemView = { 
 /**
- * The declaration's first line, when its file verified.
+ * What kind of problem.
  */
-startLine: number | null, 
+kind: EntryProblemReason, 
 /**
- * The declaration's last line, when its file verified.
+ * What to fix.
  */
-endLine: number | null, 
+message: string, 
 /**
- * The JSON pointer into a configuration file.
+ * The line of the field at fault (or of the entry); absent when the file changed since
+ * it was read.
  */
-pointer: string | null, 
+line?: number, };
+
 /**
- * Whether the evidence file is the one the graph was built from.
+ * An exit.
  */
-source: SourceState, 
+export type ExitStep = { 
 /**
- * The Code model of source evidence (the registration call).
+ * The exit.
  */
-code: CodeView | null, 
+key: Key, 
 /**
- * The exact text of configuration evidence (a `package.json` script), when it verified.
+ * `return`, `raise`, `throw`, `break`, `continue`, or `yield`.
  */
-text: string | null, };
+form: Form, 
+/**
+ * The overlay's name.
+ */
+name?: string, 
+/**
+ * What labels it: the call that is its value, or its value as written.
+ */
+value?: ExitValue, 
+/**
+ * The loop (or `switch`) a `break` or `continue` leaves.
+ */
+target?: ExitTarget, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
+
+/**
+ * The block a `break` or `continue` leaves.
+ */
+export type ExitTarget = { 
+/**
+ * The loop or `switch`.
+ */
+key: Key, 
+/**
+ * Its form.
+ */
+form: Form, };
+
+/**
+ * What labels an exit.
+ */
+export type ExitValue = { "kind": "call" } & CallBox | { "kind": "text", 
+/**
+ * The value, on one line.
+ */
+text: string, };
 
 /**
  * How an argument is expanded.
@@ -1434,13 +1522,17 @@ project: ProjectId,
 /**
  * The path relative to the project's folder.
  */
-path: string, 
+path: RepoPath, 
 /**
  * The file name.
  */
 name: string, 
 /**
- * How many definitions the stored graph holds in it; `None` when it isn't indexed.
+ * Its module's key.
+ */
+key: Key, 
+/**
+ * How many definitions the stored graph holds in it.
  */
 definitions: number | null, 
 /**
@@ -1454,448 +1546,68 @@ score: number, };
 export type FileState = "current" | "last_good" | "failed";
 
 /**
- * The peek sheet's render model of a file, or one page of it.
+ * Why a [`CodeFix`] fits.
  */
-export type FileView = { 
+export type FixReason = "moved_definition" | "edited_route" | "moved_module";
+
 /**
- * The file.
+ * A control block drawn as a frame. Its TypeScript name is `FlowFrame`: a board's `Frame` is
+ * the other kind of frame.
  */
-path: string, 
+export type FlowFrame = { 
 /**
- * The language whose colors are applied.
+ * The control block.
  */
-language: Language | null, 
+key: Key, 
 /**
- * How the text relates to the graph.
+ * Its form.
  */
-graph: GraphMatch, 
+form: Form, 
 /**
- * The file's state in the graph, when it is in the graph.
+ * The overlay's name.
  */
-fileState: FileState | null, 
+name?: string, 
 /**
- * Why there is no text, if there isn't.
+ * Its header as written: a loop's or with's header, a `switch`'s or `match`'s subject.
  */
-unshowable: Unshowable | null, 
+header?: string, 
 /**
- * The file's line count.
+ * The project calls (and other boxes) written in the header, in the order they run.
  */
-lineCount: number, 
+headerCalls: Array<CallBox>, 
 /**
- * The first line returned.
+ * What a ternary's or comprehension's value is assigned to.
  */
-startLine: number, 
+binds?: string, 
 /**
- * The last line returned (`startLine - 1` when the page is empty).
+ * Its parts, in written order.
  */
-endLine: number, 
+lanes: Array<Lane>, 
 /**
- * Where `text` begins in the file, in UTF-16 code units.
+ * What the overlay may do to it.
  */
-textStart: number, 
+actions: Actions, };
+
 /**
- * The text of the returned lines, terminators included.
+ * The agent text of a drawn flow.
+ */
+export type FlowText = { 
+/**
+ * The drawn flow as text, each line ending with its blocks' full keys (`key=…`).
  */
 text: string, 
 /**
- * The returned lines.
+ * Each block of the card's definition by its short label (relative to the definition, as
+ * agents write it) and full key, so a short label maps to a key by lookup.
  */
-lines: Array<CodeLine>, 
-/**
- * Syntax colors overlapping the returned lines.
- */
-spans: Array<CodeSpan>, 
-/**
- * Statement outline items overlapping the returned lines (with folds); `current` only.
- */
-outline: Array<OutlineItem>, 
-/**
- * Calls, constructions, and imports on the returned lines; `current` only.
- */
-links: Array<CallLink>, };
+labels: Array<CodeLabel>, };
 
 /**
- * The arguments of `file_view`.
- */
-export type FileViewArgs = { 
-/**
- * The project.
- */
-project: ProjectId, 
-/**
- * The file, relative to the project's folder.
- */
-path: string, 
-/**
- * Only these lines (a page of the peek sheet); the whole file when absent.
- */
-range?: LineRange, };
-
-/**
- * A nested definition listed on a node; it opens as its own card.
- */
-export type FlowCallback = { 
-/**
- * The definition.
- */
-key: Key, 
-/**
- * Its catalog label (`callback to …`, a name, `class`).
- */
-label: string, 
-/**
- * How many lines it spans.
- */
-lines: number, 
-/**
- * Whether it contains a `throw` outside further nested callables.
- */
-throws: boolean, };
-
-/**
- * One occurrence a node shows (a call, construction, import, or passed reference).
- */
-export type FlowChip = { 
-/**
- * The occurrence block; with `seq` it identifies the edge.
- */
-source: Key, 
-/**
- * The edge's position among the occurrence's edges.
- */
-seq: number, 
-/**
- * The relationship.
- */
-kind: EdgeKind, 
-/**
- * How it resolved.
- */
-resolution: Resolution, 
-/**
- * The target, when resolved.
- */
-target?: Key, 
-/**
- * The target's qualified name when resolved, otherwise the written callee.
- */
-name: string, 
-/**
- * The module or reason as display text.
- */
-note?: string, 
-/**
- * The line the occurrence starts on.
- */
-line: number, };
-
-/**
- * The lane structure, top to bottom. Every item knows whether it ends (no route continues
- * below it) and how many lanes it is wide.
- */
-export type FlowItem = { "type": "node", 
-/**
- * The node.
- */
-node: number, 
-/**
- * Whether it is terminal.
- */
-ends: boolean, 
-/**
- * Always 1.
- */
-lanes: number, } | { "type": "branch", 
-/**
- * The condition node.
- */
-node: number, 
-/**
- * The `then` statements.
- */
-yes: Array<FlowItem>, 
-/**
- * The `else` statements (one nested `Branch` for an `else if`).
- */
-no: Array<FlowItem>, 
-/**
- * Whether the yes lane ends.
- */
-yesEnds: boolean, 
-/**
- * Whether the no lane ends.
- */
-noEnds: boolean, 
-/**
- * Whether both end.
- */
-ends: boolean, 
-/**
- * The width in lanes.
- */
-lanes: number, 
-/**
- * The yes lane's offset from the item's lane.
- */
-yesLane: number, 
-/**
- * Whether `no` is an `else if`.
- */
-elseIf: boolean, } | { "type": "loop", 
-/**
- * The header node.
- */
-node: number, 
-/**
- * The body statements.
- */
-body: Array<FlowItem>, 
-/**
- * Whether the test follows the body (do-while).
- */
-testAfter: boolean, 
-/**
- * Always false: a loop's done route continues.
- */
-ends: boolean, 
-/**
- * The width in lanes.
- */
-lanes: number, } | { "type": "try", 
-/**
- * The `try` block.
- */
-key: Key, 
-/**
- * The `catch` block.
- */
-catchKey: Key, 
-/**
- * The name the handler binds, if any.
- */
-binding?: string, 
-/**
- * The `try` body.
- */
-body: Array<FlowItem>, 
-/**
- * The handler body.
- */
-handler: Array<FlowItem>, 
-/**
- * Whether the body ends.
- */
-bodyEnds: boolean, 
-/**
- * Whether the handler ends.
- */
-handlerEnds: boolean, 
-/**
- * Whether both end.
- */
-ends: boolean, 
-/**
- * The width in lanes.
- */
-lanes: number, 
-/**
- * The handler lane's offset from the item's lane.
- */
-catchLane: number, };
-
-/**
- * The Flow of one block.
- */
-export type FlowModel = { 
-/**
- * The shown block.
- */
-key: Key, 
-/**
- * Its file.
- */
-path: RepoPath, 
-/**
- * The file's language.
- */
-language: Language, 
-/**
- * The block's kind.
- */
-kind: BlockKind, 
-/**
- * The source's freshness; only current source is drawn beyond Start.
- */
-source: SourceState, 
-/**
- * Every node; `id` is the index.
- */
-nodes: Array<FlowNode>, 
-/**
- * Every route, in the order they were derived.
- */
-routes: Array<FlowRoute>, 
-/**
- * The lane structure between Start and End.
- */
-tree: Array<FlowItem>, 
-/**
- * The Start node.
- */
-start: number, 
-/**
- * The End node, when a route reaches it.
- */
-end?: number, 
-/**
- * The diagram's width in lanes.
- */
-lanes: number, 
-/**
- * Warnings, without duplicates.
- */
-warnings: Array<FlowWarning>, };
-
-/**
- * One node.
- */
-export type FlowNode = { 
-/**
- * The node's index in [`FlowModel::nodes`].
- */
-id: number, 
-/**
- * The block it shows; absent for End.
- */
-key?: Key, 
-/**
- * The presentation type.
- */
-kind: FlowNodeKind, 
-/**
- * The compiled block kind.
- */
-blockKind?: BlockKind, 
-/**
- * The authored label, or a fallback name from the code.
- */
-label: string, 
-/**
- * Whether `label` is a fallback (drawn with a dotted underline).
- */
-fallback?: boolean, 
-/**
- * The first line of the block.
- */
-startLine?: number, 
-/**
- * The last line of the block.
- */
-endLine?: number, 
-/**
- * Where the node's own source is: a condition's recorded condition; a loop's recorded
- * condition, else its header (from its start to its body); a `call` node's main call
- * expression; any other node's whole block. Absent for Start and End, and whenever the
- * source is not current (recorded ranges are withheld).
- */
-focus?: SourceFocus, 
-/**
- * The lane: 0 is the main lane.
- */
-lane: number, 
-/**
- * The occurrences this node shows, in source order.
- */
-chips?: Array<FlowChip>, 
-/**
- * The index in `chips` of the main call that makes this a `call` node.
- */
-call?: number, 
-/**
- * For a condition heading an `else if` chain of three or more checks: their number.
- */
-checks?: number, 
-/**
- * For such a chain: what every check's branch ends in.
- */
-outcome?: ChainOutcome, 
-/**
- * Nested definitions written in this statement.
- */
-callbacks?: Array<FlowCallback>, 
-/**
- * For an opaque node: why it is not drawn.
- */
-warning?: WarningCode, };
-
-/**
- * A node's presentation type, derived from the compiled structure.
- */
-export type FlowNodeKind = "start" | "end" | "variable" | "call" | "statement" | "condition" | "loop" | "return" | "throw" | "break" | "continue" | "definition" | "opaque";
-
-/**
- * A route between two nodes.
- */
-export type FlowRoute = { 
-/**
- * The node it leaves.
- */
-from: number, 
-/**
- * The node it enters.
- */
-to: number, 
-/**
- * What it means.
- */
-kind: RouteKind, };
-
-/**
- * A warning with its sentence.
- */
-export type FlowWarning = { 
-/**
- * What it is about.
- */
-code: WarningCode, 
-/**
- * The sentence the UI shows.
- */
-message: string, };
-
-/**
- * How a compound block folds.
- */
-export type Fold = { 
-/**
- * Whether it starts folded ([`FoldPolicy`]).
- */
-folded: boolean, 
-/**
- * Where the hidden part begins: the end of the written header line for Python, otherwise
- * the start of the body (or the end of the first line when there is no body slot).
- */
-headerEnd: number, 
-/**
- * Whether the folded row shows the hidden body as `{ … }` (TypeScript blocks with a body).
- */
-braces: boolean, 
-/**
- * The folded row's summary, such as `12 lines · returns`.
- */
-summary: string, 
-/**
- * Whether the block contains a `return` outside nested callables.
- */
-returns: boolean, 
-/**
- * Whether the block contains a `throw` outside nested callables.
- */
-throws: boolean, 
-/**
- * The number of checks, for an `if` that heads an `else if` chain.
- */
-chain?: number, };
+ * A block's written form. Every form belongs to exactly one [`NodeKind`]
+ * ([`Form::kind`]), so a node stores only its form and an impossible kind and form pair
+ * can't be written down.
+ */
+export type Form = "module" | "class" | "function" | "method" | "constructor" | "getter" | "setter" | "lambda" | "interface" | "type_alias" | "enum" | "if" | "match" | "switch" | "ternary" | "for" | "while" | "do" | "comprehension" | "try" | "with" | "using" | "then" | "elif" | "else" | "case" | "default" | "body" | "except" | "catch" | "finally" | "call" | "new" | "return" | "raise" | "throw" | "break" | "continue" | "yield";
 
 /**
  * A named box around items of a page: a unit, a service, or a zone. It has no position of its
@@ -1911,7 +1623,7 @@ id: string,
  */
 title: string, 
 /**
- * The frame's description, signed over its member cards' guards.
+ * The frame's description, signed over its member cards' signatures.
  */
 description?: Description, 
 /**
@@ -1956,9 +1668,21 @@ export type FrameIcon = "api" | "worker" | "schedule" | "cli" | "web" | "library
 export type FrameLook = "box" | "zone";
 
 /**
- * How the shown text relates to the graph. See the [module documentation](self).
+ * A `⋯ N lines` tick: code between two steps that no drawn step covers.
  */
-export type GraphMatch = "current" | "not_compiled" | "evidence" | "not_indexed";
+export type GapTick = { 
+/**
+ * How many lines it counts (blank and comment lines aren't counted).
+ */
+count: number, 
+/**
+ * The first and last line it counts, which the code panel opens.
+ */
+lines: [number, number], 
+/**
+ * The control blocks with nothing drawn inside that start in it.
+ */
+hidden: Array<HiddenBlock>, };
 
 /**
  * The status-bar state.
@@ -2019,39 +1743,6 @@ watching: WatchMode,
 complete: boolean, };
 
 /**
- * A run of consecutive sibling statements inside one block card.
- */
-export type Group = { 
-/**
- * Unique among the page's items.
- */
-id: string, 
-/**
- * The card it belongs to.
- */
-card: string, 
-/**
- * Its title on the rail.
- */
-title: string, 
-/**
- * The member statements' keys, in source order.
- */
-members: Array<Key>, 
-/**
- * Whether the group is collapsed.
- */
-collapsed: boolean, 
-/**
- * The group's description.
- */
-description?: Description, 
-/**
- * Who wrote the title; absent on groups titled before titles were attributed.
- */
-author?: Author, };
-
-/**
  * What a reference was when it was saved, so it can reconnect safely: one per referenced key.
  */
 export type GuardEntry = { 
@@ -2060,25 +1751,87 @@ export type GuardEntry = {
  */
 key: Key, 
 /**
- * The block kind, or `entrance:<kind>`.
+ * The block's node kind, or `entrance` for an app or entrance.
  */
 kind: string, 
 /**
- * The owner's key for a block; empty for an entrance.
+ * The owner's key for a block; empty for a module, an app, or an entrance.
  */
 owner: string, 
 /**
- * The signature of the referenced source.
+ * A block's source signature; for an app or entrance, the signature of its `code` keys.
  */
 signature: Signature, };
+
+/**
+ * A card's header.
+ */
+export type Header = { 
+/**
+ * The definition.
+ */
+key: Key, 
+/**
+ * Its kind.
+ */
+kind: NodeKind, 
+/**
+ * Its form.
+ */
+form: Form, 
+/**
+ * Its code name: a name, a module's path, `callback to <callee>`.
+ */
+label: string, 
+/**
+ * The overlay's name for it, which titles the card.
+ */
+name?: string, 
+/**
+ * The signature as written, on one line.
+ */
+signature?: string, 
+/**
+ * The docstring or JSDoc, as the description from code.
+ */
+description?: string, 
+/**
+ * The definition's file.
+ */
+path: RepoPath, 
+/**
+ * Its first line.
+ */
+line: number, 
+/**
+ * An `async` function.
+ */
+async: boolean, 
+/**
+ * A generator.
+ */
+generator: boolean, 
+/**
+ * What runs when it is defined, in the enclosing body: decorators, class bases, and
+ * Python defaults.
+ */
+definedWith: Array<OtherCall>, 
+/**
+ * What it imports (a module's imports, or a function's own).
+ */
+imports: Array<Import>, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
 
 /**
  * The health of a page, or of a whole board (its pages' items in page order).
  */
 export type Health = { 
 /**
- * Every problem: per page, cards first, then groups, labels, links' ends, resource cards,
- * connections, frames, and proposed steps.
+ * Every problem: per page, cards first, then names, combined steps, connections, resource
+ * cards, frames, and proposed steps.
  */
 items: Array<HealthItem>, 
 /**
@@ -2086,17 +1839,17 @@ items: Array<HealthItem>,
  */
 missing: number, 
 /**
- * The number of outdated descriptions, labels, resource cards, and connections.
+ * The number of outdated texts and claims.
  */
 outdated: number, 
-/**
- * The number of broken-group items.
- */
-brokenGroups: number, 
 /**
  * The number of references held for review.
  */
 review: number, 
+/**
+ * The number of broken combined steps.
+ */
+brokenCombined: number, 
 /**
  * The number of broken links.
  */
@@ -2119,14 +1872,20 @@ kind: HealthKind,
  */
 target: Target, 
 /**
- * The reference involved, when it is not the target itself (a group member; a resource
- * card's or connection's anchor, type, step, or carried type).
+ * The reference involved, when it is not the target itself (a combined step's member; a
+ * resource card's or connection's anchor, type, step, or carried type; a proposed step's
+ * place).
  */
 key?: string, 
 /**
  * The position of the anchor involved among its resource card's or connection's anchors.
  */
 anchor?: number, 
+/**
+ * The key Reconnect offers, when exactly one fits: for a missing app or entrance, the app
+ * or entrance that has the same `code`.
+ */
+reconnect?: string, 
 /**
  * The explanation.
  */
@@ -2139,43 +1898,49 @@ repairs: Array<RepairKind>, };
 /**
  * The kind of a health problem.
  */
-export type HealthKind = "missing" | "outdated" | "brokenGroup" | "review" | "brokenLink";
+export type HealthKind = "missing" | "outdated" | "review" | "brokenCombined" | "brokenLink";
 
 /**
- * How a type name written in a heritage clause relates its declaration to the type it
- * names.
+ * A control block with nothing drawn inside, named in its gap tick.
  */
-export type Heritage = "extends" | "implements";
+export type HiddenBlock = { 
+/**
+ * The control block.
+ */
+key: Key, 
+/**
+ * Its form.
+ */
+form: Form, 
+/**
+ * Its words in the tick: its code name (`for loop`, `if`), after the overlay's name when
+ * it has one.
+ */
+label: string, };
 
 /**
- * The method of an HTTP entrance.
+ * One import of a definition.
  */
-export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "ALL";
+export type Import = { 
+/**
+ * The module as written.
+ */
+text: string, 
+/**
+ * What it reaches.
+ */
+to: LinkEnd, };
 
 /**
- * One folder on a launch's import path.
- */
-export type ImportPathRow = { 
-/**
- * The project-relative folder (`.` for the project's folder).
- */
-path: string, 
-/**
- * Why it is there (`from --app-dir`, `the working folder`, `set by hand`).
- */
-origin: string, };
-
-/**
- * The members a type inherits from one of its bases.
+ * The members a class or type inherits from one of its bases.
  */
 export type InheritedGroup = { 
 /**
- * The base's name as a heritage clause writes it, with one span: `declared` (its key),
- * `external` or `builtin` (its module), or `unresolved` (the reason in words).
+ * The base's name as written, with one span for what it reaches.
  */
 from: TypeText, 
 /**
- * The base's written members, in source order; none for a base that isn't `declared`.
+ * The base's written members, in source order; none for a base outside the project.
  */
 members: Array<TypeMember>, };
 
@@ -2187,11 +1952,187 @@ export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in
 export type Key = string;
 
 /**
- * A Flow-node label: the authored name of a block inside a card.
+ * Where a call's value lands.
  */
-export type LabelEntry = { 
+export type Landing = { "kind": "binds", 
 /**
- * The labeled block's key.
+ * The target as written: `receipt`, `order.receipt`, `email_row_id, inserted`.
+ */
+target: string, } | { "kind": "exit", 
+/**
+ * The exit.
+ */
+exit: Key, 
+/**
+ * Its form.
+ */
+form: Form, } | { "kind": "argument", 
+/**
+ * The outer call.
+ */
+call: Key, 
+/**
+ * The argument's position.
+ */
+index: number, } | { "kind": "receiver", 
+/**
+ * The outer call.
+ */
+call: Key, } | { "kind": "nowhere" };
+
+/**
+ * One part of a control block.
+ */
+export type Lane = { 
+/**
+ * Its id in the flow.
+ */
+id: number, 
+/**
+ * The part.
+ */
+key: Key, 
+/**
+ * Its form: `then`, `elif`, `else`, `case`, `default`, `body`, `except`, `catch`,
+ * `finally`.
+ */
+form: Form, 
+/**
+ * Whether a route reaches it.
+ */
+state: RouteState, 
+/**
+ * The overlay's name: for a branch, a yes-or-no question.
+ */
+name?: string, 
+/**
+ * Its test, drawn as a diamond: a branch's condition, a case's pattern, a comprehension's
+ * filter.
+ */
+test?: Test, 
+/**
+ * A handler's clause as written: `except PaymentDeclined as error`, `catch (error)`.
+ */
+clause?: string, 
+/**
+ * The classes a handler's clause names.
+ */
+types: Array<LinkEnd>, 
+/**
+ * A `switch` case that runs into the next one.
+ */
+fallsThrough: boolean, 
+/**
+ * Its body's steps that can be combined, in written order (drawn or not).
+ */
+combinable: Array<Key>, 
+/**
+ * Its body.
+ */
+steps: Sequence, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
+
+/**
+ * A source language Unfold indexes.
+ */
+export type Language = "typescript" | "python";
+
+/**
+ * A range of one line's shown text.
+ */
+export type LineRange = { 
+/**
+ * The one-based line number.
+ */
+line: number, 
+/**
+ * Where the range starts.
+ */
+start: number, 
+/**
+ * Where it ends.
+ */
+end: number, };
+
+/**
+ * Where a link goes, as payloads carry it: its outcome, and the key, module, or reason that
+ * outcome names, with the module or reason in words.
+ */
+export type LinkEnd = { 
+/**
+ * How the link resolved.
+ */
+outcome: Outcome, 
+/**
+ * The project definition, for `project`.
+ */
+key?: Key, 
+/**
+ * The module, for `library` and `builtin`.
+ */
+module?: ModuleLabel, 
+/**
+ * Why nothing was proven, for `unknown`.
+ */
+reason?: Reason, 
+/**
+ * The module or reason in words ([`note`]).
+ */
+note?: string, };
+
+/**
+ * A relationship between a block and what it names.
+ */
+export type LinkKind = "calls" | "passes" | "extends" | "imports" | "types";
+
+/**
+ * What the selection marks inside the view.
+ */
+export type Mark = { 
+/**
+ * The first and last tinted line: a part's opening line and body, cited lines, or the
+ * selection's lines once the view widened.
+ */
+lines?: [number, number], 
+/**
+ * A call's own expression, one range per line it spans; empty for anything else.
+ */
+expression: Array<LineRange>, };
+
+/**
+ * What a member of a type declaration or class is.
+ */
+export type MemberKind = "property" | "method" | "index" | "call" | "construct" | "value";
+
+/**
+ * An external origin: one plain label (`express`, `node:fs`, `python:builtins`, `ecmascript`),
+ * or, when several origins are possible, a compact JSON array of two or more distinct nonempty
+ * labels sorted by their UTF-16 code units, stored as its text.
+ */
+export type ModuleLabel = string;
+
+/**
+ * One name of the overlay.
+ */
+export type NameArg = { 
+/**
+ * The named block.
+ */
+key: string, 
+/**
+ * The name.
+ */
+text: string, };
+
+/**
+ * A block's name: words that replace its code name wherever the page draws it.
+ */
+export type NameEntry = { 
+/**
+ * The named block's key.
  */
 key: Key, 
 /**
@@ -2207,310 +2148,6 @@ author: Author,
  * source (written as `""`).
  */
 signature: string, };
-
-/**
- * A source language Unfold indexes.
- */
-export type Language = "typescript" | "python";
-
-/**
- * One launch (a process entrance).
- */
-export type LaunchRow = { 
-/**
- * The process entrance's key.
- */
-key: string, 
-/**
- * The `[[entrance]]` ID, for a configured launch.
- */
-id: string | null, 
-/**
- * The label.
- */
-label: string | null, 
-/**
- * The folder it runs in (`data-pipelines`, or the project's name for its folder).
- */
-folder: string, 
-/**
- * The command: as written for a configured launch, `npm run start`, a bin, or a console
- * script for a detected one. `None` when a configured launch has only a target.
- */
-command: string | null, 
-/**
- * The schedule, as written.
- */
-schedule: string | null, 
-/**
- * The schedule in words (`daily at 07:30`), for a standard five-field cron.
- */
-scheduleGloss: string | null, 
-/**
- * The description.
- */
-description: string | null, 
-/**
- * Whether Unfold can follow it into the code.
- */
-status: LaunchStatus, 
-/**
- * Why it can't be read, in a few words (`Can't read sh -c`).
- */
-problem: string | null, 
-/**
- * More about the status (`evals/ is in .gitignore, so this code isn't indexed`).
- */
-note: string | null, 
-/**
- * Whether its target was set by hand.
- */
-targetSetByHand: boolean, 
-/**
- * What it starts, when that is indexed code.
- */
-starts: LaunchStart | null, 
-/**
- * Its Python import path, in search order.
- */
-importPaths: Array<ImportPathRow>, 
-/**
- * The functions and classes it reaches; `None` while the project rests.
- */
-reaches: number | null, 
-/**
- * The unique routes it serves; `None` when it serves none.
- */
-routes: number | null, 
-/**
- * Where it is declared.
- */
-declaredIn: DeclaredIn, 
-/**
- * How it is edited.
- */
-editable: Editable, };
-
-/**
- * What a launch starts.
- */
-export type LaunchStart = { 
-/**
- * The file.
- */
-path: string, 
-/**
- * The binding or callable it names (`app`), if any.
- */
-name: string | null, 
-/**
- * What it is (`FastAPI application`, `Python script`, `Python module`, `Node file`).
- */
-kind: string, };
-
-/**
- * Whether Unfold can follow a launch into the code.
- */
-export type LaunchStatus = "ok" | "unreadable" | "not_indexed" | "not_found";
-
-/**
- * A process's `target` table.
- */
-export type LaunchTargetSpec = { "type": "file", 
-/**
- * The folder-relative file.
- */
-path: string, } | { "type": "python_module", 
-/**
- * The dotted module name.
- */
-module: string, } | { "type": "python_callable", 
-/**
- * The dotted module name.
- */
-module: string, 
-/**
- * The callable's name.
- */
-attribute: string, } | { "type": "python_asgi", 
-/**
- * The dotted module name.
- */
-module: string, 
-/**
- * The application's name.
- */
-attribute: string, 
-/**
- * Whether the attribute is a factory.
- */
-factory: boolean, };
-
-/**
- * A one-based, inclusive range of lines.
- */
-export type LineRange = { 
-/**
- * The first line.
- */
-startLine: number, 
-/**
- * The last line.
- */
-endLine: number, };
-
-/**
- * A link drawn between two items of a page, where the graph draws no arrow. A link with a
- * `kind` is a **connection**: a typed line that says how its ends talk, with its evidence; one
- * without is drawn as `other`, with an optional signed label ("calls over HTTP").
- */
-export type Link = { 
-/**
- * Unique among the page's items.
- */
-id: string, 
-/**
- * The card, resource, or frame it starts at: the side that acts.
- */
-from: string, 
-/**
- * The card, resource, or frame it points at; never `from`.
- */
-to: string, 
-/**
- * Its label, signed over both ends' guard signatures (informational: never outdated).
- */
-label?: Description, 
-/**
- * How its ends talk; absent for a drawn link (`other`).
- */
-kind?: LinkKind, 
-/**
- * The statement or call inside the `from` card's block it leaves from.
- */
-step?: Key, 
-/**
- * For `relates`: the column of the `from` table.
- */
-fromColumn?: string, 
-/**
- * For `relates`: the column of the `to` table.
- */
-toColumn?: string, 
-/**
- * What travels: the route, the queue, or the event.
- */
-channel?: string, 
-/**
- * The type it carries: a type declaration or class key.
- */
-carries?: Key, 
-/**
- * For `relates`: how many rows of each table it joins.
- */
-cardinality?: Cardinality, 
-/**
- * The evidence for the receiving side.
- */
-anchors?: Array<Anchor>, 
-/**
- * The evidence in words.
- */
-description?: Description, 
-/**
- * Who drew it; every connection has one.
- */
-author?: Author, 
-/**
- * The signature of its step's and anchors' source; absent until a save signs it.
- */
-signature?: Signature, };
-
-/**
- * How the two ends of a connection talk.
- */
-export type LinkKind = "http" | "rpc" | "queue" | "event" | "writes" | "reads" | "calls" | "relates" | "other";
-
-/**
- * One `[[entrance]]` table.
- */
-export type ManualEntranceView = { 
-/**
- * Its ID (what edits name).
- */
-id: string, 
-/**
- * The kind.
- */
-kind: EntranceKind, 
-/**
- * The `[[application]]` it belongs to.
- */
-application: string | null, 
-/**
- * The trigger.
- */
-trigger: string | null, 
-/**
- * The HTTP method.
- */
-method: HttpMethod | null, 
-/**
- * The label.
- */
-label: string | null, 
-/**
- * The description.
- */
-description: string | null, 
-/**
- * Handler locators, middleware first (every kind but `process`).
- */
-handler: Array<string>, 
-/**
- * The working folder (`process`; `.` is the project's folder).
- */
-cwd: string | null, 
-/**
- * The command line (`process`).
- */
-command: string | null, 
-/**
- * The startup locator (`process`).
- */
-startup: string | null, 
-/**
- * The launch target (`process`).
- */
-target: LaunchTargetSpec | null, 
-/**
- * The import path, in order (`process`), when set.
- */
-pythonPaths: Array<string> | null, 
-/**
- * Declared environment variables (`process`).
- */
-env: { [key in string]: string }, 
-/**
- * The schedule, as written (`process`).
- */
-schedule: string | null, 
-/**
- * The table's line in the file.
- */
-line: number, };
-
-/**
- * What a member of a type declaration or class is.
- */
-export type MemberKind = "property" | "method" | "index" | "call" | "construct" | "value";
-
-/**
- * An external origin: one plain label (`express`, `node:fs`, `global`, `python:builtins`, a
- * repository-relative path), or, when several origins are possible, a compact JSON array of
- * two or more distinct nonempty labels sorted by their UTF-16 code units, stored as its text.
- */
-export type ModuleLabel = string;
 
 /**
  * The arguments of `new_board`.
@@ -2539,8 +2176,15 @@ pageTitle?: string, };
 export type NoArgs = Record<string, never>;
 
 /**
- * A short piece of plain text on a page: free, or attached to a card, frame, resource, or link
- * and moving with it. Notes are about the page, not the code: never signed, no health.
+ * What a block is: one of the five kinds of block, with definitions split by what they
+ * define. A node's kind follows from its [`Form`].
+ */
+export type NodeKind = "module" | "class" | "function" | "type" | "decision" | "loop" | "try" | "with" | "part" | "call" | "exit";
+
+/**
+ * A short piece of plain text on a page: free, or attached to a card, frame, resource, or
+ * connection and moving with it. Notes are about the page, not the code: never signed, no
+ * health.
  */
 export type Note = { 
 /**
@@ -2552,12 +2196,12 @@ id: string,
  */
 text: string, 
 /**
- * The canvas position; an offset from the attached item's top-left (a link's midpoint) when
- * attached.
+ * The canvas position; an offset from the attached item's top-left (a connection's
+ * midpoint) when attached.
  */
 at: [number, number], 
 /**
- * The card, frame, resource, or link it is attached to.
+ * The card, frame, resource, or connection it is attached to.
  */
 attach?: string, 
 /**
@@ -2583,117 +2227,109 @@ path: string,
 line?: number, };
 
 /**
- * A definition's outgoing edges, grouped for the inspector.
+ * A library, unknown, or (with Show all calls) builtin call: in a thin row, listed on a box,
+ * or run when a definition is defined.
  */
-export type Outgoing = { 
+export type OtherCall = { 
 /**
- * Resolved edges whose target is already on the board.
- */
-onBoard: Array<OutgoingCall>, 
-/**
- * Resolved edges whose target can be opened.
- */
-openable: Array<OutgoingCall>, 
-/**
- * External and unresolved edges, with their notes.
- */
-externalOrUnresolved: Array<OutgoingCall>, };
-
-/**
- * One edge a definition owns.
- */
-export type OutgoingCall = { 
-/**
- * The occurrence block.
- */
-source: Key, 
-/**
- * The edge's position among the occurrence's edges (0 is the occurrence itself).
- */
-seq: number, 
-/**
- * The relationship.
- */
-kind: EdgeKind, 
-/**
- * How it resolved.
- */
-resolution: Resolution, 
-/**
- * The target, when resolved.
- */
-target?: Key, 
-/**
- * The written callee, argument, or specifier.
- */
-text: string, 
-/**
- * Why it is unresolved.
- */
-reason?: Reason, 
-/**
- * Where an external target comes from.
- */
-module?: ModuleLabel, 
-/**
- * The module or reason as display text ([`crate::notes`]).
- */
-note?: string, 
-/**
- * The argument position of a passed reference.
- */
-position?: number, 
-/**
- * The line the occurrence starts on.
- */
-line: number, };
-
-/**
- * A statement or definition inside the shown block.
- */
-export type OutlineItem = { 
-/**
- * The block.
+ * The call.
  */
 key: Key, 
 /**
- * Its kind.
+ * The written callee.
  */
-kind: BlockKind, 
+callee: string, 
 /**
- * Its role under its saved parent.
+ * `call` or `new`.
  */
-role?: Role, 
+form: Form, 
 /**
- * The index of the enclosing outline item, if any.
+ * Where the call goes; an unknown one keeps its `?`.
  */
-parent?: number, 
+to: LinkEnd, 
 /**
- * The first line.
+ * The written target its value is assigned to.
  */
-startLine: number, 
+binds?: string, 
 /**
- * The last line.
+ * Written under `await`.
  */
-endLine: number, 
+awaited: boolean, 
 /**
- * Where the block starts.
+ * Runs only sometimes inside its expression.
  */
-start: number, 
+sometimes: boolean, 
 /**
- * Where the block ends.
+ * A decorator, base, or default.
  */
-end: number, 
+role?: CallRole, 
 /**
- * Whether the gutter may put it in a group: a statement (not a nested definition) in a
- * `body`, `then`, `else`, `catch`, or `finally` role. A group is a run of consecutive
- * groupable siblings with one parent and one role.
+ * The definition a decorator, base, or Python default belongs to.
  */
-groupable: boolean, 
+definition?: Key, 
 /**
- * How it folds, for a compound block spanning several lines.
+ * The call it is written in, which it feeds.
  */
-fold?: Fold, };
+feeds?: CallRef, 
+/**
+ * The library and unknown calls written in its arguments.
+ */
+inside: Array<OtherCall>, 
+/**
+ * What the overlay may do to it.
+ */
+actions: Actions, };
+
+/**
+ * How a link resolved.
+ */
+export type Outcome = "project" | "library" | "builtin" | "unknown";
+
+/**
+ * One call the definition makes: its `calls` link, or a `passes` link of it.
+ */
+export type OutgoingView = { 
+/**
+ * The call.
+ */
+call: Key, 
+/**
+ * The call's first line.
+ */
+line: number, 
+/**
+ * `calls` (what the call runs) or `passes` (a definition it passes as a value).
+ */
+kind: LinkKind, 
+/**
+ * How the callee or passed name is written.
+ */
+text: string, 
+/**
+ * Where it goes.
+ */
+to: LinkEnd, 
+/**
+ * The qualified name of the project definition it reaches.
+ */
+targetName?: string, };
+
+/**
+ * The page's overlay: names, combined steps, and proposed steps. It applies page-wide, by key.
+ */
+export type OverlayArgs = { 
+/**
+ * Names, which replace a block's code name.
+ */
+names?: Array<NameArg>, 
+/**
+ * Combined steps.
+ */
+combined?: Array<CombineArg>, 
+/**
+ * Proposed steps.
+ */
+proposed?: Array<ProposalArg>, };
 
 /**
  * One page of a board.
@@ -2716,21 +2352,21 @@ defaultView: View,
  */
 cards: Array<Card>, 
 /**
- * The groups.
+ * Names, one per key.
  */
-groups: Array<Group>, 
+names: Array<NameEntry>, 
 /**
- * Flow-node labels, one per key.
+ * Combined steps.
  */
-labels: Array<LabelEntry>, 
+combined: Array<Combined>, 
 /**
  * Guards, one per referenced key.
  */
 guards: Array<GuardEntry>, 
 /**
- * Drawn links and connections.
+ * Connections.
  */
-links: Array<Link>, 
+links: Array<Connection>, 
 /**
  * Frames.
  */
@@ -2759,41 +2395,24 @@ export type PairingReason = "spread" | "no_parameter" | "receiver" | "no_signatu
 export type ParameterKind = "positional" | "this" | "rest" | "positional_only" | "keyword_only" | "keywords";
 
 /**
- * What hovering a call link shows.
+ * One step of the path.
  */
-export type Peek = { 
+export type PathStep = { 
 /**
- * The key.
+ * What the step says: a file's path, a definition's name, a control block's header, the
+ * text that opens a part, a call's written callee, an exit's keyword, an app's or
+ * entrance's name, a combined step's title, a field's name, or the lines (`line 24`).
  */
-key: string, 
+label: string, 
 /**
- * The block kind, or `entrance`.
+ * The block, app, or entrance the step widens the view to. Absent for the file (which
+ * widens to the whole file) and for a step that is only lines or a field.
  */
-kind: string, 
+key?: Key, 
 /**
- * The display label or entrance title.
+ * Whether the view shows this step (bold).
  */
-name: string, 
-/**
- * The qualified name of a block.
- */
-qualifiedName: string | null, 
-/**
- * The first written line of a block (its signature), when its source verified.
- */
-signature: string | null, 
-/**
- * The file.
- */
-path: string, 
-/**
- * The first line.
- */
-line: number | null, 
-/**
- * The file's language.
- */
-language: Language | null, };
+showing: boolean, };
 
 /**
  * What kind of problem a [`ProblemItem`] is.
@@ -2839,7 +2458,7 @@ export type ProjectArgs = {
 project: ProjectId, };
 
 /**
- * A project's `unfold.toml`: its text and the settings it holds.
+ * A project's `unfold.toml`: its text and what it holds.
  */
 export type ProjectConfig = { 
 /**
@@ -2851,13 +2470,26 @@ exists: boolean,
  */
 text: string | null, 
 /**
- * The validated settings, unless the file is invalid.
+ * The validated settings and apps, unless the file is invalid.
  */
 settings: SettingsView | null, 
 /**
  * Why the file is invalid, with its position.
  */
 error: SettingsProblem | null, };
+
+/**
+ * What `update_project_config` did.
+ */
+export type ProjectConfigUpdate = { 
+/**
+ * The file after the edits.
+ */
+config: ProjectConfig, 
+/**
+ * The unified diff from the old text to the new; empty when the edits changed nothing.
+ */
+diff: string, };
 
 /**
  * Home's Health line.
@@ -2874,7 +2506,11 @@ boardsNeedingReview: number,
 /**
  * The boards with health items, most items first (at most 20).
  */
-boards: Array<BoardHealthCount>, };
+boards: Array<BoardHealthCount>, 
+/**
+ * The `code` keys of apps and entrances that aren't `found`.
+ */
+entrancesNotFound: number, };
 
 /**
  * A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
@@ -3021,26 +2657,14 @@ languages: Array<Language>,
 health: ProjectHealth, };
 
 /**
- * A proposed step: an intended addition after a real step of a block card, clearly not a compiler
- * fact. It has no implementation source and is never signed.
+ * A proposed step: an intended change, clearly not a compiler fact. It has no source and is
+ * never signed; its place is guarded.
  */
 export type Proposal = { 
 /**
  * Unique among the page's items.
  */
 id: string, 
-/**
- * The block card it belongs to.
- */
-card: string, 
-/**
- * The real step it goes after: a key inside the card's block. Guarded.
- */
-after: Key, 
-/**
- * For a step with several outgoing paths (a condition or a loop): which one.
- */
-path?: ProposalPath, 
 /**
  * What it would do, in words: one line, never blank, at most 120 characters
  * ([`MAX_PROPOSAL_TITLE`]).
@@ -3053,12 +2677,49 @@ reason?: string,
 /**
  * Who proposed it.
  */
-author: Author, };
+author: Author, } & ({ 
+/**
+ * The step's key.
+ */
+after: Key, } | { 
+/**
+ * The definition's or part's key.
+ */
+start: Key, });
 
 /**
- * Which path of a decision a proposed step goes on.
+ * One proposed step of the overlay: after a block, or at the start of a body.
  */
-export type ProposalPath = "yes" | "no" | "each" | "done";
+export type ProposalArg = { 
+/**
+ * Its id on the page.
+ */
+id: string, 
+/**
+ * The step it goes after.
+ */
+after?: string, 
+/**
+ * The definition or part at the start of whose body it goes.
+ */
+start?: string, 
+/**
+ * What it would do.
+ */
+title: string, };
+
+/**
+ * A proposed step, drawn dashed as PROPOSED.
+ */
+export type ProposedStep = { 
+/**
+ * Its id on the page.
+ */
+id: string, 
+/**
+ * What it would do.
+ */
+title: string, };
 
 /**
  * A `[[python.project]]` table as the editor submits it.
@@ -3120,7 +2781,7 @@ document: BoardDocument,
 revision: string, };
 
 /**
- * Why an occurrence or entrance target is unresolved.
+ * Why a link's target is unknown.
  */
 export type Reason = "unknown_name" | "unknown_receiver" | "parameter" | "mutable_binding" | "not_concrete" | "accessor" | "ambiguous" | "overridden" | "unbound_this" | "not_indexed" | "not_found" | "dynamic" | "wrapper" | "unsupported";
 
@@ -3131,9 +2792,9 @@ export type Relations = {
 /**
  * The definition.
  */
-key: string, 
+key: Key, 
 /**
- * One page of callers, in graph order.
+ * One page of its callers, in path order and then source order.
  */
 callers: Array<CallerView>, 
 /**
@@ -3145,16 +2806,12 @@ callersTotal: number,
  */
 callersNext: number | null, 
 /**
- * The edges the definition owns, in source order, grouped.
+ * The calls it makes, in source order.
  */
-outgoing: Outgoing, 
+outgoing: Array<OutgoingView>, 
 /**
- * The qualified names of the resolved outgoing targets, by key.
- */
-targetNames: { [key in string]: string }, 
-/**
- * The non-process entrances whose closures contain the definition ("reached at least
- * from"), in canonical order.
+ * The entrances whose code reaches it ("reached at least from"), in file order. An app's
+ * own start is left out: it reaches nearly everything.
  */
 reachedFrom: Array<EntranceRef>, };
 
@@ -3167,14 +2824,9 @@ export type RelationsArgs = {
  */
 project: ProjectId, 
 /**
- * The definition's (or any block's) key.
+ * The definition's key, or any block's (its definition's relations).
  */
 key: string, 
-/**
- * The keys of this project's cards on the page (at most 2,000), which group outgoing calls
- * as "on the page".
- */
-onPage?: Array<string>, 
 /**
  * Where the page of callers starts (`callersNext` of the previous page).
  */
@@ -3239,7 +2891,7 @@ repair: RepairSpec, };
 /**
  * A repair the UI can offer for a health item; [`apply_repair`] performs it.
  */
-export type RepairKind = "reconnect" | "removeCard" | "removeLabel" | "ungroup" | "removeLink" | "removeResource" | "removeDescription" | "resign" | "accept" | "removeProposal";
+export type RepairKind = "reconnect" | "resign" | "accept" | "remove" | "removeDescription";
 
 /**
  * A repair on one page.
@@ -3256,19 +2908,7 @@ from: string,
 /**
  * The key it should point at.
  */
-to: string, } | { "kind": "remove_card", 
-/**
- * The card's id.
- */
-card: string, } | { "kind": "remove_label", 
-/**
- * The block key.
- */
-key: string, } | { "kind": "ungroup", 
-/**
- * The group's id.
- */
-group: string, } | { "kind": "reconnect_anchor", 
+to: string, } | { "kind": "reconnect_anchor", 
 /**
  * The resource card or connection.
  */
@@ -3280,19 +2920,7 @@ anchor: number,
 /**
  * The new anchor.
  */
-to: AnchorSpec, } | { "kind": "remove_link", 
-/**
- * The link's id.
- */
-link: string, } | { "kind": "remove_resource", 
-/**
- * The resource card's id.
- */
-resource: string, } | { "kind": "remove_description", 
-/**
- * Whose.
- */
-target: TargetSpec, } | { "kind": "resign", 
+to: AnchorSpec, } | { "kind": "resign", 
 /**
  * Whose.
  */
@@ -3300,11 +2928,15 @@ target: TargetSpec, } | { "kind": "accept",
 /**
  * The reference.
  */
-key: string, } | { "kind": "remove_proposal", 
+key: string, } | { "kind": "remove", 
 /**
- * The proposed step's id.
+ * The item.
  */
-proposal: string, });
+target: TargetSpec, } | { "kind": "remove_description", 
+/**
+ * Whose.
+ */
+target: TargetSpec, });
 
 /**
  * A validated path relative to the open folder: nonempty, `/`-separated, case preserved, and
@@ -3317,13 +2949,8 @@ proposal: string, });
 export type RepoPath = string;
 
 /**
- * How an edge or entrance target was resolved.
- */
-export type Resolution = "resolved" | "external" | "unresolved";
-
-/**
- * A resource card: something the code talks to that isn't a function (a table, a queue, a
- * cache, storage, an outside service, or an actor), authored and anchored.
+ * A resource card: something the code talks to that isn't code on the page (a table, a queue,
+ * a cache, storage, an outside service, or an actor), with what it cites.
  */
 export type Resource = { 
 /**
@@ -3347,7 +2974,7 @@ type?: Key,
  */
 columns?: Array<Column>, 
 /**
- * What it is anchored to.
+ * What it cites.
  */
 anchors: Array<Anchor>, 
 /**
@@ -3373,20 +3000,40 @@ signature?: Signature, };
 export type ResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
 
 /**
- * Where a call's value lands.
+ * One way from one step (or lane, or the start) to another.
  */
-export type ResultBinding = "variable" | "return" | "argument" | "discard" | "other";
+export type Route = { 
+/**
+ * Where it starts: a step, a lane, or the start (`0`).
+ */
+from: number, 
+/**
+ * What it is.
+ */
+kind: RouteKind, 
+/**
+ * Where it goes.
+ */
+to: RouteEnd, 
+/**
+ * The `finally` lanes it passes through first, innermost first.
+ */
+through: Array<number>, };
 
 /**
- * A block's relationship to its saved parent. A root, or an unmapped structural
- * relationship, has no role (`Option<Role>` is `None`).
+ * Where a route goes.
  */
-export type Role = "body" | "parameter" | "condition" | "then" | "else" | "initializer" | "update" | "iterable" | "catch" | "finally" | "expression" | "binding" | "callee" | "argument" | "heritage" | "decorator" | "header" | "name";
+export type RouteEnd = { "step": number } | "end" | "caller";
 
 /**
- * What a route means.
+ * What a route is.
  */
-export type RouteKind = "sequence" | "yes" | "no" | "elseIf" | "each" | "again" | "next" | "test" | "continue" | "done" | "break" | "return" | "error";
+export type RouteKind = "on" | "yes" | "no" | "case" | "default" | "each" | "next" | "done" | "onError" | "finally" | "return" | "raise" | "break" | "continue" | "mayContinue";
+
+/**
+ * Whether a route reaches a step.
+ */
+export type RouteState = "reached" | "unreachable" | "truncated";
 
 /**
  * The arguments of `save_board`.
@@ -3432,10 +3079,10 @@ query: string,
  */
 kinds?: Array<SearchKind>, 
 /**
- * Only definitions of these block kinds (every catalog kind when absent): `["interface",
- * "type_alias", "enum", "class"]` finds types.
+ * Only definitions of these kinds: `module`, `class`, `function`, `type` (all but `module`
+ * when absent: `files` finds modules by path).
  */
-definitionKinds?: Array<BlockKind>, 
+definitionKinds?: Array<NodeKind>, 
 /**
  * Results per kind across every project (50 when absent, at most 500).
  */
@@ -3463,7 +3110,7 @@ total: number,
 truncated: boolean, };
 
 /**
- * A definition or entrance result.
+ * A definition, app, or entrance result.
  */
 export type SearchHit = { 
 /**
@@ -3473,22 +3120,21 @@ project: ProjectId,
 /**
  * The key (open its card with it).
  */
-key: string, 
+key: Key, 
 /**
- * The name (a definition's label; an entrance's label, trigger, or first target).
+ * The name: a definition's label, an app's or entrance's name.
  */
 name: string, 
 /**
- * A definition's qualified name; an entrance's method, trigger, and targets.
+ * A definition's qualified name; an app's `run`; an entrance's app name and `on`.
  */
 qualifiedName: string, 
 /**
- * The file (an entrance's evidence file).
+ * A definition's file; empty for an app or entrance.
  */
 path: string, 
 /**
- * A definition's block kind (`function`, `class`, `interface`, `type_alias`, …), or an
- * entrance's kind.
+ * A definition's node kind (`module`, `class`, `function`, `type`), `app`, or `entrance`.
  */
 kind: string, 
 /**
@@ -3496,10 +3142,9 @@ kind: string,
  */
 line: number | null, 
 /**
- * The name of the first application (by name) an entrance belongs to, as
- * `entrances` names applications; `None` for a definition or an entrance in none.
+ * An entrance's app, by name.
  */
-application: string | null, 
+app: string | null, 
 /**
  * The rank score (higher is better).
  */
@@ -3523,18 +3168,13 @@ query: string,
  */
 definitions: SearchGroup<SearchHit>, 
 /**
- * Entrances.
+ * Apps and entrances.
  */
 entrances: SearchGroup<SearchHit>, 
 /**
  * Files.
  */
 files: SearchGroup<FileHit>, };
-
-/**
- * What a section holds.
- */
-export type SectionKind = "launch" | "http" | "worker" | "schedule" | "command" | "event";
 
 /**
  * The arguments of `select_project`.
@@ -3554,8 +3194,8 @@ export type SentArgument = {
  */
 index: number, 
 /**
- * Its written text (cut to 120 UTF-16 units), sliced from the caller's verified source;
- * absent when the caller's file changed.
+ * Its written text (cut to 120 UTF-16 units), from the caller's verified source; absent
+ * when the caller's file changed.
  */
 text?: string, 
 /**
@@ -3566,6 +3206,19 @@ expand?: Expansion,
  * A Python keyword argument's keyword.
  */
 keyword?: string, };
+
+/**
+ * Steps in the order they run.
+ */
+export type Sequence = { 
+/**
+ * The steps.
+ */
+steps: Array<Step>, 
+/**
+ * The gap tick after the last step: code left out at the end.
+ */
+endGap?: GapTick, };
 
 /**
  * The arguments of `set_board_folder`.
@@ -3627,25 +3280,9 @@ path: string, } | { "op": "remove_scope_pattern",
  */
 list: ScopeList, 
 /**
- * The pattern, as `get_folder_config` lists it.
+ * The pattern, as the settings list it.
  */
-pattern: string, } | { "op": "add_entrance", 
-/**
- * The entrance.
- */
-entrance: EntranceSpec, } | { "op": "replace_entrance", 
-/**
- * The entrance's current ID.
- */
-id: string, 
-/**
- * The new entrance, which may have a new ID.
- */
-entrance: EntranceSpec, } | { "op": "remove_entrance", 
-/**
- * The entrance's ID.
- */
-id: string, } | { "op": "set_python_project", 
+pattern: string, } | { "op": "set_python_project", 
 /**
  * The project.
  */
@@ -3659,9 +3296,29 @@ root: string, } | { "op": "add_evidence_pattern",
  */
 pattern: string, } | { "op": "remove_evidence_pattern", 
 /**
- * The pattern, as `project_config` lists it.
+ * The pattern, as the settings list it.
  */
-pattern: string, };
+pattern: string, } | { "op": "set_app", 
+/**
+ * The app.
+ */
+app: AppSpec, } | { "op": "set_entrance", 
+/**
+ * The app's name.
+ */
+app: string, 
+/**
+ * The entrance.
+ */
+entrance: EntranceSpec, } | { "op": "remove_entrance", 
+/**
+ * The app's name.
+ */
+app: string, 
+/**
+ * The entrance's name; `None` removes the app.
+ */
+entrance: string | null, };
 
 /**
  * A settings problem with its position.
@@ -3681,7 +3338,7 @@ line: number | null,
 column: number | null, };
 
 /**
- * The validated settings, as the settings editor shows them.
+ * The validated settings and apps, as the settings editor shows them.
  */
 export type SettingsView = { 
 /**
@@ -3697,21 +3354,18 @@ include: Array<string>,
  */
 exclude: Array<string>, 
 /**
- * Detectors turned off.
- */
-disabledDetectors: Array<DetectorId>, 
-/**
  * Python projects.
  */
 pythonProjects: Array<PythonProjectView>, 
 /**
- * Manual entrances, in file order.
- */
-entrances: Array<ManualEntranceView>, 
-/**
  * `[evidence] files` patterns, as written.
  */
-evidence: Array<string>, };
+evidence: Array<string>, 
+/**
+ * The `[[app]]` tables as written, in file order (their code without states: `entrances`
+ * has those).
+ */
+apps: Array<AppView>, };
 
 /**
  * The board the window shows, by project id and board id.
@@ -3727,7 +3381,7 @@ project: ProjectId,
 board: string, };
 
 /**
- * `sha256:` and the hash of the exact selected source bytes.
+ * `sha256:` and the hash of the bytes something was written for.
  */
 export type Signature = string;
 
@@ -3761,97 +3415,131 @@ requestId: number,
 message: JsonValue, };
 
 /**
- * Where a node's own source is: its condition, its main call expression, or else its statement,
- * from recorded ranges. Lines are one-based; columns are UTF-16 code units from the line's start;
- * the end is exclusive.
+ * An app's or entrance's card: declared, so drawn in the authored style.
  */
-export type SourceFocus = { 
+export type StartCard = { 
 /**
- * The line it starts on.
+ * Its key.
  */
-startLine: number, 
+key: Key, 
 /**
- * Where it starts on that line.
+ * An app or an entrance.
  */
-startColumn: number, 
+kind: StartKind, 
 /**
- * The line it ends on.
+ * The app's name (in small caps on an entrance's card).
  */
-endLine: number, 
+app: string, 
 /**
- * Where it ends on that line (exclusive).
+ * Its name.
  */
-endColumn: number, };
+name: string, 
+/**
+ * What starts it, as written: an entrance's `on`, an app's `run`.
+ */
+on?: string, 
+/**
+ * Its one sentence.
+ */
+about?: string, 
+/**
+ * The blocks it starts at, in the order they run: the cards it connects to.
+ */
+code: Array<StartTarget>, };
 
 /**
- * The freshness of a file's source, as the UI shows it.
+ * Whether a start is an app or one of its entrances.
  */
-export type SourceState = "current" | "changed" | "missing";
+export type StartKind = "app" | "entrance";
+
+/**
+ * One block an app or entrance starts at.
+ */
+export type StartTarget = { 
+/**
+ * The block key, as written.
+ */
+key: Key, 
+/**
+ * What it names.
+ */
+state: TargetState, 
+/**
+ * The definition's label, when the key names one.
+ */
+label?: string, 
+/**
+ * Its file, when the key names a block.
+ */
+path?: RepoPath, 
+/**
+ * Its first line, when the key names a block.
+ */
+line?: number, };
+
+/**
+ * One drawn step.
+ */
+export type Step = { 
+/**
+ * Its id in the flow.
+ */
+id: number, 
+/**
+ * Whether a route reaches it.
+ */
+state: RouteState, 
+/**
+ * The gap tick on the route into it.
+ */
+gap?: GapTick, } & ({ "kind": "call" } & CallBox | { "kind": "thin" } & ThinRow | { "kind": "decision" } & FlowFrame | { "kind": "loop" } & FlowFrame | { "kind": "try" } & FlowFrame | { "kind": "with" } & FlowFrame | { "kind": "exit" } & ExitStep | { "kind": "combined" } & CombinedStep | { "kind": "proposed" } & ProposedStep);
 
 /**
  * What a health item or repair is about, on one page.
  */
-export type Target = { "card": string } | { "group": string } | { "label": string } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
+export type Target = { "card": string } | { "combined": string } | { "name": string } | { "connection": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
- * What an entrance target is to its entrance.
+ * What a repair is about (a card, combined step, name, connection, resource card, frame, or
+ * proposed step) on its page.
  */
-export type TargetRole = "startup" | "handler";
+export type TargetSpec = { "card": string } | { "combined": string } | { "name": string } | { "connection": string } | { "resource": string } | { "frame": string } | { "proposal": string };
 
 /**
- * What a repair is about (a card, group, label, link, resource card, frame, or proposed step) on
- * its page.
+ * What an app's or entrance's `code` key names after a compile.
  */
-export type TargetSpec = { "card": string } | { "group": string } | { "label": string } | { "link": string } | { "resource": string } | { "frame": string } | { "proposal": string };
+export type TargetState = "found" | "missing" | "not_analyzed" | "not_a_start" | "stale";
 
 /**
- * One handler or startup of an entrance, in registration order.
+ * A part's test.
  */
-export type TargetView = { 
+export type Test = { 
 /**
- * The declaration order.
+ * The test as written.
  */
-position: number, 
+text?: string, 
 /**
- * `startup` or `handler`.
+ * The project calls (and other boxes) written in it, in the order they run.
  */
-role: TargetRole, 
+calls: Array<CallBox>, };
+
 /**
- * The handler, locator, or launch path as written.
+ * Consecutive library and unknown calls of one body, in one row.
  */
-text: string, 
+export type ThinRow = { 
 /**
- * How it resolved.
+ * The calls, in the order they run.
  */
-resolution: Resolution, 
+calls: Array<OtherCall>, 
 /**
- * The target's key, when resolved.
+ * How many of them (and of the calls inside them) are unknown.
  */
-target: string | null, 
+unknown: number, };
+
 /**
- * The target's qualified name, when resolved.
+ * One highlighted span of a line: `[start, end, class]`.
  */
-name: string | null, 
-/**
- * The target's file, when resolved.
- */
-path: string | null, 
-/**
- * The target's first line, when resolved.
- */
-line: number | null, 
-/**
- * The module (external) or reason (unresolved) in words.
- */
-note: string | null, 
-/**
- * Why it is unresolved.
- */
-reason: Reason | null, 
-/**
- * Where an external target comes from.
- */
-module: ModuleLabel | null, };
+export type Token = [number, number, TokenClass];
 
 /**
  * What a highlighted span is. Each class serializes as its snake-case name, which the UI maps
@@ -3860,16 +3548,11 @@ module: ModuleLabel | null, };
 export type TokenClass = "keyword" | "comment" | "string" | "number" | "constant" | "operator" | "punctuation" | "type" | "function" | "decorator" | "property" | "parameter" | "variable";
 
 /**
- * How much of an entrance's trigger is known.
- */
-export type TriggerStatus = "exact" | "partial" | "unknown";
-
-/**
- * A type declaration or class, as its definition opens under a type.
+ * A class or type, as its definition opens.
  */
 export type TypeDefinition = { 
 /**
- * The declaration.
+ * The class or type.
  */
 key: Key, 
 /**
@@ -3877,7 +3560,7 @@ key: Key,
  */
 kind: TypeKind, 
 /**
- * Its name (its catalog label when unnamed).
+ * Its name.
  */
 name: string, 
 /**
@@ -3902,22 +3585,22 @@ members: Array<TypeMember>,
  */
 inherited: Array<InheritedGroup>, 
 /**
- * A type alias's aliased type, when it isn't an object type (an alias with no members),
- * from its verified source; absent when the file changed.
+ * A type alias's aliased type, when the alias has no members, from its verified source;
+ * absent when the file changed.
  */
 aliased?: TypeText, 
 /**
- * How many type links resolve to it ("Used in N places").
+ * How many `types` and `extends` links name it ("Used in N places").
  */
 uses: number, };
 
 /**
- * What a type declaration is.
+ * What a class or type is.
  */
 export type TypeKind = "interface" | "type_alias" | "enum" | "class";
 
 /**
- * One written member of a type declaration or class.
+ * One written member of a class or type.
  */
 export type TypeMember = { 
 /**
@@ -3941,7 +3624,7 @@ readonly: boolean,
  */
 default: boolean, 
 /**
- * Its written type.
+ * Its written type; absent when none is written.
  */
 type?: TypeText, 
 /**
@@ -3962,26 +3645,10 @@ start: number,
  */
 end: number, 
 /**
- * How it reads.
+ * What the name reaches: a project class or type (which opens its definition), a library
+ * or builtin module, or nothing proven.
  */
-style: TypeStyle, 
-/**
- * The declaration, for a `declared` name.
- */
-target?: Key, 
-/**
- * Where an `external` or `builtin` name comes from.
- */
-module?: ModuleLabel, 
-/**
- * The module (external) or the reason (unresolved) in words.
- */
-note?: string, };
-
-/**
- * How one type name inside a written type reads.
- */
-export type TypeStyle = "declared" | "external" | "builtin" | "unresolved";
+to: LinkEnd, };
 
 /**
  * A written type: its text (cut to 120 UTF-16 units) and the type names in it.
@@ -3998,15 +3665,16 @@ text: string,
 spans: Array<TypeSpan>, };
 
 /**
- * One place a declaration's type is written.
+ * One place a class or type is named.
  */
 export type TypeUsePlace = { 
 /**
- * The definition (or file) the annotation belongs to.
+ * The definition that names it: the link's own definition, or the one its `except` part
+ * belongs to.
  */
 owner: Key, 
 /**
- * Its catalog label (a name, `callback to …`, or the file's path).
+ * The owner's catalog label.
  */
 label: string, 
 /**
@@ -4014,17 +3682,16 @@ label: string,
  */
 path: RepoPath, 
 /**
- * The line the type name is on.
+ * The line the name is on.
  */
 line: number, 
 /**
- * When the place is a heritage clause naming the type as a base: whether the owner
- * extends or implements it.
+ * How it names the type.
  */
-heritage?: Heritage, };
+kind: UseKind, };
 
 /**
- * One page of the places a declaration's type is written.
+ * One page of the places a class or type is named.
  */
 export type TypeUses = { 
 /**
@@ -4045,7 +3712,7 @@ export type TypeUsesArgs = {
  */
 project: ProjectId, 
 /**
- * The type declaration's or class's key.
+ * The class's or type's key.
  */
 key: string, 
 /**
@@ -4071,11 +3738,6 @@ reason: PairingReason,
 note: string, };
 
 /**
- * Why a file has no text to show.
- */
-export type Unshowable = "binary" | "too_large";
-
-/**
  * The arguments of `update_project_config`.
  */
 export type UpdateProjectConfigArgs = { 
@@ -4089,14 +3751,14 @@ project: ProjectId,
 edits: Array<SettingsEdit>, };
 
 /**
- * A card's view.
+ * How a place names a class or type.
  */
-export type View = "code" | "flow" | "diagram";
+export type UseKind = "annotation" | "handler" | "extends" | "implements";
 
 /**
- * Why something in a Flow is not drawn, or drawn only in part.
+ * A card's view.
  */
-export type WarningCode = "sourceChanged" | "sourceMissing" | "fileDeferred" | "classMembers" | "switch" | "case" | "default" | "catch" | "tryFinally" | "emptyTry" | "pythonLoopElse" | "pythonTry" | "pythonWith" | "pythonMatch" | "pythonCase" | "pythonExcept" | "labeledBreak" | "labeledContinue" | "orphanTransfer" | "tooDeep";
+export type View = "compact" | "expanded";
 
 /**
  * How the folder is watched for changes.
@@ -4195,10 +3857,6 @@ removedFiles: Array<string>,
  */
 changedKeys: Array<string>, 
 /**
- * Entrance keys added, removed, or changed, sorted.
- */
-changedEntrances: Array<string>, 
-/**
  * Whether the configuration inputs changed.
  */
 inputsChanged: boolean, 
@@ -4210,7 +3868,11 @@ everything: boolean,
 /**
  * Whether every discovered file is indexed.
  */
-complete: boolean, } | { "type": "problems_changed", 
+complete: boolean, } | { "type": "entrances_changed", 
+/**
+ * The project.
+ */
+project: ProjectId, } | { "type": "problems_changed", 
 /**
  * The project.
  */
@@ -4306,10 +3968,10 @@ export interface Commands {
    */
   project_summary: { args: ProjectArgs; result: ProjectSummary };
   /**
-   * The entrance catalog: applications by category with their launches, or one
-   * application's (or the unreached) entrance rows, filtered and paged.
+   * The apps and entrances of `unfold.toml` as written, each `code` with its state and its
+   * fix when one exists.
    */
-  entrances: { args: EntrancesArgs; result: EntrancesView };
+  entrances: { args: ProjectArgs; result: EntrancesView };
   /**
    * The Problems list, with the health of every board.
    */
@@ -4323,13 +3985,14 @@ export interface Commands {
    */
   cancel_compile: { args: ProjectArgs; result: CancelCompileResult };
   /**
-   * A project's `unfold.toml`.
+   * A project's `unfold.toml`: its settings and apps.
    */
   project_config: { args: ProjectArgs; result: ProjectConfig };
   /**
-   * Applies validated edits to a project's `unfold.toml`.
+   * Applies validated edits to a project's `unfold.toml` and returns the diff. An edit of
+   * only `[[app]]` tables resolves the entrances again without compiling.
    */
-  update_project_config: { args: UpdateProjectConfigArgs; result: ProjectConfig };
+  update_project_config: { args: UpdateProjectConfigArgs; result: ProjectConfigUpdate };
   /**
    * The app settings.
    */
@@ -4343,28 +4006,35 @@ export interface Commands {
    */
   app_info: { args: NoArgs; result: AppInfo };
   /**
-   * The peek sheet's render model of a file, or one page of lines.
+   * The code panel's model for one selection: a block, lines, a field, a file, or an app or
+   * entrance.
    */
-  file_view: { args: FileViewArgs; result: FileView };
+  code_view: { args: CodeViewArgs; result: CodeView };
   /**
    * Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
    * created empty first when it has none.
    */
   open_in_editor: { args: OpenInEditorArgs; result: null };
   /**
-   * An entrance card or a block card (Code and Flow).
+   * A card: a definition's drawn flow (with the page's overlay, the card's open paths, and
+   * Show all calls), or an app's or entrance's card.
    */
   card: { args: CardArgs; result: CardView };
   /**
-   * The hover over a call link: signature line and location.
+   * Agent text: the compiled tree of a definition, with each block's label and key.
    */
-  peek: { args: ProjectKeyArgs; result: Peek };
+  code_text: { args: ProjectKeyArgs; result: CodeText };
   /**
-   * Callers (paginated), outgoing calls grouped, and reached-from.
+   * Agent text: a definition's drawn flow, shaped like `card`'s, with its blocks' labels and
+   * keys.
+   */
+  flow_text: { args: CardArgs; result: FlowText };
+  /**
+   * Callers (paginated), outgoing calls, and reached-from.
    */
   relations: { args: RelationsArgs; result: Relations };
   /**
-   * Show callers: the distinct definitions that call a block.
+   * Show callers: the distinct definitions that call a definition.
    */
   callers: { args: CallersArgs; result: Callers };
   /**
@@ -4372,19 +4042,20 @@ export interface Commands {
    */
   board_refs: { args: ProjectKeyArgs; result: BoardRefs };
   /**
-   * The contract of one selected line: sends, returns, throws, and the lines it read.
+   * A call's contract, by its block key: what it sends, what returns and where the value
+   * lands, and what the callee raises.
    */
-  call_contract: { args: CallContractArgs; result: CallContract };
+  call_contract: { args: ProjectKeyArgs; result: CallContract };
   /**
-   * A type declaration or class: its members, aliased type, and use count.
+   * A class or type: its members, aliased type, and use count.
    */
   type_definition: { args: ProjectKeyArgs; result: TypeDefinition };
   /**
-   * One page of the places a type declaration or class is written.
+   * One page of the places a class or type is named.
    */
   type_uses: { args: TypeUsesArgs; result: TypeUses };
   /**
-   * Definitions, entrances, and files by name, across the projects.
+   * Definitions, apps and entrances, and files by name, across the projects.
    */
   search: { args: SearchArgs; result: SearchResults };
   /**
@@ -4494,10 +4165,11 @@ export const COMMAND_NAMES = [
   "get_settings",
   "set_settings",
   "app_info",
-  "file_view",
+  "code_view",
   "open_in_editor",
   "card",
-  "peek",
+  "code_text",
+  "flow_text",
   "relations",
   "callers",
   "board_refs",

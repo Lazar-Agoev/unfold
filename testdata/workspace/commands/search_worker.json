@@ -9,47 +9,47 @@
     "hits": [
       {
         "project": "<project>",
-        "key": "entrance:[\"package.script\",\"process\",\"\",\"worker\",\"src/worker.ts\"]",
-        "name": "worker",
-        "qualifiedName": "worker src/worker.ts",
-        "path": "package.json",
-        "kind": "process",
+        "key": "entrance:worker",
+        "name": "Worker",
+        "qualifiedName": "npm run worker",
+        "path": "",
+        "kind": "app",
         "line": null,
-        "application": "worker",
+        "app": null,
         "score": 664
       },
       {
         "project": "<project>",
-        "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"emails\",\"(…)\"]",
-        "name": "emails",
-        "qualifiedName": "emails (…)",
-        "path": "src/queues/email-worker.ts",
-        "kind": "worker",
+        "key": "entrance:worker/send-an-email",
+        "name": "Send an email",
+        "qualifiedName": "Worker queue emails",
+        "path": "",
+        "kind": "entrance",
         "line": null,
-        "application": "worker",
-        "score": 152
+        "app": "Worker",
+        "score": 332
       },
       {
         "project": "<project>",
-        "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"orders\",\"processOrder\"]",
-        "name": "orders",
-        "qualifiedName": "orders processOrder",
-        "path": "src/queues/orders-worker.ts",
-        "kind": "worker",
+        "key": "entrance:worker/build-a-report",
+        "name": "Build a report",
+        "qualifiedName": "Worker queue reports",
+        "path": "",
+        "kind": "entrance",
         "line": null,
-        "application": "worker",
-        "score": 152
+        "app": "Worker",
+        "score": 332
       },
       {
         "project": "<project>",
-        "key": "entrance:[\"bullmq.worker\",\"worker\",\"\",\"\",\"new URL(\\\"../../report-processor.js\\\", import.meta.url)\"]",
-        "name": "new URL(\"../../report-processor.js\", import.meta.url)",
-        "qualifiedName": "new URL(\"../../report-processor.js\", import.meta.url)",
-        "path": "src/queues/report-worker.ts",
-        "kind": "worker",
+        "key": "entrance:worker/process-an-order",
+        "name": "Process an order",
+        "qualifiedName": "Worker queue orders",
+        "path": "",
+        "kind": "entrance",
         "line": null,
-        "application": "worker",
-        "score": 152
+        "app": "Worker",
+        "score": 332
       }
     ],
     "total": 4,
@@ -61,28 +61,32 @@
         "project": "<project>",
         "path": "src/worker.ts",
         "name": "worker.ts",
-        "definitions": 1,
+        "key": "src/worker.ts#",
+        "definitions": 2,
         "score": 159
       },
       {
         "project": "<project>",
         "path": "src/queues/email-worker.ts",
         "name": "email-worker.ts",
-        "definitions": 1,
+        "key": "src/queues/email-worker.ts#",
+        "definitions": 4,
         "score": 152
       },
       {
         "project": "<project>",
         "path": "src/queues/orders-worker.ts",
         "name": "orders-worker.ts",
-        "definitions": 0,
+        "key": "src/queues/orders-worker.ts#",
+        "definitions": 2,
         "score": 152
       },
       {
         "project": "<project>",
         "path": "src/queues/report-worker.ts",
         "name": "report-worker.ts",
-        "definitions": 0,
+        "key": "src/queues/report-worker.ts#",
+        "definitions": 2,
         "score": 152
       }
     ],

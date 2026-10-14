@@ -94,3 +94,39 @@ a.ts#/call:items.map()%5B%5D.done/call:items.map/callback[0]/call:transform call
   range `transform(item)`
   head `transform`
   name `transform`
+a.ts#/call:useMutation call
+  range `useMutation({ onSuccess: (data) => refresh(data), onError(error) { report(error); }, retry: wrap(() => again()) })`
+  head `useMutation`
+  stmt `useMutation({ onSuccess: (data) => refresh(data), onError(error) { report(error); }, retry: wrap(() => again()) });`
+  name `useMutation`
+a.ts#/call:useMutation/callback[0] lambda
+  range `(data) => refresh(data)`
+  head `(data) =>`
+  body `refresh(data)`
+  name `onSuccess`
+a.ts#/call:useMutation/callback[0]/call:refresh call
+  range `refresh(data)`
+  head `refresh`
+  name `refresh`
+a.ts#/call:useMutation/callback[1] lambda
+  range `onError(error) { report(error); }`
+  head `onError(error)`
+  body `{ report(error); }`
+  name `onError`
+a.ts#/call:useMutation/callback[1]/call:report call
+  range `report(error)`
+  head `report`
+  stmt `report(error);`
+  name `report`
+a.ts#/call:useMutation/call:wrap call
+  range `wrap(() => again())`
+  head `wrap`
+  name `wrap`
+a.ts#/call:useMutation/call:wrap/callback[0] lambda
+  range `() => again()`
+  head `() =>`
+  body `again()`
+a.ts#/call:useMutation/call:wrap/callback[0]/call:again call
+  range `again()`
+  head `again`
+  name `again`

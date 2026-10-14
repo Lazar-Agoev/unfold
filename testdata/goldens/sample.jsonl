@@ -148,8 +148,8 @@
 {"t":"parameter","node":"src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]","index":0,"range":[210,213],"kind":"positional","name":"req"}
 {"t":"parameter","node":"src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]","index":1,"range":[215,218],"kind":"positional","name":"res"}
 {"t":"parameter","node":"src/orders.ts#loadOrder","index":0,"range":[341,351],"kind":"positional","name":"id","type":"string","type_range":[345,351]}
-{"t":"member","node":"src/orders.ts#Order","index":0,"kind":"property","name":"id","type":"string","type_range":[103,109]}
-{"t":"member","node":"src/orders.ts#Order","index":1,"kind":"property","name":"total","type":"number","type_range":[120,126]}
+{"t":"member","node":"src/orders.ts#Order","index":0,"range":[99,110],"kind":"property","name":"id","type":"string","type_range":[103,109]}
+{"t":"member","node":"src/orders.ts#Order","index":1,"range":[113,127],"kind":"property","name":"total","type":"number","type_range":[120,126]}
 {"t":"argument","call":"src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")","index":0,"range":[188,201]}
 {"t":"argument","call":"src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")","index":1,"range":[203,312]}
 {"t":"argument","call":"src/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]/call:loadOrder","index":0,"range":[264,277],"parameter":0}

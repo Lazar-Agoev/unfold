@@ -7,7 +7,7 @@
 //! | --- | --- |
 //! | Signature | `def` (async too) and `lambda`: the return annotation after `->` |
 //! | Parameter | Ruff's `Parameters` in order: `posonlyargs` → `positional_only`, `args` → `positional`, `vararg` → `rest`, `kwonlyargs` → `keyword_only`, `kwarg` → `keywords`; the whole parameter as written (`*` and `**` included), the identifier, whether a default is written, the annotation |
-//! | Member | every annotated assignment to a plain name (not parenthesized) written directly in a class body, kind `property`, whatever the class's decorators or bases |
+//! | Member | every annotated assignment to a plain name (not parenthesized) written directly in a class body, kind `property`, whatever the class's decorators or bases; its range is the whole assignment |
 
 use ruff_python_ast::{Expr, Parameters, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -106,6 +106,7 @@ pub(crate) fn members(lowered: &mut Lowered<'_>, node: u32, body: &[Stmt], text:
         lowered.members.push(Member {
             node,
             index,
+            range: bytes(assignment.range),
             kind: MemberKind::Property,
             name: text
                 .get(name.range.start().to_usize()..name.range.end().to_usize())

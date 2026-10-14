@@ -77,8 +77,8 @@ fn search_fans_out_and_merges_by_score_then_workspace_order() {
 #[test]
 fn kinds_and_limits_apply_across_projects() {
     let (harness, _) = two_projects();
-    // Files only, fuzzy on the path.
-    let files = harness.ok(1, "search", json!({ "query": "ordsvc", "kinds": ["files"] }));
+    // Files only, by name or path.
+    let files = harness.ok(1, "search", json!({ "query": "order-serv", "kinds": ["files"] }));
     assert_eq!(hits(&files, "definitions"), Vec::<Value>::new());
     let first = &hits(&files, "files")[0];
     assert_eq!(first["path"], "src/services/order-service.ts");
@@ -100,61 +100,63 @@ fn kinds_and_limits_apply_across_projects() {
 }
 
 #[test]
-fn entrances_name_their_application_and_files_count_their_definitions() {
+fn entrances_name_their_app_and_files_count_their_definitions() {
     let harness = Harness::compiled("ts-orders");
     let results = harness.ok(
         1,
         "search",
         json!({ "query": "orders", "kinds": ["entrances"], "limit": 500 }),
     );
-    let application = |key: &str| {
+    let hit = |key: &str| {
         hits(&results, "entrances")
             .into_iter()
             .find(|hit| hit["key"] == key)
-            .map(|hit| hit["application"].clone())
             .unwrap_or_else(|| panic!("no hit {key}: {results}"))
     };
-    // A member names its first application; a launch, the application it starts.
-    assert_eq!(
-        application(r#"entrance:["express.route","http","GET","/orders","listOrders"]"#),
-        "server"
-    );
-    assert_eq!(
-        application(r#"entrance:["bullmq.worker","worker","","orders","processOrder"]"#),
-        "worker"
-    );
-    let launch = harness.ok(
+    // An entrance names its app; an app names none.
+    let list = hit("entrance:server/list-orders");
+    assert_eq!(list["kind"], "entrance");
+    assert_eq!(list["name"], "List orders");
+    assert_eq!(list["app"], "Server");
+    assert_eq!(list["path"], "");
+    assert_eq!(hit("entrance:worker/process-an-order")["app"], "Worker");
+    let app = harness.ok(
         1,
         "search",
         json!({ "query": "scheduler", "kinds": ["entrances"] }),
     );
-    assert!(
-        hits(&launch, "entrances")
-            .iter()
-            .any(|hit| hit["kind"] == "process" && hit["application"] == "scheduler"),
-        "{launch}"
-    );
+    let scheduler = hits(&app, "entrances")
+        .into_iter()
+        .find(|hit| hit["key"] == "entrance:scheduler")
+        .unwrap_or_else(|| panic!("the app: {app}"));
+    assert_eq!(scheduler["kind"], "app");
+    assert_eq!(scheduler["app"], Value::Null);
 
-    // An indexed file counts its definitions; any other file has no count.
+    // Files are the analyzed ones, each with its module's key and its definitions counted.
     let files = harness.ok(
         1,
         "search",
         json!({ "query": "o", "kinds": ["files"], "limit": 500 }),
     );
-    let definitions = |path: &str| {
+    let file = |path: &str| {
         hits(&files, "files")
             .into_iter()
             .find(|hit| hit["path"] == path)
-            .map(|hit| hit["definitions"].clone())
             .unwrap_or_else(|| panic!("no hit {path}: {files}"))
     };
-    assert_eq!(definitions("src/routes/orders.ts"), 4);
-    assert_eq!(
-        definitions("src/queues/orders-worker.ts"),
-        0,
-        "indexed, without definitions"
+    let orders = file("src/routes/orders.ts");
+    assert_eq!(orders["key"], "src/routes/orders.ts#");
+    assert_eq!(orders["name"], "orders.ts");
+    assert!(
+        orders["definitions"].as_u64().is_some_and(|count| count >= 5),
+        "{orders}"
     );
-    assert_eq!(definitions("tsconfig.json"), Value::Null);
+    assert!(
+        hits(&files, "files")
+            .iter()
+            .all(|hit| hit["path"] != "tsconfig.json"),
+        "only analyzed files"
+    );
 }
 
 #[test]
@@ -201,27 +203,24 @@ fn types_are_definitions_and_narrow_by_kind() {
             .collect()
     };
     let pair = |key: &str, kind: &str| (key.to_owned(), kind.to_owned());
-    // Every kind of type declaration, with its kind.
+    // Interfaces, type aliases, and enums are types; Python classes are classes.
     let cart = found(json!({ "query": "Cart", "kinds": ["definitions"] }));
     for expected in [
-        pair("ts/src/cart.ts#interface:Cart", "interface"),
-        pair("ts/src/cart.ts#type_alias:CartId", "type_alias"),
-        pair("py/src/shop/models.py#class:Cart", "class"),
+        pair("ts/src/cart.ts#Cart", "type"),
+        pair("ts/src/cart.ts#CartId", "type"),
+        pair("py/src/shop/models.py#Cart", "class"),
     ] {
         assert!(cart.contains(&expected), "{expected:?} in {cart:?}");
     }
-    assert!(found(json!({ "query": "Currency" })).contains(&pair("ts/src/cart.ts#enum:Currency", "enum")));
-    // Narrowed to types: interfaces, type aliases, enums, and classes only.
-    let types = found(json!({
-        "query": "order",
-        "definitionKinds": ["interface", "type_alias", "enum", "class"],
-    }));
-    assert!(types.contains(&pair("ts/src/orders/model.ts#interface:OrderDraft", "interface")));
-    assert!(types.contains(&pair("py/src/shop/accounts.py#class:OrderDraft", "class")));
+    assert!(found(json!({ "query": "Currency" })).contains(&pair("ts/src/cart.ts#Currency", "type")));
+    // Narrowed to classes and types.
+    let types = found(json!({ "query": "order", "definitionKinds": ["type", "class"] }));
+    assert!(types.contains(&pair("ts/src/orders/model.ts#OrderDraft", "type")));
+    assert!(types.contains(&pair("py/src/shop/accounts.py#OrderDraft", "class")));
     assert!(
         types
             .iter()
-            .all(|(_, kind)| ["interface", "type_alias", "enum", "class"].contains(&kind.as_str())),
+            .all(|(_, kind)| ["type", "class"].contains(&kind.as_str())),
         "{types:?}"
     );
     let functions = found(json!({ "query": "order", "definitionKinds": ["function"] }));
@@ -229,6 +228,16 @@ fn types_are_definitions_and_narrow_by_kind() {
     assert!(
         functions.iter().all(|(_, kind)| kind == "function"),
         "{functions:?}"
+    );
+    // Modules only when asked: files find them by path.
+    assert!(
+        found(json!({ "query": "cart" }))
+            .iter()
+            .all(|(_, kind)| kind != "module")
+    );
+    assert!(
+        found(json!({ "query": "cart", "definitionKinds": ["module"] }))
+            .contains(&pair("ts/src/cart.ts#", "module"))
     );
     // The totals count what the kinds let through.
     let total = |kinds: Value| {
@@ -239,14 +248,14 @@ fn types_are_definitions_and_narrow_by_kind() {
         )["definitions"]["total"]
             .clone()
     };
-    assert_eq!(total(json!(["interface"])), 1);
-    assert_eq!(total(json!(["interface", "class"])), 2);
-    assert_eq!(total(json!(["enum"])), 0);
+    assert_eq!(total(json!(["type"])), 1);
+    assert_eq!(total(json!(["type", "class"])), 2);
+    assert_eq!(total(json!(["function"])), 0);
     assert_eq!(
         harness.code(
             1,
             "search",
-            json!({ "query": "Cart", "definitionKinds": ["struct"] })
+            json!({ "query": "Cart", "definitionKinds": ["interface"] })
         ),
         "invalid_args"
     );

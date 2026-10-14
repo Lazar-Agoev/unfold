@@ -1,0 +1,423 @@
+=== py/src/shop/__init__.py#
+( py/src/shop/__init__.py )   key=py/src/shop/__init__.py#
+( End )
+
+=== py/src/shop/accounts.py#
+( py/src/shop/accounts.py )   key=py/src/shop/accounts.py#
+  imports · dataclasses, typing, pydantic, .models
+  · TypeVar → T, @dataclass, @dataclass, @dataclass   4 calls   key=py/src/shop/accounts.py#/call:TypeVar py/src/shop/accounts.py#/call:dataclass py/src/shop/accounts.py#/call:dataclass[1] py/src/shop/accounts.py#/call:dataclass[2]
+  ▸ make_base   key=py/src/shop/accounts.py#/call:make_base
+( End )
+
+=== py/src/shop/accounts.py#Timestamped
+( Timestamped )   key=py/src/shop/accounts.py#Timestamped
+  runs when defined · @dataclass   key=py/src/shop/accounts.py#/call:dataclass
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/accounts.py#OrderDraft
+( OrderDraft )   key=py/src/shop/accounts.py#OrderDraft
+  runs when defined · @dataclass   key=py/src/shop/accounts.py#/call:dataclass[1]
+  ⋯ 2 lines
+( End )
+
+=== py/src/shop/accounts.py#Order
+( Order )   key=py/src/shop/accounts.py#Order
+  runs when defined · @dataclass   key=py/src/shop/accounts.py#/call:dataclass[2]
+  ⋯ 2 lines
+( End )
+
+=== py/src/shop/accounts.py#Profile
+( Profile )   key=py/src/shop/accounts.py#Profile
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/accounts.py#Member
+( Member )   key=py/src/shop/accounts.py#Member
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/accounts.py#GoldMember
+( GoldMember )   key=py/src/shop/accounts.py#GoldMember
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/accounts.py#Delivery
+( Delivery )   key=py/src/shop/accounts.py#Delivery
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/accounts.py#make_base
+( make_base )   key=py/src/shop/accounts.py#make_base
+  RETURN object → End   key=py/src/shop/accounts.py#make_base/return[0]
+( End )
+
+=== py/src/shop/accounts.py#Dynamic
+( Dynamic )   key=py/src/shop/accounts.py#Dynamic
+  runs when defined · make_base (base)   key=py/src/shop/accounts.py#/call:make_base
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/errors.py#
+( py/src/shop/errors.py )   key=py/src/shop/errors.py#
+( End )
+
+=== py/src/shop/errors.py#PaymentError
+( PaymentError )   key=py/src/shop/errors.py#PaymentError
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/errors.py#CardDeclined
+( CardDeclined )   key=py/src/shop/errors.py#CardDeclined
+( End )
+
+=== py/src/shop/errors.py#CardDeclined.__init__
+( __init__ )   key=py/src/shop/errors.py#CardDeclined.__init__
+  · super().__init__ ?   key=py/src/shop/errors.py#CardDeclined.__init__/call:super().__init__
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/models.py#
+( py/src/shop/models.py )   key=py/src/shop/models.py#
+  imports · dataclasses, decimal, typing, pydantic
+  ⋯ 1 line
+  · @dataclass, @dataclass   2 calls   key=py/src/shop/models.py#/call:dataclass py/src/shop/models.py#/call:dataclass[1]
+( End )
+
+=== py/src/shop/models.py#CartItem
+( CartItem )   key=py/src/shop/models.py#CartItem
+  runs when defined · @dataclass   key=py/src/shop/models.py#/call:dataclass
+  ⋯ 3 lines
+( End )
+
+=== py/src/shop/models.py#Cart
+( Cart )   key=py/src/shop/models.py#Cart
+  runs when defined · @dataclass   key=py/src/shop/models.py#/call:dataclass[1]
+  ⋯ 3 lines
+( End )
+
+=== py/src/shop/models.py#Address
+( Address )   key=py/src/shop/models.py#Address
+  ⋯ 2 lines
+( End )
+
+=== py/src/shop/models.py#Customer
+( Customer )   key=py/src/shop/models.py#Customer
+  ⋯ 4 lines
+( End )
+
+=== py/src/shop/models.py#Receipt
+( Receipt )   key=py/src/shop/models.py#Receipt
+  ⋯ 2 lines
+( End )
+
+=== py/src/shop/orders.py#
+( py/src/shop/orders.py )   key=py/src/shop/orders.py#
+  imports · typing, .errors, .models, .payments
+  · TypeVar → T   key=py/src/shop/orders.py#/call:TypeVar
+( End )
+
+=== py/src/shop/orders.py#first
+( first )   key=py/src/shop/orders.py#first
+  RETURN items[0] → End   key=py/src/shop/orders.py#first/return[0]
+( End )
+
+=== py/src/shop/orders.py#create_order
+( create_order )   key=py/src/shop/orders.py#create_order
+  ▸ Gateway → gateway · new   key=py/src/shop/orders.py#create_order/call:Gateway
+  TRY   key=py/src/shop/orders.py#create_order/try[0] py/src/shop/orders.py#create_order/try[0]/body
+      ▸ gateway.charge → receipt   key=py/src/shop/orders.py#create_order/try[0]/body/call:gateway.charge
+  ON ERROR → except CardDeclined   key=py/src/shop/orders.py#create_order/try[0]/except[0]
+      RAISE → the caller   key=py/src/shop/orders.py#create_order/try[0]/except[0]/raise[0]
+  ▸ Gateway.charge   key=py/src/shop/orders.py#create_order/call:Gateway.charge
+  ▸ log   key=py/src/shop/orders.py#create_order/call:log
+  ▸ log   key=py/src/shop/orders.py#create_order/call:log[1]
+  RETURN receipt → End   key=py/src/shop/orders.py#create_order/return[0]
+( End )
+
+=== py/src/shop/orders.py#log
+( log )   key=py/src/shop/orders.py#log
+  ⋯ 1 line
+( End )
+
+=== py/src/shop/orders.py#label
+( label )   key=py/src/shop/orders.py#label
+  RETURN f"{key}={value}" → End   key=py/src/shop/orders.py#label/return[0]
+( End )
+
+=== py/src/shop/payments.py#
+( py/src/shop/payments.py )   key=py/src/shop/payments.py#
+  imports · decimal, .errors, .models
+( End )
+
+=== py/src/shop/payments.py#Gateway
+( Gateway )   key=py/src/shop/payments.py#Gateway
+( End )
+
+=== py/src/shop/payments.py#Gateway.__init__
+( __init__ )   key=py/src/shop/payments.py#Gateway.__init__
+  ⋯ 2 lines
+( End )
+
+=== py/src/shop/payments.py#Gateway.charge
+( charge )   key=py/src/shop/payments.py#Gateway.charge
+  IF not cart.items   key=py/src/shop/payments.py#Gateway.charge/if[0] py/src/shop/payments.py#Gateway.charge/if[0]/then
+      RAISE ▸ CardDeclined → the caller   key=py/src/shop/payments.py#Gateway.charge/if[0]/then/raise[0]
+  ▸ self.total · into Receipt(…)   key=py/src/shop/payments.py#Gateway.charge/return[0]/call:Receipt/call:self.total
+  RETURN Receipt ? → End   key=py/src/shop/payments.py#Gateway.charge/return[0]
+( End )
+
+=== py/src/shop/payments.py#Gateway.total
+( total )   key=py/src/shop/payments.py#Gateway.total
+  RETURN sum → End   key=py/src/shop/payments.py#Gateway.total/return[0]
+( End )
+
+=== py/src/shop/payments.py#Gateway.fee
+( fee )   key=py/src/shop/payments.py#Gateway.fee
+  runs when defined · @staticmethod   key=py/src/shop/payments.py#Gateway/call:staticmethod
+  RETURN amount / 100 → End   key=py/src/shop/payments.py#Gateway.fee/return[0]
+( End )
+
+=== py/src/shop/payments.py#Gateway.from_env
+( from_env )   key=py/src/shop/payments.py#Gateway.from_env
+  runs when defined · @classmethod   key=py/src/shop/payments.py#Gateway/call:classmethod
+  RETURN cls ? → End   key=py/src/shop/payments.py#Gateway.from_env/return[0]
+( End )
+
+=== ts/src/cart.ts#
+( ts/src/cart.ts )   key=ts/src/cart.ts#
+( End )
+
+=== ts/src/cart.ts#CartId
+( CartId )   key=ts/src/cart.ts#CartId
+
+=== ts/src/cart.ts#Money
+( Money )   key=ts/src/cart.ts#Money
+
+=== ts/src/cart.ts#CartItem
+( CartItem )   key=ts/src/cart.ts#CartItem
+
+=== ts/src/cart.ts#Cart
+( Cart )   key=ts/src/cart.ts#Cart
+
+=== ts/src/cart.ts#Address
+( Address )   key=ts/src/cart.ts#Address
+
+=== ts/src/cart.ts#Address[1]
+( Address )   key=ts/src/cart.ts#Address[1]
+
+=== ts/src/cart.ts#CartSummary
+( CartSummary )   key=ts/src/cart.ts#CartSummary
+
+=== ts/src/cart.ts#Discount
+( Discount )   key=ts/src/cart.ts#Discount
+
+=== ts/src/cart.ts#Currency
+( Currency )   key=ts/src/cart.ts#Currency
+
+=== ts/src/errors.ts#
+( ts/src/errors.ts )   key=ts/src/errors.ts#
+( End )
+
+=== ts/src/errors.ts#PaymentError
+( PaymentError )   key=ts/src/errors.ts#PaymentError
+( End )
+
+=== ts/src/errors.ts#PaymentError.constructor
+( constructor )   key=ts/src/errors.ts#PaymentError.constructor
+  · super   key=ts/src/errors.ts#PaymentError.constructor/call:super
+( End )
+
+=== ts/src/errors.ts#CardDeclinedError
+( CardDeclinedError )   key=ts/src/errors.ts#CardDeclinedError
+( End )
+
+=== ts/src/errors.ts#CardDeclinedError.constructor
+( constructor )   key=ts/src/errors.ts#CardDeclinedError.constructor
+  ▸ super   key=ts/src/errors.ts#CardDeclinedError.constructor/call:super
+( End )
+
+=== ts/src/errors.ts#OutOfStockError
+( OutOfStockError )   key=ts/src/errors.ts#OutOfStockError
+( End )
+
+=== ts/src/inventory.ts#
+( ts/src/inventory.ts )   key=ts/src/inventory.ts#
+  imports · ./errors.js
+( End )
+
+=== ts/src/inventory.ts#Hold
+( Hold )   key=ts/src/inventory.ts#Hold
+
+=== ts/src/inventory.ts#reserveInventory
+( reserveInventory )   key=ts/src/inventory.ts#reserveInventory
+  IF items.length === 0   key=ts/src/inventory.ts#reserveInventory/if[0] ts/src/inventory.ts#reserveInventory/if[0]/then
+      THROW ▸ OutOfStockError → the caller   key=ts/src/inventory.ts#reserveInventory/if[0]/then/throw[0]
+  · Date   key=ts/src/inventory.ts#reserveInventory/return[0]/call:Date
+  RETURN { id: "hold-1", items, expiresAt: new Date() } → End   key=ts/src/inventory.ts#reserveInventory/return[0]
+( End )
+
+=== ts/src/inventory.ts#first
+( first )   key=ts/src/inventory.ts#first
+  RETURN items[0] → End   key=ts/src/inventory.ts#first/return[0]
+( End )
+
+=== ts/src/legacy.ts#
+( ts/src/legacy.ts )   key=ts/src/legacy.ts#
+( End )
+
+=== ts/src/legacy.ts#legacyTotal
+( legacyTotal )   key=ts/src/legacy.ts#legacyTotal
+  RETURN cart.items.length → End   key=ts/src/legacy.ts#legacyTotal/return[0]
+( End )
+
+=== ts/src/legacy.ts#legacyReport
+( legacyReport )   key=ts/src/legacy.ts#legacyReport
+  ▸ legacyTotal   key=ts/src/legacy.ts#legacyReport/return[0]/call:legacyTotal
+  RETURN `${user.email}: ${legacyTotal(cart)}` → End   key=ts/src/legacy.ts#legacyReport/return[0]
+( End )
+
+=== ts/src/orders/create.ts#
+( ts/src/orders/create.ts )   key=ts/src/orders/create.ts#
+  imports · ../cart.js, ../inventory.js, ../payments.js, ../errors.js, ../legacy.js
+( End )
+
+=== ts/src/orders/create.ts#Order
+( Order )   key=ts/src/orders/create.ts#Order
+
+=== ts/src/orders/create.ts#Request
+( Request )   key=ts/src/orders/create.ts#Request
+
+=== ts/src/orders/create.ts#createOrder
+( createOrder )   key=ts/src/orders/create.ts#createOrder
+  ⋯ 1 line
+  ▸ reserveInventory → hold · AWAIT   key=ts/src/orders/create.ts#createOrder/call:reserveInventory
+  TRY   key=ts/src/orders/create.ts#createOrder/try[0] ts/src/orders/create.ts#createOrder/try[0]/body
+      ▸ chargePayment → charge · AWAIT   key=ts/src/orders/create.ts#createOrder/try[0]/body/call:chargePayment
+      RETURN ▸ toOrder → End   key=ts/src/orders/create.ts#createOrder/try[0]/body/return[0]
+  ON ERROR → catch (error)   key=ts/src/orders/create.ts#createOrder/try[0]/catch
+      THROW ▸ PaymentError → the caller   key=ts/src/orders/create.ts#createOrder/try[0]/catch/throw[0]
+( End )
+
+=== ts/src/orders/create.ts#toOrder
+( toOrder )   key=ts/src/orders/create.ts#toOrder
+  RETURN { id: `order-${cart.id}`, cart, chargeId, holdId, currency: models.Currency.Usd … → End   key=ts/src/orders/create.ts#toOrder/return[0]
+( End )
+
+=== ts/src/orders/create.ts#describe
+( describe )   key=ts/src/orders/create.ts#describe
+  ▸ first → item   key=ts/src/orders/create.ts#describe/call:first
+  ▸ notify   key=ts/src/orders/create.ts#describe/call:notify
+  · format ?   key=ts/src/orders/create.ts#describe/return[0]/call:format
+  ▸ legacyReport   key=ts/src/orders/create.ts#describe/return[0]/call:legacyReport
+  RETURN format(order) + (item ? ` (${item.sku})` : "") + legacyReport(order.cart, order.… → End   key=ts/src/orders/create.ts#describe/return[0]
+( End )
+
+=== ts/src/orders/create.ts#summary
+( summary )   key=ts/src/orders/create.ts#summary
+  RETURN `${order.id}: ${order.chargeId}` → End   key=ts/src/orders/create.ts#summary/return[0]
+( End )
+
+=== ts/src/orders/create.ts#notify
+( notify )   key=ts/src/orders/create.ts#notify
+  · render ?   key=ts/src/orders/create.ts#notify/call:render
+  □ channels.forEach   key=ts/src/orders/create.ts#notify/call:channels.forEach
+      ↳ callback (channel) =>   key=ts/src/orders/create.ts#notify/call:channels.forEach/callback[0]
+( End )
+
+=== ts/src/orders/create.ts#notify/call:channels.forEach/callback[0]
+( callback to channels.forEach )   key=ts/src/orders/create.ts#notify/call:channels.forEach/callback[0]
+  · channel.trim ?   key=ts/src/orders/create.ts#notify/call:channels.forEach/callback[0]/call:channel.trim
+( End )
+
+=== ts/src/orders/cycle.ts#
+( ts/src/orders/cycle.ts )   key=ts/src/orders/cycle.ts#
+( End )
+
+=== ts/src/orders/cycle.ts#Loop
+( Loop )   key=ts/src/orders/cycle.ts#Loop
+
+=== ts/src/orders/cycle.ts#Knot
+( Knot )   key=ts/src/orders/cycle.ts#Knot
+
+=== ts/src/orders/model.ts#
+( ts/src/orders/model.ts )   key=ts/src/orders/model.ts#
+( End )
+
+=== ts/src/orders/model.ts#Timestamped
+( Timestamped )   key=ts/src/orders/model.ts#Timestamped
+
+=== ts/src/orders/model.ts#Tracked
+( Tracked )   key=ts/src/orders/model.ts#Tracked
+
+=== ts/src/orders/model.ts#OrderDraft
+( OrderDraft )   key=ts/src/orders/model.ts#OrderDraft
+
+=== ts/src/orders/model.ts#Order
+( Order )   key=ts/src/orders/model.ts#Order
+
+=== ts/src/orders/model.ts#Shipment
+( Shipment )   key=ts/src/orders/model.ts#Shipment
+
+=== ts/src/orders/model.ts#Entity
+( Entity )   key=ts/src/orders/model.ts#Entity
+  ⋯ 1 line
+( End )
+
+=== ts/src/orders/model.ts#Auditable
+( Auditable )   key=ts/src/orders/model.ts#Auditable
+
+=== ts/src/orders/model.ts#OrderRecord
+( OrderRecord )   key=ts/src/orders/model.ts#OrderRecord
+  ⋯ 4 lines
+( End )
+
+=== ts/src/payments.ts#
+( ts/src/payments.ts )   key=ts/src/payments.ts#
+  imports · stripe, ./errors.js
+  · Stripe → stripe   key=ts/src/payments.ts#/call:Stripe
+( End )
+
+=== ts/src/payments.ts#Charge
+( Charge )   key=ts/src/payments.ts#Charge
+
+=== ts/src/payments.ts#chargePayment
+( chargePayment )   key=ts/src/payments.ts#chargePayment
+  ▸ total · into stripe.paymentIntents.create(…)   key=ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create/call:total
+  · stripe.paymentIntents.create → intent   key=ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create
+  IF intent.status !== "succeeded"   key=ts/src/payments.ts#chargePayment/if[0] ts/src/payments.ts#chargePayment/if[0]/then
+      THROW ▸ CardDeclinedError → the caller   key=ts/src/payments.ts#chargePayment/if[0]/then/throw[0]
+  RETURN { id: intent.id, amount: intent.amount, intent } → End   key=ts/src/payments.ts#chargePayment/return[0]
+( End )
+
+=== ts/src/payments.ts#total
+( total )   key=ts/src/payments.ts#total
+  RETURN cart.items.reduce ? → End   key=ts/src/payments.ts#total/return[0]
+      ↳ callback (sum, item) =>   key=ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
+( End )
+
+=== ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
+( callback to cart.items.reduce )   key=ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
+( End )
+
+=== ts/src/user.ts#
+( ts/src/user.ts )   key=ts/src/user.ts#
+( End )
+
+=== ts/src/user.ts#User
+( User )   key=ts/src/user.ts#User
+
+=== ts/src/user.ts#Session
+( Session )   key=ts/src/user.ts#Session
+  · Date → expiresAt   key=ts/src/user.ts#Session/call:Date
+( End )
+
+=== ts/src/user.ts#Session.constructor
+( constructor )   key=ts/src/user.ts#Session.constructor
+( End )
+
+=== ts/src/user.ts#Session.isExpired
+( isExpired )   key=ts/src/user.ts#Session.isExpired
+  RETURN now > this.expiresAt → End   key=ts/src/user.ts#Session.isExpired/return[0]
+( End )
+

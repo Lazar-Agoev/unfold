@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use rustc_hash::FxHashMap;
-use unfold_core::Graph;
-use unfold_core::vocab::{EdgeKind, Language, Resolution};
+use unfold_core::vocab::{Language, LinkKind};
+use unfold_core::{FileGraph, Graph, Link, LinkTarget};
 
 use super::file::OracleFile;
 use super::justified::{Justified, JustifiedEntry};
@@ -62,10 +62,10 @@ impl fmt::Display for Ratio {
     }
 }
 
-/// One resolved Unfold edge whose target the oracle does not confirm.
+/// One resolved Unfold link whose target the oracle does not confirm.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Disagreement {
-    /// The call or construction block.
+    /// The call node.
     pub site: Box<str>,
     /// The argument position, for a reference.
     pub position: Option<u32>,
@@ -124,7 +124,18 @@ impl Comparison {
     }
 }
 
-/// Compares `graph`'s `language` edges with `oracle`.
+/// The written position of the argument a `passes` link names: the argument of its call whose
+/// range holds the passed name.
+fn argument_position(file: &FileGraph, link: &Link) -> Option<u32> {
+    file.types
+        .arguments
+        .iter()
+        .find(|argument| argument.call == link.from && argument.range.contains(link.range))
+        .map(|argument| argument.index)
+}
+
+/// Compares `graph`'s `language` links with `oracle`: each call's `calls` link and each
+/// `passes` link to a project definition.
 pub(crate) fn compare(
     corpus: &str,
     language: Language,
@@ -139,18 +150,17 @@ pub(crate) fn compare(
     let mut unfold_references: FxHashMap<(&str, u32), &str> = FxHashMap::default();
     let mut disagreements = Vec::new();
     for file in graph.files.iter().filter(|file| file.file.language == language) {
-        for edge in &file.edges {
-            let Some(block) = file.blocks.get(edge.source as usize) else {
+        for link in &file.links {
+            let Some(node) = file.nodes.get(link.from as usize) else {
                 continue;
             };
-            let site = block.key.as_str();
-            let target = edge
-                .target
-                .as_ref()
-                .map(|key| key.as_str())
-                .filter(|_| edge.resolution == Resolution::Resolved);
-            match edge.kind {
-                EdgeKind::Calls | EdgeKind::Constructs if edge.seq == 0 => {
+            let site = node.key.as_str();
+            let target = match &link.to {
+                LinkTarget::Project(key) => Some(key.as_str()),
+                _ => None,
+            };
+            match link.kind {
+                LinkKind::Calls => {
                     unfold_calls.insert(site, target);
                     let Some(target) = target else { continue };
                     comparison.calls.total += 1;
@@ -174,8 +184,8 @@ pub(crate) fn compare(
                         });
                     }
                 }
-                EdgeKind::References => {
-                    let (Some(target), Some(position)) = (target, edge.position) else {
+                LinkKind::Passes => {
+                    let (Some(target), Some(position)) = (target, argument_position(file, link)) else {
                         continue;
                     };
                     unfold_references.insert((site, position), target);
@@ -195,7 +205,7 @@ pub(crate) fn compare(
                         }),
                     }
                 }
-                _ => {}
+                LinkKind::Extends | LinkKind::Imports | LinkKind::Types => {}
             }
         }
     }

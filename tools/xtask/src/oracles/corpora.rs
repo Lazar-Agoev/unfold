@@ -9,7 +9,9 @@ use serde::Deserialize;
 use unfold_core::vocab::Language;
 use unfold_core::{ContentHash, Graph};
 
-use crate::compile::{compile_with, languages};
+use unfold_workspace::default_languages;
+
+use crate::compile::compile_with;
 use crate::repo;
 
 /// The environment variable naming a folder that holds lock corpora as `<lock id>/`.
@@ -196,7 +198,7 @@ impl OracleCorpus {
             std::fs::write(&config, settings)
                 .with_context(|| format!("cannot write {}", config.display()))?;
         }
-        let selected = languages()
+        let selected = default_languages()
             .into_iter()
             .filter(|language| self.languages.contains(&language.id()))
             .collect();

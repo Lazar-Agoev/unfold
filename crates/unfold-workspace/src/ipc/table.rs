@@ -11,8 +11,8 @@
 use serde::Deserialize;
 
 use crate::commands::{
-    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, compiling, entrances, file_view, files,
-    graph, projects, relations, search, settings, types, windows, workspace,
+    NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, code, compiling, entrances, files, graph,
+    projects, relations, search, settings, types, windows, workspace,
 };
 use crate::compile::{CompileOutcome, CompileProgress};
 use crate::ipc::context::Ctx;
@@ -105,19 +105,20 @@ command_table! {
     // Project, Home, settings.
     /// Home's header, state line, and Health line.
     "project_summary" => ProjectSummary(ProjectArgs) -> projects::ProjectSummary = projects::project_summary;
-    /// The entrance catalog: applications by category with their launches, or one
-    /// application's (or the unreached) entrance rows, filtered and paged.
-    "entrances" => Entrances(entrances::EntrancesArgs) -> entrances::EntrancesView = entrances::entrances;
+    /// The apps and entrances of `unfold.toml` as written, each `code` with its state and its
+    /// fix when one exists.
+    "entrances" => Entrances(ProjectArgs) -> entrances::EntrancesView = entrances::entrances;
     /// The Problems list, with the health of every board.
     "problems" => Problems(ProjectArgs) -> Vec<ProblemItem> = compiling::problems;
     /// Compiles the project; streams progress.
     "compile" => Compile(ProjectArgs) -> CompileOutcome, stream CompileProgress = compiling::compile;
     /// Cancels a project's running and queued Compiles.
     "cancel_compile" => CancelCompile(ProjectArgs) -> compiling::CancelCompileResult = compiling::cancel_compile;
-    /// A project's `unfold.toml`.
+    /// A project's `unfold.toml`: its settings and apps.
     "project_config" => ProjectConfig(ProjectArgs) -> settings::ProjectConfig = settings::project_config;
-    /// Applies validated edits to a project's `unfold.toml`.
-    "update_project_config" => UpdateProjectConfig(settings::UpdateProjectConfigArgs) -> settings::ProjectConfig = settings::update_project_config;
+    /// Applies validated edits to a project's `unfold.toml` and returns the diff. An edit of
+    /// only `[[app]]` tables resolves the entrances again without compiling.
+    "update_project_config" => UpdateProjectConfig(settings::UpdateProjectConfigArgs) -> settings::ProjectConfigUpdate = settings::update_project_config;
     /// The app settings.
     "get_settings" => GetSettings(NoArgs) -> AppSettings = settings::get_settings;
     /// Saves the app settings.
@@ -126,32 +127,38 @@ command_table! {
     "app_info" => AppInfo(NoArgs) -> settings::AppInfo = settings::app_info;
 
     // Files and graph.
-    /// The peek sheet's render model of a file, or one page of lines.
-    "file_view" => FileView(file_view::FileViewArgs) -> file_view::FileView = file_view::file_view;
+    /// The code panel's model for one selection: a block, lines, a field, a file, or an app or
+    /// entrance.
+    "code_view" => CodeView(code::CodeViewArgs) -> unfold_reader::code_view::CodeView = code::code_view;
     /// Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
     /// created empty first when it has none.
     "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> () = files::open_in_editor;
-    /// An entrance card or a block card (Code and Flow).
+    /// A card: a definition's drawn flow (with the page's overlay, the card's open paths, and
+    /// Show all calls), or an app's or entrance's card.
     "card" => Card(graph::CardArgs) -> graph::CardView = graph::card;
-    /// The hover over a call link: signature line and location.
-    "peek" => Peek(ProjectKeyArgs) -> graph::Peek = graph::peek;
-    /// Callers (paginated), outgoing calls grouped, and reached-from.
+    /// Agent text: the compiled tree of a definition, with each block's label and key.
+    "code_text" => CodeText(ProjectKeyArgs) -> unfold_reader::drawing::CodeText = graph::code_text;
+    /// Agent text: a definition's drawn flow, shaped like `card`'s, with its blocks' labels and
+    /// keys.
+    "flow_text" => FlowText(graph::CardArgs) -> graph::FlowText = graph::flow_text;
+    /// Callers (paginated), outgoing calls, and reached-from.
     "relations" => Relations(relations::RelationsArgs) -> relations::Relations = relations::relations;
-    /// Show callers: the distinct definitions that call a block.
+    /// Show callers: the distinct definitions that call a definition.
     "callers" => Callers(relations::CallersArgs) -> relations::Callers = relations::callers;
     /// The pages of a project's boards where a key is a card ("Already on …").
     "board_refs" => BoardRefs(ProjectKeyArgs) -> boards::BoardRefs = boards::board_refs;
 
-    // Typed lines.
-    /// The contract of one selected line: sends, returns, throws, and the lines it read.
-    "call_contract" => CallContract(types::CallContractArgs) -> unfold_reader::contracts::CallContract = types::call_contract;
-    /// A type declaration or class: its members, aliased type, and use count.
+    // Contracts.
+    /// A call's contract, by its block key: what it sends, what returns and where the value
+    /// lands, and what the callee raises.
+    "call_contract" => CallContract(ProjectKeyArgs) -> unfold_reader::contracts::CallContract = types::call_contract;
+    /// A class or type: its members, aliased type, and use count.
     "type_definition" => TypeDefinition(ProjectKeyArgs) -> unfold_reader::contracts::TypeDefinition = types::type_definition;
-    /// One page of the places a type declaration or class is written.
+    /// One page of the places a class or type is named.
     "type_uses" => TypeUses(types::TypeUsesArgs) -> unfold_reader::contracts::TypeUses = types::type_uses;
 
     // Search.
-    /// Definitions, entrances, and files by name, across the projects.
+    /// Definitions, apps and entrances, and files by name, across the projects.
     "search" => Search(search::SearchArgs) -> search::SearchResults = search::search;
 
     // Boards.

@@ -1,0 +1,31 @@
+{
+  "project": "<project>",
+  "key": "src/services/order-service.ts#OrderService.place",
+  "total": 3,
+  "callers": [
+    {
+      "key": "src/jobs/import-orders.ts#importOrders",
+      "name": "importOrders",
+      "qualifiedName": "importOrders",
+      "path": "src/jobs/import-orders.ts",
+      "line": 6,
+      "sites": 1
+    },
+    {
+      "key": "src/jobs/process-order.ts#processOrder",
+      "name": "processOrder",
+      "qualifiedName": "processOrder",
+      "path": "src/jobs/process-order.ts",
+      "line": 7,
+      "sites": 1
+    },
+    {
+      "key": "src/routes/orders.ts#createOrder",
+      "name": "createOrder",
+      "qualifiedName": "createOrder",
+      "path": "src/routes/orders.ts",
+      "line": 25,
+      "sites": 1
+    }
+  ]
+}

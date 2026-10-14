@@ -111,8 +111,9 @@ fn stored(workspace: &Workspace) -> (i64, String) {
 #[test]
 fn reopening_an_unchanged_folder_neither_links_nor_commits() {
     let playground = Playground::new("ts-orders", true);
-    // What linking finds (a package manifest it can't read) survives a reopen that doesn't link.
-    playground.write("tools/package.json", "[]\n");
+    // What linking finds (a TypeScript configuration it can't read) survives a reopen that
+    // doesn't link.
+    playground.write("tools/tsconfig.json", "[]\n");
     let sink = RecordingSink::new();
     let workspace = playground.open(&sink, false);
     compile(&workspace);
@@ -120,7 +121,7 @@ fn reopening_an_unchanged_folder_neither_links_nor_commits() {
     assert!(
         problems
             .iter()
-            .any(|problem| problem.path == "tools/package.json"),
+            .any(|problem| problem.path == "tools/tsconfig.json"),
         "{problems:?}"
     );
     let (compiled_at, graph) = stored(&workspace);
@@ -136,16 +137,20 @@ fn reopening_an_unchanged_folder_neither_links_nor_commits() {
     );
     close(workspace);
 
-    // A change only linking sees, made while closed, links again and commits.
+    // An app added while closed is resolved and committed, with no file extracted.
     let config = std::fs::read_to_string(playground.path("unfold.toml")).expect("settings");
     playground.write(
         "unfold.toml",
-        &format!("{config}\n[[entrance]]\nkind = \"command\"\ntrigger = \"go\"\nhandler = \"src/server.ts#shutdown\"\n"),
+        &format!("{config}\n[[app]]\nname = \"Go\"\ncode = \"src/server.ts#shutdown\"\n"),
     );
     let (workspace, extracted) = reopen(&playground, &sink);
     assert_eq!(extracted, 0, "no file's facts changed");
-    let (at, relinked) = stored(&workspace);
+    let (at, resolved) = stored(&workspace);
     assert!(at >= compiled_at);
-    assert_ne!(relinked, graph, "the manual entrance is in the stored graph");
+    assert_ne!(resolved, graph, "the new app is in the stored graph");
+    let reader = workspace.readers().expect("readers").get().expect("reader");
+    let apps = reader.apps().expect("apps");
+    assert_eq!(apps.last().map(|app| app.key.as_str()), Some("entrance:go"));
+    drop(reader);
     close(workspace);
 }

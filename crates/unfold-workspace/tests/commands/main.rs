@@ -2,7 +2,9 @@
 //! of the playgrounds in temporary folders added as projects.
 
 mod boards;
+mod cards;
 mod claims;
+mod code_panel;
 mod common;
 mod goldens;
 mod home;
@@ -12,6 +14,5 @@ mod security;
 mod settings;
 mod streams;
 mod types;
-mod views;
 mod windows;
 mod workspace;

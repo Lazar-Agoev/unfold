@@ -456,6 +456,7 @@ fn a_bad_app_is_listed_with_its_problem_and_span() {
         ("[[app]]\nrun = \"go\"\n", MissingName, "[[app]]\nrun = \"go\""),
         ("[[app]]\nname = \"--\"\n", EmptyKey, "[[app]]\nname = \"--\""),
         ("[[app]]\nname = 3\n", WrongType, "3"),
+        ("[[app]]\nname = \"A\"\ncode = \"\"\n", EmptyKey, "\"\""),
         (
             "[[app]]\nname = \"A\"\ncode = [\"a.py#\"]\n",
             WrongType,
@@ -528,6 +529,41 @@ entrances = [
     );
     assert_eq!(app.entrances[2].name, None, "listed without a name");
     assert_eq!(keys(&app.entrances[4].code), ["a.py#i"], "listed as written");
+}
+
+#[test]
+fn an_empty_code_key_marks_its_entry() {
+    let text = r#"[[app]]
+name = "A"
+code = ""
+entrances = [
+  { name = "Blank", code = "" },
+  { name = "Blank in a list", code = ["a.py#f", ""] },
+  { name = "Fine", code = ["a.py#f", "a.py#g"] },
+]
+"#;
+    let app = only_app(text);
+    let (kind, at) = problem_of(text, &app.problem);
+    assert_eq!((kind, at.as_str()), (EntryProblemKind::EmptyKey, "\"\""));
+    let message = &app.problem.as_ref().expect("a problem").message;
+    assert!(message.contains("empty key"), "{message}");
+    assert_eq!(app.code.as_ref().map(Key::as_str), Some(""), "listed as written");
+    let problems: Vec<_> = app
+        .entrances
+        .iter()
+        .map(|entrance| entrance.problem.as_ref().map(|problem| problem.kind))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            Some(EntryProblemKind::EmptyKey),
+            Some(EntryProblemKind::EmptyKey),
+            None
+        ]
+    );
+    let blank_in_a_list = &app.entrances[1];
+    assert_eq!(problem_of(text, &blank_in_a_list.problem).1, "\"\"");
+    assert_eq!(keys(&blank_in_a_list.code), ["a.py#f", ""], "listed as written");
 }
 
 #[test]

@@ -81,17 +81,27 @@ fn using_a_result_wakes_its_project() {
     let card = harness.ok(
         1,
         "card",
-        json!({ "project": harness.project, "key": "src/routes/orders.ts#function:createOrder" }),
+        json!({ "project": harness.project, "key": "src/routes/orders.ts#createOrder" }),
     );
-    assert_eq!(card["type"], "block");
+    assert_eq!(card["type"], "definition");
     assert!(live(&harness, &harness.project), "a card wakes its project");
     eventually("it rests again", || !live(&harness, &harness.project));
     harness.ok(
         1,
-        "file_view",
-        json!({ "project": harness.project, "path": "src/server.ts", "range": { "startLine": 1, "endLine": 3 } }),
+        "code_view",
+        json!({ "project": harness.project, "target": { "kind": "file", "path": "src/server.ts" } }),
     );
-    assert!(live(&harness, &harness.project), "a file view wakes its project");
+    assert!(
+        live(&harness, &harness.project),
+        "the code panel wakes its project"
+    );
+    eventually("it rests again", || !live(&harness, &harness.project));
+    let entrances = harness.ok(1, "entrances", json!({ "project": harness.project }));
+    assert!(entrances["apps"].is_array(), "{entrances}");
+    assert!(
+        live(&harness, &harness.project),
+        "entrances wake their project: the engine resolves them"
+    );
 }
 
 #[test]
@@ -203,16 +213,10 @@ fn a_resting_project_answers_reads_from_its_stored_graph() {
             .any(|hit| hit["qualifiedName"] == "OrderService.place" && hit["project"] == harness.project),
         "{results}"
     );
-    let files = harness.ok(1, "search", json!({ "query": "ordsvc", "kinds": ["files"] }));
+    let files = harness.ok(1, "search", json!({ "query": "order-serv", "kinds": ["files"] }));
     assert_eq!(
         files["files"]["hits"][0]["path"], "src/services/order-service.ts",
         "files come from the stored graph"
-    );
-    let rows = harness.entrance_rows(None);
-    assert!(rows.iter().all(|row| row["key"].is_string()), "{rows:?}");
-    assert!(
-        rows.iter().all(|row| row["reaches"] == Value::Null),
-        "reach needs the live index"
     );
     let config = harness.ok(1, "project_config", json!({ "project": harness.project }));
     assert_eq!(config["exists"], true);
@@ -240,9 +244,8 @@ fn a_project_whose_folder_is_gone_is_unavailable() {
         "not_a_folder"
     );
     assert_eq!(harness.row(&harness.project)["state"]["kind"], "unavailable");
-    // A resting read of a missing graph is "not compiled", never a failure.
     assert_eq!(
         harness.code(1, "entrances", json!({ "project": harness.project })),
-        "not_compiled"
+        "not_a_folder"
     );
 }

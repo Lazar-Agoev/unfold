@@ -177,7 +177,15 @@ impl<'s> Typed<'s> {
                 .initializer
                 .as_ref()
                 .and_then(|initializer| self.text(range(initializer.span())));
-            self.member(node, MemberKind::Value, Some(name), |member| member.value = value);
+            self.member(
+                node,
+                range(member.span),
+                MemberKind::Value,
+                Some(name),
+                |member| {
+                    member.value = value;
+                },
+            );
         }
     }
 
@@ -190,7 +198,7 @@ impl<'s> Typed<'s> {
                 ClassElement::PropertyDefinition(it) if !it.r#static => {
                     let name = self.key_range(&it.key, it.computed);
                     let ty = self.linked_type(it.type_annotation.as_deref());
-                    self.member(node, MemberKind::Property, Some(name), |member| {
+                    self.member(node, range(it.span), MemberKind::Property, Some(name), |member| {
                         member.optional = it.optional;
                         member.readonly = it.readonly;
                         member.default = it.value.is_some();
@@ -200,7 +208,7 @@ impl<'s> Typed<'s> {
                 ClassElement::AccessorProperty(it) if !it.r#static => {
                     let name = self.key_range(&it.key, it.computed);
                     let ty = self.linked_type(it.type_annotation.as_deref());
-                    self.member(node, MemberKind::Property, Some(name), |member| {
+                    self.member(node, range(it.span), MemberKind::Property, Some(name), |member| {
                         member.default = it.value.is_some();
                         member.ty = ty;
                     });
@@ -228,12 +236,18 @@ impl<'s> Typed<'s> {
             return;
         };
         let ty = self.linked_type(parameter.type_annotation.as_deref());
-        self.member(node, MemberKind::Property, Some(range(id.span)), |member| {
-            member.optional = parameter.optional;
-            member.readonly = parameter.readonly;
-            member.default = default;
-            member.ty = ty;
-        });
+        self.member(
+            node,
+            range(parameter.span),
+            MemberKind::Property,
+            Some(range(id.span)),
+            |member| {
+                member.optional = parameter.optional;
+                member.readonly = parameter.readonly;
+                member.default = default;
+                member.ty = ty;
+            },
+        );
     }
 
     /// Records one member of an interface or object type literal of `node`.
@@ -245,7 +259,7 @@ impl<'s> Typed<'s> {
                     .type_annotation
                     .as_ref()
                     .and_then(|annotation| self.written(range(annotation.type_annotation.span())));
-                self.member(node, MemberKind::Property, Some(name), |member| {
+                self.member(node, range(it.span), MemberKind::Property, Some(name), |member| {
                     member.optional = it.optional;
                     member.readonly = it.readonly;
                     member.ty = ty;
@@ -258,7 +272,7 @@ impl<'s> Typed<'s> {
                     &it.params,
                     it.return_type.as_deref(),
                 ));
-                self.member(node, MemberKind::Method, Some(name), |member| {
+                self.member(node, range(it.span), MemberKind::Method, Some(name), |member| {
                     member.optional = it.optional;
                     member.ty = ty;
                 });
@@ -276,7 +290,7 @@ impl<'s> Typed<'s> {
                     .map_or(parameter.end, |token| token.end());
                 let ty = self.written(range(it.type_annotation.type_annotation.span()));
                 let name = ByteRange { start, end };
-                self.member(node, MemberKind::Index, Some(name), |member| {
+                self.member(node, range(it.span), MemberKind::Index, Some(name), |member| {
                     member.readonly = it.readonly;
                     member.ty = ty;
                 });
@@ -287,7 +301,9 @@ impl<'s> Typed<'s> {
                     &it.params,
                     it.return_type.as_deref(),
                 ));
-                self.member(node, MemberKind::Call, None, |member| member.ty = ty);
+                self.member(node, range(it.span), MemberKind::Call, None, |member| {
+                    member.ty = ty;
+                });
             }
             TSSignature::TSConstructSignatureDeclaration(it) => {
                 let ty = self.written(signature_range(
@@ -295,15 +311,19 @@ impl<'s> Typed<'s> {
                     &it.params,
                     it.return_type.as_deref(),
                 ));
-                self.member(node, MemberKind::Construct, None, |member| member.ty = ty);
+                self.member(node, range(it.span), MemberKind::Construct, None, |member| {
+                    member.ty = ty;
+                });
             }
         }
     }
 
-    /// Records a member of `node` named at `name`, filled by `fill`, at the next index.
+    /// Records a member of `node` written at `range` and named at `name`, filled by `fill`, at
+    /// the next index.
     fn member(
         &mut self,
         node: u32,
+        range: ByteRange,
         kind: MemberKind,
         name: Option<ByteRange>,
         fill: impl FnOnce(&mut Member),
@@ -317,6 +337,7 @@ impl<'s> Typed<'s> {
         let mut member = Member {
             node,
             index,
+            range,
             kind,
             name: name.and_then(|name| self.text(name)),
             optional: false,

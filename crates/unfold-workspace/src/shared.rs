@@ -26,8 +26,10 @@ use std::time::{Duration, Instant};
 
 use notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, NoCache};
-use unfold_core::{ContentHash, RepoPath};
-use unfold_engine::CancelToken;
+use unfold_core::{ContentHash, Graph, RepoPath};
+use unfold_engine::entrances::Fixes;
+use unfold_engine::settings::AppEntry;
+use unfold_engine::{CancelToken, Engine};
 use unfold_reader::ReaderCache;
 use unfold_store::ReadPool;
 
@@ -56,6 +58,36 @@ pub(crate) enum Job {
     Recompile,
     /// Recreate `local/cache/` if it disappeared, and recompile.
     CheckCache,
+    /// Resolve the `[[app]]` tables again without compiling (after an edit that changed only
+    /// them), then answer on the channel.
+    ResolveEntrances(std::sync::mpsc::Sender<()>),
+}
+
+/// What the engine last resolved of `unfold.toml`'s apps: the tables as written, the graph
+/// their code was resolved against (its apps hold the valid entries, its inputs the settings
+/// file's hash), and the fixes of the code that is missing. The engine thread publishes it
+/// after it restores a stored graph, after every update, and after re-resolving entrances.
+#[derive(Debug, Clone)]
+pub(crate) struct Resolved {
+    pub(crate) entries: Vec<AppEntry>,
+    pub(crate) graph: Arc<Graph>,
+    pub(crate) fixes: Fixes,
+}
+
+impl Resolved {
+    /// What `engine` holds now.
+    pub(crate) fn of(engine: &Engine) -> Self {
+        Self {
+            entries: engine.app_entries().to_vec(),
+            graph: Arc::clone(engine.graph()),
+            fixes: engine.fixes().clone(),
+        }
+    }
+
+    /// Whether `other` lists the same entrances: the same tables, states, and fixes.
+    fn same(&self, other: &Self) -> bool {
+        self.entries == other.entries && self.graph.apps == other.graph.apps && self.fixes == other.fixes
+    }
 }
 
 /// The update running on the engine thread.
@@ -147,6 +179,8 @@ pub(crate) struct Shared {
     /// an agent) apply one after the other instead of the later write dropping the earlier edit.
     pub(crate) settings_edit: Mutex<()>,
     pub(crate) own_writes: OwnWrites,
+    /// The entrances the engine last resolved; `None` until it has read `unfold.toml`.
+    pub(crate) entrances: Mutex<Option<Arc<Resolved>>>,
     pub(crate) watcher: Mutex<Option<Debouncer<RecommendedWatcher, NoCache>>>,
 }
 
@@ -190,6 +224,7 @@ impl Shared {
             local_state: Mutex::new(local_state),
             settings_edit: Mutex::new(()),
             own_writes: OwnWrites::default(),
+            entrances: Mutex::new(None),
             watcher: Mutex::new(None),
         }
     }
@@ -197,6 +232,26 @@ impl Shared {
     /// Sends `event` to every window.
     pub(crate) fn emit(&self, event: &WorkspaceEvent) {
         self.sink.emit(event);
+    }
+
+    /// Publishes what `engine` resolved of the apps, and sends `entrances_changed` when the
+    /// entrances differ from those published before (the event goes out under the lock, so
+    /// windows see publications in order).
+    pub(crate) fn publish_entrances(&self, engine: &Engine) {
+        let next = Resolved::of(engine);
+        let mut current = lock(&self.entrances);
+        let changed = current.as_ref().is_none_or(|current| !current.same(&next));
+        *current = Some(Arc::new(next));
+        if changed {
+            self.emit(&WorkspaceEvent::EntrancesChanged {
+                project: self.project.clone(),
+            });
+        }
+    }
+
+    /// The entrances the engine last resolved.
+    pub(crate) fn entrances(&self) -> Option<Arc<Resolved>> {
+        lock(&self.entrances).clone()
     }
 
     /// The current status.
@@ -249,10 +304,14 @@ impl Shared {
         lock(&self.problems).all()
     }
 
-    /// Queues `job` and wakes the engine thread. A queued Compile cancels a running background
-    /// update, whose changes the Compile covers.
-    pub(crate) fn push_job(&self, job: Job) {
+    /// Queues `job` and wakes the engine thread; whether it was queued. A queued Compile cancels
+    /// a running background update, whose changes the Compile covers. A closed workspace queues
+    /// nothing: the job is dropped, and so is any reply channel it holds.
+    pub(crate) fn push_job(&self, job: Job) -> bool {
         let mut sched = lock(&self.sched);
+        if sched.shutdown {
+            return false;
+        }
         if matches!(job, Job::Compile(_))
             && let Some(running) = sched.running.as_ref().filter(|running| running.background)
         {
@@ -261,6 +320,7 @@ impl Shared {
         sched.jobs.push_back(job);
         drop(sched);
         self.wake.notify_all();
+        true
     }
 
     /// Records changed paths from the watcher (or a caller) and cancels a running background

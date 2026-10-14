@@ -154,7 +154,7 @@ impl BoardExtras {
                 let what = match item.kind {
                     HealthKind::Missing => "missing reference",
                     HealthKind::Outdated => "description outdated",
-                    HealthKind::BrokenGroup => "broken group",
+                    HealthKind::BrokenCombined => "broken combined step",
                     HealthKind::Review => "needs review",
                     HealthKind::BrokenLink => "broken link",
                 };

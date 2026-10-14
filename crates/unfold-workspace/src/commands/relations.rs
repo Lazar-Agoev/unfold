@@ -1,20 +1,21 @@
-//! `relations` and `callers` (docs/reader.md#derived-views, sidebar state): what the
-//! Selected section shows for one definition (its callers, its outgoing calls grouped on the
-//! page / openable / external or unresolved, and the entrances it is reached from), and **Show
-//! callers**: the distinct definitions that call it.
+//! `relations` and `callers`: what the Selected section shows for one definition (its callers,
+//! a page at a time; the calls it makes; and the entrances it is reached from), and **Show
+//! callers**: the distinct definitions that call it. Callers come from the store's reverse
+//! index, outgoing calls from the definition's own file, and Reached from from the reader index;
+//! each wakes its project.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_core::vocab::{EdgeKind, EntranceKind, HttpMethod};
-use unfold_core::{Entrance, Key};
-use unfold_reader::ReaderIndex;
-use unfold_reader::catalog::entrance_title;
-use unfold_reader::relations::{Outgoing, outgoing};
+use unfold_core::vocab::LinkKind;
+use unfold_core::{Key, RepoPath};
+use unfold_reader::catalog;
+use unfold_reader::notes::LinkEnd;
+use unfold_reader::relations::{self, Caller};
 use unfold_store::Reader;
 
-use super::graph::locate;
+use super::graph::block_tree;
 use super::{count, key_arg};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
@@ -24,12 +25,12 @@ use crate::projects::ProjectId;
 pub const MAX_CALLERS: u32 = 500;
 /// Callers per page when the request doesn't say.
 const DEFAULT_CALLERS: u32 = 100;
-/// The most keys `onPage` may list.
-pub const MAX_ON_PAGE: usize = 2_000;
 /// Calling definitions `callers` lists when the request doesn't say.
 const DEFAULT_CALLING: u32 = 20;
 /// The most calling definitions `callers` lists.
 pub const MAX_CALLING: u32 = 100;
+/// The most calls `callers` reads to find the distinct definitions they belong to.
+pub const MAX_SCANNED: usize = 20_000;
 
 /// The arguments of `relations`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
@@ -37,13 +38,8 @@ pub const MAX_CALLING: u32 = 100;
 pub struct RelationsArgs {
     /// The definition's project.
     pub project: ProjectId,
-    /// The definition's (or any block's) key.
+    /// The definition's key, or any block's (its definition's relations).
     pub key: String,
-    /// The keys of this project's cards on the page (at most 2,000), which group outgoing calls
-    /// as "on the page".
-    #[serde(default)]
-    #[ts(optional)]
-    pub on_page: Option<Vec<String>>,
     /// Where the page of callers starts (`callersNext` of the previous page).
     #[serde(default)]
     #[ts(optional)]
@@ -54,24 +50,42 @@ pub struct RelationsArgs {
     pub callers_limit: Option<u32>,
 }
 
-/// One resolved edge into the definition, seen from its caller.
+/// One call of the definition, seen from the caller.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CallerView {
-    /// The definition (or file) that owns the calling occurrence.
-    pub owner: String,
-    /// The owner's qualified name, or its file's path for a file-level call.
+    /// The definition the call belongs to.
+    pub owner: Key,
+    /// That definition's qualified name.
     pub owner_name: String,
-    /// The occurrence block.
-    pub source: String,
-    /// The occurrence's file.
-    pub path: String,
-    /// The occurrence's first line.
+    /// The call.
+    pub call: Key,
+    /// The call's file.
+    pub path: RepoPath,
+    /// The call's first line.
     pub line: u32,
-    /// The relationship.
-    pub kind: EdgeKind,
-    /// The argument position of a passed reference.
-    pub position: Option<u32>,
+    /// `calls`, or `passes` when the call passes the definition as a value.
+    pub kind: LinkKind,
+}
+
+/// One call the definition makes: its `calls` link, or a `passes` link of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct OutgoingView {
+    /// The call.
+    pub call: Key,
+    /// The call's first line.
+    pub line: u32,
+    /// `calls` (what the call runs) or `passes` (a definition it passes as a value).
+    pub kind: LinkKind,
+    /// How the callee or passed name is written.
+    pub text: String,
+    /// Where it goes.
+    pub to: LinkEnd,
+    /// The qualified name of the project definition it reaches.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub target_name: Option<String>,
 }
 
 /// An entrance a definition is reached from.
@@ -79,17 +93,11 @@ pub struct CallerView {
 #[serde(rename_all = "camelCase")]
 pub struct EntranceRef {
     /// The entrance's key.
-    pub key: String,
-    /// Its title.
-    pub title: String,
-    /// Its kind.
-    pub kind: EntranceKind,
-    /// Its HTTP method.
-    pub method: Option<HttpMethod>,
-    /// Its trigger.
-    pub trigger: Option<String>,
-    /// Its evidence file.
-    pub path: String,
+    pub key: Key,
+    /// Its name.
+    pub name: String,
+    /// Its app's name.
+    pub app: String,
 }
 
 /// A definition's relations.
@@ -97,189 +105,129 @@ pub struct EntranceRef {
 #[serde(rename_all = "camelCase")]
 pub struct Relations {
     /// The definition.
-    pub key: String,
-    /// One page of callers, in graph order.
+    pub key: Key,
+    /// One page of its callers, in path order and then source order.
     pub callers: Vec<CallerView>,
     /// How many callers there are in all.
     pub callers_total: u32,
     /// Where the next page of callers starts, if there is one.
     pub callers_next: Option<u32>,
-    /// The edges the definition owns, in source order, grouped.
-    pub outgoing: Outgoing,
-    /// The qualified names of the resolved outgoing targets, by key.
-    pub target_names: BTreeMap<String, String>,
-    /// The non-process entrances whose closures contain the definition ("reached at least
-    /// from"), in canonical order.
+    /// The calls it makes, in source order.
+    pub outgoing: Vec<OutgoingView>,
+    /// The entrances whose code reaches it ("reached at least from"), in file order. An app's
+    /// own start is left out: it reaches nearly everything.
     pub reached_from: Vec<EntranceRef>,
 }
 
-/// `relations`: callers (paginated), outgoing calls, and reached-from for a block.
+/// `relations`: callers (paginated), outgoing calls, and reached-from for a definition.
 pub fn relations(ctx: &Ctx<'_>, args: RelationsArgs) -> CommandResult<Relations> {
     let key = key_arg(&args.key)?;
-    if key.starts_with("entrance:") {
-        return Err(CommandError::invalid_args(
-            "`relations` takes a block key; an entrance's targets are on its card",
-        ));
-    }
-    let on_page = args.on_page.unwrap_or_default();
-    if on_page.len() > MAX_ON_PAGE {
-        return Err(CommandError::invalid_args(format!(
-            "onPage lists at most {MAX_ON_PAGE} keys"
-        )));
-    }
-    let workspace = ctx.live(&args.project)?;
-    let reader = workspace.readers()?.get()?;
-    let index = workspace.reader_index()?;
-    let (file, local) = locate(&reader, key)?;
-    let on_page: BTreeSet<&str> = on_page.iter().map(String::as_str).collect();
-    let grouped = outgoing(&file, local, |target| on_page.contains(target)).unwrap_or_default();
-    let mut target_names = BTreeMap::new();
-    for call in grouped.on_board.iter().chain(&grouped.openable) {
-        if let Some(target) = &call.target
-            && let Some(definition) = reader.definition(target.as_str())?
-        {
-            target_names.insert(target.as_str().to_owned(), definition.qualified_name.to_string());
-        }
-    }
-    ctx.check_cancelled()?;
-    let all = index.callers(key).unwrap_or_default();
     let offset = args.callers_offset.unwrap_or(0) as usize;
     let limit = args
         .callers_limit
         .unwrap_or(DEFAULT_CALLERS)
         .clamp(1, MAX_CALLERS) as usize;
-    let mut callers = Vec::new();
-    for caller in all.iter().skip(offset).take(limit) {
-        let line = reader
-            .block(caller.source.as_str())?
-            .map_or(0, |located| located.block.lines.start);
-        callers.push(CallerView {
-            owner: caller.owner.as_str().to_owned(),
-            owner_name: owner_name(&reader, caller.owner.as_str(), caller.path.as_str())?,
-            source: caller.source.as_str().to_owned(),
-            path: caller.path.as_str().to_owned(),
-            line,
-            kind: caller.kind,
-            position: caller.position,
+    let workspace = ctx.live(&args.project)?;
+    let reader = workspace.readers()?.get()?;
+    let index = workspace.reader_index()?;
+    let (tree, block) =
+        block_tree(&reader, key)?.ok_or_else(|| CommandError::not_found(format!("no block `{key}`")))?;
+    let definition = Some(block)
+        .filter(|&id| tree.kind(id).is_definition())
+        .or_else(|| tree.owner(block))
+        .ok_or_else(|| CommandError::not_found(format!("`{key}` belongs to no definition")))?;
+    let definition_key = tree.key(definition).clone();
+    let mut outgoing = Vec::new();
+    for link in relations::outgoing(&tree, definition) {
+        let target_name = match &link.to.key {
+            Some(target) => qualified_name(&reader, target.as_str())?,
+            None => None,
+        };
+        outgoing.push(OutgoingView {
+            call: link.call,
+            line: link.line,
+            kind: link.kind,
+            text: link.text.to_string(),
+            to: link.to,
+            target_name,
         });
     }
-    let next = offset + callers.len();
     ctx.check_cancelled()?;
-    let reached = index.reached_from(key).unwrap_or_default();
-    let mut reached_from = Vec::with_capacity(reached.len());
-    for entrance_key in &reached {
-        if let Some(entrance) = reader.entrance(entrance_key.as_str())? {
-            reached_from.push(entrance_ref(&entrance));
-        }
+    // The store's pages run from the start: read through the requested one.
+    let page = relations::callers(&reader, &index, definition_key.as_str(), None, offset + limit)?;
+    let mut callers = Vec::with_capacity(limit);
+    for caller in page.callers.into_iter().skip(offset) {
+        callers.push(caller_view(&reader, caller)?);
     }
+    let apps = reader.apps()?;
+    let reached_from = index
+        .reached_from(definition_key.as_str())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|entrance| catalog::start(&apps, entrance.as_str()))
+        .map(|start| EntranceRef {
+            key: start.key().clone(),
+            name: start.name().to_owned(),
+            app: start.app().name.to_string(),
+        })
+        .collect();
+    let next = offset + callers.len();
+    let total = usize::try_from(page.total).unwrap_or(usize::MAX);
     Ok(Relations {
-        key: key.to_owned(),
-        callers_total: count(all.len()),
-        callers_next: (next < all.len()).then(|| count(next)),
+        key: definition_key,
+        callers_total: count(total),
+        callers_next: (next < total).then(|| count(next)),
         callers,
-        outgoing: grouped,
-        target_names,
+        outgoing,
         reached_from,
     })
 }
 
-/// The qualified name of a caller's owner: a definition's, or the file's path for a file root.
-fn owner_name(reader: &Reader, owner: &str, path: &str) -> CommandResult<String> {
-    Ok(match reader.definition(owner)? {
-        Some(definition) => definition.qualified_name.to_string(),
-        None => path.to_owned(),
+/// The qualified name of the definition with `key`, if the catalog has it.
+fn qualified_name(reader: &Reader, key: &str) -> unfold_store::Result<Option<String>> {
+    Ok(reader
+        .definition(key)?
+        .map(|definition| definition.qualified_name.to_string()))
+}
+
+fn caller_view(reader: &Reader, caller: Caller) -> unfold_store::Result<CallerView> {
+    let owner_name =
+        qualified_name(reader, caller.owner.as_str())?.unwrap_or_else(|| caller.owner.to_string());
+    Ok(CallerView {
+        owner: caller.owner,
+        owner_name,
+        call: caller.call,
+        path: caller.path,
+        line: caller.line,
+        kind: caller.kind,
     })
 }
 
-/// An entrance as "reached from" lists it.
-fn entrance_ref(entrance: &Entrance) -> EntranceRef {
-    EntranceRef {
-        key: entrance.key.as_str().to_owned(),
-        title: entrance_title(entrance),
-        kind: entrance.kind,
-        method: entrance.method,
-        trigger: entrance.trigger.as_deref().map(str::to_owned),
-        path: entrance.evidence.path.as_str().to_owned(),
-    }
-}
-
-/// One definition (or file) that calls a block.
+/// One definition that calls a block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct CallingDefinition {
     /// Its key.
-    pub key: String,
-    /// Its display label (its file's path for a file-level call).
+    pub key: Key,
+    /// Its display label.
     pub name: String,
-    /// Its qualified name (its file's path for a file-level call).
+    /// Its qualified name.
     pub qualified_name: String,
     /// Its file.
-    pub path: String,
+    pub path: RepoPath,
     /// Its first line.
     pub line: u32,
-    /// How many of its occurrences call the block.
+    /// How many of its calls reach the block.
     pub sites: u32,
-}
-
-/// The distinct definitions that call block `key`, by path and position, with their call sites
-/// counted: how many there are, and the first `limit` (only those are looked up in the store).
-fn distinct_callers(
-    reader: &Reader,
-    index: &ReaderIndex,
-    key: &str,
-    limit: usize,
-) -> CommandResult<(u32, Vec<CallingDefinition>)> {
-    let mut sites: BTreeMap<Key, (String, u32)> = BTreeMap::new();
-    for caller in index.callers(key).unwrap_or_default() {
-        sites
-            .entry(caller.owner)
-            .or_insert_with(|| (caller.path.as_str().to_owned(), 0))
-            .1 += 1;
-    }
-    let graph = index.index();
-    let mut owners: Vec<(Key, String, u32)> = sites
-        .into_iter()
-        .map(|(owner, (path, sites))| (owner, path, sites))
-        .collect();
-    // Blocks are numbered in preorder, so within a file the local id follows source order.
-    owners.sort_by_cached_key(|(owner, path, _)| {
-        (
-            path.clone(),
-            graph.id(owner.as_str()).map_or(u32::MAX, |id| graph.local_id(id)),
-        )
-    });
-    let total = count(owners.len());
-    let mut found = Vec::new();
-    for (owner, path, sites) in owners.into_iter().take(limit) {
-        let line = reader
-            .block(owner.as_str())?
-            .map_or(1, |located| located.block.lines.start);
-        let (name, qualified_name) = match reader.definition(owner.as_str())? {
-            Some(definition) => (
-                definition.label.to_string(),
-                definition.qualified_name.to_string(),
-            ),
-            None => (path.clone(), path.clone()),
-        };
-        found.push(CallingDefinition {
-            key: owner.as_str().to_owned(),
-            name,
-            qualified_name,
-            path,
-            line,
-            sites,
-        });
-    }
-    Ok((total, found))
 }
 
 /// The arguments of `callers`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallersArgs {
-    /// The block's project.
+    /// The definition's project.
     pub project: ProjectId,
-    /// The block's key.
+    /// The definition's key.
     pub key: String,
     /// How many calling definitions to list (20 when absent, at most 100).
     #[serde(default)]
@@ -287,21 +235,21 @@ pub struct CallersArgs {
     pub limit: Option<u32>,
 }
 
-/// **Show callers**: the distinct definitions that call a block.
+/// **Show callers**: the distinct definitions that call a definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Callers {
-    /// The block's project.
+    /// The definition's project.
     pub project: ProjectId,
-    /// The block's key.
+    /// The definition's key.
     pub key: String,
-    /// How many distinct definitions call it.
+    /// How many distinct definitions call it (among the first 20,000 calls).
     pub total: u32,
     /// The first of them, by path and line.
     pub callers: Vec<CallingDefinition>,
 }
 
-/// `callers`: the distinct definitions that call a block, with their call sites counted.
+/// `callers`: the distinct definitions that call a definition, with their calls counted.
 pub fn callers(ctx: &Ctx<'_>, args: CallersArgs) -> CommandResult<Callers> {
     let key = key_arg(&args.key)?;
     let limit = args.limit.unwrap_or(DEFAULT_CALLING).clamp(1, MAX_CALLING) as usize;
@@ -311,7 +259,32 @@ pub fn callers(ctx: &Ctx<'_>, args: CallersArgs) -> CommandResult<Callers> {
     if !index.contains(key) {
         return Err(CommandError::not_found(format!("no block `{key}`")));
     }
-    let (total, callers) = distinct_callers(&reader, &index, key, limit)?;
+    let page = relations::callers(&reader, &index, key, None, MAX_SCANNED)?;
+    // Calls per owner, ordered by the owner's file and first line.
+    let mut owners: BTreeMap<(RepoPath, u32, Key), u32> = BTreeMap::new();
+    for caller in page.callers {
+        let line = index.line(caller.owner.as_str()).unwrap_or(1);
+        *owners.entry((caller.path, line, caller.owner)).or_default() += 1;
+    }
+    let total = count(owners.len());
+    let mut callers = Vec::new();
+    for ((path, line, owner), sites) in owners.into_iter().take(limit) {
+        let (name, qualified_name) = match reader.definition(owner.as_str())? {
+            Some(definition) => (
+                definition.label.to_string(),
+                definition.qualified_name.to_string(),
+            ),
+            None => (owner.to_string(), owner.to_string()),
+        };
+        callers.push(CallingDefinition {
+            key: owner,
+            name,
+            qualified_name,
+            path,
+            line,
+            sites,
+        });
+    }
     Ok(Callers {
         project: args.project,
         key: key.to_owned(),

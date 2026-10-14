@@ -1,5 +1,5 @@
-//! `testdata/reference/oracles/justified.toml`: resolved edges the oracle does not confirm, each
-//! with a written reason (such as decision C-8). An entry covers exactly one edge; an entry that
+//! `testdata/reference/oracles/justified.toml`: resolved links the oracle does not confirm, each
+//! with a written reason (such as decision C-8). An entry covers exactly one link; an entry that
 //! covers nothing is stale and fails the check.
 
 use std::collections::BTreeSet;
@@ -29,7 +29,7 @@ pub(crate) struct JustifiedEntry {
     pub corpus: String,
     /// The language of the site.
     pub language: Language,
-    /// The call or construction block.
+    /// The call node.
     pub site: String,
     /// The argument position, for a reference.
     pub position: Option<u32>,
@@ -52,7 +52,7 @@ impl Justified {
         Self::parse(&text).with_context(|| format!("invalid {}", path.display()))
     }
 
-    /// Parses and checks the text: reasons are written and no edge is listed twice.
+    /// Parses and checks the text: reasons are written and no link is listed twice.
     pub(crate) fn parse(text: &str) -> anyhow::Result<Self> {
         let justified: Self = toml::from_str(text)?;
         let mut seen = BTreeSet::new();

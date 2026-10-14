@@ -6,8 +6,9 @@
 //          --corpus <name> --out <oracle.jsonl>
 //
 // `--export` is Unfold's canonical export of that folder. The oracle uses it only to name blocks:
-// sites and targets are found in the checker's own syntax trees and mapped to the export's block
-// with exactly that byte range. It never reads Unfold's edges. The corpus is only read.
+// sites and targets are found in the checker's own syntax trees and mapped to the export's node
+// with exactly that byte range: a call node for a site, a function or class node for a target. It
+// never reads Unfold's links. The corpus is only read.
 // Format and rules: tools/oracles/README.md and testdata/reference/README.md ("Oracles").
 
 import { createHash } from "node:crypto";
@@ -18,7 +19,6 @@ import ts from "typescript";
 import { CheckerQuestions, overrideCensus, unwrap } from "./typescript-oracle/checker.mjs";
 
 const FORMAT = "unfold-oracle";
-const TARGET_KINDS = new Set(["function", "method", "constructor", "getter", "setter", "class"]);
 
 function parseArguments(argv) {
   const options = {};
@@ -45,7 +45,11 @@ function displayPath(path) {
 const byBytes = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
-/** The parts of the export the oracle needs: TypeScript files, inputs, and block ranges. */
+/**
+ * The parts of the export the oracle needs: files, inputs, and node ranges. Call nodes (calls and
+ * constructions) are the sites; function and class nodes are the targets. A node belongs to the
+ * file record before it.
+ */
 async function readExport(path) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
@@ -55,12 +59,12 @@ async function readExport(path) {
   const targets = new Map();
   let header;
   for await (const line of readline.createInterface({ input: createReadStream(path), crlfDelay: Infinity })) {
-    if (line.startsWith('{"t":"block"')) {
-      const block = JSON.parse(line);
-      const file = block.key.slice(0, block.key.indexOf("#"));
-      const [start, end] = block.range;
-      if (block.kind === "call" || block.kind === "new") sites.set(`${file}\0${start}\0${end}`, { file, key: block.key, used: false });
-      else if (TARGET_KINDS.has(block.kind)) targets.set(`${file}\0${start}\0${end}\0${block.kind}`, block.key);
+    if (line.startsWith('{"t":"node"')) {
+      const node = JSON.parse(line);
+      const file = files[files.length - 1].path;
+      const [start, end] = node.range;
+      if (node.kind === "call") sites.set(`${file}\0${start}\0${end}`, { file, key: node.key, used: false });
+      else if (node.kind === "function" || node.kind === "class") targets.set(`${file}\0${start}\0${end}\0${node.kind}`, node.key);
     } else if (line.startsWith('{"t":"file"')) {
       files.push(JSON.parse(line));
     } else if (line.startsWith('{"t":"input"')) {
@@ -177,7 +181,8 @@ function evaluateGroup(group, sources, graph, results) {
     source.offsets ??= byteOffsets(source.text);
     return { path: source.path, start: source.offsets[node.getStart(file)], end: source.offsets[node.end] };
   };
-  const blockKey = (path, start, end, kind) => graph.targets.get(`${path}\0${start}\0${end}\0${kind}`);
+  // The checker's `function`, `method`, and `constructor` bodies are all function nodes.
+  const blockKey = (path, start, end, kind) => graph.targets.get(`${path}\0${start}\0${end}\0${kind === "class" ? "class" : "function"}`);
   const questions = new CheckerQuestions(program.getTypeChecker(), locate, blockKey);
   for (const absolute of group.files) {
     const file = program.getSourceFile(absolute);
@@ -272,9 +277,9 @@ async function main() {
   }
   console.warn(`${displayPath(options.out)}: ${calls.length} call sites, ${header.resolved} resolved by the checker, ${header.references} named-argument targets`);
   console.warn(`  outcomes: ${[...outcomes].sort((a, b) => b[1] - a[1]).map(([label, count]) => `${label} ${count}`).join(", ")}`);
-  if (unmatched.length) console.warn(`  ${unmatched.length} Unfold call/new block(s) match no checker call site, e.g. ${unmatched.slice(0, 5).join(", ")}`);
+  if (unmatched.length) console.warn(`  ${unmatched.length} Unfold call node(s) match no checker call site, e.g. ${unmatched.slice(0, 5).join(", ")}`);
   const unmapped = calls.filter(({ row }) => row.outcome === "unmapped");
-  if (unmapped.length) console.warn(`  ${unmapped.length} target(s) map to no Unfold block, e.g. ${unmapped.slice(0, 5).map(({ row }) => row.detail).join(", ")}`);
+  if (unmapped.length) console.warn(`  ${unmapped.length} target(s) map to no Unfold node, e.g. ${unmapped.slice(0, 5).map(({ row }) => row.detail).join(", ")}`);
 }
 
 await main();

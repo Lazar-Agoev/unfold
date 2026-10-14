@@ -836,3 +836,67 @@ fn entrance_keys_come_from_names() {
         assert!(matches!(key.parse(), Ok(ParsedKey::App { .. })), "{key}");
     }
 }
+
+#[test]
+fn rebasing_moves_a_block_and_everything_inside_it() {
+    let rebase = |key: &str, from: &str, to: &str| {
+        Key::from_text(key)
+            .rebase(&Key::from_text(from), &Key::from_text(to))
+            .map(|key| key.as_str().to_owned())
+    };
+    let moved = |key: &str| rebase(key, "a.ts#f", "b.ts#Orders.place");
+    // The block itself, and its names, steps, callbacks, and literal call keys.
+    assert_eq!(moved("a.ts#f").as_deref(), Some("b.ts#Orders.place"));
+    assert_eq!(moved("a.ts#f.inner").as_deref(), Some("b.ts#Orders.place.inner"));
+    assert_eq!(
+        moved("a.ts#f/if[0]/then/call:save[1]").as_deref(),
+        Some("b.ts#Orders.place/if[0]/then/call:save[1]")
+    );
+    assert_eq!(
+        moved("a.ts#f/call:app.get(\"/a/[id]\")/callback[0]/return[0]").as_deref(),
+        Some("b.ts#Orders.place/call:app.get(\"/a/[id]\")/callback[0]/return[0]")
+    );
+    assert_eq!(
+        moved("a.ts#f/call:useMutation/callback[1].onDone/call:log").as_deref(),
+        Some("b.ts#Orders.place/call:useMutation/callback[1].onDone/call:log")
+    );
+    // Inside is structural: a longer name, a repeat, another file, or an outer key is not.
+    assert_eq!(moved("a.ts#format"), None);
+    assert_eq!(moved("a.ts#f[1]/call:save"), None);
+    assert_eq!(moved("c.ts#f/call:save"), None);
+    assert_eq!(moved("a.ts#"), None);
+    assert_eq!(moved("a.ts#/call:f"), None);
+
+    // A module's own code, and a whole module.
+    assert_eq!(
+        rebase(
+            "a.ts#/call:express/if[0]",
+            "a.ts#/call:express",
+            "a.ts#/call:express[1]"
+        )
+        .as_deref(),
+        Some("a.ts#/call:express[1]/if[0]")
+    );
+    assert_eq!(
+        rebase("a.ts#/call:listen", "a.ts#", "src/a.ts#").as_deref(),
+        Some("src/a.ts#/call:listen")
+    );
+    assert_eq!(
+        rebase("a.ts#f.g", "a.ts#", "src/a.ts#").as_deref(),
+        Some("src/a.ts#f.g")
+    );
+    // Into a callback, names follow; under a control block or call, they can't.
+    assert_eq!(
+        rebase("a.ts#f.g", "a.ts#f", "a.ts#/call:run/callback[0]").as_deref(),
+        Some("a.ts#/call:run/callback[0].g")
+    );
+    assert_eq!(rebase("a.ts#f.g", "a.ts#f", "a.ts#/if[0]"), None);
+    assert_eq!(rebase("a.ts#f.g", "a.ts#f", "a.ts#/call:run"), None);
+    // Only block keys rebase.
+    assert_eq!(
+        rebase("entrance:shop/place", "entrance:shop", "entrance:store"),
+        None
+    );
+    assert_eq!(rebase("a.ts#f", "a.ts#f", "entrance:shop"), None);
+    assert_eq!(rebase("not a key", "a.ts#f", "b.ts#g"), None);
+}

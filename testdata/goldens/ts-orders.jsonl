@@ -116,7 +116,7 @@
 {"t":"parameter","node":"src/db/repository.ts#OrderRepository.find","index":0,"range":[308,318],"kind":"positional","name":"id","type":"string","type_range":[312,318]}
 {"t":"parameter","node":"src/db/repository.ts#OrderRepository.remove","index":0,"range":[457,467],"kind":"positional","name":"id","type":"string","type_range":[461,467]}
 {"t":"parameter","node":"src/db/repository.ts#OrderRepository.cancel","index":0,"range":[529,539],"kind":"positional","name":"id","type":"string","type_range":[533,539]}
-{"t":"member","node":"src/db/repository.ts#OrderRepository","index":0,"kind":"property","name":"orders","default":true}
+{"t":"member","node":"src/db/repository.ts#OrderRepository","index":0,"range":[76,118],"kind":"property","name":"orders","default":true}
 {"t":"argument","call":"src/db/repository.ts#OrderRepository.insert/if[0]/then/call:this.orders.has","index":0,"range":[176,184]}
 {"t":"argument","call":"src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0]/call:Error","index":0,"range":[203,237]}
 {"t":"argument","call":"src/db/repository.ts#OrderRepository.insert/call:this.orders.set","index":0,"range":[260,268]}
@@ -427,8 +427,8 @@
 {"t":"signature","node":"src/lib/pool.ts#Worker.run","returns":"void","returns_range":[136,140]}
 {"t":"parameter","node":"src/lib/pool.ts#Worker.constructor","index":0,"range":[75,95],"kind":"positional","name":"name","type":"string","type_range":[89,95]}
 {"t":"parameter","node":"src/lib/pool.ts#Worker.constructor","index":1,"range":[97,121],"kind":"positional","name":"task","type":"() => void","type_range":[111,121]}
-{"t":"member","node":"src/lib/pool.ts#Worker","index":0,"kind":"property","name":"name","type":"string","type_range":[89,95]}
-{"t":"member","node":"src/lib/pool.ts#Worker","index":1,"kind":"property","name":"task","type":"() => void","type_range":[111,121]}
+{"t":"member","node":"src/lib/pool.ts#Worker","index":0,"range":[75,95],"kind":"property","name":"name","type":"string","type_range":[89,95]}
+{"t":"member","node":"src/lib/pool.ts#Worker","index":1,"range":[97,121],"kind":"property","name":"task","type":"() => void","type_range":[111,121]}
 {"t":"argument","call":"src/lib/pool.ts#Worker.run/call:logger.info","index":0,"range":[159,180],"parameter":0}
 {"t":"argument","call":"src/lib/pool.ts#Worker.run/call:logger.info","index":1,"range":[182,201],"parameter":1}
 {"t":"file","path":"src/lib/retry.ts","language":"typescript","state":"current","hash":"539eba77b2205544383964a6385e0e22a951882949369ea02e6abcda4ea70750"}
@@ -1167,8 +1167,8 @@
 {"t":"parameter","node":"src/services/order-service.ts#OrderService.get","index":0,"range":[899,909],"kind":"positional","name":"id","type":"string","type_range":[903,909]}
 {"t":"parameter","node":"src/services/order-service.ts#OrderService.cancel","index":0,"range":[977,987],"kind":"positional","name":"id","type":"string","type_range":[981,987]}
 {"t":"parameter","node":"src/services/order-service.ts#OrderService.remove","index":0,"range":[1057,1067],"kind":"positional","name":"id","type":"string","type_range":[1061,1067]}
-{"t":"member","node":"src/services/order-service.ts#OrderService","index":0,"kind":"property","name":"repo","type":"OrderRepository","type_range":[435,450]}
-{"t":"member","node":"src/services/order-service.ts#OrderService","index":1,"kind":"property","name":"payments","type":"PaymentProvider","type_range":[470,485]}
+{"t":"member","node":"src/services/order-service.ts#OrderService","index":0,"range":[421,450],"kind":"property","name":"repo","type":"OrderRepository","type_range":[435,450]}
+{"t":"member","node":"src/services/order-service.ts#OrderService","index":1,"range":[452,485],"kind":"property","name":"payments","type":"PaymentProvider","type_range":[470,485]}
 {"t":"argument","call":"src/services/order-service.ts#OrderService.place/call:validateOrder","index":0,"range":[556,561],"parameter":0}
 {"t":"argument","call":"src/services/order-service.ts#OrderService.place/call:this.payments.charge","index":0,"range":[589,594]}
 {"t":"argument","call":"src/services/order-service.ts#OrderService.place/call:this.repo.insert","index":0,"range":[768,773],"parameter":0}
@@ -1239,19 +1239,19 @@
 {"t":"link","from":"src/types.ts#Order","seq":0,"kind":"extends","range":[340,350],"text":"OrderDraft","outcome":"project","to":"src/types.ts#OrderDraft"}
 {"t":"link","from":"src/types.ts#Order","seq":1,"kind":"types","range":[377,388],"text":"OrderStatus","outcome":"project","to":"src/types.ts#OrderStatus"}
 {"t":"link","from":"src/types.ts#OrderJob","seq":0,"kind":"types","range":[449,459],"text":"OrderDraft","outcome":"project","to":"src/types.ts#OrderDraft"}
-{"t":"member","node":"src/types.ts#OrderItem","index":0,"kind":"property","name":"sku","type":"string","type_range":[167,173]}
-{"t":"member","node":"src/types.ts#OrderItem","index":1,"kind":"property","name":"quantity","type":"number","type_range":[187,193]}
-{"t":"member","node":"src/types.ts#OrderItem","index":2,"kind":"property","name":"price","type":"number","type_range":[204,210]}
-{"t":"member","node":"src/types.ts#OrderDraft","index":0,"kind":"property","name":"customerId","type":"string","type_range":[259,265]}
-{"t":"member","node":"src/types.ts#OrderDraft","index":1,"kind":"property","name":"email","type":"string","type_range":[276,282]}
-{"t":"member","node":"src/types.ts#OrderDraft","index":2,"kind":"property","name":"items","type":"OrderItem[]","type_range":[293,304]}
-{"t":"member","node":"src/types.ts#Order","index":0,"kind":"property","name":"id","type":"string","type_range":[359,365]}
-{"t":"member","node":"src/types.ts#Order","index":1,"kind":"property","name":"status","type":"OrderStatus","type_range":[377,388]}
-{"t":"member","node":"src/types.ts#Order","index":2,"kind":"property","name":"createdAt","type":"string","type_range":[403,409]}
-{"t":"member","node":"src/types.ts#OrderJob","index":0,"kind":"property","name":"order","type":"OrderDraft","type_range":[449,459]}
-{"t":"member","node":"src/types.ts#EmailJob","index":0,"kind":"property","name":"to","type":"string","type_range":[494,500]}
-{"t":"member","node":"src/types.ts#EmailJob","index":1,"kind":"property","name":"subject","type":"string","type_range":[511,517]}
-{"t":"member","node":"src/types.ts#EmailJob","index":2,"kind":"property","name":"body","type":"string","type_range":[525,531]}
+{"t":"member","node":"src/types.ts#OrderItem","index":0,"range":[162,174],"kind":"property","name":"sku","type":"string","type_range":[167,173]}
+{"t":"member","node":"src/types.ts#OrderItem","index":1,"range":[177,194],"kind":"property","name":"quantity","type":"number","type_range":[187,193]}
+{"t":"member","node":"src/types.ts#OrderItem","index":2,"range":[197,211],"kind":"property","name":"price","type":"number","type_range":[204,210]}
+{"t":"member","node":"src/types.ts#OrderDraft","index":0,"range":[247,266],"kind":"property","name":"customerId","type":"string","type_range":[259,265]}
+{"t":"member","node":"src/types.ts#OrderDraft","index":1,"range":[269,283],"kind":"property","name":"email","type":"string","type_range":[276,282]}
+{"t":"member","node":"src/types.ts#OrderDraft","index":2,"range":[286,305],"kind":"property","name":"items","type":"OrderItem[]","type_range":[293,304]}
+{"t":"member","node":"src/types.ts#Order","index":0,"range":[355,366],"kind":"property","name":"id","type":"string","type_range":[359,365]}
+{"t":"member","node":"src/types.ts#Order","index":1,"range":[369,389],"kind":"property","name":"status","type":"OrderStatus","type_range":[377,388]}
+{"t":"member","node":"src/types.ts#Order","index":2,"range":[392,410],"kind":"property","name":"createdAt","type":"string","type_range":[403,409]}
+{"t":"member","node":"src/types.ts#OrderJob","index":0,"range":[442,459],"kind":"property","name":"order","type":"OrderDraft","type_range":[449,459]}
+{"t":"member","node":"src/types.ts#EmailJob","index":0,"range":[490,501],"kind":"property","name":"to","type":"string","type_range":[494,500]}
+{"t":"member","node":"src/types.ts#EmailJob","index":1,"range":[502,518],"kind":"property","name":"subject","type":"string","type_range":[511,517]}
+{"t":"member","node":"src/types.ts#EmailJob","index":2,"range":[519,531],"kind":"property","name":"body","type":"string","type_range":[525,531]}
 {"t":"file","path":"src/worker.ts","language":"typescript","state":"current","hash":"129b16ea6d7b13cf112aaa6ae25b2e43f8f127ace2a293df615d9c0180b2d6e2"}
 {"t":"node","key":"src/worker.ts#","kind":"module","form":"module","range":[0,428],"lines":[1,14]}
 {"t":"node","key":"src/worker.ts#purge","parent":"src/worker.ts#","kind":"function","form":"function","name":"purge","range":[208,352],"lines":[7,11],"head":[208,230],"body":[231,352],"stmt":[208,352]}

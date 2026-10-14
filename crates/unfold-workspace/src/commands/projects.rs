@@ -1,9 +1,10 @@
 //! Home's project summary: the state line ("Graph current · 214 files · Python · updated just
-//! now") and the Health line ("1 board needs review · All files parse").
+//! now") and the Health line ("1 board needs review · All files parse · 1 entrance's code
+//! not found").
 
 use serde::Serialize;
 use ts_rs::TS;
-use unfold_core::vocab::Language;
+use unfold_core::vocab::{Language, TargetState};
 
 use super::{ProjectArgs, board_hooks, count};
 use crate::ipc::context::Ctx;
@@ -37,6 +38,8 @@ pub struct ProjectHealth {
     pub boards_needing_review: u32,
     /// The boards with health items, most items first (at most 20).
     pub boards: Vec<BoardHealthCount>,
+    /// The `code` keys of apps and entrances that aren't `found`.
+    pub entrances_not_found: u32,
 }
 
 /// Home's header, state line, and Health line for one project.
@@ -68,9 +71,22 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
     let project = ctx.project(&args.project)?;
     let workspace = project.wake()?;
     let (files, _, languages) = workspace.graph_counts();
-    let updated_at_ms = match workspace.readers() {
-        Ok(pool) => pool.get()?.meta()?.graph.map(|graph| graph.compiled_at_ms),
-        Err(_) => None,
+    let (updated_at_ms, entrances_not_found) = match workspace.readers() {
+        Ok(pool) => pool.get()?.snapshot(|reader| {
+            let updated = reader.meta()?.graph.map(|graph| graph.compiled_at_ms);
+            let apps = reader.apps()?;
+            let not_found = apps
+                .iter()
+                .flat_map(|app| {
+                    app.code
+                        .iter()
+                        .chain(app.entrances.iter().flat_map(|entrance| &entrance.code))
+                })
+                .filter(|target| target.state != TargetState::Found)
+                .count();
+            Ok((updated, not_found))
+        })?,
+        Err(_) => (None, 0),
     };
     let doesnt_parse = workspace
         .problems()
@@ -98,6 +114,7 @@ pub fn project_summary(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Projec
             doesnt_parse: count(doesnt_parse),
             boards_needing_review,
             boards,
+            entrances_not_found: count(entrances_not_found),
         },
     })
 }

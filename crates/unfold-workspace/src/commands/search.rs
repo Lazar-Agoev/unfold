@@ -1,23 +1,20 @@
-//! `search`: definitions, entrances, and files by name across the workspace's projects
-//! (decisions cross-project search, project liveness). It serves Add's name search and the
-//! agents' `search`. Definitions are the catalog's: functions, methods, classes, and type
-//! declarations, each hit naming its block kind; `definitionKinds` narrows them (to types:
-//! `interface`, `type_alias`, `enum`, `class`).
+//! `search`: definitions, apps and entrances, and files by name across the workspace's projects
+//! (names only). It serves Add's name search, Home's Choose code…, and the agents' `search`.
+//! Definitions are the catalog's: classes, functions (inline ones by their labels, such as
+//! "callback to ordersRouter.post"), types, and modules, each hit naming its node kind;
+//! `definitionKinds` narrows them.
 //!
 //! One request is one fan-out in Rust: every project asked for (all of them by default) is
-//! searched in parallel, and the results are merged. In each project, definitions and entrances
-//! come from the store's FTS5 index, which returns every item whose name, qualified name, or path
-//! contains each word of the query; files come from the live project's file list under
-//! discovery's ignore rules, or from a resting project's stored graph (its indexed files: no
-//! disk walk without a watcher to keep it current). Every candidate is ranked with
-//! `nucleo-matcher`'s fuzzy score (a match in the name counts most, then the qualified name, then
-//! the path); merged results sort by score, then workspace order, then shorter name, then key, so
-//! they are deterministic. Only the returned hits get details from the stored graph (definitions'
-//! lines, entrances' applications, files' definition counts), with one reader per project.
-//! Searching never wakes a project.
+//! searched in parallel, and the results are merged. In each project, everything comes from the
+//! store's FTS5 index over names, which returns every item whose name, qualified name, or path
+//! contains each word of the query: so only a compiled project has results. Every candidate is
+//! ranked with `nucleo-matcher`'s fuzzy score (a match in the name counts most, then the
+//! qualified name, then the path); merged results sort by score, then workspace order, then
+//! shorter name, then key, so they are deterministic. Only the returned hits get details from the
+//! stored graph (definitions' lines, entrances' apps, files' definition counts), with one reader
+//! per project. Searching never wakes a project.
 
 use std::cmp::Ordering;
-use std::sync::Arc;
 
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -25,10 +22,12 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_core::vocab::BlockKind;
-use unfold_store::{CandidateKind, ReadPool, SearchCandidate};
+use unfold_core::vocab::NodeKind;
+use unfold_core::{Key, RepoPath};
+use unfold_reader::catalog;
+use unfold_store::{CandidateKind, ReadPool, Reader, SearchCandidate};
 
-use super::{FileSet, count};
+use super::count;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
 use crate::projects::{ProjectHandle, ProjectId};
@@ -37,19 +36,18 @@ use crate::projects::{ProjectHandle, ProjectId};
 const DEFAULT_LIMIT: u32 = 50;
 /// The most results per kind.
 pub const MAX_LIMIT: u32 = 500;
-/// How many matches per kind and project are counted (and, for definitions and entrances, how
-/// many FTS5 candidates are ranked).
+/// How many matches per kind and project are counted: how many FTS5 candidates are ranked.
 const CANDIDATES: usize = 2_000;
 
 /// A result kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchKind {
-    /// Definitions (functions, methods, classes, interfaces, type aliases, enums, …).
+    /// Definitions: classes, functions, types, and modules.
     Definitions,
-    /// Entrances.
+    /// Apps and entrances.
     Entrances,
-    /// Files.
+    /// Analyzed files.
     Files,
 }
 
@@ -63,11 +61,11 @@ pub struct SearchArgs {
     #[serde(default)]
     #[ts(optional)]
     pub kinds: Option<Vec<SearchKind>>,
-    /// Only definitions of these block kinds (every catalog kind when absent): `["interface",
-    /// "type_alias", "enum", "class"]` finds types.
+    /// Only definitions of these kinds: `module`, `class`, `function`, `type` (all but `module`
+    /// when absent: `files` finds modules by path).
     #[serde(default)]
     #[ts(optional)]
-    pub definition_kinds: Option<Vec<BlockKind>>,
+    pub definition_kinds: Option<Vec<NodeKind>>,
     /// Results per kind across every project (50 when absent, at most 500).
     #[serde(default)]
     #[ts(optional)]
@@ -78,28 +76,26 @@ pub struct SearchArgs {
     pub projects: Option<Vec<ProjectId>>,
 }
 
-/// A definition or entrance result.
+/// A definition, app, or entrance result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     /// The project it is in.
     pub project: ProjectId,
     /// The key (open its card with it).
-    pub key: String,
-    /// The name (a definition's label; an entrance's label, trigger, or first target).
+    pub key: Key,
+    /// The name: a definition's label, an app's or entrance's name.
     pub name: String,
-    /// A definition's qualified name; an entrance's method, trigger, and targets.
+    /// A definition's qualified name; an app's `run`; an entrance's app name and `on`.
     pub qualified_name: String,
-    /// The file (an entrance's evidence file).
+    /// A definition's file; empty for an app or entrance.
     pub path: String,
-    /// A definition's block kind (`function`, `class`, `interface`, `type_alias`, …), or an
-    /// entrance's kind.
+    /// A definition's node kind (`module`, `class`, `function`, `type`), `app`, or `entrance`.
     pub kind: String,
     /// A definition's first line.
     pub line: Option<u32>,
-    /// The name of the first application (by name) an entrance belongs to, as
-    /// `entrances` names applications; `None` for a definition or an entrance in none.
-    pub application: Option<String>,
+    /// An entrance's app, by name.
+    pub app: Option<String>,
     /// The rank score (higher is better).
     pub score: u32,
 }
@@ -111,10 +107,12 @@ pub struct FileHit {
     /// The project it is in.
     pub project: ProjectId,
     /// The path relative to the project's folder.
-    pub path: String,
+    pub path: RepoPath,
     /// The file name.
     pub name: String,
-    /// How many definitions the stored graph holds in it; `None` when it isn't indexed.
+    /// Its module's key.
+    pub key: Key,
+    /// How many definitions the stored graph holds in it.
     pub definitions: Option<u32>,
     /// The rank score (higher is better).
     pub score: u32,
@@ -150,7 +148,7 @@ pub struct SearchResults {
     pub query: String,
     /// Definitions.
     pub definitions: SearchGroup<SearchHit>,
-    /// Entrances.
+    /// Apps and entrances.
     pub entrances: SearchGroup<SearchHit>,
     /// Files.
     pub files: SearchGroup<FileHit>,
@@ -182,8 +180,7 @@ struct ProjectFound {
     readers: Option<ReadPool>,
 }
 
-/// `search`: ranked definitions, entrances, and files across the projects. Definitions and
-/// entrances need a compiled project; a live project's files don't.
+/// `search`: ranked definitions, apps and entrances, and files across the compiled projects.
 pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
     let wants = |kind: SearchKind| args.kinds.as_ref().is_none_or(|kinds| kinds.contains(&kind));
@@ -194,12 +191,14 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     );
     let query = args.query.trim().to_owned();
     let projects = look_in(ctx, args.projects.as_deref())?;
-    let definition_kinds: Vec<&str> = args
-        .definition_kinds
-        .iter()
-        .flatten()
-        .map(|kind| kind.as_str())
-        .collect();
+    let definition_kinds: Vec<&str> = match &args.definition_kinds {
+        Some(kinds) => kinds.iter().map(|kind| kind.as_str()).collect(),
+        None => NodeKind::ALL
+            .iter()
+            .filter(|kind| kind.is_definition() && **kind != NodeKind::Module)
+            .map(|kind| kind.as_str())
+            .collect(),
+    };
     if query.is_empty() {
         return Ok(SearchResults {
             query,
@@ -231,7 +230,7 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
             b.score
                 .cmp(&a.score)
                 .then_with(|| position(&a.project).cmp(&position(&b.project)))
-                .then_with(|| a.path.len().cmp(&b.path.len()))
+                .then_with(|| a.path.as_str().len().cmp(&b.path.as_str().len()))
                 .then_with(|| a.path.cmp(&b.path))
         },
     );
@@ -256,7 +255,7 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
 }
 
 /// Fills in one project's returned hits from its stored graph: definitions' lines, entrances'
-/// applications (one grouped query), and files' definition counts (one grouped query).
+/// apps, and files' definition counts (one grouped query).
 fn detail(
     project: &ProjectId,
     pool: &ReadPool,
@@ -271,33 +270,26 @@ fn detail(
     {
         return Ok(());
     }
-    let reader = pool.get()?;
+    let reader: Reader = pool.get()?;
     for hit in definitions.iter_mut().filter(|hit| ours(&hit.project)) {
-        hit.line = reader.block(&hit.key)?.map(|located| located.block.lines.start);
+        hit.line = reader
+            .node(hit.key.as_str())?
+            .map(|located| located.node.lines.start);
     }
-    let keys: Vec<&str> = entrances
-        .iter()
-        .filter(|hit| ours(&hit.project))
-        .map(|hit| hit.key.as_str())
-        .collect();
-    let applications: FxHashMap<String, String> = reader
-        .entrance_applications(&keys)?
-        .into_iter()
-        .map(|(key, name)| (key.as_str().to_owned(), name.into()))
-        .collect();
-    for hit in entrances.iter_mut().filter(|hit| ours(&hit.project)) {
-        hit.application = applications.get(&hit.key).cloned();
+    if entrances.iter().any(|hit| ours(&hit.project)) {
+        let apps = reader.apps()?;
+        for hit in entrances.iter_mut().filter(|hit| ours(&hit.project)) {
+            hit.app = catalog::start(&apps, hit.key.as_str())
+                .filter(|start| start.key() != &start.app().key)
+                .map(|start| start.app().name.to_string());
+        }
     }
     let paths: Vec<&str> = files
         .iter()
         .filter(|hit| ours(&hit.project))
         .map(|hit| hit.path.as_str())
         .collect();
-    let counts: FxHashMap<String, u32> = reader
-        .definition_counts(&paths)?
-        .into_iter()
-        .map(|(path, count)| (path.as_str().to_owned(), count))
-        .collect();
+    let counts: FxHashMap<RepoPath, u32> = reader.definition_counts(&paths)?.into_iter().collect();
     for hit in files.iter_mut().filter(|hit| ours(&hit.project)) {
         hit.definitions = counts.get(&hit.path).copied();
     }
@@ -346,8 +338,8 @@ fn merge<T: Clone>(
     }
 }
 
-/// Searches one project: its stored graph for definitions (of `definition_kinds`, every kind
-/// when empty) and entrances, and its files.
+/// Searches one project's stored graph: definitions (of `definition_kinds`), apps and
+/// entrances, and files.
 fn search_project(
     ctx: &Ctx<'_>,
     project: &ProjectHandle<'_>,
@@ -361,60 +353,27 @@ fn search_project(
     let mut matcher = Matcher::new(Config::DEFAULT);
     let readers = project.readers()?;
     let mut found = ProjectFound::default();
-    if let Some(pool) = &readers
-        && (definitions || entrances)
-    {
+    if let Some(pool) = &readers {
         let reader = pool.get()?;
-        for (wanted, kind, item_kinds, slot) in [
-            (
-                definitions,
-                CandidateKind::Definition,
-                definition_kinds,
-                &mut found.definitions,
-            ),
-            (entrances, CandidateKind::Entrance, &[][..], &mut found.entrances),
-        ] {
-            if wanted {
-                let candidates = reader.search(query, kind, item_kinds, CANDIDATES)?;
-                slot.total = candidates.len();
-                slot.capped = candidates.len() >= CANDIDATES;
-                slot.hits = rank(project.id(), &pattern, &mut matcher, candidates, limit);
-            }
+        if definitions {
+            let candidates = reader.search(query, CandidateKind::Definition, definition_kinds, CANDIDATES)?;
+            found.definitions = rank(project.id(), &pattern, &mut matcher, candidates, limit);
             ctx.check_cancelled()?;
         }
-    }
-    if files {
-        let paths = file_list(project, readers.as_ref())?;
-        let mut path_matcher = Matcher::new(Config::DEFAULT.match_paths());
-        found.files = rank_files(project.id(), &pattern, &mut path_matcher, &paths.paths, limit);
-        // A folder with more files than the list holds wasn't searched whole.
-        found.files.capped |= paths.truncated;
+        if entrances {
+            let mut candidates = reader.search(query, CandidateKind::App, &[], CANDIDATES)?;
+            candidates.extend(reader.search(query, CandidateKind::Entrance, &[], CANDIDATES)?);
+            found.entrances = rank(project.id(), &pattern, &mut matcher, candidates, limit);
+            ctx.check_cancelled()?;
+        }
+        if files {
+            let candidates = reader.search(query, CandidateKind::File, &[], CANDIDATES)?;
+            let mut path_matcher = Matcher::new(Config::DEFAULT.match_paths());
+            found.files = rank_files(project.id(), &pattern, &mut path_matcher, candidates, limit);
+        }
     }
     found.readers = readers;
     Ok(found)
-}
-
-/// The files search looks at: a live project's files under discovery's ignore
-/// rules, or a resting project's indexed files from its stored graph (none without a graph).
-fn file_list(project: &ProjectHandle<'_>, readers: Option<&ReadPool>) -> CommandResult<Arc<FileSet>> {
-    if let Some(workspace) = project.live() {
-        return project
-            .extras()
-            .file_set(workspace.root(), &workspace.options().engine.discover);
-    }
-    let paths = match readers {
-        Some(pool) => pool
-            .get()?
-            .files()?
-            .into_iter()
-            .map(|row| row.path.as_str().into())
-            .collect(),
-        None => Vec::new(),
-    };
-    Ok(Arc::new(FileSet {
-        paths,
-        truncated: false,
-    }))
 }
 
 /// Ranks store candidates: a name match counts four times, a qualified-name match twice, a path
@@ -426,7 +385,8 @@ fn rank(
     matcher: &mut Matcher,
     candidates: Vec<SearchCandidate>,
     limit: usize,
-) -> Vec<SearchHit> {
+) -> Found<SearchHit> {
+    let total = candidates.len();
     let mut chars = Vec::new();
     let mut score = |text: &str| pattern.score(Utf32Str::new(text, &mut chars), matcher);
     let mut ranked: Vec<(u32, usize)> = candidates
@@ -444,98 +404,76 @@ fn rank(
         b_score
             .cmp(&a_score)
             .then_with(|| a.name.len().cmp(&b.name.len()))
-            .then_with(|| a.key.as_str().cmp(b.key.as_str()))
+            .then_with(|| a.key.cmp(&b.key))
     });
     ranked.truncate(limit);
     let mut candidates: Vec<Option<SearchCandidate>> = candidates.into_iter().map(Some).collect();
-    ranked
+    let hits = ranked
         .into_iter()
         .filter_map(|(score, index)| {
             let candidate = candidates[index].take()?;
             Some(SearchHit {
                 project: project.clone(),
-                key: candidate.key.as_str().to_owned(),
-                name: candidate.name.to_string(),
-                qualified_name: candidate.qualified_name.to_string(),
-                path: candidate.path.to_string(),
-                kind: candidate.item_kind.to_string(),
+                key: candidate.key,
+                name: candidate.name.into(),
+                qualified_name: candidate.qualified_name.into(),
+                path: candidate.path.into(),
+                kind: candidate.item_kind.into(),
                 line: None,
-                application: None,
+                app: None,
                 score,
             })
-        })
-        .collect()
-}
-
-/// Ranks file paths by fuzzy score, then shorter path, then path: the `limit` best, and how
-/// many matched (counting at most [`CANDIDATES`]).
-fn rank_files(
-    project: &ProjectId,
-    pattern: &Pattern,
-    matcher: &mut Matcher,
-    paths: &[Box<str>],
-    limit: usize,
-) -> Found<FileHit> {
-    let mut chars = Vec::new();
-    let mut scored: Vec<(u32, &str)> = paths
-        .iter()
-        .filter_map(|path| {
-            pattern
-                .score(Utf32Str::new(path, &mut chars), matcher)
-                .map(|score| (score, path.as_ref()))
-        })
-        .collect();
-    scored.sort_by(|a, b| {
-        b.0.cmp(&a.0)
-            .then_with(|| a.1.len().cmp(&b.1.len()))
-            .then_with(|| a.1.cmp(b.1))
-    });
-    let matched = scored.len();
-    scored.truncate(limit);
-    let hits = scored
-        .into_iter()
-        .map(|(score, path)| FileHit {
-            project: project.clone(),
-            path: path.to_owned(),
-            name: path.rsplit('/').next().unwrap_or(path).to_owned(),
-            definitions: None,
-            score,
         })
         .collect();
     Found {
         hits,
-        total: matched.min(CANDIDATES),
-        capped: matched > CANDIDATES,
+        total,
+        capped: total >= CANDIDATES,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn files_rank_by_fuzzy_score_then_length() {
-        let pattern = Pattern::new(
-            "ordsvc",
-            CaseMatching::Smart,
-            Normalization::Smart,
-            AtomKind::Fuzzy,
-        );
-        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-        let paths: Vec<Box<str>> = ["src/services/order-service.ts", "README.md", "src/orders/svc.ts"]
-            .into_iter()
-            .map(Into::into)
-            .collect();
-        let found = rank_files(
-            &ProjectId::new_unchecked("p-aaaaaaaaaa"),
-            &pattern,
-            &mut matcher,
-            &paths,
-            10,
-        );
-        assert_eq!(found.total, 2);
-        let hits = found.hits;
-        assert_eq!(hits.len(), 2);
-        assert!(hits.iter().all(|hit| hit.path != "README.md"));
+/// Ranks file candidates by fuzzy score on their paths, then shorter path, then path: the
+/// `limit` best, and how many matched.
+fn rank_files(
+    project: &ProjectId,
+    pattern: &Pattern,
+    matcher: &mut Matcher,
+    candidates: Vec<SearchCandidate>,
+    limit: usize,
+) -> Found<FileHit> {
+    let total = candidates.len();
+    let mut chars = Vec::new();
+    let mut scored: Vec<(u32, SearchCandidate)> = candidates
+        .into_iter()
+        .map(|candidate| {
+            let score = pattern
+                .score(Utf32Str::new(&candidate.path, &mut chars), matcher)
+                .unwrap_or(0);
+            (score, candidate)
+        })
+        .collect();
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.path.len().cmp(&b.1.path.len()))
+            .then_with(|| a.1.path.cmp(&b.1.path))
+    });
+    scored.truncate(limit);
+    let hits = scored
+        .into_iter()
+        .filter_map(|(score, candidate)| {
+            Some(FileHit {
+                project: project.clone(),
+                path: RepoPath::new(&candidate.path).ok()?,
+                name: candidate.name.into(),
+                key: candidate.key,
+                definitions: None,
+                score,
+            })
+        })
+        .collect();
+    Found {
+        hits,
+        total,
+        capped: total >= CANDIDATES,
     }
 }

@@ -4,22 +4,22 @@
 //! Handlers are plain functions `fn(&Ctx, Args) -> CommandResult<Result>` that the command
 //! table ([`crate::ipc::table`]) dispatches to. They run on command threads, never on an engine
 //! thread; they read the committed graph through reader pools and never wait for a compile
-//! (except `compile` itself). Every command about one project takes `project` first: a handler
+//! (except `compile` itself, and `update_project_config` when it changed only `[[app]]` tables:
+//! it waits for the engine thread to resolve the entrances again). Every command about one
+//! project takes `project` first: a handler
 //! gets the project with `ctx.project(&args.project)` (never waking it) or its engine with
 //! `ctx.live(&args.project)` (waking it), and confines every path it names to that project's
 //! folder.
 //!
-//! [`ProjectExtras`] is the command-side state of one live project, shared by every command: the
-//! cached file list that search walks, rendered source files, and the board
-//! commands' state ([`board_hooks`]).
+//! [`ProjectExtras`] is the command-side state of one live project, shared by every command:
+//! the board commands' state ([`board_hooks`]).
 
 pub mod board_hooks;
 pub mod boards;
+pub mod code;
 pub mod compiling;
 pub mod entrances;
-pub mod file_view;
 pub mod files;
-mod fileset;
 pub mod graph;
 pub mod projects;
 pub mod relations;
@@ -29,19 +29,14 @@ pub mod types;
 pub mod windows;
 pub mod workspace;
 
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ts_rs::TS;
-use unfold_engine::discovery::DiscoverOptions;
+use unfold_core::Key;
 
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::shared::lock;
-
-pub(crate) use fileset::FileSet;
 
 /// The arguments of a command that takes none: `{}`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, TS)]
@@ -77,57 +72,14 @@ pub struct ProjectKeyArgs {
     pub key: String,
 }
 
-/// A one-based, inclusive range of lines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LineRange {
-    /// The first line.
-    pub start_line: u32,
-    /// The last line.
-    pub end_line: u32,
-}
-
 /// The command-side state of one live project. See the [module documentation](self). A new one
 /// replaces it whenever the project wakes.
 #[derive(Debug, Default)]
 pub struct ProjectExtras {
-    /// Bumped whenever files may have appeared, changed, or disappeared, and after every graph
-    /// update.
-    generation: AtomicU64,
-    files: Mutex<Option<(u64, Arc<FileSet>)>>,
-    /// Recently rendered source files.
-    pub(crate) rendered: Mutex<file_view::RenderCache>,
     /// Board-health refreshes after graph updates, one at a time.
     pub(crate) health: HealthRefresh,
     /// The board commands' state of this project.
     pub boards: board_hooks::BoardExtras,
-}
-
-impl ProjectExtras {
-    /// Marks the cached file list and rendered files stale (files or the graph changed).
-    pub(crate) fn files_changed(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
-    }
-
-    /// The change generation now: anything derived from files or the graph before the next
-    /// change is valid for it.
-    pub(crate) fn generation(&self) -> u64 {
-        self.generation.load(Ordering::SeqCst)
-    }
-
-    /// The files of the folder at `root` under discovery's ignore rules, walked again after
-    /// files changed.
-    pub(crate) fn file_set(&self, root: &Path, options: &DiscoverOptions) -> CommandResult<Arc<FileSet>> {
-        let generation = self.generation();
-        if let Some((built, files)) = lock(&self.files).as_ref()
-            && *built == generation
-        {
-            return Ok(Arc::clone(files));
-        }
-        let files = Arc::new(FileSet::walk(root, options)?);
-        *lock(&self.files) = Some((generation, Arc::clone(&files)));
-        Ok(files)
-    }
 }
 
 /// Coalesces board-health refreshes: graph updates can arrive faster than a project's boards'
@@ -171,6 +123,11 @@ pub(crate) fn key_arg(key: &str) -> CommandResult<&str> {
     } else {
         Ok(key)
     }
+}
+
+/// A structural key argument as a key, refusing empty text.
+pub(crate) fn key_of(key: &str) -> CommandResult<Key> {
+    Ok(Key::from_text(key_arg(key)?))
 }
 
 /// Converts a count to `u32`, saturating.

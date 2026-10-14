@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_core::{Key, RepoPath};
+use unfold_core::RepoPath;
 use unfold_reader::board::{Anchor, Board, Health, Repair, Target};
 
+use crate::commands::key_of;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 
@@ -34,12 +35,12 @@ impl BoardDocument {
 }
 
 /// What a window saves: the title and the pages. The folder and the file framing are Rust's.
-/// Labels, guards, and links (and frames, resources, and notes, as in the file) are optional on
-/// input; signatures may be `""` (signed on save).
+/// A page's names, combined steps, guards, connections, frames, resources, notes, and proposed
+/// steps are optional on input, as in the file; signatures may be `""` (signed on save).
 #[derive(Debug, Clone, PartialEq, Deserialize, TS)]
 #[serde(transparent)]
 #[ts(
-    type = "{ title: string; pages: Array<Omit<Page, \"labels\" | \"guards\" | \"links\"> & Partial<Pick<Page, \"labels\" | \"guards\" | \"links\">>> }"
+    type = "{ title: string; pages: Array<Pick<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\"> & Partial<Omit<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\">>> }"
 )]
 pub struct BoardEdit(pub(super) serde_json::Value);
 
@@ -53,7 +54,7 @@ pub struct BoardState {
     pub id: String,
     /// The file's name without `.json`.
     pub name: String,
-    /// The board as last loaded or saved (descriptions and labels signed).
+    /// The board as last loaded or saved (descriptions, names, and combined steps signed).
     pub document: BoardDocument,
     /// The revision of the board's file then.
     pub revision: String,
@@ -229,19 +230,19 @@ pub struct RenameFolderArgs {
     pub to: String,
 }
 
-/// What a repair is about (a card, group, label, link, resource card, frame, or proposed step) on
-/// its page.
+/// What a repair is about (a card, combined step, name, connection, resource card, frame, or
+/// proposed step) on its page.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum TargetSpec {
     /// A card, by id.
     Card(String),
-    /// A group, by id.
-    Group(String),
-    /// A Flow label, by block key.
-    Label(String),
-    /// A drawn link or a connection, by id.
-    Link(String),
+    /// A combined step, by id.
+    Combined(String),
+    /// A block's name, by block key.
+    Name(String),
+    /// A connection, by id.
+    Connection(String),
     /// A resource card, by id.
     Resource(String),
     /// A frame, by id.
@@ -255,7 +256,7 @@ pub enum TargetSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum AnchorSpec {
-    /// A block key (`path#…`) or an entrance key (`entrance:[…]`).
+    /// A block key or an app's or entrance's key.
     Key {
         /// The key.
         key: String,
@@ -278,27 +279,13 @@ pub enum AnchorSpec {
     deny_unknown_fields
 )]
 pub enum RepairKindSpec {
-    /// Point reference `from` at `to` everywhere on the page (after a rename or move).
+    /// Point reference `from` at `to` everywhere on the page (after a rename or move); the
+    /// references to blocks inside `from` move with it.
     Reconnect {
         /// The missing key.
         from: String,
         /// The key it should point at.
         to: String,
-    },
-    /// Remove a card, its groups, and its links.
-    RemoveCard {
-        /// The card's id.
-        card: String,
-    },
-    /// Remove a Flow label.
-    RemoveLabel {
-        /// The block key.
-        key: String,
-    },
-    /// Remove a group, keeping its statements.
-    Ungroup {
-        /// The group's id.
-        group: String,
     },
     /// Point anchor `anchor` (its position) of resource card or connection `item` at `to`.
     ReconnectAnchor {
@@ -309,24 +296,8 @@ pub enum RepairKindSpec {
         /// The new anchor.
         to: AnchorSpec,
     },
-    /// Remove a drawn link or a connection.
-    RemoveLink {
-        /// The link's id.
-        link: String,
-    },
-    /// Remove a resource card and the links to it.
-    RemoveResource {
-        /// The resource card's id.
-        resource: String,
-    },
-    /// Remove a card's, group's, resource card's, or frame's description, a label, a drawn
-    /// link's label, or a connection's description and label.
-    RemoveDescription {
-        /// Whose.
-        target: TargetSpec,
-    },
-    /// Keep a description's text and sign it against the current source (a resource card or
-    /// connection with its texts).
+    /// Keep a description's, name's, or combined step's text and sign it against the current
+    /// source (a resource card or connection with its texts).
     Resign {
         /// Whose.
         target: TargetSpec,
@@ -336,10 +307,15 @@ pub enum RepairKindSpec {
         /// The reference.
         key: String,
     },
-    /// Remove a proposed step.
-    RemoveProposal {
-        /// The proposed step's id.
-        proposal: String,
+    /// Remove an item: a card, resource card, or frame with the connections to and from it.
+    Remove {
+        /// The item.
+        target: TargetSpec,
+    },
+    /// Remove the description of a card, combined step, resource card, connection, or frame.
+    RemoveDescription {
+        /// Whose.
+        target: TargetSpec,
     },
 }
 
@@ -358,9 +334,9 @@ impl TargetSpec {
     fn into_target(self) -> Target {
         match self {
             Self::Card(id) => Target::Card(id),
-            Self::Group(id) => Target::Group(id),
-            Self::Label(key) => Target::Label(key),
-            Self::Link(id) => Target::Link(id),
+            Self::Combined(id) => Target::Combined(id),
+            Self::Name(key) => Target::Name(key),
+            Self::Connection(id) => Target::Connection(id),
             Self::Resource(id) => Target::Resource(id),
             Self::Frame(id) => Target::Frame(id),
             Self::Proposal(id) => Target::Proposal(id),
@@ -372,16 +348,7 @@ impl AnchorSpec {
     /// The board's anchor (`invalid_args` for a malformed key, path, or line range).
     fn into_anchor(self) -> CommandResult<Anchor> {
         match self {
-            Self::Key { key } => {
-                if !key.starts_with("entrance:") && !key.contains('#') {
-                    return Err(CommandError::invalid_args(format!(
-                        "`{key}` is not a block key (`path#…`) or an entrance key (`entrance:[…]`)"
-                    )));
-                }
-                Ok(Anchor::Key {
-                    key: Key::from_text(&key),
-                })
-            }
+            Self::Key { key } => Ok(Anchor::Key { key: key_of(&key)? }),
             Self::File {
                 file,
                 lines: [first, last],
@@ -415,15 +382,10 @@ impl RepairKindSpec {
                 index: anchor as usize,
                 to: to.into_anchor()?,
             },
-            Self::RemoveCard { card } => Repair::RemoveCard(card),
-            Self::RemoveLabel { key } => Repair::RemoveLabel(key),
-            Self::Ungroup { group } => Repair::Ungroup(group),
-            Self::RemoveLink { link } => Repair::RemoveLink(link),
-            Self::RemoveResource { resource } => Repair::RemoveResource(resource),
-            Self::RemoveDescription { target } => Repair::RemoveDescription(target.into_target()),
             Self::Resign { target } => Repair::Resign(target.into_target()),
             Self::Accept { key } => Repair::Accept(key),
-            Self::RemoveProposal { proposal } => Repair::RemoveProposal(proposal),
+            Self::Remove { target } => Repair::Remove(target.into_target()),
+            Self::RemoveDescription { target } => Repair::RemoveDescription(target.into_target()),
         })
     }
 }
@@ -447,25 +409,26 @@ mod tests {
     #[test]
     fn repairs_name_their_page_and_refuse_unknown_fields() {
         let spec: RepairSpec = serde_json::from_value(serde_json::json!({
-            "page": "page-2", "kind": "remove_label", "key": "a.ts#function:f"
+            "page": "page-2", "kind": "accept", "key": "a.ts#f"
         }))
         .expect("parse");
         assert_eq!(spec.page, "page-2");
         assert_eq!(
             spec.repair.into_repair().expect("repair"),
-            Repair::RemoveLabel("a.ts#function:f".to_owned())
+            Repair::Accept("a.ts#f".to_owned())
         );
         let target: RepairSpec = serde_json::from_value(serde_json::json!({
-            "page": "p", "kind": "resign", "target": { "label": "k" }
+            "page": "p", "kind": "resign", "target": { "combined": "k" }
         }))
         .expect("parse");
         assert_eq!(
             target.repair.into_repair().expect("repair"),
-            Repair::Resign(Target::Label("k".to_owned()))
+            Repair::Resign(Target::Combined("k".to_owned()))
         );
         for bad in [
-            serde_json::json!({ "page": "p", "kind": "remove_card", "card": "c", "extra": 1 }),
-            serde_json::json!({ "kind": "remove_card", "card": "c" }),
+            serde_json::json!({ "page": "p", "kind": "remove", "target": { "card": "c" }, "extra": 1 }),
+            serde_json::json!({ "kind": "remove", "target": { "card": "c" } }),
+            serde_json::json!({ "page": "p", "kind": "remove", "target": { "label": "k" } }),
             serde_json::json!({ "page": "p", "kind": "explode" }),
             serde_json::json!({ "page": "p", "kind": "accept", "project": "web", "key": "k" }),
         ] {
@@ -498,17 +461,17 @@ mod tests {
             })
         );
         assert_eq!(
-            repair(serde_json::json!({ "key": "a.ts#variable:queue" })),
+            repair(serde_json::json!({ "key": "a.ts#queue" })),
             Ok(Repair::ReconnectAnchor {
                 item: "orders".to_owned(),
                 index: 1,
                 to: Anchor::Key {
-                    key: Key::from_text("a.ts#variable:queue"),
+                    key: unfold_core::Key::from_text("a.ts#queue"),
                 },
             })
         );
         for bad in [
-            serde_json::json!({ "key": "queue" }),
+            serde_json::json!({ "key": "" }),
             serde_json::json!({ "file": "../schema.sql", "lines": [1, 1] }),
             serde_json::json!({ "file": "db/schema.sql", "lines": [3, 2] }),
             serde_json::json!({ "file": "db/schema.sql", "lines": [0, 2] }),
@@ -520,20 +483,20 @@ mod tests {
             );
         }
         let removed: RepairSpec = serde_json::from_value(serde_json::json!({
-            "page": "p", "kind": "remove_resource", "resource": "orders"
+            "page": "p", "kind": "remove", "target": { "resource": "orders" }
         }))
         .expect("parse");
         assert_eq!(
             removed.repair.into_repair(),
-            Ok(Repair::RemoveResource("orders".to_owned()))
+            Ok(Repair::Remove(Target::Resource("orders".to_owned())))
         );
-        let unproposed: RepairSpec = serde_json::from_value(serde_json::json!({
-            "page": "p", "kind": "remove_proposal", "proposal": "email"
+        let unnamed: RepairSpec = serde_json::from_value(serde_json::json!({
+            "page": "p", "kind": "remove", "target": { "name": "a.ts#f/call:g" }
         }))
         .expect("parse");
         assert_eq!(
-            unproposed.repair.into_repair(),
-            Ok(Repair::RemoveProposal("email".to_owned()))
+            unnamed.repair.into_repair(),
+            Ok(Repair::Remove(Target::Name("a.ts#f/call:g".to_owned())))
         );
         let resign: RepairSpec = serde_json::from_value(serde_json::json!({
             "page": "p", "kind": "resign", "target": { "frame": "server" }

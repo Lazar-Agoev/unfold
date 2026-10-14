@@ -3,8 +3,11 @@
 
 use std::path::PathBuf;
 
+use unfold_engine::settings::edit::EditError;
+
 use crate::layout::Unwritable;
 use crate::projects::ProjectId;
+use crate::workspace::settings_error;
 
 /// Why a workspace operation failed.
 #[derive(Debug, thiserror::Error)]
@@ -136,6 +139,27 @@ impl WorkspaceError {
         Self::Io {
             path: path.into(),
             source,
+        }
+    }
+}
+
+impl From<EditError> for WorkspaceError {
+    fn from(error: EditError) -> Self {
+        match error {
+            EditError::Unparsable(error) => match settings_error(error) {
+                Self::InvalidSettings {
+                    message,
+                    line,
+                    column,
+                } => Self::InvalidSettings {
+                    message: format!("fix unfold.toml first: {message}"),
+                    line,
+                    column,
+                },
+                other => other,
+            },
+            EditError::Invalid(error) => settings_error(error),
+            EditError::Conflict(message) => Self::SettingsConflict(message.into()),
         }
     }
 }

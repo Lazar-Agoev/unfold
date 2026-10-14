@@ -41,12 +41,14 @@ pub(super) fn ranges(file: &FileGraph) -> Vec<(Subject, &'static str, ByteRange)
         }
     }
     for member in &types.members {
-        if let (Some(node), Some(ty)) = (key(member.node), &member.ty) {
-            let subject = Subject::Member {
-                node,
-                index: member.index,
-            };
-            ranges.push((subject, "type", ty.range));
+        let Some(node) = key(member.node) else { continue };
+        let subject = || Subject::Member {
+            node: node.clone(),
+            index: member.index,
+        };
+        ranges.push((subject(), "range", member.range));
+        if let Some(ty) = &member.ty {
+            ranges.push((subject(), "type", ty.range));
         }
     }
     for argument in &types.arguments {
@@ -264,8 +266,17 @@ fn check_members(checker: &mut Checker<'_>, file: &FileGraph) {
         if let Some(value) = &member.value {
             checker.check_label(&subject, "value", value);
         }
+        if member.range.is_empty() || !found.range.contains(member.range) {
+            checker.report(
+                subject(),
+                format!(
+                    "range {} is empty or outside its node's range {}",
+                    member.range, found.range
+                ),
+            );
+        }
         if let Some(ty) = &member.ty {
-            check_written(checker, &subject, "type", ty, Some(found.range), "its node");
+            check_written(checker, &subject, "type", ty, Some(member.range), "the member");
         }
         if file.file.language == Language::Python && (member.optional || member.readonly) {
             checker.report(subject(), "only TypeScript members are optional or readonly");

@@ -15,6 +15,7 @@
 //! | `project_reset` | A project was removed: everything cached for it is stale |
 //! | `compile_progress` | A compile or update advanced (throttled) |
 //! | `graph_updated` | A commit changed the graph |
+//! | `entrances_changed` | The apps and entrances changed: their tables, the states of their code, or their fixes. An edit of only the `[[app]]` tables sends this alone: it resolves the entrances again without compiling |
 //! | `problems_changed` | The Problems list changed |
 //! | `files_changed` | The watcher saw files appear, change, or disappear |
 //! | `boards_changed` | Board files or folders changed |
@@ -86,8 +87,6 @@ pub enum WorkspaceEvent {
         removed_files: Vec<String>,
         /// Block keys added, removed, or changed, sorted.
         changed_keys: Vec<String>,
-        /// Entrance keys added, removed, or changed, sorted.
-        changed_entrances: Vec<String>,
         /// Whether the configuration inputs changed.
         inputs_changed: bool,
         /// The lists were too long to send (more than [`MAX_LISTED`]) and are empty: treat
@@ -95,6 +94,12 @@ pub enum WorkspaceEvent {
         everything: bool,
         /// Whether every discovered file is indexed.
         complete: bool,
+    },
+    /// The apps and entrances changed: their tables in `unfold.toml`, the states of their code,
+    /// or their fixes. The UI refreshes `entrances` (and `project_summary`'s Health line) on it.
+    EntrancesChanged {
+        /// The project.
+        project: ProjectId,
     },
     /// The Problems list changed.
     ProblemsChanged {
@@ -152,6 +157,7 @@ impl WorkspaceEvent {
             Self::ProjectReset { .. } => "project_reset",
             Self::CompileProgress { .. } => "compile_progress",
             Self::GraphUpdated { .. } => "graph_updated",
+            Self::EntrancesChanged { .. } => "entrances_changed",
             Self::ProblemsChanged { .. } => "problems_changed",
             Self::FilesChanged { .. } => "files_changed",
             Self::BoardsChanged { .. } => "boards_changed",
@@ -167,6 +173,7 @@ impl WorkspaceEvent {
             | Self::ProjectReset { project }
             | Self::CompileProgress { project, .. }
             | Self::GraphUpdated { project, .. }
+            | Self::EntrancesChanged { project }
             | Self::ProblemsChanged { project, .. }
             | Self::FilesChanged { project, .. }
             | Self::BoardsChanged { project, .. }
@@ -188,8 +195,7 @@ mod tests {
             project: project.clone(),
             changed_files: vec!["a.ts".into()],
             removed_files: Vec::new(),
-            changed_keys: vec!["a.ts#function:f".into()],
-            changed_entrances: Vec::new(),
+            changed_keys: vec!["a.ts#f".into()],
             inputs_changed: false,
             everything: false,
             complete: true,

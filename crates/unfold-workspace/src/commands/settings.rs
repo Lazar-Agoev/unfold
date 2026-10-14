@@ -1,22 +1,21 @@
 //! Settings commands (docs/engine.md#shared-config, shared settings): the app settings, a
-//! project's `unfold.toml` (read, and changed through validated edits that keep its comments),
-//! and what the UI needs to sign its edits.
-
-use std::collections::BTreeMap;
+//! project's `unfold.toml` (read, and changed through the engine's validated edits that keep its
+//! comments, `unfold_engine::settings::edit`), and what the UI needs to sign its edits.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use unfold_core::vocab::{DetectorId, EntranceKind, HttpMethod, Language};
-use unfold_engine::settings::{ManualTargets, ProcessStart, Settings};
+use unfold_core::vocab::Language;
+use unfold_engine::settings::SettingsFile;
+use unfold_engine::settings::edit::SettingsEdit;
 
+use super::entrances::{AppView, app_views};
 use super::{NoArgs, ProjectArgs};
 use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
-use crate::settings_edit::{LaunchTargetSpec, SettingsEdit};
 use crate::state::AppSettings;
-use crate::workspace::{load_settings, settings_text};
+use crate::workspace::{settings_error, settings_text};
 
 /// `get_settings`: the app settings (defaults when none are saved).
 pub fn get_settings(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<AppSettings> {
@@ -71,45 +70,7 @@ pub struct PythonProjectView {
     pub version: String,
 }
 
-/// One `[[entrance]]` table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-pub struct ManualEntranceView {
-    /// Its ID (what edits name).
-    pub id: String,
-    /// The kind.
-    pub kind: EntranceKind,
-    /// The `[[application]]` it belongs to.
-    pub application: Option<String>,
-    /// The trigger.
-    pub trigger: Option<String>,
-    /// The HTTP method.
-    pub method: Option<HttpMethod>,
-    /// The label.
-    pub label: Option<String>,
-    /// The description.
-    pub description: Option<String>,
-    /// Handler locators, middleware first (every kind but `process`).
-    pub handler: Vec<String>,
-    /// The working folder (`process`; `.` is the project's folder).
-    pub cwd: Option<String>,
-    /// The command line (`process`).
-    pub command: Option<String>,
-    /// The startup locator (`process`).
-    pub startup: Option<String>,
-    /// The launch target (`process`).
-    pub target: Option<LaunchTargetSpec>,
-    /// The import path, in order (`process`), when set.
-    pub python_paths: Option<Vec<String>>,
-    /// Declared environment variables (`process`).
-    pub env: BTreeMap<String, String>,
-    /// The schedule, as written (`process`).
-    pub schedule: Option<String>,
-    /// The table's line in the file.
-    pub line: u32,
-}
-
-/// The validated settings, as the settings editor shows them.
+/// The validated settings and apps, as the settings editor shows them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
@@ -119,33 +80,24 @@ pub struct SettingsView {
     pub include: Vec<String>,
     /// `[scope] exclude` patterns.
     pub exclude: Vec<String>,
-    /// Detectors turned off.
-    pub disabled_detectors: Vec<DetectorId>,
     /// Python projects.
     pub python_projects: Vec<PythonProjectView>,
-    /// Manual entrances, in file order.
-    pub entrances: Vec<ManualEntranceView>,
     /// `[evidence] files` patterns, as written.
     pub evidence: Vec<String>,
+    /// The `[[app]]` tables as written, in file order (their code without states: `entrances`
+    /// has those).
+    pub apps: Vec<AppView>,
 }
 
-impl From<&Settings> for SettingsView {
-    fn from(settings: &Settings) -> Self {
+impl SettingsView {
+    /// The view of `file`, whose text is `text`.
+    fn new(file: &SettingsFile, text: Option<&str>) -> Self {
+        let settings = &file.settings;
+        let patterns = |patterns: &[Box<str>]| patterns.iter().map(ToString::to_string).collect();
         Self {
             languages: settings.languages.clone(),
-            include: settings
-                .scope
-                .include()
-                .iter()
-                .map(|pattern| pattern.to_string())
-                .collect(),
-            exclude: settings
-                .scope
-                .exclude()
-                .iter()
-                .map(|pattern| pattern.to_string())
-                .collect(),
-            disabled_detectors: settings.disabled_detectors.clone(),
+            include: patterns(settings.scope.include()),
+            exclude: patterns(settings.scope.exclude()),
             python_projects: settings
                 .python_projects
                 .iter()
@@ -158,71 +110,13 @@ impl From<&Settings> for SettingsView {
                     version: project.version.as_str().to_owned(),
                 })
                 .collect(),
-            entrances: settings
-                .entrances
-                .iter()
-                .map(|entrance| {
-                    let text = |text: Option<&str>| text.map(str::to_owned);
-                    let mut view = ManualEntranceView {
-                        id: entrance.id.to_string(),
-                        kind: entrance.kind,
-                        application: text(entrance.application.as_deref()),
-                        trigger: text(entrance.trigger.as_deref()),
-                        method: entrance.method,
-                        label: text(entrance.label.as_deref()),
-                        description: text(entrance.description.as_deref()),
-                        handler: Vec::new(),
-                        cwd: None,
-                        command: None,
-                        startup: None,
-                        target: None,
-                        python_paths: None,
-                        env: BTreeMap::new(),
-                        schedule: None,
-                        line: entrance.line,
-                    };
-                    match &entrance.targets {
-                        ManualTargets::Handlers(locators) => {
-                            view.handler = locators.iter().map(ToString::to_string).collect();
-                        }
-                        ManualTargets::Process(process) => {
-                            view.cwd = Some(process.cwd.as_str().to_owned());
-                            view.command = text(process.command.as_deref());
-                            match &process.start {
-                                Some(ProcessStart::Startup(locator)) => {
-                                    view.startup = Some(locator.to_string());
-                                }
-                                Some(ProcessStart::Target(target)) => {
-                                    view.target = Some(LaunchTargetSpec::from(target));
-                                }
-                                None => {}
-                            }
-                            view.python_paths = process
-                                .python_paths
-                                .as_ref()
-                                .map(|paths| paths.iter().map(|path| path.as_str().to_owned()).collect());
-                            view.env = process
-                                .env
-                                .iter()
-                                .map(|(name, value)| (name.to_string(), value.to_string()))
-                                .collect();
-                            view.schedule = text(process.schedule.as_deref());
-                        }
-                    }
-                    view
-                })
-                .collect(),
-            evidence: settings
-                .evidence
-                .patterns()
-                .iter()
-                .map(|pattern| pattern.to_string())
-                .collect(),
+            evidence: patterns(settings.evidence.patterns()),
+            apps: app_views(&file.apps, text, None),
         }
     }
 }
 
-/// A project's `unfold.toml`: its text and the settings it holds.
+/// A project's `unfold.toml`: its text and what it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfig {
@@ -230,15 +124,15 @@ pub struct ProjectConfig {
     pub exists: bool,
     /// The file's text.
     pub text: Option<String>,
-    /// The validated settings, unless the file is invalid.
+    /// The validated settings and apps, unless the file is invalid.
     pub settings: Option<SettingsView>,
     /// Why the file is invalid, with its position.
     pub error: Option<SettingsProblem>,
 }
 
-fn project_config_of(text: Option<String>, settings: Result<Settings, WorkspaceError>) -> ProjectConfig {
-    let (settings, error) = match settings {
-        Ok(settings) => (Some(SettingsView::from(&settings)), None),
+fn project_config_of(text: Option<String>, file: Result<SettingsFile, WorkspaceError>) -> ProjectConfig {
+    let (settings, error) = match file {
+        Ok(file) => (Some(SettingsView::new(&file, text.as_deref())), None),
         Err(WorkspaceError::InvalidSettings {
             message,
             line,
@@ -268,12 +162,17 @@ fn project_config_of(text: Option<String>, settings: Result<Settings, WorkspaceE
     }
 }
 
-/// `project_config`: the settings file's text, and its validated settings or why it is invalid.
-/// Read from disk; never wakes the project.
+/// `project_config`: the settings file's text, and its validated settings and apps or why it
+/// is invalid. Read from disk; never wakes the project.
 pub fn project_config(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<ProjectConfig> {
     let project = ctx.project(&args.project)?;
     let root = project.root();
-    Ok(project_config_of(settings_text(root)?, load_settings(root)))
+    let text = settings_text(root)?;
+    let file = match text.as_deref() {
+        Some(text) => SettingsFile::parse(text).map_err(settings_error),
+        None => Ok(SettingsFile::default()),
+    };
+    Ok(project_config_of(text, file))
 }
 
 /// The arguments of `update_project_config`.
@@ -286,14 +185,48 @@ pub struct UpdateProjectConfigArgs {
     pub edits: Vec<SettingsEdit>,
 }
 
-/// `update_project_config`: applies validated edits (scope, manual entrances, Python projects,
-/// evidence files), keeping comments and formatting; an edit that would make the file invalid is
-/// refused with `invalid_settings` and nothing is written. Sends `config_changed`.
-pub fn update_project_config(ctx: &Ctx<'_>, args: UpdateProjectConfigArgs) -> CommandResult<ProjectConfig> {
+/// What `update_project_config` did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConfigUpdate {
+    /// The file after the edits.
+    pub config: ProjectConfig,
+    /// The unified diff from the old text to the new; empty when the edits changed nothing.
+    pub diff: String,
+}
+
+/// The most edits one `update_project_config` applies.
+pub const MAX_EDITS: usize = 200;
+
+/// `update_project_config`: applies validated edits (scope, Python projects, evidence files,
+/// and apps and entrances: `set_app`, `set_entrance`, `remove_entrance`), keeping comments and
+/// formatting, and returns the diff; an edit that would make the file invalid is refused with
+/// `invalid_settings` and nothing is written. Sends `config_changed`. An edit of only `[[app]]`
+/// tables resolves the entrances again without compiling before it returns
+/// (`entrances_changed` follows when they changed); other edits apply with the next background
+/// update.
+pub fn update_project_config(
+    ctx: &Ctx<'_>,
+    args: UpdateProjectConfigArgs,
+) -> CommandResult<ProjectConfigUpdate> {
+    if args.edits.len() > MAX_EDITS {
+        return Err(CommandError::invalid_args(format!(
+            "at most {MAX_EDITS} edits at once"
+        )));
+    }
     let workspace = ctx.live(&args.project)?;
     let outcome = workspace.edit_settings(&args.edits)?;
-    let text = workspace.settings_text()?;
-    Ok(project_config_of(text, Ok(outcome.settings)))
+    let exists = outcome.written || workspace.settings_text()?.is_some();
+    let config = ProjectConfig {
+        exists,
+        settings: Some(SettingsView::new(&outcome.file, Some(&outcome.text))),
+        text: exists.then_some(outcome.text),
+        error: None,
+    };
+    Ok(ProjectConfigUpdate {
+        config,
+        diff: outcome.diff,
+    })
 }
 
 /// Facts about the app the UI can't get itself (it has no Node APIs).

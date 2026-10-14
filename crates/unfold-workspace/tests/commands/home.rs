@@ -1,6 +1,6 @@
-//! Home: `project_summary` (the state line and the Health line), `entrances` (paged and
-//! filtered per application), and Home's boards (`list_boards`, the Health line's boards), live
-//! and resting.
+//! Home: `project_summary` (the state line and the Health line), `entrances` (the apps and
+//! entrances as written, with each `code`'s state and fix), `problems`, and Home's boards
+//! (`list_boards`, the Health line's boards), live and resting.
 
 use std::time::{Duration, SystemTime};
 
@@ -14,8 +14,8 @@ const GONE_BOARD: &str = r#"{
   "version": 1,
   "title": "Gone code",
   "pages": [{
-    "id": "page-1", "title": "Checkout", "defaultView": "code", "groups": [],
-    "cards": [{ "id": "gone", "at": [0, 0], "ref": { "block": "src/routes/orders.ts#function:gone" } }]
+    "id": "page-1", "title": "Checkout", "defaultView": "compact",
+    "cards": [{ "id": "gone", "at": [0, 0], "ref": { "block": "src/routes/orders.ts#gone" } }]
   }]
 }
 "#;
@@ -75,10 +75,11 @@ fn the_summary_counts_the_graph_and_its_health() {
             "health"
         ]
     );
+    // One `code` key is missing (moved), two name JavaScript files Unfold doesn't analyze.
     let health = &summary["health"];
     assert_eq!(
         *health,
-        json!({ "doesntParse": 0, "boardsNeedingReview": 0, "boards": [] })
+        json!({ "doesntParse": 0, "boardsNeedingReview": 0, "boards": [], "entrancesNotFound": 3 })
     );
 
     // A file that stops parsing shows in the row's state and the Health line.
@@ -92,164 +93,96 @@ fn the_summary_counts_the_graph_and_its_health() {
 }
 
 #[test]
-fn entrances_are_paged_filtered_and_ordered_per_application() {
+fn entrances_list_the_apps_as_written_with_states_and_fixes() {
     let harness = Harness::compiled("ts-orders");
-    let overview = harness.ok(1, "entrances", json!({ "project": harness.project }));
-    assert_eq!(overview["view"], "overview");
-    assert_eq!(overview["project"], harness.project);
-    let categories = overview["categories"].as_array().expect("categories");
-    let order: Vec<&str> = categories
-        .iter()
-        .filter_map(|category| category["category"].as_str())
-        .collect();
-    assert_eq!(order, ["services", "workers", "scheduled"], "display order");
-    let applications: Vec<Value> = categories
-        .iter()
-        .flat_map(|category| category["applications"].as_array().cloned().unwrap_or_default())
-        .collect();
-    assert_eq!(overview["counts"]["applications"], applications.len());
-    let launches: usize = applications
-        .iter()
-        .map(|application| application["launches"].as_array().map_or(0, Vec::len))
-        .sum();
-    assert_eq!(overview["counts"]["launches"], launches);
-    for launch in applications
-        .iter()
-        .flat_map(|application| application["launches"].as_array().cloned().unwrap_or_default())
-    {
-        assert_eq!(
-            launch["folder"], "ts-orders",
-            "the project's folder shows its name"
-        );
-        assert!(
-            launch["command"]
-                .as_str()
-                .is_some_and(|command| !command.is_empty())
-        );
-        assert_eq!(launch["editable"], "override");
-        assert!(
-            launch["reaches"].is_u64(),
-            "a live project counts reach: {launch}"
-        );
-    }
-
-    let server = applications
-        .iter()
-        .find(|application| application["routes"].as_u64().is_some_and(|routes| routes > 0))
-        .expect("an application with routes");
-    // An Express server isn't an ASGI application: each launch serves the routes its
-    // application proves it reaches.
-    let server_launches = server["launches"].as_array().expect("launches");
-    assert_eq!(server_launches.len(), 2, "npm run start and npm run dev");
-    for launch in server_launches {
-        assert_eq!(launch["routes"], server["routes"], "{launch}");
-    }
-    let scope = |args: Value| {
-        let mut args = args;
-        args["project"] = json!(harness.project);
-        args["application"] = server["id"].clone();
-        harness.ok(1, "entrances", args)
-    };
-    let all = scope(json!({ "limit": 500 }));
-    assert_eq!(all["view"], "scope");
-    let rows = all["rows"].as_array().expect("rows");
-    assert_eq!(all["total"], rows.len());
-    assert_eq!(all["nextCursor"], Value::Null);
-    assert_eq!(server["entrances"], rows.len(), "launches and handlers");
-    let sections = all["sections"].as_array().expect("sections");
-    assert_eq!(sections[0]["title"], "Launch");
-    let kinds: Vec<&str> = rows
-        .iter()
-        .map(|row| {
-            sections[row["section"].as_u64().expect("section") as usize]["kind"]
-                .as_str()
-                .expect("kind")
-        })
-        .collect();
-    let rank = |kind: &str| {
-        ["launch", "http", "worker", "schedule", "command", "event"]
-            .iter()
-            .position(|known| *known == kind)
-    };
+    let apps = harness.apps();
+    let names: Vec<&str> = apps.iter().filter_map(|app| app["name"].as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Server",
+            "Dev server",
+            "Worker",
+            "Scheduler",
+            "Orders CLI",
+            "Dev CLI",
+            "Legacy export"
+        ],
+        "file order"
+    );
+    let server = &apps[0];
+    assert_eq!(server["key"], "entrance:server");
+    assert_eq!(server["run"], "npm run start");
+    assert_eq!(
+        server["code"],
+        json!({ "key": "src/server.ts#", "state": "found" })
+    );
     assert!(
-        kinds.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])),
-        "{kinds:?}"
+        server["lines"][0].as_u64().is_some_and(|line| line > 1),
+        "{server}"
     );
-    for section in sections.iter().filter(|section| section["kind"] == "http") {
-        assert!(
-            section["title"]
-                .as_str()
-                .is_some_and(|title| title.starts_with('/')),
-            "{section}"
-        );
-    }
-    assert!(rows.iter().all(|row| row["reaches"].is_u64()));
-
-    // Pages follow each other through the cursor, in the same order.
-    let mut paged = Vec::new();
-    let mut cursor = Value::Null;
-    loop {
-        let mut args = json!({ "limit": 2 });
-        if !cursor.is_null() {
-            args["cursor"] = cursor.clone();
-        }
-        let page = scope(args);
-        assert_eq!(page["total"], all["total"]);
-        assert_eq!(
-            page["sections"], all["sections"],
-            "sections don't depend on the page"
-        );
-        paged.extend(page["rows"].as_array().cloned().unwrap_or_default());
-        cursor = page["nextCursor"].clone();
-        if cursor.is_null() {
-            break;
-        }
-    }
-    assert_eq!(&paged, rows);
-
-    // The filter applies before paging.
-    let http = rows.iter().find(|row| row["kind"] == "http").expect("a route");
-    let filter = http["title"].as_str().expect("title").to_uppercase();
-    let filtered = scope(json!({ "filter": filter, "limit": 1 }));
-    let needle = filter.to_lowercase();
-    let matching = rows
+    let entrances = server["entrances"].as_array().expect("entrances");
+    assert_eq!(entrances.len(), 9);
+    let place = &entrances[4];
+    assert_eq!(place["key"], "entrance:server/place-an-order");
+    assert_eq!(place["on"], "POST /orders");
+    let states: Vec<&Value> = place["code"]
+        .as_array()
+        .expect("code")
         .iter()
-        .filter(|row| {
-            [&row["title"], &row["trigger"], &row["handler"], &row["path"]]
-                .iter()
-                .filter_map(|value| value.as_str())
-                .any(|text| text.to_lowercase().contains(&needle))
-        })
-        .count();
-    assert_eq!(filtered["total"], matching);
-    assert_eq!(filtered["rows"][0]["key"], http["key"]);
+        .map(|code| &code["state"])
+        .collect();
+    assert_eq!(states, ["found", "found", "found"], "in the order they run");
+    // The deliberately missing key, with its one fix.
+    let admin = &entrances[7];
+    assert_eq!(admin["name"], "Admin stats");
+    assert_eq!(
+        admin["code"],
+        json!([{
+            "key": "src/server.ts#adminStats",
+            "state": "missing",
+            "fix": { "kind": "moved_definition", "code": "src/routes/admin.ts#adminStats" }
+        }])
+    );
+    let lines = admin["lines"].as_array().expect("lines");
+    assert_eq!(lines[0], lines[1], "one line in unfold.toml");
+    assert_eq!(apps[6]["code"]["state"], "not_analyzed");
 
-    for bad in [0, 501] {
-        assert_eq!(
-            harness.code(
-                1,
-                "entrances",
-                json!({ "project": harness.project, "limit": bad })
-            ),
-            "invalid_args"
-        );
-    }
-    assert_eq!(
-        harness.code(
-            1,
-            "entrances",
-            json!({ "project": harness.project, "application": server["id"], "unreached": true })
-        ),
-        "invalid_args"
+    // An entry with a problem is listed with it, and stays out of the graph.
+    let text = std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read");
+    harness.write(
+        "unfold.toml",
+        &format!("{text}\n[[app]]\nname = \"Server\"\ncolor = \"red\"\n"),
     );
-    assert_eq!(
-        harness.code(
-            1,
-            "entrances",
-            json!({ "project": harness.project, "application": "nope" })
-        ),
-        "not_found"
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let apps = harness.apps();
+    let duplicate = apps.last().expect("the new app");
+    assert_eq!(duplicate["name"], "Server");
+    let problem = &duplicate["problem"];
+    assert!(
+        matches!(problem["kind"].as_str(), Some("unknown_field" | "duplicate_key")),
+        "{problem}"
     );
+    assert!(problem["line"].as_u64().is_some(), "{problem}");
+    assert!(duplicate.get("code").is_none());
+    assert_eq!(apps[0]["code"]["state"], "found", "the first app still works");
+}
+
+#[test]
+fn problems_list_files_that_dont_parse() {
+    let harness = Harness::compiled("ts-orders");
+    assert_eq!(
+        harness.ok(1, "problems", json!({ "project": harness.project })),
+        json!([])
+    );
+    harness.write("src/broken.ts", "export function broken( {\n");
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let problems = harness.ok(1, "problems", json!({ "project": harness.project }));
+    let problems = problems.as_array().expect("problems");
+    assert_eq!(problems.len(), 1);
+    assert_eq!(problems[0]["category"], "doesnt_parse");
+    assert_eq!(problems[0]["path"], "src/broken.ts");
+    assert!(problems[0]["line"].is_u64(), "{problems:?}");
 }
 
 #[test]
@@ -321,7 +254,7 @@ fn a_resting_projects_boards_are_read_from_disk() {
     let refs = harness.ok(
         1,
         "board_refs",
-        json!({ "project": harness.project, "key": "src/routes/orders.ts#function:createOrder" }),
+        json!({ "project": harness.project, "key": "src/routes/orders.ts#createOrder" }),
     );
     assert_eq!(refs["refs"][0]["board"], ".unfold/boards/order-placement.json");
     assert_eq!(refs["refs"][0]["pageTitle"], "Placing an order");

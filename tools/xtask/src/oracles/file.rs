@@ -56,7 +56,7 @@ pub(crate) struct Header {
     pub resolved: usize,
     /// `reference` rows.
     pub references: usize,
-    /// Unfold `call`/`new` blocks that match no oracle call site (TypeScript only).
+    /// Unfold call nodes that match no oracle call site (TypeScript only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unfold_sites_without_checker_site: Option<usize>,
     /// Where imported rows came from (Python only).
@@ -86,16 +86,16 @@ pub(crate) struct Provenance {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CallRow {
-    /// The Unfold `call`/`new` (or Python `import`) block at exactly the site's range.
+    /// The key of the Unfold call node at exactly the site's range.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub site: Option<Box<str>>,
-    /// The file of a site with no Unfold block.
+    /// The file of a site with no Unfold call node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<Box<str>>,
-    /// The byte range of a site with no Unfold block.
+    /// The byte range of a site with no Unfold call node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<[u32; 2]>,
-    /// The block the oracle says the site targets.
+    /// The key of the definition the oracle says the site targets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<Box<str>>,
     /// A policy refusal beside the target (`overridden`, `unbound_this`): the target is still the
@@ -114,11 +114,11 @@ pub(crate) struct CallRow {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReferenceRow {
-    /// The call or construction block.
+    /// The key of the call node.
     pub site: Box<str>,
     /// The written argument position.
     pub position: u32,
-    /// The block the argument names.
+    /// The key of the definition the argument names.
     pub target: Box<str>,
     /// A policy refusal beside the target.
     #[serde(default, skip_serializing_if = "Option::is_none")]

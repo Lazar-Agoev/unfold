@@ -483,12 +483,16 @@ impl<'a> Builder<'_, 'a> {
             kind if kind.is_control() => {
                 if let Some(span) = span {
                     let form = self.node(id).form;
+                    let label = match self.name(id) {
+                        Some(name) => format!("{name} · {}", hidden_label(form)),
+                        None => hidden_label(form).to_owned(),
+                    };
                     hidden.push(Hidden {
                         line: span.start,
                         block: HiddenBlock {
                             key: self.key(id),
                             form,
-                            label: hidden_label(form).to_owned(),
+                            label,
                         },
                     });
                 }
@@ -793,7 +797,7 @@ impl<'a> Builder<'_, 'a> {
     }
 }
 
-/// A hidden control block's name in its gap tick.
+/// A hidden control block's code name in its gap tick.
 fn hidden_label(form: Form) -> &'static str {
     match form {
         Form::For => "for loop",

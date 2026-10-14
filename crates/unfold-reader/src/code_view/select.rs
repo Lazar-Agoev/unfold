@@ -235,12 +235,7 @@ fn block(tree: Rc<FileTree>, id: u32) -> Resolved {
 /// A member with no written type has no stored range, so it shows its card's lines.
 fn field(tree: Rc<FileTree>, id: u32, index: u32) -> Option<Resolved> {
     let member = tree.members(id).iter().find(|member| member.index == index)?;
-    let line = Span::Bytes(
-        member
-            .ty
-            .as_ref()
-            .map_or_else(|| definition_extent(&tree, id), |ty| ty.range),
-    );
+    let line = Span::Bytes(member.range);
     let label = member
         .name
         .as_deref()

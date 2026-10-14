@@ -35,8 +35,8 @@ pub struct CompileOutcome {
     pub changed_files: u32,
     /// Files no longer indexed.
     pub removed_files: u32,
-    /// Entrances added, removed, or changed.
-    pub changed_entrances: u32,
+    /// Whether the apps, their entrances, or the states of their code changed.
+    pub entrances_changed: bool,
     /// Whether every discovered file is indexed.
     pub complete: bool,
     /// Problems after the compile that make the project's state: graph and settings problems,

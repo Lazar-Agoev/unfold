@@ -14,7 +14,7 @@ use crate::bind::ir::{BindFacts, NodeId};
 use crate::census::{delta_decode, delta_encode};
 
 /// The payload's format version.
-pub const PAYLOAD_VERSION: u32 = 7;
+pub const PAYLOAD_VERSION: u32 = 8;
 
 /// Why a payload cannot be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

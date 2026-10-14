@@ -26,8 +26,9 @@
 //! closing quote, so only `"` and `\` are escaped in it, with a backslash.
 //!
 //! This module is the only place keys are made ([`KeyBuilder`], [`Key::app`],
-//! [`Key::entrance`]) and the only place they are read ([`Key::parse`]). Everything else treats
-//! a key as opaque text and gets kinds, parents, and files from records.
+//! [`Key::entrance`]) and the only place they are read ([`Key::parse`], and [`Key::rebase`] for
+//! moving the keys inside a renamed block). Everything else treats a key as opaque text and
+//! gets kinds, parents, and files from records.
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -80,6 +81,43 @@ impl Key {
     /// Reads the key's structure.
     pub fn parse(&self) -> Result<ParsedKey, KeyParseError> {
         ParsedKey::parse(&self.0)
+    }
+
+    /// This key after block `from` became block `to`: `to` when this key is `from`, and for a
+    /// block inside `from`, the same steps and names under `to` (`a.ts#f/if[0]/call:g`, from
+    /// `a.ts#f` to `b.ts#h`, is `b.ts#h/if[0]/call:g`).
+    ///
+    /// Inside is read from the keys' structure, never their text: `a.ts#format` is not inside
+    /// `a.ts#f`, nor `a.ts#f[1]` inside `a.ts#f`, but the nested definition `a.ts#f.g` is.
+    /// `None` when this key is neither `from` nor inside it, when any of the three is not a
+    /// block key, or when the steps can't follow `to` (a name after a control block or a call).
+    pub fn rebase(&self, from: &Key, to: &Key) -> Option<Key> {
+        let (Ok(ParsedKey::Block(this)), Ok(ParsedKey::Block(from)), Ok(ParsedKey::Block(to))) =
+            (self.parse(), from.parse(), to.parse())
+        else {
+            return None;
+        };
+        if this.path != from.path {
+            return None;
+        }
+        let inside = this.segments.strip_prefix(from.segments.as_slice())?;
+        let name_after_step = matches!(inside.first(), Some(Segment::Name { .. }))
+            && matches!(
+                to.segments.last(),
+                Some(Segment::Form { .. } | Segment::Call { .. })
+            );
+        if name_after_step {
+            return None;
+        }
+        let mut segments = to.segments;
+        segments.extend_from_slice(inside);
+        Some(
+            BlockKey {
+                path: to.path,
+                segments,
+            }
+            .to_key(),
+        )
     }
 }
 

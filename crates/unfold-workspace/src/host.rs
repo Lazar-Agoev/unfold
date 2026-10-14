@@ -537,30 +537,16 @@ impl HostState {
         });
     }
 
-    /// Keeps command-side state in step with a project: its file list goes stale when files
-    /// change, its boards' health is recomputed after its graph changes, and open boards are
-    /// reloaded when their files change on disk. Board work runs on its own
-    /// threads: events arrive on the engine and watcher threads, which must not wait for it.
+    /// Keeps command-side state in step with a project: its boards' health is recomputed after
+    /// its graph or its entrances change, and open boards are reloaded when their files change on
+    /// disk. Board work runs on its own threads: events arrive on the engine and watcher threads,
+    /// which must not wait for it.
     fn observe(state: &Arc<Self>, event: &WorkspaceEvent) {
-        let (Some(project), Some(projects)) = (event.project(), state.projects.get()) else {
+        let Some(project) = event.project() else {
             return;
         };
-        let extras = || projects.handle(project).ok().map(|handle| handle.extras());
         match event {
-            WorkspaceEvent::FilesChanged { .. } => {
-                if let Some(extras) = extras() {
-                    extras.files_changed();
-                }
-            }
-            WorkspaceEvent::ConfigChanged { .. } => {
-                if let Some(extras) = extras() {
-                    extras.files_changed();
-                }
-            }
-            WorkspaceEvent::GraphUpdated { .. } => {
-                if let Some(extras) = extras() {
-                    extras.files_changed();
-                }
+            WorkspaceEvent::GraphUpdated { .. } | WorkspaceEvent::EntrancesChanged { .. } => {
                 state.refresh_health(project);
             }
             WorkspaceEvent::BoardsChanged { boards, .. } => state.boards_changed(project, boards.clone()),

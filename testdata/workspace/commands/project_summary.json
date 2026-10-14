@@ -24,6 +24,7 @@
   "health": {
     "doesntParse": 0,
     "boardsNeedingReview": 0,
-    "boards": []
+    "boards": [],
+    "entrancesNotFound": 3
   }
 }

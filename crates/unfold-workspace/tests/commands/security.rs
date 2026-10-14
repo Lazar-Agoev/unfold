@@ -1,9 +1,18 @@
 //! Path confinement per project, trusted-only commands, malformed commands, and errors from
 //! Rust.
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::common::{Harness, PATIENCE};
+
+/// The arguments of the commands that name a project's file: the code panel's file target, and
+/// opening it in the editor.
+fn naming(command: &str, project: &str, path: &str) -> Value {
+    match command {
+        "code_view" => json!({ "project": project, "target": { "kind": "file", "path": path } }),
+        _ => json!({ "project": project, "path": path }),
+    }
+}
 
 const BAD_PATHS: [&str; 7] = [
     "../",
@@ -20,9 +29,9 @@ fn every_path_a_window_names_stays_inside_its_project() {
     let harness = Harness::compiled("ts-orders");
     let project = &harness.project;
     for bad in BAD_PATHS {
-        for command in ["file_view", "open_in_editor"] {
+        for command in ["code_view", "open_in_editor"] {
             assert_eq!(
-                harness.code(1, command, json!({ "project": project, "path": bad })),
+                harness.code(1, command, naming(command, project, bad)),
                 "invalid_path",
                 "{command} {bad}"
             );
@@ -36,13 +45,9 @@ fn every_path_a_window_names_stays_inside_its_project() {
         )
         .expect("write");
         std::os::unix::fs::symlink(outside.path(), harness.root.join("escape")).expect("link");
-        for command in ["file_view", "open_in_editor"] {
+        for command in ["code_view", "open_in_editor"] {
             assert_eq!(
-                harness.code(
-                    1,
-                    command,
-                    json!({ "project": project, "path": "escape/secret.ts" })
-                ),
+                harness.code(1, command, naming(command, project, "escape/secret.ts")),
                 "invalid_path",
                 "{command}"
             );
@@ -61,26 +66,28 @@ fn every_path_a_window_names_stays_inside_its_project() {
 fn a_project_id_never_reaches_another_projects_files() {
     let harness = Harness::compiled("ts-orders");
     let (python, _) = harness.add("py-orders", "py-orders");
+    harness.ok(2, "select_project", json!({ "project": python }));
+    harness.ok(2, "compile", json!({ "project": python }));
     let python_file = "src/orders_playground/server.py";
     // The path is relative to the project named, so it is checked against that folder.
     assert_eq!(
         harness.code(
             1,
-            "file_view",
-            json!({ "project": harness.project, "path": format!("../py-orders/{python_file}") })
+            "code_view",
+            naming(
+                "code_view",
+                &harness.project,
+                &format!("../py-orders/{python_file}")
+            )
         ),
         "invalid_path"
     );
-    assert_eq!(
-        harness.code(
-            1,
-            "file_view",
-            json!({ "project": harness.project, "path": python_file })
-        ),
-        "not_found"
-    );
-    let view = harness.ok(1, "file_view", json!({ "project": python, "path": python_file }));
-    assert_eq!(view["path"], python_file);
+    let elsewhere = harness.ok(1, "code_view", naming("code_view", &harness.project, python_file));
+    assert_eq!(elsewhere["state"], "notFound");
+    assert_eq!(elsewhere["lines"], json!([]));
+    let view = harness.ok(1, "code_view", naming("code_view", &python, python_file));
+    assert_eq!(view["file"], python_file);
+    assert_eq!(view["state"], "current");
 }
 
 #[test]
@@ -118,7 +125,7 @@ fn malformed_commands_are_rejected_with_codes() {
             .dispatch(1, harness.request(), command)
             .expect_err(command);
         assert_eq!(error.code, code, "{command}");
-        let json: serde_json::Value = serde_json::from_str(&error.to_json()).expect("error json");
+        let json: Value = serde_json::from_str(&error.to_json()).expect("error json");
         assert_eq!(json["code"], code);
         assert!(
             json["message"]
@@ -130,7 +137,7 @@ fn malformed_commands_are_rejected_with_codes() {
         harness.code(
             1,
             "card",
-            json!({ "project": harness.project, "key": "src/nope.ts#function:x" })
+            json!({ "project": harness.project, "key": "src/nope.ts#x" })
         ),
         "not_found"
     );

@@ -1492,6 +1492,116 @@ fn combined_steps_break_when_their_blocks_stop_following_the_rules() {
 }
 
 #[test]
+fn reconnecting_a_renamed_function_moves_what_is_still_inside_it() {
+    const RUN_ALL: &str = "main.ts#runAll";
+    const RUN_HELPER: &str = "main.ts#run/call:helper";
+    let original = SOURCE.replace(
+        "  console.log('done');\n",
+        "  console.log('done');\n  helper();\n",
+    );
+    let (dir, graph) = folder(&original);
+    let board = run_board_with(|page| {
+        page.cards[0].open = vec![vec![key(LOAD_CALL), key(HELPER_CALL)], vec![key(RUN_HELPER)]];
+        page.cards.push(block_card("load", LOAD));
+        page.names.push(name(IF0, "Is it there?"));
+        page.names.push(name(INNER_LOG, "Say what it found"));
+        page.combined.push(combined("head", &[LOAD_CALL, IF0]));
+        page.combined.push(combined("tail", &[LOG, RUN_HELPER, RETURN0]));
+        page.proposals.push(proposal("p", after(LOAD_CALL)));
+        page.proposals.push(proposal("q", after(LOG)));
+        page.links.push(Connection {
+            step: Some(key(LOAD_CALL)),
+            label: Some(unsigned("asks for it")),
+            ..Connection::new("asks", ConnectionKind::Other, "run", "load", person())
+        });
+        page.links.push(Connection {
+            step: Some(key(RUN_HELPER)),
+            label: Some(unsigned("helps")),
+            ..Connection::new("helps", ConnectionKind::Other, "run", "load", person())
+        });
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+
+    // `run` is renamed; the log inside its `if`, the log after it, and its `helper()` are gone.
+    let text = original
+        .replace("function run()", "function runAll()")
+        .replace("{ console.log(first); }", "{ helper(first); }")
+        .replace("  console.log('done');\n  helper();\n", "");
+    let edited = recompiled(dir.path(), &text);
+    let before = board_health(&saved, &edited);
+    let mut board = saved.clone();
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Reconnect {
+            from: RUN.to_owned(),
+            to: RUN_ALL.to_owned(),
+        },
+    )
+    .unwrap();
+    let moved = |old: &str| key(&format!("{RUN_ALL}{}", &old[RUN.len()..]));
+    let page = &board.pages[0];
+    assert_eq!(page.cards[0].reference, CardRef::block(key(RUN_ALL)));
+    assert_eq!(
+        page.cards[0].open,
+        [vec![moved(LOAD_CALL), key(HELPER_CALL)], vec![key(RUN_HELPER)]]
+    );
+    assert_eq!(
+        page.cards[1].reference,
+        CardRef::block(key(LOAD)),
+        "outside `run`"
+    );
+    let names: Vec<&Key> = page.names.iter().map(|entry| &entry.key).collect();
+    assert_eq!(names, [&moved(IF0), &key(INNER_LOG)]);
+    // A combined step moves whole or not at all.
+    assert_eq!(page.combined[0].members, [moved(LOAD_CALL), moved(IF0)]);
+    assert_eq!(
+        page.combined[1].members,
+        [key(LOG), key(RUN_HELPER), key(RETURN0)]
+    );
+    assert_eq!(page.proposals[0].place, after(moved(LOAD_CALL).as_str()));
+    assert_eq!(page.proposals[1].place, after(LOG));
+    assert_eq!(page.links[0].step, Some(moved(LOAD_CALL)));
+    assert_eq!(page.links[1].step, Some(key(RUN_HELPER)));
+
+    // Moved keys have fresh guards; the guards of what stayed stay with it.
+    for moved in [moved(IF0), moved(LOAD_CALL)] {
+        assert_eq!(
+            page.guard(moved.as_str()),
+            current_guard(&edited, moved.as_str()).as_ref()
+        );
+    }
+    assert!(page.guard(IF0).is_none());
+    assert_eq!(page.guard(INNER_LOG), saved.pages[0].guard(INNER_LOG));
+
+    // What stayed is missing at its old key, as before the repair, so the save goes through.
+    let health = board_health(&board, &edited);
+    let missing = |health: &Health| -> Vec<(HealthKind, Target)> {
+        health
+            .items
+            .iter()
+            .filter(|item| item.kind != HealthKind::Outdated)
+            .map(|item| (item.kind, item.target.clone()))
+            .collect()
+    };
+    assert_eq!(
+        missing(&health),
+        [
+            (HealthKind::Missing, Target::Name(INNER_LOG.to_owned())),
+            (HealthKind::BrokenCombined, Target::Combined("tail".to_owned())),
+            (HealthKind::BrokenLink, Target::Connection("helps".to_owned())),
+            (HealthKind::Missing, Target::Proposal("q".to_owned())),
+        ]
+    );
+    assert!(
+        missing(&health)
+            .iter()
+            .all(|item| missing(&before).contains(item))
+    );
+    assert!(save(board, Some((&saved, &before)), &edited).is_ok());
+}
+
+#[test]
 fn missing_references_wait_for_reconnect_or_removal() {
     let (dir, graph) = folder(SOURCE);
     let board = run_board_with(|page| {
@@ -1563,8 +1673,7 @@ fn missing_references_wait_for_reconnect_or_removal() {
         Err(BoardError::Problem { .. })
     ));
 
-    // Reconnect moves the key itself, with a fresh guard; keys inside it are references of
-    // their own.
+    // Reconnect moves the key, with a fresh guard, and everything keyed inside it.
     const RUN_ALL: &str = "main.ts#runAll";
     let mut board = saved.clone();
     repair(
@@ -1581,23 +1690,6 @@ fn missing_references_wait_for_reconnect_or_removal() {
     assert_eq!(page.proposals[0].place, start(RUN_ALL));
     assert!(page.guard(RUN).is_none());
     assert_eq!(page.guard(RUN_ALL), current_guard(&edited, RUN_ALL).as_ref());
-    let health = board_health(&board, &edited);
-    assert!(health.has("page-1", HealthKind::Missing, &Target::Name(LOG.to_owned())));
-    assert!(!health.has("page-1", HealthKind::Missing, &Target::Card("run".to_owned())));
-    for (from, to) in [
-        (LOG, "main.ts#runAll/call:console.log"),
-        (RETURN0, "main.ts#runAll/return[0]"),
-    ] {
-        repair(
-            &mut board,
-            &edited,
-            &Repair::Reconnect {
-                from: from.to_owned(),
-                to: to.to_owned(),
-            },
-        )
-        .unwrap();
-    }
     let health = board_health(&board, &edited);
     assert_eq!(
         items(&health),

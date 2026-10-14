@@ -355,9 +355,10 @@ pub struct Callback {
     pub actions: Actions,
 }
 
-/// A control block drawn as a frame.
+/// A control block drawn as a frame. Its TypeScript name is `FlowFrame`: a board's `Frame` is
+/// the other kind of frame.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(rename = "FlowFrame"))]
 #[serde(rename_all = "camelCase")]
 pub struct Frame {
     /// The control block.
@@ -567,7 +568,8 @@ pub struct HiddenBlock {
     pub key: Key,
     /// Its form.
     pub form: Form,
-    /// Its name in the tick: `for loop`, `if`.
+    /// Its words in the tick: its code name (`for loop`, `if`), after the overlay's name when
+    /// it has one.
     pub label: String,
 }
 

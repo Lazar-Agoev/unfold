@@ -33,11 +33,13 @@ const CHARGE: &str = "routes.ts#charge";
 const REPOSITORY_CLASS: &str = "repository.ts#Repository";
 const SCHEMA_FILE: &str = "db/schema.sql";
 
-/// A written property of a type or class.
+/// A written property of a type or class, ranged from its name.
 fn member(builder: &mut GraphBuilder, node: NodeRef, index: u32, name: &str) {
+    let range = builder.find_in(node, name);
     builder.types(node).members.push(Member {
         node: node.local_id(),
         index,
+        range,
         kind: MemberKind::Property,
         name: Some(name.into()),
         optional: false,
@@ -651,7 +653,7 @@ fn claims_go_missing_broken_or_held_when_their_code_changes() {
 }
 
 #[test]
-fn reconnecting_moves_each_key_on_its_own() {
+fn reconnecting_moves_what_is_keyed_inside_and_each_other_key_on_its_own() {
     let (_dir, graph, loaded) = orders(SCHEMA);
     let mut board = board(&graph);
     let page = &mut board.pages[0];
@@ -673,25 +675,14 @@ fn reconnecting_moves_each_key_on_its_own() {
         to: to.to_owned(),
     };
     apply_repair(&mut page, &loaded, &reconnect("routes.ts#placeOrder", CREATE)).unwrap();
-    // The card moves; the step inside the old key is a reference of its own, still broken.
+    // The card moves, and the step inside the old key with it.
     assert_eq!(page.cards[0].reference, CardRef::block(Key::from_text(CREATE)));
-    let health = health_of(&page, &loaded);
-    assert!(health.has(
-        "page-1",
-        HealthKind::BrokenLink,
-        &Target::Connection("enqueue".to_owned())
-    ));
-    apply_repair(
-        &mut page,
-        &loaded,
-        &reconnect("routes.ts#placeOrder/call:ordersQueue.add", ADD),
-    )
-    .unwrap();
     assert_eq!(
         page.connection("enqueue").unwrap().step.as_ref().map(Key::as_str),
         Some(ADD)
     );
-    assert!(page.guard(ADD).is_some());
+    let health = health_of(&page, &loaded);
+    assert!(health.items.iter().all(|item| !item.message.starts_with("Step")));
     // Reconnecting an anchor's key points every claim citing it at the new key.
     apply_repair(&mut page, &loaded, &reconnect("queues.ts#queue", QUEUE)).unwrap();
     assert_eq!(page.connection("enqueue").unwrap().anchors, [key(QUEUE)]);

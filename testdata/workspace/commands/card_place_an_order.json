@@ -1,0 +1,31 @@
+{
+  "type": "start",
+  "key": "entrance:server/place-an-order",
+  "kind": "entrance",
+  "app": "Server",
+  "name": "Place an order",
+  "on": "POST /orders",
+  "code": [
+    {
+      "key": "src/routes/middleware.ts#requireUser",
+      "state": "found",
+      "label": "requireUser",
+      "path": "src/routes/middleware.ts",
+      "line": 4
+    },
+    {
+      "key": "src/routes/middleware.ts#validateBody",
+      "state": "found",
+      "label": "validateBody",
+      "path": "src/routes/middleware.ts",
+      "line": 12
+    },
+    {
+      "key": "src/routes/orders.ts#createOrder",
+      "state": "found",
+      "label": "createOrder",
+      "path": "src/routes/orders.ts",
+      "line": 25
+    }
+  ]
+}

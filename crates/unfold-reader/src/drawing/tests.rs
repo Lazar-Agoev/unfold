@@ -677,6 +677,137 @@ fn proposals_sit_after_a_block_or_at_the_start_of_a_body() {
     );
 }
 
+/// An overlay that names each of `blocks` (keys relative to `definition`).
+fn naming(definition: &str, blocks: &[(&str, &str)]) -> Overlay {
+    Overlay {
+        names: blocks
+            .iter()
+            .map(|&(block, name)| (key(&format!("{definition}/{block}")), name.to_owned()))
+            .collect(),
+        ..Overlay::default()
+    }
+}
+
+/// The names of `sequence`'s frames and of the frames inside them, by key.
+fn frame_names(sequence: &Sequence) -> Vec<(String, Option<String>)> {
+    let mut out = Vec::new();
+    for step in all_steps(sequence) {
+        if let Shape::Decision(frame) | Shape::Loop(frame) | Shape::Try(frame) | Shape::With(frame) =
+            &step.shape
+        {
+            out.push((frame.key.as_str().to_owned(), frame.name.clone()));
+        }
+    }
+    out
+}
+
+/// A name on any control block's frame is drawn and printed beside its code, as a name on one
+/// of its lanes is; a hidden control block's name goes in its gap tick.
+#[test]
+fn every_control_block_shows_its_name() {
+    let overlay = naming(
+        PLACE_ORDER,
+        &[
+            ("if[0]", "Stop early"),
+            ("if[0]/then", "Is it missing?"),
+            ("for[0]", "Reserve each item"),
+            ("try[0]", "Charge the card"),
+        ],
+    );
+    let flow = drawn_with(&sample::shop(), PLACE_ORDER, &overlay, &[], false);
+    let text = plain(&flow);
+    assert!(
+        text.contains("  IF Stop early · Is it missing? · order is None\n"),
+        "{text}"
+    );
+    assert!(text.contains("  ELIF order[\"paid\"]\n"), "{text}");
+    assert!(text.contains("  TRY · Charge the card\n"), "{text}");
+    assert!(
+        text.contains("  LOOP Reserve each item · for item in order[\"items\"]\n"),
+        "{text}"
+    );
+    let decision = format!("{PLACE_ORDER}/if[0]");
+    assert!(
+        flow_text(&flow).contains(&format!(
+            "IF Stop early · Is it missing? · order is None   key={decision} {decision}/then\n"
+        )),
+        "the frame's key is on its first lane's line"
+    );
+    let names = frame_names(&flow.steps);
+    for block in ["if[0]", "for[0]", "try[0]"] {
+        let key = format!("{PLACE_ORDER}/{block}");
+        let name = names
+            .iter()
+            .find(|(frame, _)| *frame == key)
+            .and_then(|(_, name)| name.clone());
+        assert!(name.is_some(), "{block} in {names:?}");
+    }
+
+    let both = naming(
+        PLACE_ORDER,
+        &[
+            ("try[0]", "Charge the card"),
+            ("try[0]/body", "Ask the bank"),
+            ("for[0]", "Reserve each item"),
+            ("for[0]/body", "Reserve one"),
+        ],
+    );
+    let flow = drawn_with(&sample::shop(), PLACE_ORDER, &both, &[], false);
+    let text = plain(&flow);
+    assert!(
+        text.contains("  TRY · Charge the card · Ask the bank\n"),
+        "a block's own name and its body's both show: {text}"
+    );
+    assert!(
+        text.contains("  LOOP Reserve each item · Reserve one · for item in order[\"items\"]\n"),
+        "{text}"
+    );
+
+    let definition = "src/service.ts#placeOrder";
+    let overlay = naming(definition, &[("switch[0]", "By status")]);
+    let flow = drawn_with(&examples::place_order_ts(), definition, &overlay, &[], false);
+    assert!(plain(&flow).contains("  SWITCH By status · order.status\n"));
+    assert_eq!(
+        frame_names(&flow.steps),
+        [(format!("{definition}/switch[0]"), Some("By status".to_owned()))]
+    );
+
+    let definition = "inbox/sync.py#sync_inbox";
+    let overlay = naming(
+        definition,
+        &[
+            ("with[0]", "Hold the mailbox"),
+            ("with[0]/body/try[0]", "Fetch the mail"),
+        ],
+    );
+    let flow = drawn_with(&examples::sync_inbox(), definition, &overlay, &[], false);
+    let text = plain(&flow);
+    assert!(
+        text.contains(
+            "  WITH Hold the mailbox · mailbox_lock(account) · ▸ mailbox_lock\n      TRY · Fetch the mail\n"
+        ),
+        "{text}"
+    );
+    assert_eq!(
+        frame_names(&flow.steps),
+        [
+            (
+                format!("{definition}/with[0]"),
+                Some("Hold the mailbox".to_owned())
+            ),
+            (
+                format!("{definition}/with[0]/body/try[0]"),
+                Some("Fetch the mail".to_owned())
+            ),
+        ]
+    );
+
+    let definition = "shop/checkout.py#checkout";
+    let overlay = naming(definition, &[("for[0]", "Log each line")]);
+    let flow = drawn_with(&examples::checkout(), definition, &overlay, &[], false);
+    assert!(plain(&flow).contains("  ⋯ 3 lines · Log each line · for loop\n"));
+}
+
 /// A small Python file, `stop.py`.
 fn stop() -> GraphBuilder {
     const CODE: &str = r#"def stop(order):

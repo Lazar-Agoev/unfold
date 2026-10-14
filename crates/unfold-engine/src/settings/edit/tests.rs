@@ -319,6 +319,54 @@ fn set_app_adds_an_app_and_changes_only_its_fields() {
 }
 
 #[test]
+fn empty_code_keys_are_refused() {
+    let blank_app = apply_edits(
+        Some(COMMENTED),
+        &[SettingsEdit::SetApp {
+            app: AppSpec {
+                name: "Shop API".into(),
+                code: Some(String::new()),
+                ..AppSpec::default()
+            },
+        }],
+    )
+    .expect_err("an empty key");
+    assert!(is_invalid_at_a_line(&blank_app), "{blank_app}");
+    assert!(
+        matches!(
+            blank_app,
+            EditError::Invalid(SettingsError::Invalid { line: 11, .. })
+        ),
+        "{blank_app}"
+    );
+    assert!(blank_app.to_string().contains("empty key"), "{blank_app}");
+
+    for code in [&[""][..], &["src/a.ts#placeOrder", ""]] {
+        let error = apply_edits(
+            Some(COMMENTED),
+            &[set_entrance("Shop API", "Place an order", None, code)],
+        )
+        .expect_err("an empty key");
+        assert!(is_invalid_at_a_line(&error), "{code:?}: {error}");
+    }
+    let new_app =
+        apply_edits(None, &[set_entrance("Jobs", "Nightly", None, &[""])]).expect_err("an empty key");
+    assert!(is_invalid_at_a_line(&new_app), "{new_app}");
+
+    let fixed = edit(
+        Some(COMMENTED),
+        &[
+            set_entrance("Shop API", "Place an order", None, &[""]),
+            set_entrance("Shop API", "Place an order", None, &["src/a.ts#placeOrder"]),
+        ],
+    );
+    assert!(
+        fixed.file.apps[0].entrances[0].is_valid(),
+        "a later edit fixes it"
+    );
+}
+
+#[test]
 fn set_entrance_rewrites_one_line_or_adds_one() {
     let fixed = edit(
         Some(COMMENTED),

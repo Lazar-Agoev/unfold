@@ -258,9 +258,8 @@ pub fn settle(workspace: &Workspace) {
 /// Whether the stored graph has a block named `name` in `path`.
 pub fn has_block(workspace: &Workspace, path: &str, name: &str) -> bool {
     let reader = workspace.readers().expect("readers").get().expect("reader");
-    reader.file_graph(path).expect("file graph").is_some_and(|file| {
-        file.blocks
-            .iter()
-            .any(|block| block.name.as_deref() == Some(name))
-    })
+    reader
+        .file_graph(path)
+        .expect("file graph")
+        .is_some_and(|file| file.nodes.iter().any(|node| node.name.as_deref() == Some(name)))
 }

@@ -13,7 +13,6 @@ unfold-lang-typescript = { workspace = true }
 unfold-lang-python = { workspace = true }
 unfold-store = { workspace = true }
 unfold-reader = { workspace = true, features = ["ts"] }
-ignore = { workspace = true }
 nix = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }

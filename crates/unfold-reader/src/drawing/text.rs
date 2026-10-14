@@ -53,9 +53,10 @@ fn line(out: &mut String, indent: usize, text: &str, state: RouteState, keys: &[
     out.push('\n');
 }
 
-/// A name with the code it replaces kept beside it, or the code alone.
-fn named(name: Option<&str>, code: Option<&str>) -> String {
-    [name, code].into_iter().flatten().collect::<Vec<_>>().join(" · ")
+/// Names with the code they replace kept beside them, or the code alone: the parts given, in
+/// order.
+fn named(parts: &[Option<&str>]) -> String {
+    parts.iter().flatten().copied().collect::<Vec<_>>().join(" · ")
 }
 
 fn plural(count: u32, word: &str) -> String {
@@ -85,7 +86,7 @@ fn box_title(call: &CallBox) -> String {
     let callee = format!("{at}{}", call.callee);
     format!(
         "{mark} {}{}",
-        named(call.name.as_deref(), Some(&callee)),
+        named(&[call.name.as_deref(), Some(&callee)]),
         question(call.to.outcome)
     )
 }
@@ -127,7 +128,7 @@ fn box_text(call: &CallBox) -> String {
         let _ = write!(
             text,
             " · into {}(…)",
-            named(feeds.name.as_deref(), Some(&feeds.callee))
+            named(&[feeds.name.as_deref(), Some(&feeds.callee)])
         );
     }
     text
@@ -267,7 +268,11 @@ impl<'f> Printer<'f> {
                 let body = frame.lanes.first();
                 let text = format!(
                     "WITH {}{}",
-                    named(frame.name.as_deref(), frame.header.as_deref()),
+                    named(&[
+                        frame.name.as_deref(),
+                        body.and_then(|lane| lane.name.as_deref()),
+                        frame.header.as_deref()
+                    ]),
                     chips(&frame.header_calls)
                 );
                 let keys: Vec<&Key> = std::iter::once(&frame.key)
@@ -300,7 +305,7 @@ impl<'f> Printer<'f> {
                 Some(signature) => format!("callback {signature}"),
                 None => callback.label.clone(),
             };
-            let text = format!("↳ {}", named(callback.name.as_deref(), Some(&code)));
+            let text = format!("↳ {}", named(&[callback.name.as_deref(), Some(&code)]));
             line(out, indent, &text, RouteState::Reached, &[&callback.key]);
             if let Some(inset) = &callback.inset {
                 Printer::new(inset, true).flow(out, indent + 4);
@@ -317,17 +322,18 @@ impl<'f> Printer<'f> {
         }
     }
 
-    /// A lane's line: its words, its name and code, its boxes; then its steps.
+    /// A lane's line: its words; its label, which is the names on the line and then their code;
+    /// its boxes; then its steps.
     fn lane(
         &self,
         out: &mut String,
         lane: &Lane,
         words: &str,
-        code: Option<&str>,
+        label: &[Option<&str>],
         keys: &[&Key],
         indent: usize,
     ) {
-        let label = named(lane.name.as_deref(), code);
+        let label = named(label);
         let calls = lane.test.as_ref().map_or(&[][..], |test| test.calls.as_slice());
         let mut text = words.to_owned();
         if !label.is_empty() {
@@ -353,7 +359,7 @@ impl<'f> Printer<'f> {
                 };
                 let text = format!(
                     "{word} {}{}",
-                    named(frame.name.as_deref(), frame.header.as_deref()),
+                    named(&[frame.name.as_deref(), frame.header.as_deref()]),
                     chips(&frame.header_calls)
                 );
                 line(out, indent, &text, step.state, &[&frame.key]);
@@ -364,12 +370,13 @@ impl<'f> Printer<'f> {
                     } else {
                         "CASE"
                     };
-                    self.lane(out, lane, words, test_text(lane), &[&lane.key], indent);
+                    let label = [lane.name.as_deref(), test_text(lane)];
+                    self.lane(out, lane, words, &label, &[&lane.key], indent);
                 }
             }
             form => {
                 let lanes_indent = if form == Form::Ternary {
-                    let mut text = named(Some("TERNARY"), frame.name.as_deref());
+                    let mut text = named(&[Some("TERNARY"), frame.name.as_deref()]);
                     if let Some(binds) = &frame.binds {
                         let _ = write!(text, " → {binds}");
                     }
@@ -384,12 +391,14 @@ impl<'f> Printer<'f> {
                         Form::Elif => "ELIF",
                         _ => "ELSE",
                     };
-                    let keys: Vec<&Key> = if index == 0 && form != Form::Ternary {
-                        vec![&frame.key, &lane.key]
+                    // The first lane's line is the frame's too, so it carries the frame's name.
+                    let (keys, frame_name) = if index == 0 && form != Form::Ternary {
+                        (vec![&frame.key, &lane.key], frame.name.as_deref())
                     } else {
-                        vec![&lane.key]
+                        (vec![&lane.key], None)
                     };
-                    self.lane(out, lane, words, test_text(lane), &keys, lanes_indent);
+                    let label = [frame_name, lane.name.as_deref(), test_text(lane)];
+                    self.lane(out, lane, words, &label, &keys, lanes_indent);
                 }
             }
         }
@@ -402,7 +411,12 @@ impl<'f> Printer<'f> {
             "LOOP"
         };
         let body = frame.lanes.iter().find(|lane| lane.form == Form::Body);
-        let mut text = format!("{word} {}", named(frame.name.as_deref(), frame.header.as_deref()));
+        // The body's name goes on its `WHEN` line when it has a test, or else on this one.
+        let body_name = body
+            .filter(|lane| lane.test.is_none())
+            .and_then(|lane| lane.name.as_deref());
+        let label = named(&[frame.name.as_deref(), body_name, frame.header.as_deref()]);
+        let mut text = format!("{word} {label}");
         if let Some(binds) = &frame.binds {
             let _ = write!(text, " → {binds}");
         }
@@ -416,7 +430,7 @@ impl<'f> Printer<'f> {
             if let Some(test) = &body.test {
                 let text = format!(
                     "WHEN {}{}",
-                    named(body.name.as_deref(), test.text.as_deref()),
+                    named(&[body.name.as_deref(), test.text.as_deref()]),
                     chips(&test.calls)
                 );
                 line(out, indent + 4, &text, body.state, &[]);
@@ -425,7 +439,8 @@ impl<'f> Printer<'f> {
             self.sequence(out, &body.steps, indent + 4);
         }
         if let Some(otherwise) = frame.lanes.iter().find(|lane| lane.form == Form::Else) {
-            self.lane(out, otherwise, "LOOP ELSE", None, &[&otherwise.key], indent);
+            let label = [otherwise.name.as_deref()];
+            self.lane(out, otherwise, "LOOP ELSE", &label, &[&otherwise.key], indent);
         }
     }
 
@@ -433,23 +448,22 @@ impl<'f> Printer<'f> {
         for lane in &frame.lanes {
             match lane.form {
                 Form::Body => {
-                    let name = frame.name.as_deref().or(lane.name.as_deref());
-                    let text = named(Some("TRY"), name);
+                    let text = named(&[Some("TRY"), frame.name.as_deref(), lane.name.as_deref()]);
                     line(out, indent, &text, step.state, &[&frame.key, &lane.key]);
                     self.sequence(out, &lane.steps, indent + 4);
                 }
                 Form::Except | Form::Catch => {
-                    self.lane(
-                        out,
-                        lane,
-                        "ON ERROR →",
-                        lane.clause.as_deref(),
-                        &[&lane.key],
-                        indent,
-                    );
+                    let label = [lane.name.as_deref(), lane.clause.as_deref()];
+                    self.lane(out, lane, "ON ERROR →", &label, &[&lane.key], indent);
                 }
-                Form::Else => self.lane(out, lane, "ELSE", None, &[&lane.key], indent),
-                _ => self.lane(out, lane, "FINALLY", None, &[&lane.key], indent),
+                Form::Else => {
+                    let label = [lane.name.as_deref()];
+                    self.lane(out, lane, "ELSE", &label, &[&lane.key], indent);
+                }
+                _ => {
+                    let label = [lane.name.as_deref()];
+                    self.lane(out, lane, "FINALLY", &label, &[&lane.key], indent);
+                }
             }
         }
     }
@@ -483,13 +497,13 @@ impl<'f> Printer<'f> {
             ExitValue::Call(call) if call.to.outcome == Outcome::Project => box_title(call),
             ExitValue::Call(call) => format!(
                 "{}{}",
-                named(call.name.as_deref(), Some(&call.callee)),
+                named(&[call.name.as_deref(), Some(&call.callee)]),
                 question(call.to.outcome)
             ),
             ExitValue::Text { text } => text.clone(),
         });
         let mut text = word;
-        let label = named(exit.name.as_deref(), value.as_deref());
+        let label = named(&[exit.name.as_deref(), value.as_deref()]);
         if !label.is_empty() {
             text.push(' ');
             text.push_str(&label);

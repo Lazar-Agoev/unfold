@@ -312,7 +312,7 @@ fn unknown_projects_are_refused_everywhere() {
         harness.code(
             1,
             "card",
-            json!({ "project": "p-nonenonen", "key": "src/a.ts#function:f" })
+            json!({ "project": "p-nonenonen", "key": "src/a.ts#f" })
         ),
         "unknown_project"
     );

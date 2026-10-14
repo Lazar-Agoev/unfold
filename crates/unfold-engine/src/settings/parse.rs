@@ -120,6 +120,12 @@ impl Source<'_> {
     }
 }
 
+/// A marked entry's problem as an error at its position in the file `text`.
+pub(super) fn entry_error(text: &str, problem: &apps::EntryProblem) -> SettingsError {
+    let span = problem.span.start as usize..problem.span.end as usize;
+    Source { text, base: 0 }.error(span, problem.message.clone())
+}
+
 fn range(span: Range<usize>) -> ByteRange {
     let clamp = |offset: usize| u32::try_from(offset).unwrap_or(u32::MAX);
     ByteRange {

@@ -350,6 +350,21 @@ fn fields_belong_to_their_kinds() {
         &graph,
         "node shop/payments.py#/call:retry: decorator calls name the definition they belong to in `for`",
     );
+
+    // A callback may carry the name of the property it is written as; its key stays its
+    // position. Any other inline function is unnamed.
+    let mut graph = sample();
+    node_mut(
+        &mut graph,
+        "shop/store.py#reserve_stock/for[0]/call:sorted/callback[0]",
+    )
+    .name = Some("key".into());
+    assert_eq!(violations(&graph), Vec::<String>::new());
+    node_mut(&mut graph, "shop/payments.py#retry/return[0]/lambda[0]").name = Some("wrapper".into());
+    assert_violation(
+        &graph,
+        "node shop/payments.py#retry/return[0]/lambda[0]: only a callback is named, by the property it is written as",
+    );
 }
 
 #[test]
@@ -375,6 +390,30 @@ fn ranges_lie_in_their_parents() {
         &format!(
             "node shop/service.py#place_order/return[0]: value [0, 1) is outside the node's range {range}"
         ),
+    );
+
+    // A member lies in its type, and its written type in it.
+    let mut graph = sample();
+    let (file, id) = locate(&graph, "src/orders.ts#Order");
+    let node = graph.files[file].nodes[id as usize].range;
+    let member = &mut graph.files[file].types.members[0];
+    member.range.end = node.end + 1;
+    let range = member.range;
+    assert_violation(
+        &graph,
+        &format!(
+            "member 0 of src/orders.ts#Order: range {range} is empty or outside its node's range {node}"
+        ),
+    );
+
+    let mut graph = sample();
+    let (file, _) = locate(&graph, "src/orders.ts#Order");
+    let member = &mut graph.files[file].types.members[1];
+    member.range.end = member.range.start + 1;
+    let ty = member.ty.as_ref().expect("a written type").range;
+    assert_violation(
+        &graph,
+        &format!("member 1 of src/orders.ts#Order: type range {ty} is outside the member"),
     );
 }
 

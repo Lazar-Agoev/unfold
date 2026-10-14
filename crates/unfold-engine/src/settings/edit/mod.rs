@@ -3,9 +3,10 @@
 //!
 //! Each [`SettingsEdit`] changes the TOML document through `toml_edit`, so everything the edit
 //! doesn't touch (comments, blank lines, key order, quoting) stays byte for byte. The result is
-//! then parsed with the strict settings parser; an edit that would make the file invalid is
-//! refused with the parser's message and position. [`apply_edits`] writes nothing: it returns
-//! the new text, what it holds, and the diff from the old text.
+//! then parsed with the strict settings parser; an edit that would make the file invalid, or
+//! would leave the app or entrance it sets with an empty key, is refused with the parser's
+//! message and position. [`apply_edits`] writes nothing: it returns the new text, what it holds,
+//! and the diff from the old text.
 //!
 //! Apps and entrances are addressed by name. A name stands for the entry whose key it makes
 //! ([`Key::app`], [`Key::entrance`]), so `"shop api"` addresses the app named `"Shop API"`, and
@@ -30,7 +31,8 @@ use unfold_core::Key;
 use unfold_core::key::slug;
 
 use super::diff::unified;
-use super::{FolderPath, ScopeStatus, SettingsError, SettingsFile};
+use super::parse::entry_error;
+use super::{EntryProblem, EntryProblemKind, FolderPath, ScopeStatus, SettingsError, SettingsFile};
 
 /// One change to the settings file. See the [module documentation](self).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -216,8 +218,39 @@ pub fn apply_edits(current: Option<&str>, edits: &[SettingsEdit]) -> Result<Edit
     }
     let text = format!("{bom}{doc}");
     let file = SettingsFile::parse(&text).map_err(EditError::Invalid)?;
+    if let Some(problem) = edits.iter().find_map(|edit| empty_key_written(&file, edit)) {
+        return Err(EditError::Invalid(entry_error(&text, problem)));
+    }
     let diff = unified(source, &text);
     Ok(EditedSettings { text, file, diff })
+}
+
+/// The empty-key problem of the app or entrance `edit` sets, as `file` now holds it. Only that
+/// entry is checked: a problem elsewhere was there before the edit.
+fn empty_key_written<'f>(file: &'f SettingsFile, edit: &SettingsEdit) -> Option<&'f EntryProblem> {
+    let (app, entrance) = match edit {
+        SettingsEdit::SetApp { app } => (app.name.as_str(), None),
+        SettingsEdit::SetEntrance { app, entrance } => (app.as_str(), Some(entrance.name.as_str())),
+        _ => return None,
+    };
+    let app_key = Key::app(app).ok()?;
+    let written = file
+        .apps
+        .iter()
+        .find(|entry| entry.key.as_ref() == Some(&app_key))?;
+    let problem = match entrance {
+        None => written.problem.as_ref(),
+        Some(entrance) => {
+            let key = Key::entrance(app, entrance).ok()?;
+            written
+                .entrances
+                .iter()
+                .find(|entry| entry.key.as_ref() == Some(&key))?
+                .problem
+                .as_ref()
+        }
+    };
+    problem.filter(|problem| problem.kind == EntryProblemKind::EmptyKey)
 }
 
 fn apply(doc: &mut DocumentMut, edit: &SettingsEdit) -> Result<()> {

@@ -568,7 +568,7 @@ fn a_field_of_a_type_card_shows_its_line() {
 }
 
 #[test]
-fn a_field_without_a_written_type_shows_its_card() {
+fn a_field_without_a_written_type_shows_its_line() {
     let mut graph = sample::shop();
     let module = graph.file("m.ts", Language::TypeScript, "class Box {\n  items = [];\n}\n");
     let class = graph.def(
@@ -577,9 +577,11 @@ fn a_field_without_a_written_type_shows_its_card() {
         "Box",
         graph.find(module, "class Box {\n  items = [];\n}"),
     );
+    let range = graph.find_in(class, "items = [];");
     graph.types(class).members.push(Member {
         node: class.local_id(),
         index: 0,
+        range,
         kind: MemberKind::Property,
         name: Some("items".into()),
         optional: false,
@@ -596,7 +598,7 @@ fn a_field_without_a_written_type_shows_its_card() {
             index: 0,
         },
     );
-    assert_eq!(numbers(&field), [1, 3]);
+    assert_eq!(shown(&field), ["2 items = [];"]);
     assert_eq!(steps(&field), ["m.ts", "Box", "*items*"]);
 }
 

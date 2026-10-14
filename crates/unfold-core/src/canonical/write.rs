@@ -116,6 +116,7 @@ struct MemberOut<'a> {
     t: &'static str,
     node: &'a str,
     index: u32,
+    range: ByteRange,
     kind: MemberKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<&'a str>,
@@ -341,6 +342,7 @@ fn write_types<'a>(
             t: "member",
             node: key(member.node),
             index: member.index,
+            range: member.range,
             kind: member.kind,
             name: member.name.as_deref(),
             optional: flag(member.optional),

@@ -13,6 +13,7 @@
 //! | Scan tick or event overflow | `reopen()`: every file by size and time | background pool |
 //! | Reopen | store graph → `restore` → `reopen()` | background pool |
 //! | Recompile (engine version changed, cache recreated) | fresh engine, `reopen()` | background pool |
+//! | Entrance edit (only the `[[app]]` tables of `unfold.toml` changed) | `Engine::resolve_entrances`: no update | none |
 //!
 //! **The first Compile** creates `local/` (unless remembered state already did), takes the
 //! folder lock, and opens the store. **If `local/cache/` disappears** while the folder is open, the next piece of work
@@ -21,6 +22,13 @@
 //! links again nor commits. **A failed or cancelled commit** rolls back and the engine doesn't adopt the
 //! update, so the engine, the store, and readers all keep the previous graph. A Compile the user
 //! cancels stops even while committing; background work commits once started.
+//!
+//! **Entrances** are resolved again without an update when only `unfold.toml`'s `[[app]]`
+//! tables changed: after a settings edit that changed nothing else (a queued job), and when a
+//! background update's only path is `unfold.toml` (an edit outside the app). If its compile
+//! settings changed too, the update runs instead. After restoring a stored graph, after every
+//! update, and after re-resolving, the thread publishes the entrances ([`Shared::publish_entrances`]),
+//! which sends `entrances_changed` when they changed.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex};
@@ -28,6 +36,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use unfold_core::RepoPath;
+use unfold_engine::settings::SETTINGS_PATH;
 use unfold_engine::update::Progress;
 use unfold_engine::{CancelToken, Engine, Language, UpdateError, UpdateRequest};
 use unfold_store::{Store, Writer};
@@ -241,6 +250,12 @@ impl EngineThread {
             Work::Job(Job::Reopen, cancel) => self.reopen(cancel),
             Work::Job(Job::Recompile, cancel) => self.recompile(cancel),
             Work::Job(Job::CheckCache, _) => {}
+            Work::Job(Job::ResolveEntrances(reply), _) => {
+                if !self.resolve_entrances() {
+                    self.shared.add_changes(RepoPath::new(SETTINGS_PATH).ok());
+                }
+                let _ = reply.send(());
+            }
             Work::Background { paths, all, cancel } => self.background(paths, all, cancel),
         }
     }
@@ -335,6 +350,10 @@ impl EngineThread {
         if self.engine.is_none() {
             return;
         }
+        let settings_only = !all && paths.len() == 1 && paths[0].as_str() == SETTINGS_PATH;
+        if settings_only && self.resolve_entrances() {
+            return;
+        }
         let kind = if all {
             RunKind::Rescan
         } else {
@@ -367,8 +386,9 @@ impl EngineThread {
         let restored = loaded.and_then(|loaded| {
             let engine = self.engine.as_mut().ok_or(WorkspaceError::NotCompiled)?;
             engine
-                .restore(loaded.graph, loaded.launches, loaded.disks, loaded.basis)
+                .restore(loaded.graph, loaded.disks, loaded.basis)
                 .map_err(|error| WorkspaceError::Update(error.to_string()))?;
+            self.shared.publish_entrances(engine);
             Ok(loaded.committed)
         });
         match restored {
@@ -399,6 +419,39 @@ impl EngineThread {
             }
             Err(error) => publish::failed(&self.shared, &error),
         }
+    }
+
+    /// Resolves the `[[app]]` tables of `unfold.toml` again against the current graph, without
+    /// an update, and commits what changed. Whether it did: not without a graph whose stored
+    /// copy is known, nor when the compile settings changed too (an update applies them then).
+    fn resolve_entrances(&mut self) -> bool {
+        let Self {
+            shared,
+            engine,
+            writer,
+            committed,
+            ..
+        } = self;
+        let (Some(engine), Some(writer), Some(base)) = (engine.as_mut(), writer.as_ref(), committed.as_ref())
+        else {
+            return false;
+        };
+        let Ok(outcome) = engine.resolve_entrances() else {
+            return false;
+        };
+        let complete = engine.is_complete();
+        // The engine holds the new apps already: if the store can't, the next update replaces
+        // everything it holds.
+        match commit::commit_entrances(&mut lock(writer), &outcome, complete, base) {
+            Ok(next) => *committed = Some(next),
+            Err(error) => {
+                *committed = None;
+                publish::failed(shared, &error);
+            }
+        }
+        publish::entrances_resolved(shared, &outcome, complete);
+        shared.publish_entrances(engine);
+        true
     }
 
     /// Runs one update and commits it, keeping the status current.
@@ -491,6 +544,7 @@ impl EngineThread {
         if let Some(next) = next {
             self.committed = Some(next);
         }
+        self.shared.publish_entrances(engine);
         let rescanned = matches!(kind, RunKind::Rescan);
         Ok(publish::committed(&self.shared, &outcome, first, rescanned))
     }

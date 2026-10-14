@@ -82,6 +82,11 @@ fn compile_streams_progress_and_resolves_with_its_outcome() {
             .iter()
             .any(|message| is_event(message, "compile_progress", &harness.project))
     );
+    assert!(harness.sink.all().iter().any(|message| is_event(
+        message,
+        "entrances_changed",
+        &harness.project
+    )));
 }
 
 #[test]

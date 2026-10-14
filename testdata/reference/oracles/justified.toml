@@ -1,5 +1,5 @@
-# Resolved edges the oracle does not confirm, each with its reason. Every entry must match exactly
-# one disagreement (corpus, language, site, argument position, and Unfold's target); an entry that
+# Resolved links the oracle does not confirm, each with its reason. Every entry must match exactly
+# one disagreement (corpus, language, call node, argument position, and Unfold's target); an entry that
 # matches nothing is stale and fails `cargo xtask oracles check`. Rules: testdata/reference/README.md.
 
 # Decision C-8 (docs/languages/typescript.md, "Decisions"): a binding destructured from a literal
@@ -9,13 +9,13 @@
 [[justified]]
 corpus = "ts-orders"
 language = "typescript"
-site = "src/cli.ts#function:main/switch[0]/case[1]/expression_statement[0]/call[0]"
-target = "src/jobs/report.ts#function:printReport"
+site = "src/cli.ts#main/switch[0]/case[1]/call:printReport"
+target = "src/jobs/report.ts#printReport"
 reason = "C-8: `const { printReport } = await import(\"./jobs/report.ts\")` binds the module's export printReport"
 
 [[justified]]
 corpus = "mixed-playground"
 language = "typescript"
-site = "ts-orders/src/cli.ts#function:main/switch[0]/case[1]/expression_statement[0]/call[0]"
-target = "ts-orders/src/jobs/report.ts#function:printReport"
+site = "ts-orders/src/cli.ts#main/switch[0]/case[1]/call:printReport"
+target = "ts-orders/src/jobs/report.ts#printReport"
 reason = "C-8: `const { printReport } = await import(\"./jobs/report.ts\")` binds the module's export printReport"

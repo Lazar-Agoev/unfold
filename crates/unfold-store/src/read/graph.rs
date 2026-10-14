@@ -192,8 +192,8 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
         files.entry(row.get(10)?).or_default().parameters.push(parameter);
     }
     let mut statement = conn.prepare_cached(&format!(
-        "SELECT node, idx, kind, name, flags, type, type_start, type_end, value, file_id FROM members {} \
-         ORDER BY file_id, node, idx",
+        "SELECT node, idx, start_byte, end_byte, kind, name, flags, type, type_start, type_end, value, \
+         file_id FROM members {} ORDER BY file_id, node, idx",
         scope.filter("node")
     ))?;
     let mut rows = statement.query(params())?;
@@ -201,15 +201,16 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
         let member = Member {
             node: codec::u32_at(row, 0)?,
             index: codec::u32_at(row, 1)?,
-            kind: codec::vocab(row, 2, "member kind")?,
-            name: codec::opt_boxed(row, 3)?,
-            optional: flag(row, 4, 0)?,
-            readonly: flag(row, 4, 1)?,
-            default: flag(row, 4, 2)?,
-            ty: decode_written(row, 5)?,
-            value: codec::opt_boxed(row, 8)?,
+            range: codec::range(row, 2)?,
+            kind: codec::vocab(row, 4, "member kind")?,
+            name: codec::opt_boxed(row, 5)?,
+            optional: flag(row, 6, 0)?,
+            readonly: flag(row, 6, 1)?,
+            default: flag(row, 6, 2)?,
+            ty: decode_written(row, 7)?,
+            value: codec::opt_boxed(row, 10)?,
         };
-        files.entry(row.get(9)?).or_default().members.push(member);
+        files.entry(row.get(11)?).or_default().members.push(member);
     }
     let mut statement = conn.prepare_cached(&format!(
         "SELECT call, idx, start_byte, end_byte, expand, keyword, parameter, unpaired, bound, file_id \

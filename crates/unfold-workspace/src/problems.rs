@@ -23,7 +23,7 @@ use serde::Serialize;
 use ts_rs::TS;
 use unfold_core::vocab::FileState;
 use unfold_core::{Graph, LineIndex};
-use unfold_engine::settings::{Settings, SettingsError};
+use unfold_engine::settings::{SettingsError, SettingsFile};
 use unfold_engine::{Problem, ProblemKind};
 
 /// What kind of problem a [`ProblemItem`] is.
@@ -196,7 +196,7 @@ fn engine_problem(root: &Path, problem: &Problem) -> ProblemItem {
             line,
             column,
             ..
-        }) = Settings::load(root)
+        }) = SettingsFile::load(root)
     {
         item.path = unfold_engine::settings::SETTINGS_PATH.to_owned();
         item.message = message.into();

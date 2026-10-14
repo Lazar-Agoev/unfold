@@ -26,16 +26,16 @@
 {"t":"link","from":"py/src/shop/accounts.py#make_base","seq":0,"kind":"types","range":[776,780],"text":"type","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py/src/shop/accounts.py#Dynamic","seq":0,"kind":"types","range":[879,882],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"signature","node":"py/src/shop/accounts.py#make_base","returns":"type","returns_range":[776,780]}
-{"t":"member","node":"py/src/shop/accounts.py#Timestamped","index":0,"kind":"property","name":"created_at","type":"str","type_range":[207,210]}
-{"t":"member","node":"py/src/shop/accounts.py#OrderDraft","index":0,"kind":"property","name":"customer_id","type":"str","type_range":[272,275]}
-{"t":"member","node":"py/src/shop/accounts.py#OrderDraft","index":1,"kind":"property","name":"items","type":"list[CartItem]","type_range":[287,301]}
-{"t":"member","node":"py/src/shop/accounts.py#Order","index":0,"kind":"property","name":"id","type":"str","type_range":[449,452]}
-{"t":"member","node":"py/src/shop/accounts.py#Order","index":1,"kind":"property","name":"payload","type":"T","type_range":[466,467]}
-{"t":"member","node":"py/src/shop/accounts.py#Profile","index":0,"kind":"property","name":"email","type":"str","type_range":[507,510]}
-{"t":"member","node":"py/src/shop/accounts.py#Member","index":0,"kind":"property","name":"tier","type":"str","type_range":[546,549]}
-{"t":"member","node":"py/src/shop/accounts.py#GoldMember","index":0,"kind":"property","name":"perks","type":"list[str]","type_range":[692,701]}
-{"t":"member","node":"py/src/shop/accounts.py#Delivery","index":0,"kind":"property","name":"eta","type":"str","type_range":[751,754]}
-{"t":"member","node":"py/src/shop/accounts.py#Dynamic","index":0,"kind":"property","name":"note","type":"str","type_range":[879,882]}
+{"t":"member","node":"py/src/shop/accounts.py#Timestamped","index":0,"range":[195,210],"kind":"property","name":"created_at","type":"str","type_range":[207,210]}
+{"t":"member","node":"py/src/shop/accounts.py#OrderDraft","index":0,"range":[259,275],"kind":"property","name":"customer_id","type":"str","type_range":[272,275]}
+{"t":"member","node":"py/src/shop/accounts.py#OrderDraft","index":1,"range":[280,301],"kind":"property","name":"items","type":"list[CartItem]","type_range":[287,301]}
+{"t":"member","node":"py/src/shop/accounts.py#Order","index":0,"range":[445,452],"kind":"property","name":"id","type":"str","type_range":[449,452]}
+{"t":"member","node":"py/src/shop/accounts.py#Order","index":1,"range":[457,467],"kind":"property","name":"payload","type":"T","type_range":[466,467]}
+{"t":"member","node":"py/src/shop/accounts.py#Profile","index":0,"range":[500,510],"kind":"property","name":"email","type":"str","type_range":[507,510]}
+{"t":"member","node":"py/src/shop/accounts.py#Member","index":0,"range":[540,549],"kind":"property","name":"tier","type":"str","type_range":[546,549]}
+{"t":"member","node":"py/src/shop/accounts.py#GoldMember","index":0,"range":[685,701],"kind":"property","name":"perks","type":"list[str]","type_range":[692,701]}
+{"t":"member","node":"py/src/shop/accounts.py#Delivery","index":0,"range":[746,754],"kind":"property","name":"eta","type":"str","type_range":[751,754]}
+{"t":"member","node":"py/src/shop/accounts.py#Dynamic","index":0,"range":[873,882],"kind":"property","name":"note","type":"str","type_range":[879,882]}
 {"t":"argument","call":"py/src/shop/accounts.py#/call:TypeVar","index":0,"range":[154,157]}
 {"t":"node","key":"py/src/shop/errors.py#CardDeclined.__init__/call:super().__init__","parent":"py/src/shop/errors.py#CardDeclined.__init__","kind":"call","form":"call","name":"super().__init__","range":[129,176],"lines":[7,7],"head":[129,145],"stmt":[129,176]}
 {"t":"node","key":"py/src/shop/errors.py#CardDeclined.__init__/call:super().__init__/call:super","parent":"py/src/shop/errors.py#CardDeclined.__init__/call:super().__init__","kind":"call","form":"call","name":"super","range":[129,136],"lines":[7,7],"head":[129,134]}
@@ -68,20 +68,20 @@
 {"t":"link","from":"py/src/shop/models.py#Receipt","seq":1,"kind":"types","range":[583,586],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py/src/shop/models.py#Receipt","seq":2,"kind":"types","range":[599,608],"text":"Annotated","outcome":"library","to":"python:typing"}
 {"t":"link","from":"py/src/shop/models.py#Receipt","seq":3,"kind":"types","range":[609,614],"text":"Money","outcome":"unknown","to":"not_concrete"}
-{"t":"member","node":"py/src/shop/models.py#CartItem","index":0,"kind":"property","name":"sku","type":"str","type_range":[220,223]}
-{"t":"member","node":"py/src/shop/models.py#CartItem","index":1,"kind":"property","name":"quantity","type":"int","type_range":[238,241]}
-{"t":"member","node":"py/src/shop/models.py#CartItem","index":2,"kind":"property","name":"price","type":"Money","type_range":[253,258]}
-{"t":"member","node":"py/src/shop/models.py#Cart","index":0,"kind":"property","name":"id","type":"str","type_range":[292,295]}
-{"t":"member","node":"py/src/shop/models.py#Cart","index":1,"kind":"property","name":"items","type":"list[CartItem]","type_range":[307,321]}
-{"t":"member","node":"py/src/shop/models.py#Cart","index":2,"kind":"property","name":"coupon","default":true,"type":"Optional[str]","type_range":[334,347]}
-{"t":"member","node":"py/src/shop/models.py#Address","index":0,"kind":"property","name":"street","type":"str","type_range":[395,398]}
-{"t":"member","node":"py/src/shop/models.py#Address","index":1,"kind":"property","name":"city","type":"str","type_range":[409,412]}
-{"t":"member","node":"py/src/shop/models.py#Customer","index":0,"kind":"property","name":"id","type":"str","type_range":[450,453]}
-{"t":"member","node":"py/src/shop/models.py#Customer","index":1,"kind":"property","name":"email","type":"str","type_range":[465,468]}
-{"t":"member","node":"py/src/shop/models.py#Customer","index":2,"kind":"property","name":"address","type":"\"Address\"","type_range":[482,491]}
-{"t":"member","node":"py/src/shop/models.py#Customer","index":3,"kind":"property","name":"tier","default":true,"type":"Literal[\"gold\", \"silver\"]","type_range":[502,527]}
-{"t":"member","node":"py/src/shop/models.py#Receipt","index":0,"kind":"property","name":"charge_id","type":"str","type_range":[583,586]}
-{"t":"member","node":"py/src/shop/models.py#Receipt","index":1,"kind":"property","name":"amount","type":"Annotated[Money, \"rounded to cents\"]","type_range":[599,635]}
+{"t":"member","node":"py/src/shop/models.py#CartItem","index":0,"range":[215,223],"kind":"property","name":"sku","type":"str","type_range":[220,223]}
+{"t":"member","node":"py/src/shop/models.py#CartItem","index":1,"range":[228,241],"kind":"property","name":"quantity","type":"int","type_range":[238,241]}
+{"t":"member","node":"py/src/shop/models.py#CartItem","index":2,"range":[246,258],"kind":"property","name":"price","type":"Money","type_range":[253,258]}
+{"t":"member","node":"py/src/shop/models.py#Cart","index":0,"range":[288,295],"kind":"property","name":"id","type":"str","type_range":[292,295]}
+{"t":"member","node":"py/src/shop/models.py#Cart","index":1,"range":[300,321],"kind":"property","name":"items","type":"list[CartItem]","type_range":[307,321]}
+{"t":"member","node":"py/src/shop/models.py#Cart","index":2,"range":[326,354],"kind":"property","name":"coupon","default":true,"type":"Optional[str]","type_range":[334,347]}
+{"t":"member","node":"py/src/shop/models.py#Address","index":0,"range":[387,398],"kind":"property","name":"street","type":"str","type_range":[395,398]}
+{"t":"member","node":"py/src/shop/models.py#Address","index":1,"range":[403,412],"kind":"property","name":"city","type":"str","type_range":[409,412]}
+{"t":"member","node":"py/src/shop/models.py#Customer","index":0,"range":[446,453],"kind":"property","name":"id","type":"str","type_range":[450,453]}
+{"t":"member","node":"py/src/shop/models.py#Customer","index":1,"range":[458,468],"kind":"property","name":"email","type":"str","type_range":[465,468]}
+{"t":"member","node":"py/src/shop/models.py#Customer","index":2,"range":[473,491],"kind":"property","name":"address","type":"\"Address\"","type_range":[482,491]}
+{"t":"member","node":"py/src/shop/models.py#Customer","index":3,"range":[496,538],"kind":"property","name":"tier","default":true,"type":"Literal[\"gold\", \"silver\"]","type_range":[502,527]}
+{"t":"member","node":"py/src/shop/models.py#Receipt","index":0,"range":[572,586],"kind":"property","name":"charge_id","type":"str","type_range":[583,586]}
+{"t":"member","node":"py/src/shop/models.py#Receipt","index":1,"range":[591,635],"kind":"property","name":"amount","type":"Annotated[Money, \"rounded to cents\"]","type_range":[599,635]}
 {"t":"node","key":"py/src/shop/orders.py#/call:TypeVar","parent":"py/src/shop/orders.py#","kind":"call","form":"call","name":"TypeVar","range":[140,152],"lines":[7,7],"head":[140,147],"stmt":[136,152],"binds":"T"}
 {"t":"node","key":"py/src/shop/orders.py#create_order/call:Gateway","parent":"py/src/shop/orders.py#create_order","kind":"call","form":"new","name":"Gateway","range":[284,313],"lines":[15,15],"head":[284,291],"stmt":[274,313],"binds":"gateway"}
 {"t":"node","key":"py/src/shop/orders.py#create_order/try[0]/body/call:gateway.charge","parent":"py/src/shop/orders.py#create_order/try[0]/body","kind":"call","form":"call","name":"gateway.charge","range":[341,387],"lines":[17,17],"head":[341,355],"stmt":[331,387],"binds":"receipt"}

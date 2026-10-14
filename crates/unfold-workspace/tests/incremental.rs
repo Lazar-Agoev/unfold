@@ -6,8 +6,10 @@
 //! The edits are the ones that move cross-file facts: body edits, adding and removing functions,
 //! renaming an export (its callers elsewhere change), a new subclass that overrides a method in a
 //! new file, deleting and recreating files (imports elsewhere go `not_found` and back), breaking
-//! and fixing syntax, and case-only renames. Steps either settle before the next one or land while
-//! the previous update is queued or running, so changes merge and updates restart.
+//! and fixing syntax, case-only renames, and moving an entrance's `code` in `unfold.toml` (which
+//! resolves the entrances again without compiling when it is the only change). Steps either
+//! settle before the next one or land while the previous update is queued or running, so changes
+//! merge and updates restart.
 //!
 //! `PROPTEST_CASES` sets the number of sequences per playground (default 6, for pull requests).
 
@@ -95,6 +97,20 @@ impl Lang {
         })
     }
 
+    /// The playground's deliberately missing `code` key, and the key of where it moved.
+    fn moved_code(self) -> (&'static str, &'static str) {
+        match self {
+            Self::TypeScript => (
+                "\"src/server.ts#adminStats\"",
+                "\"src/routes/admin.ts#adminStats\"",
+            ),
+            Self::Python => (
+                "\"src/orders_playground/server.py#admin_stats\"",
+                "\"src/orders_playground/routes/admin.py#admin_stats\"",
+            ),
+        }
+    }
+
     /// A subclass of the playground's `OrderService` that overrides `place`, as a new file.
     fn subclass(self, n: u32) -> (String, String) {
         match self {
@@ -125,6 +141,7 @@ enum Edit {
     DeleteOrRestore(usize),
     BreakOrFix(usize),
     CaseRename(usize),
+    MoveAppCode,
 }
 
 /// Source file picks, taken modulo the playground's file count.
@@ -139,6 +156,7 @@ fn edit() -> impl Strategy<Value = Edit> {
         1 => Just(Edit::AddSubclass),
         2 => INDEX.prop_map(Edit::DeleteOrRestore),
         2 => INDEX.prop_map(Edit::BreakOrFix),
+        1 => Just(Edit::MoveAppCode),
     ];
     prop_oneof![9 => common, 1 => INDEX.prop_map(Edit::CaseRename)]
 }
@@ -327,6 +345,17 @@ impl Folder {
                 };
                 self.write(&path, &edited);
                 vec![path]
+            }
+            Edit::MoveAppCode => {
+                let (missing, moved) = lang.moved_code();
+                let text = self.read("unfold.toml");
+                let edited = if text.contains(missing) {
+                    text.replacen(missing, moved, 1)
+                } else {
+                    text.replacen(moved, missing, 1)
+                };
+                self.write("unfold.toml", &edited);
+                vec!["unfold.toml".to_owned()]
             }
             Edit::DeleteOrRestore(index) => {
                 let i = index % count;

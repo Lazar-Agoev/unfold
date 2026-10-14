@@ -1,7 +1,9 @@
 //! The reader's views on the playgrounds' golden graphs: owners, the catalog, callers, outgoing
 //! links, closures, Reached from, and verified source.
 
-use unfold_core::vocab::{LinkKind, NodeKind, Outcome};
+use unfold_core::key::Callee;
+use unfold_core::testkit::{GraphBuilder, NodeRef};
+use unfold_core::vocab::{Inline, Language, LinkKind, NodeKind, Outcome};
 use unfold_core::{FileGraph, Key};
 
 use crate::catalog;
@@ -65,6 +67,53 @@ fn a_callback_owns_its_calls_and_a_method_belongs_to_its_class() {
     );
     assert_eq!(index.owner("src/cli.ts#"), None);
     assert!(!index.contains("src/cli.ts#absent"));
+}
+
+#[test]
+fn a_callback_written_as_an_object_property_is_labeled_by_its_property() {
+    let text = "useMutation({ onSuccess: () => items.map(() => done()), retry: wrap(() => again()) });\n";
+    let mut builder = GraphBuilder::new();
+    let module = builder.file("a.ts", Language::TypeScript, text);
+    let mutation = builder.call(
+        module,
+        &Callee::name("useMutation"),
+        builder.find(module, "useMutation({"),
+    );
+    let success = builder.inline(
+        mutation,
+        Inline::Callback,
+        builder.find(module, "() => items.map(() => done())"),
+    );
+    builder.node_mut(success).name = Some("onSuccess".into());
+    let map = builder.call(
+        success,
+        &Callee::name("items").member("map"),
+        builder.find(module, "items.map("),
+    );
+    let each = builder.inline(map, Inline::Callback, builder.find(module, "() => done()"));
+    let wrap = builder.call(mutation, &Callee::name("wrap"), builder.find(module, "wrap("));
+    let again = builder.inline(wrap, Inline::Callback, builder.find(module, "() => again()"));
+    let graph = builder.build();
+    let file = &graph.files[0];
+    let label = |node: NodeRef| {
+        let id = node.local_id();
+        (
+            catalog::label(&file.nodes, &file.file.path, id),
+            catalog::qualified_name(&file.nodes, &file.file.path, id),
+        )
+    };
+    assert_eq!(label(success), ("onSuccess".to_owned(), "onSuccess".to_owned()));
+    assert_eq!(
+        label(each),
+        (
+            "callback to items.map".to_owned(),
+            "onSuccess.callback to items.map".to_owned()
+        )
+    );
+    assert_eq!(
+        label(again),
+        ("callback to wrap".to_owned(), "callback to wrap".to_owned())
+    );
 }
 
 #[test]

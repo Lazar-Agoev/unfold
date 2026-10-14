@@ -17,21 +17,21 @@
 {"t":"link","from":"ts/src/cart.ts#CartSummary","seq":2,"kind":"types","range":[561,569],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
 {"t":"link","from":"ts/src/cart.ts#Discount","seq":0,"kind":"types","range":[598,605],"text":"Partial","outcome":"library","to":"global"}
 {"t":"link","from":"ts/src/cart.ts#Discount","seq":1,"kind":"types","range":[606,610],"text":"Cart","outcome":"project","to":"ts/src/cart.ts#Cart"}
-{"t":"member","node":"ts/src/cart.ts#CartItem","index":0,"kind":"property","name":"sku","type":"string","type_range":[133,139]}
-{"t":"member","node":"ts/src/cart.ts#CartItem","index":1,"kind":"property","name":"quantity","type":"number","type_range":[153,159]}
-{"t":"member","node":"ts/src/cart.ts#CartItem","index":2,"kind":"property","name":"price","type":"Money","type_range":[170,175]}
-{"t":"member","node":"ts/src/cart.ts#Cart","index":0,"kind":"property","name":"id","type":"CartId","type_range":[210,216]}
-{"t":"member","node":"ts/src/cart.ts#Cart","index":1,"kind":"property","name":"owner","type":"User","type_range":[227,231]}
-{"t":"member","node":"ts/src/cart.ts#Cart","index":2,"kind":"property","name":"items","type":"CartItem[]","type_range":[242,252]}
-{"t":"member","node":"ts/src/cart.ts#Cart","index":3,"kind":"property","name":"coupon","optional":true,"type":"string","type_range":[265,271]}
-{"t":"member","node":"ts/src/cart.ts#Cart","index":4,"kind":"property","name":"createdAt","readonly":true,"type":"Date","type_range":[295,299]}
-{"t":"member","node":"ts/src/cart.ts#Address","index":0,"kind":"property","name":"street","type":"string","type_range":[425,431]}
-{"t":"member","node":"ts/src/cart.ts#Address[1]","index":0,"kind":"property","name":"city","type":"string","type_range":[471,477]}
-{"t":"member","node":"ts/src/cart.ts#CartSummary","index":0,"kind":"property","name":"count","type":"number","type_range":[517,523]}
-{"t":"member","node":"ts/src/cart.ts#CartSummary","index":1,"kind":"property","name":"total","type":"Money","type_range":[532,537]}
-{"t":"member","node":"ts/src/cart.ts#CartSummary","index":2,"kind":"property","name":"lines","type":"Record<string, CartItem>","type_range":[546,570]}
-{"t":"member","node":"ts/src/cart.ts#Currency","index":0,"kind":"value","name":"Usd","value":"\"usd\""}
-{"t":"member","node":"ts/src/cart.ts#Currency","index":1,"kind":"value","name":"Eur","value":"\"eur\""}
+{"t":"member","node":"ts/src/cart.ts#CartItem","index":0,"range":[128,140],"kind":"property","name":"sku","type":"string","type_range":[133,139]}
+{"t":"member","node":"ts/src/cart.ts#CartItem","index":1,"range":[143,160],"kind":"property","name":"quantity","type":"number","type_range":[153,159]}
+{"t":"member","node":"ts/src/cart.ts#CartItem","index":2,"range":[163,176],"kind":"property","name":"price","type":"Money","type_range":[170,175]}
+{"t":"member","node":"ts/src/cart.ts#Cart","index":0,"range":[206,217],"kind":"property","name":"id","type":"CartId","type_range":[210,216]}
+{"t":"member","node":"ts/src/cart.ts#Cart","index":1,"range":[220,232],"kind":"property","name":"owner","type":"User","type_range":[227,231]}
+{"t":"member","node":"ts/src/cart.ts#Cart","index":2,"range":[235,253],"kind":"property","name":"items","type":"CartItem[]","type_range":[242,252]}
+{"t":"member","node":"ts/src/cart.ts#Cart","index":3,"range":[256,272],"kind":"property","name":"coupon","optional":true,"type":"string","type_range":[265,271]}
+{"t":"member","node":"ts/src/cart.ts#Cart","index":4,"range":[275,300],"kind":"property","name":"createdAt","readonly":true,"type":"Date","type_range":[295,299]}
+{"t":"member","node":"ts/src/cart.ts#Address","index":0,"range":[417,432],"kind":"property","name":"street","type":"string","type_range":[425,431]}
+{"t":"member","node":"ts/src/cart.ts#Address[1]","index":0,"range":[465,478],"kind":"property","name":"city","type":"string","type_range":[471,477]}
+{"t":"member","node":"ts/src/cart.ts#CartSummary","index":0,"range":[510,524],"kind":"property","name":"count","type":"number","type_range":[517,523]}
+{"t":"member","node":"ts/src/cart.ts#CartSummary","index":1,"range":[525,538],"kind":"property","name":"total","type":"Money","type_range":[532,537]}
+{"t":"member","node":"ts/src/cart.ts#CartSummary","index":2,"range":[539,570],"kind":"property","name":"lines","type":"Record<string, CartItem>","type_range":[546,570]}
+{"t":"member","node":"ts/src/cart.ts#Currency","index":0,"range":[646,657],"kind":"value","name":"Usd","value":"\"usd\""}
+{"t":"member","node":"ts/src/cart.ts#Currency","index":1,"range":[661,672],"kind":"value","name":"Eur","value":"\"eur\""}
 {"t":"link","from":"ts/src/errors.ts#PaymentError","seq":0,"kind":"extends","range":[34,39],"text":"Error","outcome":"library","to":"global"}
 {"t":"link","from":"ts/src/errors.ts#CardDeclinedError","seq":0,"kind":"extends","range":[141,153],"text":"PaymentError","outcome":"project","to":"ts/src/errors.ts#PaymentError"}
 {"t":"link","from":"ts/src/errors.ts#OutOfStockError","seq":0,"kind":"extends","range":[290,295],"text":"Error","outcome":"library","to":"global"}
@@ -39,7 +39,7 @@
 {"t":"signature","node":"ts/src/errors.ts#CardDeclinedError.constructor"}
 {"t":"parameter","node":"ts/src/errors.ts#PaymentError.constructor","index":0,"range":[56,71],"kind":"positional","name":"message","type":"string","type_range":[65,71]}
 {"t":"parameter","node":"ts/src/errors.ts#CardDeclinedError.constructor","index":0,"range":[170,200],"kind":"positional","name":"intent","type":"string","type_range":[194,200]}
-{"t":"member","node":"ts/src/errors.ts#CardDeclinedError","index":0,"kind":"property","name":"intent","readonly":true,"type":"string","type_range":[194,200]}
+{"t":"member","node":"ts/src/errors.ts#CardDeclinedError","index":0,"range":[170,200],"kind":"property","name":"intent","readonly":true,"type":"string","type_range":[194,200]}
 {"t":"argument","call":"ts/src/errors.ts#PaymentError.constructor/call:super","index":0,"range":[85,92]}
 {"t":"argument","call":"ts/src/errors.ts#CardDeclinedError.constructor/call:super","index":0,"range":[214,243],"parameter":0}
 {"t":"node","key":"ts/src/inventory.ts#Hold","parent":"ts/src/inventory.ts#","kind":"type","form":"interface","name":"Hold","range":[91,170],"lines":[4,8],"head":[98,112],"body":[113,170],"stmt":[91,170]}
@@ -52,9 +52,9 @@
 {"t":"signature","node":"ts/src/inventory.ts#first","returns":"T | undefined","returns_range":[410,423]}
 {"t":"parameter","node":"ts/src/inventory.ts#reserveInventory","index":0,"range":[211,228],"kind":"positional","name":"items","type":"CartItem[]","type_range":[218,228]}
 {"t":"parameter","node":"ts/src/inventory.ts#first","index":0,"range":[397,407],"kind":"positional","name":"items","type":"T[]","type_range":[404,407]}
-{"t":"member","node":"ts/src/inventory.ts#Hold","index":0,"kind":"property","name":"id","type":"string","type_range":[121,127]}
-{"t":"member","node":"ts/src/inventory.ts#Hold","index":1,"kind":"property","name":"items","type":"CartItem[]","type_range":[138,148]}
-{"t":"member","node":"ts/src/inventory.ts#Hold","index":2,"kind":"property","name":"expiresAt","type":"Date","type_range":[163,167]}
+{"t":"member","node":"ts/src/inventory.ts#Hold","index":0,"range":[117,128],"kind":"property","name":"id","type":"string","type_range":[121,127]}
+{"t":"member","node":"ts/src/inventory.ts#Hold","index":1,"range":[131,149],"kind":"property","name":"items","type":"CartItem[]","type_range":[138,148]}
+{"t":"member","node":"ts/src/inventory.ts#Hold","index":2,"range":[152,168],"kind":"property","name":"expiresAt","type":"Date","type_range":[163,167]}
 {"t":"signature","node":"ts/src/legacy.ts#legacyTotal"}
 {"t":"signature","node":"ts/src/legacy.ts#legacyReport"}
 {"t":"parameter","node":"ts/src/legacy.ts#legacyTotal","index":0,"range":[96,100],"kind":"positional","name":"cart"}
@@ -95,14 +95,14 @@
 {"t":"parameter","node":"ts/src/orders/create.ts#notify","index":1,"range":[1418,1450],"kind":"positional","name":"render","type":"(order: Order) => string","type_range":[1426,1450]}
 {"t":"parameter","node":"ts/src/orders/create.ts#notify","index":2,"range":[1452,1473],"kind":"rest","name":"channels","type":"string[]","type_range":[1465,1473]}
 {"t":"parameter","node":"ts/src/orders/create.ts#notify/call:channels.forEach/callback[0]","index":0,"range":[1520,1527],"kind":"positional","name":"channel"}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":0,"kind":"property","name":"id","type":"string","type_range":[356,362]}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":1,"kind":"property","name":"cart","type":"models.Cart","type_range":[372,383]}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":2,"kind":"property","name":"chargeId","type":"string","type_range":[397,403]}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":3,"kind":"property","name":"holdId","type":"string","type_range":[415,421]}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":4,"kind":"property","name":"shipTo","optional":true,"type":"Address","type_range":[434,441]}
-{"t":"member","node":"ts/src/orders/create.ts#Order","index":5,"kind":"property","name":"currency","type":"models.Currency","type_range":[455,470]}
-{"t":"member","node":"ts/src/orders/create.ts#Request","index":0,"kind":"property","name":"user","type":"User","type_range":[510,514]}
-{"t":"member","node":"ts/src/orders/create.ts#Request","index":1,"kind":"property","name":"body","type":"{ cart: Cart }","type_range":[524,538]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":0,"range":[352,363],"kind":"property","name":"id","type":"string","type_range":[356,362]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":1,"range":[366,384],"kind":"property","name":"cart","type":"models.Cart","type_range":[372,383]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":2,"range":[387,404],"kind":"property","name":"chargeId","type":"string","type_range":[397,403]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":3,"range":[407,422],"kind":"property","name":"holdId","type":"string","type_range":[415,421]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":4,"range":[425,442],"kind":"property","name":"shipTo","optional":true,"type":"Address","type_range":[434,441]}
+{"t":"member","node":"ts/src/orders/create.ts#Order","index":5,"range":[445,471],"kind":"property","name":"currency","type":"models.Currency","type_range":[455,470]}
+{"t":"member","node":"ts/src/orders/create.ts#Request","index":0,"range":[504,515],"kind":"property","name":"user","type":"User","type_range":[510,514]}
+{"t":"member","node":"ts/src/orders/create.ts#Request","index":1,"range":[518,539],"kind":"property","name":"body","type":"{ cart: Cart }","type_range":[524,538]}
 {"t":"argument","call":"ts/src/orders/create.ts#createOrder/call:reserveInventory","index":0,"range":[677,687],"parameter":0}
 {"t":"argument","call":"ts/src/orders/create.ts#createOrder/try[0]/body/call:chargePayment","index":0,"range":[737,741],"parameter":0}
 {"t":"argument","call":"ts/src/orders/create.ts#createOrder/try[0]/body/call:chargePayment","index":1,"range":[743,751],"parameter":1}
@@ -123,8 +123,8 @@
 {"t":"node","key":"ts/src/orders/cycle.ts#Knot","parent":"ts/src/orders/cycle.ts#","kind":"type","form":"interface","name":"Knot","range":[196,250],"lines":[7,9],"head":[203,230],"body":[231,250],"stmt":[196,250]}
 {"t":"link","from":"ts/src/orders/cycle.ts#Loop","seq":0,"kind":"extends","range":[170,174],"text":"Knot","outcome":"project","to":"ts/src/orders/cycle.ts#Knot"}
 {"t":"link","from":"ts/src/orders/cycle.ts#Knot","seq":0,"kind":"extends","range":[226,230],"text":"Loop","outcome":"project","to":"ts/src/orders/cycle.ts#Loop"}
-{"t":"member","node":"ts/src/orders/cycle.ts#Loop","index":0,"kind":"property","name":"loop","type":"string","type_range":[185,191]}
-{"t":"member","node":"ts/src/orders/cycle.ts#Knot","index":0,"kind":"property","name":"knot","type":"string","type_range":[241,247]}
+{"t":"member","node":"ts/src/orders/cycle.ts#Loop","index":0,"range":[179,192],"kind":"property","name":"loop","type":"string","type_range":[185,191]}
+{"t":"member","node":"ts/src/orders/cycle.ts#Knot","index":0,"range":[235,248],"kind":"property","name":"knot","type":"string","type_range":[241,247]}
 {"t":"node","key":"ts/src/orders/model.ts#Timestamped","parent":"ts/src/orders/model.ts#","kind":"type","form":"interface","name":"Timestamped","range":[89,140],"lines":[5,7],"head":[96,120],"body":[121,140],"stmt":[89,140]}
 {"t":"node","key":"ts/src/orders/model.ts#Tracked","parent":"ts/src/orders/model.ts#","kind":"type","form":"interface","name":"Tracked","range":[142,216],"lines":[9,11],"head":[149,192],"body":[193,216],"stmt":[142,216]}
 {"t":"node","key":"ts/src/orders/model.ts#OrderDraft","parent":"ts/src/orders/model.ts#","kind":"type","form":"interface","name":"OrderDraft","range":[250,341],"lines":[14,18],"head":[257,277],"body":[278,341],"doc":[218,249],"stmt":[250,341]}
@@ -145,20 +145,20 @@
 {"t":"link","from":"ts/src/orders/model.ts#OrderRecord","seq":1,"kind":"extends","range":[912,922],"text":"OrderDraft","outcome":"project","to":"ts/src/orders/model.ts#OrderDraft","implements":true}
 {"t":"link","from":"ts/src/orders/model.ts#OrderRecord","seq":2,"kind":"extends","range":[924,933],"text":"Auditable","outcome":"project","to":"ts/src/orders/model.ts#Auditable","implements":true}
 {"t":"link","from":"ts/src/orders/model.ts#OrderRecord","seq":3,"kind":"types","range":[978,986],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
-{"t":"member","node":"ts/src/orders/model.ts#Timestamped","index":0,"kind":"property","name":"createdAt","type":"T","type_range":[136,137]}
-{"t":"member","node":"ts/src/orders/model.ts#Tracked","index":0,"kind":"property","name":"updatedAt","optional":true,"type":"Date","type_range":[209,213]}
-{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":0,"kind":"property","name":"customerId","type":"string","type_range":[294,300]}
-{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":1,"kind":"property","name":"email","type":"string","type_range":[311,317]}
-{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":2,"kind":"property","name":"items","type":"CartItem[]","type_range":[328,338]}
-{"t":"member","node":"ts/src/orders/model.ts#Order","index":0,"kind":"property","name":"id","type":"string","type_range":[511,517]}
-{"t":"member","node":"ts/src/orders/model.ts#Order","index":1,"kind":"property","name":"status","type":"\"open\" | \"paid\"","type_range":[529,544]}
-{"t":"member","node":"ts/src/orders/model.ts#Shipment","index":0,"kind":"property","name":"trackingId","type":"string","type_range":[741,747]}
-{"t":"member","node":"ts/src/orders/model.ts#Entity","index":0,"kind":"property","name":"id","type":"K","type_range":[793,794]}
-{"t":"member","node":"ts/src/orders/model.ts#Auditable","index":0,"kind":"property","name":"auditedBy","optional":true,"type":"string","type_range":[842,848]}
-{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":0,"kind":"property","name":"customerId","default":true}
-{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":1,"kind":"property","name":"email","default":true}
-{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":2,"kind":"property","name":"items","default":true,"type":"CartItem[]","type_range":[978,988]}
-{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":3,"kind":"property","name":"auditedBy","optional":true,"type":"string","type_range":[1009,1015]}
+{"t":"member","node":"ts/src/orders/model.ts#Timestamped","index":0,"range":[125,138],"kind":"property","name":"createdAt","type":"T","type_range":[136,137]}
+{"t":"member","node":"ts/src/orders/model.ts#Tracked","index":0,"range":[197,214],"kind":"property","name":"updatedAt","optional":true,"type":"Date","type_range":[209,213]}
+{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":0,"range":[282,301],"kind":"property","name":"customerId","type":"string","type_range":[294,300]}
+{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":1,"range":[304,318],"kind":"property","name":"email","type":"string","type_range":[311,317]}
+{"t":"member","node":"ts/src/orders/model.ts#OrderDraft","index":2,"range":[321,339],"kind":"property","name":"items","type":"CartItem[]","type_range":[328,338]}
+{"t":"member","node":"ts/src/orders/model.ts#Order","index":0,"range":[507,518],"kind":"property","name":"id","type":"string","type_range":[511,517]}
+{"t":"member","node":"ts/src/orders/model.ts#Order","index":1,"range":[521,545],"kind":"property","name":"status","type":"\"open\" | \"paid\"","type_range":[529,544]}
+{"t":"member","node":"ts/src/orders/model.ts#Shipment","index":0,"range":[729,748],"kind":"property","name":"trackingId","type":"string","type_range":[741,747]}
+{"t":"member","node":"ts/src/orders/model.ts#Entity","index":0,"range":[788,795],"kind":"property","name":"id","type":"K","type_range":[793,794]}
+{"t":"member","node":"ts/src/orders/model.ts#Auditable","index":0,"range":[830,849],"kind":"property","name":"auditedBy","optional":true,"type":"string","type_range":[842,848]}
+{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":0,"range":[938,954],"kind":"property","name":"customerId","default":true}
+{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":1,"range":[957,968],"kind":"property","name":"email","default":true}
+{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":2,"range":[971,994],"kind":"property","name":"items","default":true,"type":"CartItem[]","type_range":[978,988]}
+{"t":"member","node":"ts/src/orders/model.ts#OrderRecord","index":3,"range":[997,1016],"kind":"property","name":"auditedBy","optional":true,"type":"string","type_range":[1009,1015]}
 {"t":"node","key":"ts/src/payments.ts#Charge","parent":"ts/src/payments.ts#","kind":"type","form":"interface","name":"Charge","range":[164,254],"lines":[6,10],"head":[171,187],"body":[188,254],"stmt":[164,254]}
 {"t":"link","from":"ts/src/payments.ts#Charge","seq":0,"kind":"types","range":[214,219],"text":"Money","outcome":"project","to":"ts/src/cart.ts#Money"}
 {"t":"link","from":"ts/src/payments.ts#Charge","seq":1,"kind":"types","range":[231,251],"text":"Stripe.PaymentIntent","outcome":"library","to":"stripe"}
@@ -176,9 +176,9 @@
 {"t":"parameter","node":"ts/src/payments.ts#total","index":0,"range":[654,664],"kind":"positional","name":"cart","type":"Cart","type_range":[660,664]}
 {"t":"parameter","node":"ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]","index":0,"range":[703,706],"kind":"positional","name":"sum"}
 {"t":"parameter","node":"ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]","index":1,"range":[708,712],"kind":"positional","name":"item"}
-{"t":"member","node":"ts/src/payments.ts#Charge","index":0,"kind":"property","name":"id","type":"string","type_range":[196,202]}
-{"t":"member","node":"ts/src/payments.ts#Charge","index":1,"kind":"property","name":"amount","type":"Money","type_range":[214,219]}
-{"t":"member","node":"ts/src/payments.ts#Charge","index":2,"kind":"property","name":"intent","type":"Stripe.PaymentIntent","type_range":[231,251]}
+{"t":"member","node":"ts/src/payments.ts#Charge","index":0,"range":[192,203],"kind":"property","name":"id","type":"string","type_range":[196,202]}
+{"t":"member","node":"ts/src/payments.ts#Charge","index":1,"range":[206,220],"kind":"property","name":"amount","type":"Money","type_range":[214,219]}
+{"t":"member","node":"ts/src/payments.ts#Charge","index":2,"range":[223,252],"kind":"property","name":"intent","type":"Stripe.PaymentIntent","type_range":[231,251]}
 {"t":"argument","call":"ts/src/payments.ts#/call:Stripe","index":0,"range":[282,303]}
 {"t":"argument","call":"ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create","index":0,"range":[438,480]}
 {"t":"argument","call":"ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create/call:total","index":0,"range":[454,458],"parameter":0}
@@ -195,9 +195,9 @@
 {"t":"parameter","node":"ts/src/user.ts#Session.constructor","index":0,"range":[197,214],"kind":"positional","name":"user","type":"User","type_range":[210,214]}
 {"t":"parameter","node":"ts/src/user.ts#Session.constructor","index":1,"range":[220,250],"kind":"positional","name":"token","type":"string","type_range":[244,250]}
 {"t":"parameter","node":"ts/src/user.ts#Session.isExpired","index":0,"range":[272,281],"kind":"positional","name":"now","type":"Date","type_range":[277,281]}
-{"t":"member","node":"ts/src/user.ts#User","index":0,"kind":"property","name":"id","type":"string","type_range":[30,36]}
-{"t":"member","node":"ts/src/user.ts#User","index":1,"kind":"property","name":"email","type":"string","type_range":[47,53]}
-{"t":"member","node":"ts/src/user.ts#User","index":2,"kind":"property","name":"address","optional":true,"type":"Address","type_range":[67,74]}
-{"t":"member","node":"ts/src/user.ts#Session","index":0,"kind":"property","name":"expiresAt","default":true,"type":"Date","type_range":[158,162]}
-{"t":"member","node":"ts/src/user.ts#Session","index":1,"kind":"property","name":"user","type":"User","type_range":[210,214]}
-{"t":"member","node":"ts/src/user.ts#Session","index":2,"kind":"property","name":"token","readonly":true,"type":"string","type_range":[244,250]}
+{"t":"member","node":"ts/src/user.ts#User","index":0,"range":[26,37],"kind":"property","name":"id","type":"string","type_range":[30,36]}
+{"t":"member","node":"ts/src/user.ts#User","index":1,"range":[40,54],"kind":"property","name":"email","type":"string","type_range":[47,53]}
+{"t":"member","node":"ts/src/user.ts#User","index":2,"range":[57,75],"kind":"property","name":"address","optional":true,"type":"Address","type_range":[67,74]}
+{"t":"member","node":"ts/src/user.ts#Session","index":0,"range":[147,176],"kind":"property","name":"expiresAt","default":true,"type":"Date","type_range":[158,162]}
+{"t":"member","node":"ts/src/user.ts#Session","index":1,"range":[197,214],"kind":"property","name":"user","type":"User","type_range":[210,214]}
+{"t":"member","node":"ts/src/user.ts#Session","index":2,"range":[220,250],"kind":"property","name":"token","readonly":true,"type":"string","type_range":[244,250]}

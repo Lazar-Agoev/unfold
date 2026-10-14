@@ -46,7 +46,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"
@@ -115,6 +115,7 @@ CREATE TABLE parameters (
 
 CREATE TABLE members (
   file_id INTEGER NOT NULL, node INTEGER NOT NULL, idx INTEGER NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL,
   kind TEXT NOT NULL, name TEXT, flags INTEGER NOT NULL,
   type TEXT, type_start INTEGER, type_end INTEGER, value TEXT,
   PRIMARY KEY (file_id, node, idx)

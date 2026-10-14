@@ -4,13 +4,13 @@
     "hits": [
       {
         "project": "<project>",
-        "key": "src/services/order-service.ts#class:OrderService/method:place",
+        "key": "src/services/order-service.ts#OrderService.place",
         "name": "place",
         "qualifiedName": "OrderService.place",
         "path": "src/services/order-service.ts",
-        "kind": "method",
+        "kind": "function",
         "line": 13,
-        "application": null,
+        "app": null,
         "score": 560
       }
     ],
@@ -18,8 +18,20 @@
     "truncated": false
   },
   "entrances": {
-    "hits": [],
-    "total": 0,
+    "hits": [
+      {
+        "project": "<project>",
+        "key": "entrance:server/place-an-order",
+        "name": "Place an order",
+        "qualifiedName": "Server POST /orders",
+        "path": "",
+        "kind": "entrance",
+        "line": null,
+        "app": "Server",
+        "score": 560
+      }
+    ],
+    "total": 1,
     "truncated": false
   },
   "files": {

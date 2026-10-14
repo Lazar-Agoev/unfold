@@ -4,46 +4,43 @@
 //! After each successful update the engine thread holds the previous and the new graph. The
 //! commit describes only what differs from what the store holds ([`Committed`]):
 //!
-//! - one `FileChange` per file whose record, disk stamp, structure, edges, or definitions
-//!   changed (`FileChange::between` compares structure and edges; definitions and stamps are
-//!   compared here against the committed ones);
-//! - removed files, entrance changes by key (`EntranceChanges::between`), and the inputs,
-//!   applications, memberships, and launch records when they changed;
+//! - one `FileChange` per file whose record, disk stamp, nodes, links, or typed records changed
+//!   (`FileChange::between` compares the parts; stamps are compared here against the committed
+//!   ones). A file whose nodes changed also carries its definitions, the reader's catalog
+//!   entries (`unfold_reader::catalog::definitions`), which depend on its nodes alone;
+//! - removed files, and the inputs and apps when they changed;
 //! - the graph metadata, every time.
 //!
 //! When the workspace doesn't know what the store holds (a first compile, a recreated or cleared
-//! cache, or a commit that failed), every file is written in full with `Writer::replace`, which
-//! also drops whatever else the store held. An update that kept the graph, every disk stamp,
-//! and the metadata (a reopen check that found nothing changed) isn't committed at all
-//! ([`unchanged`]). Disk stamps come from `Engine::disk_state`; reader
-//! projections from `unfold_reader::project`. Everything goes in one transaction, so a failed
-//! commit leaves the previous graph readable.
+//! cache), every file is written in full with `Writer::replace`, which also drops whatever else
+//! the store held. An update that kept the graph, every disk stamp, and the metadata (a reopen
+//! check that found nothing changed) isn't committed at all ([`unchanged`]). Disk stamps come
+//! from `Engine::disk_state`. Everything goes in one transaction, so a failed commit leaves the
+//! previous graph readable.
+//!
+//! An edit of only the `[[app]]` tables re-resolves entrances without an update
+//! (`Engine::resolve_entrances`); [`commit_entrances`] writes what that changed: the apps, the
+//! settings file's input, and the metadata's completeness.
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use unfold_core::{ContentHash, Graph, Launches, RepoPath};
+use unfold_core::{ContentHash, FileGraph, Graph, RepoPath};
 use unfold_engine::discovery::FileStamp;
-use unfold_engine::update::DiskState;
+use unfold_engine::update::{DiskState, EntrancesOutcome};
 use unfold_engine::{CancelToken, Engine, LinkBasis, PreparedUpdate, UpdateOutcome};
-use unfold_reader::{Projections, project};
-use unfold_store::{
-    Application, Definition, DiskStamp, EntranceChanges, FileChange, GraphMeta, Membership, Reader,
-    StoreError, Update, Writer,
-};
+use unfold_reader::catalog;
+use unfold_store::{Definition, DiskStamp, FileChange, GraphMeta, Reader, StoreError, Update, Writer};
 
 use crate::error::{Result, WorkspaceError};
 
-/// What the store holds besides the graph the engine remembers: each file's disk stamp, the
-/// reader projections, the launch records, and the graph metadata. It lets a commit skip rows that didn't change.
+/// What the store holds besides the graph the engine remembers: each file's disk stamp and the
+/// graph metadata. It lets a commit skip rows that didn't change.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Committed {
     stamps: FxHashMap<RepoPath, DiskStamp>,
-    definitions: FxHashMap<RepoPath, Vec<Definition>>,
-    applications: Vec<Application>,
-    memberships: Vec<Membership>,
-    launches: Arc<Launches>,
     meta: Option<GraphMeta>,
 }
 
@@ -131,7 +128,6 @@ pub(crate) fn unchanged(engine: &Engine, prepared: &PreparedUpdate, committed: &
         ..graph_meta(engine, prepared)
     };
     Arc::ptr_eq(graph, &outcome.previous)
-        && outcome.launches == committed.launches
         && meta == *stored
         && committed.stamps.len() == graph.files.len()
         && graph.files.iter().all(|file| {
@@ -155,17 +151,17 @@ pub(crate) fn commit(
     let cancelled = || cancel.is_some_and(CancelToken::is_cancelled);
     let outcome = prepared.outcome();
     let graph = &outcome.graph;
-    let projections = project(graph, &outcome.launches);
-    if cancelled() {
-        return Err(WorkspaceError::Cancelled);
-    }
     let stamps: Vec<DiskStamp> = graph
         .files
         .iter()
         .map(|file| disk_stamp(prepared.disk_state(&file.file.path)))
         .collect();
+    let definitions = definitions(outcome, committed.is_some());
+    if cancelled() {
+        return Err(WorkspaceError::Cancelled);
+    }
     let meta = graph_meta(engine, prepared);
-    let update = build(outcome, &projections, &stamps, committed, meta.clone());
+    let update = build(outcome, &definitions, &stamps, committed, meta.clone());
     let written = match committed {
         Some(_) => writer.commit_unless(&update, &cancelled),
         None => writer.replace_unless(&update, &cancelled),
@@ -174,29 +170,39 @@ pub(crate) fn commit(
         StoreError::Cancelled => WorkspaceError::Cancelled,
         other => other.into(),
     })?;
-    let Projections {
-        definitions,
-        applications,
-        memberships,
-    } = projections;
-    let mut next = Committed {
-        stamps: FxHashMap::with_capacity_and_hasher(graph.files.len(), Default::default()),
-        definitions: FxHashMap::with_capacity_and_hasher(graph.files.len(), Default::default()),
-        applications,
-        memberships,
-        launches: Arc::clone(&outcome.launches),
+    Ok(Committed {
+        stamps: graph
+            .files
+            .iter()
+            .map(|file| file.file.path.clone())
+            .zip(stamps)
+            .collect(),
         meta: Some(meta),
+    })
+}
+
+/// The catalog entries of every file whose nodes the store doesn't hold yet, by file index:
+/// all of them when the store's contents are unknown (`known` is false), otherwise the files
+/// that are new or whose nodes changed.
+fn definitions(outcome: &UpdateOutcome, known: bool) -> Vec<Option<Vec<Definition>>> {
+    let previous: &Graph = &outcome.previous;
+    let stale = |file: &FileGraph| {
+        !known
+            || previous
+                .file(file.file.path.as_str())
+                .is_none_or(|before| before.nodes != file.nodes)
     };
-    for ((file, stamp), definitions) in graph.files.iter().zip(stamps).zip(definitions) {
-        next.stamps.insert(file.file.path.clone(), stamp);
-        next.definitions.insert(file.file.path.clone(), definitions);
-    }
-    Ok(next)
+    outcome
+        .graph
+        .files
+        .par_iter()
+        .map(|file| stale(file).then(|| catalog::definitions(file)))
+        .collect()
 }
 
 fn build<'a>(
     outcome: &'a UpdateOutcome,
-    projections: &'a Projections,
+    definitions: &'a [Option<Vec<Definition>>],
     stamps: &[DiskStamp],
     committed: Option<&Committed>,
     meta: GraphMeta,
@@ -209,16 +215,13 @@ fn build<'a>(
                 .iter()
                 .enumerate()
                 .map(|(index, file)| FileChange {
-                    definitions: Some(projections.file_definitions(index)),
+                    definitions: definitions[index].as_deref(),
                     ..FileChange::full(file, stamps[index])
                 })
                 .collect(),
             removed_files: Vec::new(),
             inputs: Some(&graph.inputs),
-            entrances: EntranceChanges::all(&graph.entrances),
-            applications: Some(&projections.applications),
-            memberships: Some(&projections.memberships),
-            launches: Some(&outcome.launches),
+            apps: Some(&graph.apps),
             meta: Some(meta),
         };
     };
@@ -226,25 +229,19 @@ fn build<'a>(
     let mut files = Vec::new();
     for (index, file) in graph.files.iter().enumerate() {
         let path = &file.file.path;
-        let definitions = projections.file_definitions(index);
         let stamp = stamps[index];
         let mut change = match previous.file(path.as_str()) {
             Some(before) if committed.stamps.contains_key(path) => {
                 let change = FileChange::between(before, file, stamp);
                 let row_changed = before.file != file.file || committed.stamps.get(path) != Some(&stamp);
-                if !row_changed
-                    && !change.has_parts()
-                    && committed.definitions.get(path).map(Vec::as_slice) == Some(definitions)
-                {
+                if !row_changed && !change.has_parts() {
                     continue;
                 }
                 change
             }
             _ => FileChange::full(file, stamp),
         };
-        if committed.definitions.get(path).map(Vec::as_slice) != Some(definitions) {
-            change.definitions = Some(definitions);
-        }
+        change.definitions = definitions[index].as_deref();
         files.push(change);
     }
     let mut removed_files: Vec<RepoPath> = committed
@@ -258,21 +255,49 @@ fn build<'a>(
         files,
         removed_files,
         inputs: (previous.inputs != graph.inputs).then_some(&graph.inputs[..]),
-        entrances: EntranceChanges::between(&previous.entrances, &graph.entrances),
-        applications: (committed.applications != projections.applications)
-            .then_some(&projections.applications[..]),
-        memberships: (committed.memberships != projections.memberships)
-            .then_some(&projections.memberships[..]),
-        launches: (committed.launches != outcome.launches).then_some(&*outcome.launches),
+        apps: (previous.apps != graph.apps).then_some(&graph.apps[..]),
         meta: Some(meta),
     }
 }
 
-/// The committed graph, its launch records, its files' disk states, what it was linked from, and what the store
+/// Commits what re-resolving the entrances changed (`outcome`, which the engine has adopted):
+/// the apps and the settings file's input when they changed, and the metadata when the graph's
+/// completeness did (`complete`). Returns what the store holds afterwards.
+pub(crate) fn commit_entrances(
+    writer: &mut Writer,
+    outcome: &EntrancesOutcome,
+    complete: bool,
+    committed: &Committed,
+) -> Result<Committed> {
+    let graph = &outcome.graph;
+    let meta = committed
+        .meta
+        .as_ref()
+        .filter(|meta| meta.complete != complete)
+        .map(|meta| GraphMeta {
+            complete,
+            ..meta.clone()
+        });
+    let update = Update {
+        files: Vec::new(),
+        removed_files: Vec::new(),
+        inputs: outcome.inputs_changed.then_some(&graph.inputs[..]),
+        apps: outcome.apps_changed.then_some(&graph.apps[..]),
+        meta: meta.clone(),
+    };
+    if !update.is_empty() {
+        writer.commit(&update)?;
+    }
+    Ok(Committed {
+        stamps: committed.stamps.clone(),
+        meta: meta.or_else(|| committed.meta.clone()),
+    })
+}
+
+/// The committed graph, its files' disk states, what it was linked from, and what the store
 /// holds, read in one snapshot: what reopening a folder restores the engine from.
 pub(crate) struct Loaded {
     pub(crate) graph: Graph,
-    pub(crate) launches: Launches,
     pub(crate) disks: Vec<(RepoPath, DiskState)>,
     pub(crate) basis: Option<LinkBasis>,
     pub(crate) committed: Committed,
@@ -282,50 +307,20 @@ pub(crate) struct Loaded {
 pub(crate) fn load(reader: &Reader) -> Result<Loaded> {
     Ok(reader.snapshot(|reader| {
         let graph = reader.graph()?;
-        let launches = reader.launches()?;
         let rows = reader.files()?;
         let meta = reader.meta()?.graph;
         let basis = meta.as_ref().and_then(|meta| LinkBasis::decode(&meta.link_basis));
         let mut committed = Committed {
-            applications: reader.applications()?,
-            memberships: reader.memberships()?,
-            launches: Arc::new(launches.clone()),
+            stamps: FxHashMap::with_capacity_and_hasher(rows.len(), Default::default()),
             meta,
-            ..Committed::default()
         };
-        let mut cursor = None;
-        loop {
-            let page = reader.definitions(cursor, 4_096)?;
-            for row in page.items {
-                committed
-                    .definitions
-                    .entry(row.path)
-                    .or_default()
-                    .push(Definition {
-                        key: row.key,
-                        local_id: row.local_id,
-                        kind: row.kind,
-                        qualified_name: row.qualified_name,
-                        label: row.label,
-                    });
-            }
-            match page.next {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-        for definitions in committed.definitions.values_mut() {
-            definitions.sort_by_key(|definition| definition.local_id);
-        }
         let mut disks = Vec::with_capacity(rows.len());
         for row in rows {
-            committed.definitions.entry(row.path.clone()).or_default();
             disks.push((row.path.clone(), disk_state(&row.disk)));
             committed.stamps.insert(row.path, row.disk);
         }
         Ok(Loaded {
             graph,
-            launches,
             disks,
             basis,
             committed,

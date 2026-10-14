@@ -68,10 +68,10 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
             canonical::write(&graph, &mut file)?;
             file.flush()?;
             eprintln!(
-                "wrote {} ({} files, {} entrances)",
+                "wrote {} ({} files, {} apps)",
                 path.display(),
                 graph.files.len(),
-                graph.entrances.len()
+                graph.apps.len()
             );
         }
         None => {

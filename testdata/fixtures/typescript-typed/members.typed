@@ -10,29 +10,29 @@
 {"t":"parameter","node":"a.ts#Model.constructor","index":0,"range":[810,828],"kind":"positional","name":"owner","type":"User","type_range":[824,828]}
 {"t":"parameter","node":"a.ts#Model.constructor","index":1,"range":[830,859],"kind":"positional","name":"token","default":true}
 {"t":"parameter","node":"a.ts#Model.constructor","index":2,"range":[861,874],"kind":"positional","name":"plain","type":"number","type_range":[868,874]}
-{"t":"member","node":"a.ts#Everything","index":0,"kind":"property","name":"name","type":"string","type_range":[131,137]}
-{"t":"member","node":"a.ts#Everything","index":1,"kind":"property","name":"\"quoted-key\"","optional":true,"type":"number","type_range":[156,162]}
-{"t":"member","node":"a.ts#Everything","index":2,"kind":"method","name":"[Symbol.iterator]","type":"(): Iterator<T>","type_range":[183,198]}
-{"t":"member","node":"a.ts#Everything","index":3,"kind":"index","name":"[key: string]","readonly":true,"type":"unknown","type_range":[226,233]}
-{"t":"member","node":"a.ts#Everything","index":4,"kind":"method","name":"method","optional":true,"type":"<U>(a: U, b: T): U","type_range":[244,262]}
-{"t":"member","node":"a.ts#Everything","index":5,"kind":"call","type":"(call: number): string","type_range":[266,288]}
-{"t":"member","node":"a.ts#Everything","index":6,"kind":"construct","type":"(value: string): Everything<T>","type_range":[296,326]}
-{"t":"member","node":"a.ts#Everything","index":7,"kind":"method","name":"size","type":"(): number","type_range":[338,348]}
-{"t":"member","node":"a.ts#Shape","index":0,"kind":"property","name":"kind","type":"\"circle\"","type_range":[373,381]}
-{"t":"member","node":"a.ts#Shape","index":1,"kind":"property","name":"radius","type":"number","type_range":[391,397]}
-{"t":"member","node":"a.ts#Shape","index":2,"kind":"method","name":"area","type":"(): number","type_range":[403,413]}
-{"t":"member","node":"a.ts#Color","index":0,"kind":"value","name":"Red"}
-{"t":"member","node":"a.ts#Color","index":1,"kind":"value","name":"Green","value":"\"green\""}
-{"t":"member","node":"a.ts#Color","index":2,"kind":"value","name":"Blue","value":"compute()"}
-{"t":"member","node":"a.ts#Color","index":3,"kind":"value","name":"[\"Computed\"]","value":"4"}
-{"t":"member","node":"a.ts#Model","index":0,"kind":"property","name":"id","type":"string","type_range":[579,585]}
-{"t":"member","node":"a.ts#Model","index":1,"kind":"property","name":"count","default":true}
-{"t":"member","node":"a.ts#Model","index":2,"kind":"property","name":"optional","optional":true,"type":"Date","type_range":[613,617]}
-{"t":"member","node":"a.ts#Model","index":3,"kind":"property","name":"fixed","readonly":true,"default":true,"type":"number","type_range":[637,643]}
-{"t":"member","node":"a.ts#Model","index":4,"kind":"property","name":"declared","type":"string","type_range":[669,675]}
-{"t":"member","node":"a.ts#Model","index":5,"kind":"property","name":"auto","default":true}
-{"t":"member","node":"a.ts#Model","index":6,"kind":"property","name":"#secret","default":true,"type":"string","type_range":[766,772]}
-{"t":"member","node":"a.ts#Model","index":7,"kind":"property","name":"[key]","type":"number","type_range":[788,794]}
-{"t":"member","node":"a.ts#Model","index":8,"kind":"property","name":"owner","type":"User","type_range":[824,828]}
-{"t":"member","node":"a.ts#Model","index":9,"kind":"property","name":"token","readonly":true,"default":true}
-{"t":"member","node":"a.ts#Figure","index":0,"kind":"property","name":"kind","type":"string","type_range":[958,964]}
+{"t":"member","node":"a.ts#Everything","index":0,"range":[125,138],"kind":"property","name":"name","type":"string","type_range":[131,137]}
+{"t":"member","node":"a.ts#Everything","index":1,"range":[141,163],"kind":"property","name":"\"quoted-key\"","optional":true,"type":"number","type_range":[156,162]}
+{"t":"member","node":"a.ts#Everything","index":2,"range":[166,199],"kind":"method","name":"[Symbol.iterator]","type":"(): Iterator<T>","type_range":[183,198]}
+{"t":"member","node":"a.ts#Everything","index":3,"range":[202,234],"kind":"index","name":"[key: string]","readonly":true,"type":"unknown","type_range":[226,233]}
+{"t":"member","node":"a.ts#Everything","index":4,"range":[237,263],"kind":"method","name":"method","optional":true,"type":"<U>(a: U, b: T): U","type_range":[244,262]}
+{"t":"member","node":"a.ts#Everything","index":5,"range":[266,289],"kind":"call","type":"(call: number): string","type_range":[266,288]}
+{"t":"member","node":"a.ts#Everything","index":6,"range":[292,327],"kind":"construct","type":"(value: string): Everything<T>","type_range":[296,326]}
+{"t":"member","node":"a.ts#Everything","index":7,"range":[330,349],"kind":"method","name":"size","type":"(): number","type_range":[338,348]}
+{"t":"member","node":"a.ts#Shape","index":0,"range":[367,382],"kind":"property","name":"kind","type":"\"circle\"","type_range":[373,381]}
+{"t":"member","node":"a.ts#Shape","index":1,"range":[383,398],"kind":"property","name":"radius","type":"number","type_range":[391,397]}
+{"t":"member","node":"a.ts#Shape","index":2,"range":[399,413],"kind":"method","name":"area","type":"(): number","type_range":[403,413]}
+{"t":"member","node":"a.ts#Color","index":0,"range":[470,473],"kind":"value","name":"Red"}
+{"t":"member","node":"a.ts#Color","index":1,"range":[475,490],"kind":"value","name":"Green","value":"\"green\""}
+{"t":"member","node":"a.ts#Color","index":2,"range":[492,508],"kind":"value","name":"Blue","value":"compute()"}
+{"t":"member","node":"a.ts#Color","index":3,"range":[510,526],"kind":"value","name":"[\"Computed\"]","value":"4"}
+{"t":"member","node":"a.ts#Model","index":0,"range":[575,586],"kind":"property","name":"id","type":"string","type_range":[579,585]}
+{"t":"member","node":"a.ts#Model","index":1,"range":[589,599],"kind":"property","name":"count","default":true}
+{"t":"member","node":"a.ts#Model","index":2,"range":[602,618],"kind":"property","name":"optional","optional":true,"type":"Date","type_range":[613,617]}
+{"t":"member","node":"a.ts#Model","index":3,"range":[621,648],"kind":"property","name":"fixed","readonly":true,"default":true,"type":"number","type_range":[637,643]}
+{"t":"member","node":"a.ts#Model","index":4,"range":[651,676],"kind":"property","name":"declared","type":"string","type_range":[669,675]}
+{"t":"member","node":"a.ts#Model","index":5,"range":[700,720],"kind":"property","name":"auto","default":true}
+{"t":"member","node":"a.ts#Model","index":6,"range":[757,778],"kind":"property","name":"#secret","default":true,"type":"string","type_range":[766,772]}
+{"t":"member","node":"a.ts#Model","index":7,"range":[781,795],"kind":"property","name":"[key]","type":"number","type_range":[788,794]}
+{"t":"member","node":"a.ts#Model","index":8,"range":[810,828],"kind":"property","name":"owner","type":"User","type_range":[824,828]}
+{"t":"member","node":"a.ts#Model","index":9,"range":[830,859],"kind":"property","name":"token","readonly":true,"default":true}
+{"t":"member","node":"a.ts#Figure","index":0,"range":[943,965],"kind":"property","name":"kind","type":"string","type_range":[958,964]}

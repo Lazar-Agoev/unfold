@@ -80,7 +80,7 @@ fn opening_writes_nothing_and_remembered_state_is_written_before_any_compile() {
         .expect("query")
         .expect("indexed");
     let index = workspace.reader_index().expect("index");
-    assert!(file.blocks.iter().all(|block| index.contains(block.key.as_str())));
+    assert!(file.nodes.iter().all(|node| index.contains(node.key.as_str())));
 }
 
 #[test]

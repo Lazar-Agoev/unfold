@@ -70,8 +70,8 @@ impl<'c> Statements<'c> {
             )?,
             delete_members: conn.prepare_cached("DELETE FROM members WHERE file_id = ?1")?,
             insert_member: conn.prepare_cached(
-                "INSERT INTO members (file_id, node, idx, kind, name, flags, type, type_start, type_end, \
-                 value) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO members (file_id, node, idx, start_byte, end_byte, kind, name, flags, type, \
+                 type_start, type_end, value) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?,
             delete_arguments: conn.prepare_cached("DELETE FROM arguments WHERE file_id = ?1")?,
             insert_argument: conn.prepare_cached(

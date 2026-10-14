@@ -5,7 +5,7 @@
 //! | --- | --- |
 //! | [`Signature`] | Function: its written return type |
 //! | [`Parameter`] | Parameter of a function: kind, name, flags, written type |
-//! | [`Member`] | Written member of a type or class |
+//! | [`Member`] | Written member of a type or class: its range, kind, name, flags, written type |
 //! | [`Argument`] | Argument of a call: expansion, keyword, and pairing |
 //!
 //! Where a call's value lands is the call node's `binds` and `exit_value`, and whether it is
@@ -68,6 +68,9 @@ pub struct Member {
     pub node: u32,
     /// Its position among the node's members, contiguous from 0.
     pub index: u32,
+    /// The whole member as written (the field, property, method, signature, or enum member),
+    /// inside the node's range.
+    pub range: ByteRange,
     /// What it is.
     pub kind: MemberKind,
     /// The name as written; absent for call and construct signatures, an index signature's

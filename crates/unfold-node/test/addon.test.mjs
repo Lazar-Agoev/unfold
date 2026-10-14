@@ -140,14 +140,18 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     await sinkMessage((m) => m.kind === "stream" && m.windowId === 1 && m.requestId === requestId);
     await sinkMessage((m) => broadcast(m, "graph_updated"));
 
-    const overview = await dispatch(2, "entrances", { project });
-    const application = overview.categories.flatMap((category) => category.applications)[0];
-    assert.ok(application, "ts-orders has applications");
-    const scope = await dispatch(2, "entrances", { project, application: application.id });
-    const entrance = scope.rows.find((row) => row.kind !== "launch");
+    const view = await dispatch(2, "entrances", { project });
+    assert.equal(view.resolved, true);
+    const app = view.apps[0];
+    assert.ok(app, "ts-orders has apps");
+    const entrance = app.entrances[0];
     assert.ok(entrance, "ts-orders has entrances");
-    const card = await dispatch(2, "card", { project, key: entrance.key });
-    assert.equal(typeof card.type, "string");
+    const start = await dispatch(2, "card", { project, key: entrance.key });
+    assert.equal(start.type, "start");
+    assert.equal(start.kind, "entrance");
+    assert.equal(start.app, app.name);
+    const definition = await dispatch(2, "card", { project, key: entrance.code[0].key });
+    assert.equal(definition.type, "definition");
   });
 
   it("cancels a running command", async () => {

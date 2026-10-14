@@ -1,7 +1,11 @@
 //! Boards (docs/ipc.md › Boards): boards are files in `.unfold/boards/`, saved as they are
-//! edited; open boards and their sessions, reading a board without opening it, pages, drawn
-//! links, connections, frames, resource cards, and notes, one-level folders, the boards list by
-//! last edit, outside edits that reload an open board, references, and export.
+//! edited; open boards and their sessions, reading a board without opening it, pages, the
+//! overlay (names, combined steps, proposed steps, open calls), connections, frames, resource
+//! cards, and notes, one-level folders, the boards list by last edit, outside edits that reload
+//! an open board, references, health, and repairs. One test per board command at least:
+//! `new_board`, `open_board`, `save_board`, `close_board`, `read_board`, `reload_board`,
+//! `board_health`, `repair_board`, `delete_board`, `list_boards`, `board_refs`,
+//! `set_board_folder`, `create_folder`, `rename_folder`, `delete_folder`.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -10,18 +14,20 @@ use serde_json::{Value, json};
 
 use crate::common::{Harness, PATIENCE, eventually, restless};
 
-const CREATE_ORDER: &str = "src/routes/orders.ts#function:createOrder";
-const PLACE_ORDER: &str = "src/services/order-service.ts#class:OrderService/method:place";
-const POST_ORDERS: &str = r#"entrance:["express.route","http","POST","/orders","requireUser"]"#;
+const CREATE_ORDER: &str = "src/routes/orders.ts#createOrder";
+const PLACE_ORDER: &str = "src/services/order-service.ts#OrderService.place";
+const POST_ORDERS: &str = "entrance:server/place-an-order";
+const ENQUEUE: &str = "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add";
+const ORDERS_QUEUE: &str = "src/queues/queues.ts#/call:Queue";
 
-/// A card for block or entrance `key`.
+/// A card for block `key`.
 pub(crate) fn card(id: &str, key: &str) -> Value {
-    let kind = if key.starts_with("entrance:") {
-        "entrance"
-    } else {
-        "block"
-    };
-    json!({ "id": id, "ref": { kind: key }, "at": [0, 0] })
+    json!({ "id": id, "ref": { "block": key }, "at": [0, 0] })
+}
+
+/// A card for the app or entrance `key`.
+pub(crate) fn entrance_card(id: &str, key: &str) -> Value {
+    json!({ "id": id, "ref": { "entrance": key }, "at": [0, 0] })
 }
 
 /// An unsigned description by a tester.
@@ -200,6 +206,10 @@ fn an_open_board_keeps_its_session_until_it_closes() {
     assert_eq!(reopened["revision"], saved["revision"]);
     assert_eq!(reopened["document"]["title"], "Order placement");
     assert_eq!(reopened["document"]["pages"][0]["cards"][0]["id"], "create");
+    // Reloading reads the file again.
+    let reloaded = harness.on(1, "reload_board", &id);
+    assert_eq!(reloaded["document"]["title"], "Theirs");
+    assert_eq!(reloaded["revision"], revision_of(&harness.read(&id)));
 
     // Closing the window closes it; opening it in the reopened window (a new id) reads the file.
     harness.host.detach_window(1).expect("detach");
@@ -658,7 +668,7 @@ fn a_retry_after_an_ignored_reload_keeps_the_persons_problems() {
     harness.ok(1, "compile", json!({ "project": harness.project }));
     let board = harness.new_board(1, "Retry");
     let id = id_of(&board);
-    const GHOST: &str = "src/routes/orders.ts#function:noSuchThing";
+    const GHOST: &str = "src/routes/orders.ts#noSuchThing";
 
     // An agent writes a card whose code is missing; the window takes the reload.
     let mut document = board["document"].clone();
@@ -684,10 +694,7 @@ fn a_retry_after_an_ignored_reload_keeps_the_persons_problems() {
 
     // A new problem is still refused; the person's version, with the problem it had, is written.
     let mut worse = person.clone();
-    worse["pages"][0]["cards"] = json!([
-        card("ghost", GHOST),
-        card("other", "src/routes/orders.ts#function:nope")
-    ]);
+    worse["pages"][0]["cards"] = json!([card("ghost", GHOST), card("other", "src/routes/orders.ts#nope")]);
     assert_eq!(
         harness.code(
             1,
@@ -763,23 +770,23 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
     let board = harness.new_board(1, "System");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
-    edit["pages"][0]["defaultView"] = json!("diagram");
+    edit["pages"][0]["defaultView"] = json!("expanded");
     edit["pages"][0]["cards"] = json!([card("create", CREATE_ORDER), card("place", PLACE_ORDER)]);
-    edit["pages"][0]["groups"] = json!([{
-        "author": "agent:claude", "card": "create", "collapsed": false, "id": "queue-it",
-        "members": ["src/routes/orders.ts#function:createOrder/if[0]"], "title": "Queue it"
+    edit["pages"][0]["combined"] = json!([{
+        "author": "agent:claude", "collapsed": false, "id": "queue-it",
+        "members": ["src/routes/orders.ts#createOrder/if[0]"], "title": "Queue it"
     }]);
     edit["pages"][0]["resources"] = json!([{
-        "anchors": [{ "key": "src/queues/queues.ts#variable:ordersQueue" }], "at": [400.0, 0.0],
+        "anchors": [{ "key": ORDERS_QUEUE }], "at": [400.0, 0.0],
         "author": "agent:claude", "id": "orders", "kind": "queue", "name": "orders"
     }]);
     edit["pages"][0]["frames"] = json!([{
         "author": "agent:claude", "id": "server", "look": "box", "members": ["create", "place"], "title": "server"
     }]);
     edit["pages"][0]["links"] = json!([{
-        "anchors": [{ "key": "src/queues/queues.ts#variable:ordersQueue" }], "author": "agent:claude",
+        "anchors": [{ "key": ORDERS_QUEUE }], "author": "agent:claude",
         "channel": "orders", "from": "create", "id": "enqueue", "kind": "queue", "to": "orders",
-        "step": "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]"
+        "step": ENQUEUE
     }]);
     edit["pages"][0]["notes"] = json!([{
         "at": [0.0, -40.0], "attach": "enqueue", "author": "agent:claude", "id": "note", "text": "One job per order."
@@ -789,8 +796,9 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
     for field in ["frames", "notes"] {
         assert_eq!(page[field], edit["pages"][0][field], "{field} carried through");
     }
-    // The claims come back signed over the code they cite, and otherwise as sent.
-    for field in ["resources", "links"] {
+    // The claims and the combined step come back signed over the code they cite, and
+    // otherwise as sent.
+    for field in ["resources", "links", "combined"] {
         let mut items = page[field].clone();
         for item in items.as_array_mut().expect("items") {
             let signature = item
@@ -801,15 +809,14 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
         }
         assert_eq!(items, edit["pages"][0][field], "{field} carried through");
     }
-    assert_eq!(page["groups"][0]["author"], "agent:claude");
     assert_eq!(
         saved["health"]["items"],
         json!([]),
-        "a link to a resource isn't broken"
+        "a connection to a resource isn't broken"
     );
     let written = harness.read(&id);
     assert!(written.contains("\"kind\": \"queue\""), "{written}");
-    assert!(written.contains("\"defaultView\": \"diagram\""), "{written}");
+    assert!(written.contains("\"defaultView\": \"expanded\""), "{written}");
 
     // A window that removes an item removes what refers to it too.
     let mut dangling = edit;
@@ -821,37 +828,49 @@ fn frames_resources_connections_and_notes_are_saved_as_sent() {
             json!({ "project": harness.project, "id": id, "board": dangling })
         ),
         "board_invalid",
-        "a note attached to a removed link"
+        "a note attached to a removed connection"
     );
 }
 
 #[test]
-fn pages_cards_and_drawn_links_are_checked_and_signed() {
+fn pages_cards_and_the_overlay_are_checked_and_signed() {
     let harness = Harness::compiled("ts-orders");
     let board = harness.new_board(1, "Pages");
     let id = id_of(&board);
     let mut edit = edit_of(&board);
     edit["pages"] = json!([
         {
-            "id": "page-1", "title": "Placing", "defaultView": "flow", "groups": [],
+            "id": "page-1", "title": "Placing", "defaultView": "compact",
             "cards": [card("create", CREATE_ORDER), card("place", PLACE_ORDER)],
-            "links": [{ "id": "create-place", "from": "create", "to": "place", "label": text("hands the draft over") }],
+            "names": [{ "key": "src/routes/orders.ts#createOrder/if[0]", "text": "Asked to queue it?", "author": "person:tester" }],
+            "links": [{
+                "id": "create-place", "kind": "other", "from": "create", "to": "place",
+                "author": "person:tester", "label": text("hands the draft over")
+            }],
+            "proposals": [{
+                "id": "audit", "after": "src/routes/orders.ts#createOrder/call:orderService.place",
+                "title": "Write an audit record", "author": "person:tester"
+            }],
         },
         {
-            "id": "page-2", "title": "The route", "defaultView": "code", "groups": [],
-            "cards": [card("route", POST_ORDERS)],
+            "id": "page-2", "title": "The route", "defaultView": "expanded",
+            "cards": [entrance_card("route", POST_ORDERS)],
         },
     ]);
+    edit["pages"][0]["cards"][0]["open"] =
+        json!([["src/routes/orders.ts#createOrder/call:orderService.place"]]);
     let saved = harness.save(1, &id, edit.clone());
     let pages = saved["document"]["pages"].as_array().expect("pages");
     assert_eq!(pages.len(), 2);
-    let link = &pages[0]["links"][0];
+    let name = &pages[0]["names"][0];
     assert!(
-        link["label"]["signature"]
+        name["signature"]
             .as_str()
             .is_some_and(|signature| signature.starts_with("sha256:")),
-        "a link label is signed over both ends: {link}"
+        "a name is signed over its block: {name}"
     );
+    assert_eq!(pages[0]["cards"][0]["open"], edit["pages"][0]["cards"][0]["open"]);
+    assert_eq!(pages[1]["guards"][0]["kind"], "entrance");
     assert_eq!(saved["health"]["items"], json!([]));
 
     // What a save refuses.
@@ -860,14 +879,29 @@ fn pages_cards_and_drawn_links_are_checked_and_signed() {
     let mut dangling = edit.clone();
     dangling["pages"][0]["links"][0]["to"] = json!("nowhere");
     let mut missing = edit.clone();
-    missing["pages"][1]["cards"] = json!([card("ghost", "src/routes/orders.ts#function:noSuchThing")]);
+    missing["pages"][1]["cards"] = json!([card("ghost", "src/routes/orders.ts#noSuchThing")]);
     let mut twice = edit.clone();
     twice["pages"][1]["id"] = json!("page-1");
+    let mut drawn = edit.clone();
+    drawn["pages"][0]["links"][0]
+        .as_object_mut()
+        .expect("a connection")
+        .remove("kind");
+    let mut old_view = edit.clone();
+    old_view["pages"][0]["defaultView"] = json!("flow");
+    let mut not_a_call = edit.clone();
+    not_a_call["pages"][0]["cards"][0]["open"] = json!([["src/routes/orders.ts#createOrder/if[0]"]]);
+    let mut nowhere = edit.clone();
+    nowhere["pages"][0]["proposals"][0]["after"] = json!("src/routes/orders.ts#createOrder/if[0]/then");
     for (bad, code) in [
         (elsewhere, "board_invalid"),
         (dangling, "board_invalid"),
         (missing, "board_problem"),
         (twice, "board_invalid"),
+        (drawn, "board_invalid"),
+        (old_view, "board_invalid"),
+        (not_a_call, "board_problem"),
+        (nowhere, "board_problem"),
         (json!({ "title": "x" }), "board_invalid"),
         (
             json!({ "title": "x", "pages": [], "folder": "Sneaky" }),
@@ -894,16 +928,17 @@ fn pages_cards_and_drawn_links_are_checked_and_signed() {
         )
     };
     let repaired =
-        repair(json!({ "page": "page-1", "kind": "remove_link", "link": "create-place" })).expect("repair");
+        repair(json!({ "page": "page-1", "kind": "remove", "target": { "connection": "create-place" } }))
+            .expect("repair");
     assert_eq!(repaired["document"]["pages"][0]["links"], json!([]));
     assert_eq!(
-        repair(json!({ "page": "page-9", "kind": "remove_card", "card": "create" }))
+        repair(json!({ "page": "page-9", "kind": "remove", "target": { "card": "create" } }))
             .expect_err("no such page")
             .code,
         "invalid_args"
     );
     let repaired =
-        repair(json!({ "page": "page-2", "kind": "remove_card", "card": "route" })).expect("repair");
+        repair(json!({ "page": "page-2", "kind": "remove", "target": { "card": "route" } })).expect("repair");
     assert_eq!(repaired["document"]["pages"][1]["cards"], json!([]));
 }
 
