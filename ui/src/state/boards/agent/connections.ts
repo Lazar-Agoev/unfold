@@ -9,16 +9,17 @@
 
 import type { AgentConnectionSpec, AgentItemResult, AgentItemStatus, AgentLinkResult, ConnectOp } from "@unfold/desktop/agent-api";
 import { tableColumns } from "../../../canvas/resources/columns";
-import type { Link, Page } from "../../../ipc/generated";
-import { cardKey, findCard, isFreeId, isItemId, setLinkLabel } from "../document";
+import type { Connection, Page } from "../../../ipc/generated";
+import { findBlock } from "../../cards";
+import { cardKey, findCard, findCombined, isFreeId, isItemId } from "../document";
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
-import { addConnection, saysConnection, setConnectionClaim, setLinkDescription, type ConnectionClaim } from "../connections";
+import { addConnection, saysConnection, setConnectionClaim, setLinkDescription, setLinkLabel, type ConnectionClaim } from "../connections";
 import { cardName, guardPeopleText, invalid, lineWords, resourceName, type OpContext } from "./context";
 import { fileAnchor } from "./resources";
 
-/** A link's result entry: its ends, its label, and, for a connection, its kind, step, channel, and carried type. */
-export function linkResult(link: Link, status: AgentItemStatus): AgentLinkResult {
+/** A connection's result entry: its ends, its label, its kind, step, channel, and carried type. */
+export function linkResult(link: Connection, status: AgentItemStatus): AgentLinkResult {
   return {
     kind: "link",
     id: link.id,
@@ -26,7 +27,7 @@ export function linkResult(link: Link, status: AgentItemStatus): AgentLinkResult
     from: link.from,
     to: link.to,
     ...(link.label ? { name: link.label.text } : {}),
-    ...(link.kind !== undefined ? { connection: link.kind } : {}),
+    connection: link.kind,
     ...(link.step !== undefined ? { step: link.step } : {}),
     ...(link.channel !== undefined ? { channel: link.channel } : {}),
     ...(link.carries !== undefined ? { carries: link.carries } : {}),
@@ -48,7 +49,7 @@ function checkEnd(page: Page, id: string, side: "from" | "to"): void {
   if (findCard(page, id) || findResource(page, id) || findFrame(page, id)) {
     return;
   }
-  const other = page.groups.some((item) => item.id === id) ? "a step group" : page.links.some((item) => item.id === id) ? "a link" : (page.notes ?? []).some((item) => item.id === id) ? "a note" : null;
+  const other = findCombined(page, id) ? "a combined step" : page.links.some((item) => item.id === id) ? "a connection" : (page.notes ?? []).some((item) => item.id === id) ? "a note" : null;
   throw invalid(
     other !== null
       ? `“${id}” (${side}) is ${other}: a connection joins cards, resource cards, and frames.`
@@ -93,10 +94,13 @@ function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): Connect
   if (spec.step !== undefined) {
     const card = findCard(page, spec.from);
     if (!card || !("block" in card.ref)) {
-      throw invalid(`${what} has a step, but its from end isn't a function's card: a step is a statement or call inside the from card's block.`);
+      throw invalid(`${what} has a step, but its from end isn't a definition's card: a step is a call inside the from card's block.`);
     }
-    if (!spec.step.startsWith(`${cardKey(card)}/`)) {
-      throw invalid(`The step “${spec.step}” isn't inside ${cardName(ctx, card)}: a step is a statement or call of the from card's block (read_code lists them with their keys).`);
+    // The call must be one the from card draws; a card not loaded is checked by the save.
+    const model = ctx.data.model(ctx.board.project, cardKey(card));
+    const call = model?.type === "definition" ? findBlock(model.flow, spec.step) : undefined;
+    if (model?.type === "definition" && (call === undefined || (call.form !== "call" && call.form !== "new"))) {
+      throw invalid(`The step “${spec.step}” isn't a call of ${cardName(ctx, card)}: a step is a call of the from card's block (read_code lists them with their keys).`);
     }
   }
   if (spec.kind === "relates") {
@@ -122,8 +126,8 @@ function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): Connect
   };
 }
 
-/** The link a spec updates: by id, else the connection of the same kind, ends, step, and columns; undefined for a new one. */
-function existingFor(page: Page, spec: AgentConnectionSpec): Link | undefined {
+/** The connection a spec updates: by id, else the one of the same kind, ends, step, and columns; undefined for a new one. */
+function existingFor(page: Page, spec: AgentConnectionSpec): Connection | undefined {
   if (spec.id === undefined) {
     return page.links.find(
       (link) =>
@@ -139,7 +143,7 @@ function existingFor(page: Page, spec: AgentConnectionSpec): Link | undefined {
   if (!link && !isFreeId(page, spec.id)) {
     throw invalid(
       isItemId(spec.id)
-        ? `“${spec.id}” is the id of another item on this page (not a link). Give the connection another id, or leave id out.`
+        ? `“${spec.id}” is the id of another item on this page (not a connection). Give the connection another id, or leave id out.`
         : `“${spec.id}” can't name a connection: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
     );
   }

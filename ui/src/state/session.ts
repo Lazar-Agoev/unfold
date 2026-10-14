@@ -2,8 +2,9 @@
  * The window's session: how it comes back at launch or on reload, and how it recovers when the engine
  * host restarts.
  *
- * - Restore: the board `window_info` names is opened and shown (Home when it is gone). Only then are
- *   agents' requests answered, and the shown board reported to the main process as it changes.
+ * - Restore: the Show all calls switch comes back as `window_info` says, and the board it names is
+ *   opened and shown (Home when it is gone). Only then are agents' requests answered, and the shown
+ *   board and the switch reported to the main process as they change.
  * - Engine restart: a toast while the engine is away; once it is back, the selection is sent again,
  *   every open board is opened again and its unsaved edits saved, and the query cache reset, in that
  *   order.
@@ -17,6 +18,7 @@ import { resetEngineQueries } from "../ipc/queries";
 import { onConnection } from "../ipc/unfold";
 import { openBoard, reopenBoards, setAgentChannelReady } from "./boards";
 import { reportShownBoard } from "./shownBoard";
+import { reportShowAllCalls, restoreShowAllCalls } from "./showAllCalls";
 import { useWindowStore } from "./window";
 import { selectProject } from "./workspace";
 
@@ -33,9 +35,11 @@ export function useRestored(): boolean {
 /** The restore, run once per page load (the session may be installed again, as under StrictMode). */
 let restoring: Promise<void> | null = null;
 
-/** Shows the board the window showed last, if it still exists. */
+/** Shows the board the window showed last, if it still exists, with Show all calls as it was. */
 async function restore(): Promise<void> {
-  const board = useWindowStore.getState().info?.board ?? null;
+  const { info } = useWindowStore.getState();
+  restoreShowAllCalls(info);
+  const board = info?.board ?? null;
   if (board !== null) {
     try {
       await openBoard({ project: board.project, id: board.board });
@@ -88,22 +92,24 @@ function followConnection(client: QueryClient): () => void {
 }
 
 /**
- * Restores the window (once per page load), then reports the shown board as it changes, and follows
- * the engine connection. Returns the uninstall function.
+ * Restores the window (once per page load), then reports the shown board and Show all calls as they
+ * change, and follows the engine connection. Returns the uninstall function.
  */
 export function installSession(client: QueryClient): () => void {
   let installed = true;
-  let stopReporting: (() => void) | null = null;
+  let stopReporting: (() => void)[] = [];
   const stopFollowing = followConnection(client);
   restoring ??= restore();
   void restoring.then(() => {
     if (installed) {
-      stopReporting = reportShownBoard();
+      stopReporting = [reportShownBoard(), reportShowAllCalls()];
     }
   });
   return () => {
     installed = false;
-    stopReporting?.();
+    for (const stop of stopReporting) {
+      stop();
+    }
     stopFollowing();
   };
 }

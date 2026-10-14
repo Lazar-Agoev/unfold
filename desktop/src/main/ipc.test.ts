@@ -231,16 +231,18 @@ describe("the render window", () => {
 describe("the window", () => {
   const BOARD = { project: PROJECT, board: ".unfold/boards/orders.json" };
 
-  it("window_info describes the window and the board it shows: the one saved at launch, else Home", async () => {
+  it("window_info describes the window, the board it shows, and Show all calls: as saved at launch, else Home and off", async () => {
     const { engine, workspace, open, invoke } = setup();
-    engine.answers.set("window_state", () => Promise.resolve({ bounds: { x: 0, y: 0, width: 900, height: 600 }, maximized: false, board: BOARD }));
+    engine.answers.set("window_state", () =>
+      Promise.resolve({ bounds: { x: 0, y: 0, width: 900, height: 600 }, maximized: false, board: BOARD, showAllCalls: true }),
+    );
     await workspace.restore();
     const entry = open();
-    expect(await invoke(entry, "window_info")).toEqual({ ok: true, value: { windowId: entry.id, board: BOARD } });
+    expect(await invoke(entry, "window_info")).toEqual({ ok: true, value: { windowId: entry.id, board: BOARD, showAllCalls: true } });
 
     resetFakeElectron();
     const fresh = setup();
-    expect(await fresh.invoke(fresh.open(), "window_info")).toMatchObject({ ok: true, value: { board: null } });
+    expect(await fresh.invoke(fresh.open(), "window_info")).toMatchObject({ ok: true, value: { board: null, showAllCalls: false } });
   });
 
   it("report_shown_board hands the board the window shows, or Home, to the workspace", async () => {
@@ -251,6 +253,19 @@ describe("the window", () => {
     expect(await invoke(entry, "window_info")).toMatchObject({ value: { board: BOARD } });
     expect(await invoke(entry, "report_shown_board", { board: null })).toEqual({ ok: true, value: null });
     expect(workspace.shownBoard()).toBeNull();
+  });
+
+  it("report_show_all_calls hands the switch to the workspace, and refuses anything but true or false", async () => {
+    const { workspace, open, invoke } = setup();
+    const entry = open();
+    expect(await invoke(entry, "report_show_all_calls", { on: true })).toEqual({ ok: true, value: null });
+    expect(workspace.showAllCalls()).toBe(true);
+    expect(await invoke(entry, "window_info")).toMatchObject({ value: { showAllCalls: true } });
+    for (const args of [{}, { on: "yes" }, { on: null }]) {
+      expect(await invoke(entry, "report_show_all_calls", args)).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+    }
+    expect(await invoke(entry, "report_show_all_calls", { on: false })).toEqual({ ok: true, value: null });
+    expect(workspace.showAllCalls()).toBe(false);
   });
 
   it("report_shown_board refuses a malformed board", async () => {
@@ -279,7 +294,7 @@ describe("the agent channel", () => {
   it("report_view keeps the window's view, and refuses a malformed one", async () => {
     const { agents, open, invoke } = setup();
     const entry = open();
-    const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "code", visible: [], held: [BOARD] };
+    const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] };
     expect(await invoke(entry, "report_view", report)).toEqual({ ok: true, value: null });
     expect(agents.views.get(entry.id)).toEqual(report);
     expect(agents.views.holder(BOARD)).toBe(entry.id);

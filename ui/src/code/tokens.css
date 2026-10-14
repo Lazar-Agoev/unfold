@@ -1,0 +1,15 @@
+/* The syntax palette: one color per token class. */
+
+.tok-keyword { color: var(--color-syntax-keyword); }
+.tok-function { color: var(--color-syntax-function); }
+.tok-decorator { color: var(--color-syntax-function); }
+.tok-property { color: var(--color-syntax-property); }
+.tok-string { color: var(--color-syntax-string); }
+.tok-type { color: var(--color-syntax-type); }
+.tok-number,
+.tok-constant { color: var(--color-syntax-number); }
+.tok-comment { color: var(--color-syntax-comment); font-style: italic; }
+.tok-operator,
+.tok-punctuation,
+.tok-variable,
+.tok-parameter { color: var(--color-syntax-plain); }

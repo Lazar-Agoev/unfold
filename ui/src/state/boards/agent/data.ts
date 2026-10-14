@@ -7,38 +7,31 @@
  */
 
 import type { AgentFollowStop } from "@unfold/desktop/agent-api";
-import { cardQuery, isMissing } from "../../../canvas/cardData";
 import { queryClient } from "../../../ipc/client";
-import type { Callers, CardView, EdgeKind, Key, OutgoingCall, ProjectId, Resolution, TypeDefinition } from "../../../ipc/generated";
+import type { Callers, CardView, Key, OutgoingView, ProjectId, TypeDefinition } from "../../../ipc/generated";
 import { engineQueryOptions } from "../../../ipc/queries";
+import { cardQuery, isMissing } from "../../cards";
 import { call } from "../engine";
 import { cardRefKey } from "../keys";
 
-/** The calls following goes through: calls and constructions (not imports or passed references). */
-const FOLLOWED: ReadonlySet<EdgeKind> = new Set(["calls", "constructs"]);
 /** How many callers one card lists when following callers (the engine's default page). */
 const CALLERS_LIMIT = 20;
 
-/** A definition's outgoing calls as following sees them: where resolved calls go, and the ones it can't follow. */
+/** A definition's outgoing calls as following sees them: where project calls go, and the ones it can't follow. */
 interface FollowableCalls {
-  /** One per target, in source order, with the first calling line. */
-  readonly resolved: readonly { readonly target: Key; readonly line?: number }[];
-  /** External and unresolved calls (one per written call), where following stops. */
+  /** One per target, in source order. */
+  readonly resolved: readonly { readonly target: Key }[];
+  /** Library and unknown calls (one per written call), where following stops. */
   readonly blocked: readonly AgentFollowStop[];
 }
 
-/** An external or unresolved call as a stop. */
-function blockedStop(call: {
-  readonly resolution: Resolution;
-  readonly text: string;
-  readonly note?: string | null;
-  readonly line?: number | null;
-}): AgentFollowStop {
+/** A library or unknown call as a stop. */
+function blockedStop(call: Pick<OutgoingView, "to" | "text" | "line">): AgentFollowStop {
   return {
-    reason: call.resolution === "external" ? "external" : "unresolved",
+    reason: call.to.outcome === "library" ? "external" : "unresolved",
     call: call.text,
-    ...(call.line !== undefined && call.line !== null ? { line: call.line } : {}),
-    ...(call.note !== undefined && call.note !== null ? { note: call.note } : {}),
+    line: call.line,
+    ...(call.to.note !== undefined ? { note: call.to.note } : {}),
   };
 }
 
@@ -66,7 +59,7 @@ export class AgentData {
     const ref = cardRefKey(project, key);
     if (!this.models.has(ref)) {
       try {
-        this.models.set(ref, await queryClient.query(cardQuery(project, key)));
+        this.models.set(ref, await queryClient.query(cardQuery({ project, key })));
       } catch (error) {
         if (!isMissing(error)) {
           throw error;
@@ -118,7 +111,7 @@ export class AgentData {
     return new Map([...this.definitions].flatMap(([ref, definition]) => (definition ? [[ref, definition] as const] : [])));
   }
 
-  /** What following goes through from a definition or an entrance (an entrance's handlers are its calls). */
+  /** What following goes through from a definition, or an app or entrance (the code it starts at). */
   async followableCalls(project: ProjectId, key: Key): Promise<FollowableCalls> {
     const ref = cardRefKey(project, key);
     const known = this.calls.get(ref);
@@ -127,26 +120,20 @@ export class AgentData {
     }
     const model = await this.loadModel(project, key);
     let calls: FollowableCalls;
-    if (model?.type === "entrance") {
-      calls = {
-        resolved: uniqueBy(
-          model.targets.flatMap((target) => (target.resolution === "resolved" && target.target !== null ? [{ target: target.target }] : [])),
-          (item) => item.target,
-        ),
-        blocked: model.targets.filter((target) => target.resolution !== "resolved").map(blockedStop),
-      };
+    if (model?.type === "start") {
+      calls = { resolved: uniqueBy(model.code.flatMap((code) => (code.state === "found" ? [{ target: code.key }] : [])), (item) => item.target), blocked: [] };
     } else {
       const { outgoing } = await call("relations", { project, key });
-      const followed = (edge: OutgoingCall) => FOLLOWED.has(edge.kind);
+      const followed = outgoing.filter((edge) => edge.kind === "calls").sort((a, b) => a.line - b.line);
       calls = {
         resolved: uniqueBy(
-          [...outgoing.onBoard, ...outgoing.openable]
-            .filter(followed)
-            .sort((a, b) => a.line - b.line)
-            .flatMap((edge) => (edge.target !== undefined ? [{ target: edge.target, line: edge.line }] : [])),
+          followed.flatMap((edge) => (edge.to.outcome === "project" && edge.to.key !== undefined ? [{ target: edge.to.key }] : [])),
           (item) => item.target,
         ),
-        blocked: uniqueBy(outgoing.externalOrUnresolved.filter(followed), (edge) => `${edge.resolution}\u0000${edge.text}`).map(blockedStop),
+        blocked: uniqueBy(
+          followed.filter((edge) => edge.to.outcome === "library" || edge.to.outcome === "unknown"),
+          (edge) => `${edge.to.outcome}\u0000${edge.text}`,
+        ).map(blockedStop),
       };
     }
     this.calls.set(ref, calls);

@@ -5,17 +5,17 @@
  * first, with each board's pages from its file (`read_board`). `read_page` reads a page as the
  * window holding its board has it (unsaved edits included), else as its file has it, then the code
  * of its cards, so it can say what the board draws between them, how each card shows (compact or
- * expanded, and the calls it expands in place), and where each proposed step goes, with a note when
- * its anchor is missing or held (from the board's health while a window holds the board, else from
- * the card's Flow).
+ * expanded, and the calls it opens in place, with an expanded card's drawn flow from `flow_text`),
+ * and where each proposed step goes, with a note when its anchor is missing or held (from the
+ * board's health while a window holds the board).
  */
 
 import { z } from "zod";
 import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
-import type { Anchor, BoardHealthView, BoardSummary, Frame, Link, Page, Proposal, Resource } from "../engine-types";
-import { authorText, callPathText, clip, count, joined, keyFile, keyName, place, typeText } from "../format";
-import { cardExpanded, fieldsOnlyKey, pageCode, type CardCode, type PageCode } from "../page-code";
+import type { Anchor, BoardHealthView, BoardSummary, Connection, Frame, Page, Proposal, Resource } from "../engine-types";
+import { authorText, callPathText, clip, count, joined, keyName, place, typeText } from "../format";
+import { cardView, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
 import { defineTool } from "../tool";
@@ -25,11 +25,10 @@ const BOARDS_PER_PAGE = 30;
 /** Lines per page of `read_page` (fewer when they are long). */
 const LINES_PER_PAGE = 120;
 
-/** How a page opens, by its default view (a legacy Flow default opens in Diagram with its cards expanded). */
-const OPENS_IN = {
-  diagram: "The page opens in Diagram; cards without their own setting are compact.",
-  flow: "The page opens in Diagram; cards without their own setting are expanded.",
-  code: "The page opens in Code, every card's source; in Diagram, cards without their own setting are expanded.",
+/** How a page shows the cards without their own setting, by its default view. */
+const DEFAULT_VIEW = {
+  compact: "Cards without their own setting are compact.",
+  expanded: "Cards without their own setting are expanded.",
 } as const;
 
 const cursorArg = z.string().optional().describe("The next cursor a result gave (absent: the first page)");
@@ -117,39 +116,39 @@ function named(page: Page, code: PageCode, id: string): string {
   return `${itemName(page, code, id)} (${id})`;
 }
 
-/** Unfold's name for a card: `OrderService.place`, `POST /orders`. */
+/** Unfold's name for a card: the page's name for it, else its code name (`OrderService.place`, `Place an order`). */
 function cardName({ model, key }: CardCode): string {
-  if (model?.type === "block") {
-    return model.header.qualifiedName;
+  if (model?.type === "definition") {
+    return model.flow.header.name ?? model.flow.header.label;
   }
-  return model?.type === "entrance" ? model.header.title : keyName(key);
+  return model?.type === "start" ? model.name : keyName(key);
 }
 
-/** Where a card's code is: `function at src/routes/orders.ts:25`, `http entrance`. */
+/** Where a card's code is: `function at src/routes/orders.ts:25`, `entrance of shop-api`. */
 function cardWhere({ model }: CardCode): string | null {
-  if (model?.type === "block") {
-    return `${model.header.kind} at ${place(model.header.path, model.header.startLine)}`;
+  if (model?.type === "definition") {
+    return `${model.flow.header.form} at ${place(model.flow.header.path, model.flow.header.line)}`;
   }
-  return model?.type === "entrance" ? `${model.header.kind} entrance` : null;
+  return model?.type === "start" ? (model.kind === "app" ? "app" : `entrance of ${model.app}`) : null;
 }
 
-/** How a card shows in Diagram: a type declaration's fields, else compact or expanded (and whose setting that is), with the calls it expands in place. */
+/** How a card shows: a type's fields, else compact or expanded (and whose setting that is), with the calls it opens in place. */
 function expansionText(page: Page, code: CardCode): string {
-  const { card } = code;
-  if (fieldsOnlyKey(code.key)) {
+  const { card, model } = code;
+  if (model?.type === "definition" && model.flow.header.kind === "type") {
     return "fields";
   }
-  const shown = `${cardExpanded(page, card) ? "expanded" : "compact"}${card.view === undefined ? " (the page's default)" : ""}`;
-  const calls = card.expanded ?? [];
-  return calls.length > 0 ? `${shown}, calls expanded in place ${calls.map(callPathText).join(", ")}` : shown;
+  const shown = `${cardView(page, card)}${card.view === undefined ? " (the page's default)" : ""}`;
+  const open = card.open ?? [];
+  return open.length > 0 ? `${shown}, calls open in place ${open.map(callPathText).join(", ")}` : shown;
 }
 
-/** A card's line: its name, id, code, expansion, place on the canvas, frame, and description. */
-function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMap<string, string>, agent: AgentIdentity): string {
+/** A card's lines: its name, id, code, view, place on the canvas, frame, and description; then an expanded card's drawn flow. */
+function cardLines(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMap<string, string>, agent: AgentIdentity): string[] {
   const { card } = code;
   const size = read.sizes[card.id];
   const frame = frames.get(card.id);
-  return `- ${cardName(code)} (card id ${card.id}): ${joined([
+  const line = `- ${cardName(code)} (card id ${card.id}): ${joined([
     cardWhere(code),
     `key ${code.key}`,
     expansionText(page, code),
@@ -158,26 +157,8 @@ function cardLine(page: Page, read: ReadPage, code: CardCode, frames: ReadonlyMa
     code.problem !== undefined ? `code unavailable: ${code.problem}` : null,
     wordsText("description", card.description, agent),
   ])}`;
-}
-
-/** `2 statements, lines 28–30`: a count, and the lines when they are known. */
-function joinedLines(statements: string, lines: string | null): string {
-  return lines === null ? statements : `${statements}, ${lines}`;
-}
-
-/** The lines a step group's statements span, from its card's Code outline. */
-function groupLines(code: CardCode | undefined, members: readonly string[]): string | null {
-  const source = code?.model?.type === "block" ? code.model.code?.source : undefined;
-  if (source?.state !== "current") {
-    return null;
-  }
-  const items = source.outline.filter((item) => members.includes(item.key));
-  if (items.length === 0) {
-    return null;
-  }
-  const from = Math.min(...items.map((item) => item.startLine));
-  const to = Math.max(...items.map((item) => item.endLine));
-  return from === to ? `line ${from}` : `lines ${from}–${to}`;
+  const flow = code.flow === null ? [] : code.flow.trimEnd().split("\n").map((text) => `    ${text}`);
+  return [line, ...flow];
 }
 
 /** The frames as a tree: each frame, then the frames nested in it, indented. */
@@ -225,28 +206,16 @@ function resourceLine(resource: Resource, frames: ReadonlyMap<string, string>, a
   ])}`;
 }
 
-/** Where a connection's step is, `src/routes/orders.ts:28`, from its card's models. */
-function stepPlace(code: CardCode | undefined, step: string): string {
-  const file = keyFile(step) ?? step;
-  const model = code?.model?.type === "block" ? code.model : undefined;
-  const source = model?.code?.source;
-  const line =
-    (source?.state === "current" ? (source.outline.find((item) => item.key === step)?.startLine ?? source.links.find((link) => link.source === step)?.line) : undefined) ??
-    model?.flow?.nodes.find((node) => node.key === step)?.startLine;
-  return place(file, line);
-}
-
-/** A connection's or drawn link's line: its kind, ends, id, step, channel, carried type, anchors, and words. */
-function linkLine(page: Page, code: PageCode, link: Link, agent: AgentIdentity): string {
-  const what = link.kind === undefined ? "link" : `${link.kind} connection`;
-  return `- ${what} ${named(page, code, link.from)} → ${named(page, code, link.to)} (link id ${link.id}): ${joined([
-    link.step !== undefined ? `from step at ${stepPlace(code.cards.get(link.from), link.step)} (key ${link.step})` : null,
+/** A connection's line: its kind, ends, id, step, channel, carried type, anchors, and words. */
+function linkLine(page: Page, code: PageCode, link: Connection, agent: AgentIdentity): string {
+  return `- ${link.kind} connection ${named(page, code, link.from)} → ${named(page, code, link.to)} (link id ${link.id}): ${joined([
+    link.step !== undefined ? `from the call ${link.step}` : null,
     link.fromColumn !== undefined || link.toColumn !== undefined ? `columns ${link.fromColumn ?? "?"} → ${link.toColumn ?? "?"}` : null,
     link.cardinality,
     link.channel !== undefined ? `channel ${link.channel}` : null,
     link.carries !== undefined ? `carries ${keyName(link.carries)} (key ${link.carries})` : null,
-    link.anchors !== undefined && link.anchors.length > 0 ? `anchors ${link.anchors.map(anchorText).join(", ")}` : link.kind !== undefined ? "no anchors" : null,
-    link.author !== undefined ? `by ${authorText(link.author, agent)}` : null,
+    link.anchors !== undefined && link.anchors.length > 0 ? `anchors ${link.anchors.map(anchorText).join(", ")}` : "no anchors",
+    `by ${authorText(link.author, agent)}`,
     wordsText("label", link.label, agent),
     wordsText("description", link.description, agent),
   ]) || "no label"}`;
@@ -259,8 +228,7 @@ const ANCHOR_HEALTH: Readonly<Record<string, string>> = { missing: "anchor missi
 
 /**
  * What the board's health says of the page's proposed steps, when a window holds the board (its
- * session answers `board_health`); empty otherwise, or when the health can't be read: the card's Flow
- * still tells a missing anchor.
+ * session answers `board_health`); empty otherwise, or when the health can't be read.
  */
 async function proposalHealth(context: ToolContext, board: AgentBoardRef, page: Page): Promise<ProposalHealth> {
   if ((page.proposals ?? []).length === 0 || context.views.holder(board) === undefined) {
@@ -278,30 +246,15 @@ async function proposalHealth(context: ToolContext, board: AgentBoardRef, page: 
   }
 }
 
-/** A proposed step's line: its title, id, the real step it goes after (and which path), who proposed it, its reason, and its anchor's health. */
-function proposalLine(page: Page, code: CardCode | undefined, proposal: Proposal, health: ProposalHealth, agent: AgentIdentity): string {
-  const flow = code?.model?.type === "block" && code.model.flow?.source === "current" ? code.model.flow : null;
-  const node = flow?.nodes.find((item) => item.key === proposal.after);
-  const label = node ? (page.labels.find((entry) => entry.key === proposal.after)?.text ?? node.label) : undefined;
-  const step = node && label !== undefined ? `the step “${label}” (${joined([node.kind, node.startLine !== undefined ? `line ${node.startLine}` : null, `key ${proposal.after}`])})` : `the step ${proposal.after}`;
-  const missing = flow && !node ? "anchor missing: no step of its card's code has this key now" : null;
-  const anchor = health.get(proposal.id) ?? missing;
-  return `  - “${proposal.title}” (proposal id ${proposal.id}): ${joined([
-    `after ${step}${proposal.path !== undefined ? `, on its “${proposal.path}” path` : ""}`,
+/** A proposed step's line: its title, id, where it goes, who proposed it, its reason, and its anchor's health. */
+function proposalLine(proposal: Proposal, health: ProposalHealth, agent: AgentIdentity): string {
+  const anchor = health.get(proposal.id);
+  return `- “${proposal.title}” (proposal id ${proposal.id}): ${joined([
+    "after" in proposal ? `after ${proposal.after}` : `at the start of ${proposal.start}`,
     `by ${authorText(proposal.author, agent)}`,
     proposal.reason !== undefined ? `reason “${clip(proposal.reason, 200)}”` : null,
-    anchor !== null ? `${anchor} (propose with its id and a new after moves it; remove_items takes it off)` : null,
+    anchor !== undefined ? `${anchor} (propose with its id and a new spot moves it; remove_items takes it off)` : null,
   ])}`;
-}
-
-/** The proposed steps grouped under their cards, in page order. */
-function proposalLines(page: Page, code: PageCode, health: ProposalHealth, agent: AgentIdentity): string[] {
-  const proposals = page.proposals ?? [];
-  const cards = [...new Set(proposals.map((proposal) => proposal.card))];
-  return cards.flatMap((card) => [
-    `- ${named(page, code, card)}:`,
-    ...proposals.filter((proposal) => proposal.card === card).map((proposal) => proposalLine(page, code.cards.get(card), proposal, health, agent)),
-  ]);
 }
 
 /** The page's items, section by section, as lines. */
@@ -310,38 +263,36 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalH
   const section = (title: string, lines: readonly string[]) => (lines.length > 0 ? [`${title} (${lines.length}):`, ...lines] : []);
   const cards = page.cards.flatMap((card) => {
     const found = code.cards.get(card.id);
-    return found ? [cardLine(page, read, found, frames, agent)] : [];
+    return found ? cardLines(page, read, found, frames, agent) : [];
   });
-  const groups = page.groups.map(
-    (group) =>
-      `- “${group.title}” (step group id ${group.id}) in card ${group.card}: ${joined([
-        joinedLines(count(group.members.length, "statement"), groupLines(code.cards.get(group.card), group.members)),
-        group.collapsed ? "collapsed" : null,
-        `titled by ${authorText(group.author, agent)}`,
-        wordsText("description", group.description, agent),
+  const names = page.names.map((name) => `- “${name.text}” on ${name.key}, by ${authorText(name.author, agent)}`);
+  const combined = page.combined.map(
+    (entry) =>
+      `- “${entry.title}” (combined step id ${entry.id}): ${joined([
+        `combines ${entry.members.join(", ")}`,
+        entry.collapsed ? "collapsed" : "open",
+        `titled by ${authorText(entry.author, agent)}`,
+        wordsText("description", entry.description, agent),
       ])}`,
   );
   const notes = (page.notes ?? []).map(
     (note) =>
       `- note ${note.id}, ${note.attach !== undefined ? `attached to ${named(page, code, note.attach)} at offset [${note.at.join(", ")}]` : `free at [${note.at.join(", ")}]`}, by ${authorText(note.author, agent)}: “${note.text}”`,
   );
-  const arrows = code.arrows.map((arrow) => {
-    const call =
-      arrow.kind === "handler"
-        ? `handler ${arrow.text}`
-        : `${arrow.kind} ${arrow.text}${arrow.line !== null ? ` at line ${arrow.line}` : ""}; source ${arrow.source ?? ""}, seq ${arrow.seq ?? 0}`;
-    return `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: ${call}`;
-  });
+  const arrows = code.arrows.map(
+    (arrow) => `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: ${arrow.call !== undefined ? `calls ${arrow.text} (call key ${arrow.call})` : `starts at ${arrow.text}`}`,
+  );
   const typeArrows = code.typeArrows.map((arrow) => `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: field ${arrow.field}: ${typeText(arrow.type)}`);
   return [
-    ...section("Cards", cards),
-    ...section("Step groups", groups),
+    ...(page.cards.length > 0 ? [`Cards (${page.cards.length}):`, ...cards] : []),
+    ...section("Names", names),
+    ...section("Combined steps", combined),
     ...((page.frames ?? []).length > 0 ? [`Frames (${(page.frames ?? []).length}), nested as they are:`, ...frameLines(page, code, agent)] : []),
     ...section("Resource cards", (page.resources ?? []).map((resource) => resourceLine(resource, frames, agent))),
-    ...section("Connections and drawn links", page.links.map((link) => linkLine(page, code, link, agent))),
+    ...section("Connections", page.links.map((link) => linkLine(page, code, link, agent))),
     ...section("Notes", notes),
-    ...((page.proposals ?? []).length > 0 ? [`Proposed steps (${(page.proposals ?? []).length}), by card: intentions, not code:`, ...proposalLines(page, code, health, agent)] : []),
-    ...section("Arrows Unfold draws for calls and handlers", arrows),
+    ...section("Proposed steps, intentions, not code", (page.proposals ?? []).map((proposal) => proposalLine(proposal, health, agent))),
+    ...section("Arrows Unfold draws for calls and starts", arrows),
     ...section("Type arrows", typeArrows),
   ];
 }
@@ -350,7 +301,7 @@ export const readPage = defineTool({
   name: "read_page",
   title: "Read page",
   description:
-    'Everything on a page, with ids: the lens it opens in (Diagram or Code), cards (name, file:line, key, compact or expanded and the calls each expands in place, frame, position and measured size, description and who wrote it), step groups, frames as a tree, resource cards (kind, name, type, columns, anchors), connections and drawn links (kind, ends, the step they leave from at file:line, channel, carried type, anchors, label), notes, proposed steps under their cards (title, reason, who proposed it, the step and path they go after, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with the source and seq read_call takes) and handlers, and type arrows from a field to a type. It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
+    'Everything on a page, with ids: cards (name, file:line, key, compact or expanded and the calls each opens in place, frame, position and measured size, description and who wrote it; an expanded card\'s drawn flow, each line ending with its blocks\' keys), names, combined steps, frames as a tree, resource cards (kind, name, type, columns, anchors), connections (kind, ends, the call they leave from, channel, carried type, anchors, label), notes, proposed steps (title, reason, who proposed it, the block they go after or the body they start, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with the call key read_call takes) and from apps and entrances to their code, and type arrows from a field to a type. It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
   input: z.object({
     board: z.string().min(1).optional().describe("A board's id or a link (default: the board in view)"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
@@ -366,7 +317,7 @@ export const readPage = defineTool({
     const shown = pagedLines(lines, cursor, LINES_PER_PAGE);
     return textResult(
       context.header(pagePlace(target.project, read)),
-      `Ids: project ${target.project.id}, board ${target.board.id}, page ${read.page.id}. ${OPENS_IN[read.page.defaultView]}${read.unsaved ? " The window has edits it hasn't saved yet; they're included." : ""}`,
+      `Ids: project ${target.project.id}, board ${target.board.id}, page ${read.page.id}. ${DEFAULT_VIEW[read.page.defaultView]}${read.unsaved ? " The window has edits it hasn't saved yet; they're included." : ""}`,
       lines.length === 0 ? "The page is empty: add_cards puts code on it." : null,
       ...shown.items,
       nextLine(shown, "read_page"),

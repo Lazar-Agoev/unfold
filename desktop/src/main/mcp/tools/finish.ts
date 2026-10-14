@@ -14,7 +14,6 @@ import type { HealthItem, Page } from "../engine-types";
 import { anchorArg } from "../edits";
 import { authorText } from "../format";
 import { personWords, repairNames, repairSpec, REPAIRS, targetId, targetText, type RepairName } from "../health";
-import { cardKey } from "../page-code";
 import { cant, textResult, ToolError, windowRefusal } from "../results";
 import { currentView, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
@@ -24,31 +23,15 @@ const reconnectTo = z.union([z.string().min(1), anchorArg]);
 /** What a repair did, in words, before the item's name. */
 const DONE: Readonly<Record<RepairName, string>> = {
   reconnect: "Reconnected",
-  remove_card: "Removed, with its step groups and links,",
-  remove_label: "Removed (the step shows its name from the code again)",
-  ungroup: "Ungrouped (its statements stay)",
-  remove_link: "Removed",
-  remove_resource: "Removed, with the links to it,",
+  remove: "Removed (code stays as it is)",
   remove_description: "Removed the description of",
   resign: "Re-signed against the current code",
   accept: "Accepted the current code for",
-  remove_proposal: "Removed (the code it goes after stays as it is)",
 };
 
-/** Repairs that take their item off the page: nothing is left to outline. */
-const REMOVALS: ReadonlySet<RepairName> = new Set(["remove_card", "remove_label", "ungroup", "remove_link", "remove_resource", "remove_proposal"]);
-
-/** The page items a repair changed, to outline: the item, or a Flow label's card. */
-function outlined(page: Page, item: HealthItem, repair: RepairName): string[] {
-  if (REMOVALS.has(repair)) {
-    return [];
-  }
-  const { target } = item;
-  if (!("label" in target)) {
-    return [targetId(target)];
-  }
-  const card = page.cards.find((entry) => target.label.startsWith(`${cardKey(entry)}/`));
-  return card ? [card.id] : [];
+/** The page items a repair changed, to outline: the item, unless the repair took it off the page or it is a name (not an item). */
+function outlined(item: HealthItem, repair: RepairName): string[] {
+  return repair === "remove" || "name" in item.target ? [] : [targetId(item.target)];
 }
 
 /** The one health item of `item` on `page` that offers `repair` (an anchor's, when `anchor` is given). */
@@ -80,11 +63,11 @@ export const repair = defineTool({
   name: "repair",
   title: "Repair",
   description:
-    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove_card, remove_label, ungroup, remove_link, remove_resource, remove_description, remove_proposal (takes a proposed step off; never edits code), resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, step group's, link's, resource card's, frame's, or proposed step's id, or a Flow label's step key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
+    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove (takes the item off the page: a card with the connections to it, a combined step, a name, a connection, a resource card with its connections, or a proposed step; never edits code), remove_description, resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, combined step's, connection's, resource card's, frame's, or proposed step's id, or a name's block key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
   input: z.object({
     board: z.string().min(1).describe("The board's id or a link"),
     page: z.string().min(1).describe("The page's id or a link"),
-    item: z.string().min(1).describe("The problem's item: an id, a Flow label's step key, or a link"),
+    item: z.string().min(1).describe("The problem's item: an id, a name's block key, or a link"),
     repair: z.enum(REPAIRS),
     to: reconnectTo.optional().describe("reconnect: the new key, or an anchor {key} or {file, lines: [from, to]}"),
     anchor: z.number().int().min(0).optional().describe("Which of the item's anchors, when several have problems"),
@@ -110,7 +93,7 @@ export const repair = defineTool({
       }
     }
     const spec = repairSpec(read.page, chosen, name, to);
-    const repaired = await context.bridge.repair({ board: target.board, page: target.page, agent: context.agent, repair: spec, items: outlined(read.page, chosen, name) });
+    const repaired = await context.bridge.repair({ board: target.board, page: target.page, agent: context.agent, repair: spec, items: outlined(chosen, name) });
     if (!repaired.ok) {
       throw windowRefusal(repaired);
     }

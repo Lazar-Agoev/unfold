@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Card, Frame, Group, Link, Note, Page, Resource } from "../../ipc/generated";
+import type { Card, CardView, Combined, Connection, Frame, Note, Page, Resource, Step } from "../../ipc/generated";
 import { page as pageOf } from "../../test/workspace";
 import { pageChecks } from "./checks";
 import { frameBox, frameTree } from "./frames";
-import type { Box, DrawnFlow, DrawnLine, PageGeometry } from "./geometry";
+import type { Box, DrawnLine, PageGeometry } from "./geometry";
 import { THRESHOLDS } from "./thresholds";
 
 const AGENT = "agent:claude";
@@ -21,16 +21,37 @@ function resource(id: string, extra: Partial<Resource> = {}): Resource {
   return { id, kind: "table", name: id, anchors: [{ key: "src/db.ts#function:schema" }], at: [0, 0], author: AGENT, description: { text: "Rows.", author: AGENT, signature: "" }, ...extra };
 }
 
-function link(id: string, from: string, to: string, extra: Partial<Link> = {}): Link {
-  return { id, from, to, ...extra };
+/** A connection: an `other` one a person drew, with its label, unless `extra` says otherwise. */
+function link(id: string, from: string, to: string, extra: Partial<Connection> = {}): Connection {
+  return { id, from, to, kind: "other", label: { text: "talks to", author: PERSON, signature: "" }, author: PERSON, anchors: [{ key: "src/app.ts#function:schema" }], ...extra };
 }
 
 function note(id: string, extra: Partial<Note> = {}): Note {
   return { id, text: "Mind this.", at: [0, 0], author: AGENT, ...extra };
 }
 
-function group(id: string, cardId: string, extra: Partial<Group> = {}): Group {
-  return { id, card: cardId, title: id, members: [], collapsed: false, description: { text: "Steps.", author: AGENT, signature: "" }, ...extra };
+function combined(id: string, extra: Partial<Combined> = {}): Combined {
+  return { id, title: id, members: [`key-${id}`], collapsed: false, author: AGENT, signature: "", description: { text: "Steps.", author: AGENT, signature: "" }, ...extra };
+}
+
+/** A definition's card as drawn, with `steps` steps in a row. */
+function drawnCard(id: string, steps: number): CardView {
+  const actions = { after: true, start: false, open: false };
+  const row = (index: number): Step => ({ id: index, state: "reached", kind: "thin", calls: [], unknown: 0 });
+  return {
+    type: "definition",
+    flow: {
+      header: { key: `key-${id}`, kind: "function", form: "function", label: id, path: "src/app.ts", line: 1, async: false, generator: false, definedWith: [], imports: [], actions },
+      combinable: [],
+      steps: { steps: Array.from({ length: steps }, (_, index) => row(index)) },
+      routes: [],
+    },
+  };
+}
+
+/** The checks of a laid-out page whose cards drew `cards` (none: each card is named by its id). */
+function run(page: Page, geometry: PageGeometry, cards: ReadonlyMap<string, CardView> = new Map()) {
+  return pageChecks(page, geometry, cards);
 }
 
 /** The item without its description. */
@@ -39,9 +60,9 @@ function undescribed<T extends { readonly description?: unknown }>(item: T): T {
   return rest as T;
 }
 
-/** A page in Diagram view, so only the check under test finds anything. */
+/** A page of compact cards, so only the check under test finds anything. */
 function page(cards: Card[], extra: Partial<Page> = {}): Page {
-  return pageOf("page-1", cards, { defaultView: "diagram", ...extra });
+  return pageOf("page-1", cards, { defaultView: "compact", ...extra });
 }
 
 function box(x: number, y: number, width = 200, height = 100): Box {
@@ -52,8 +73,8 @@ function line(id: string, from: string, to: string, points: [number, number][] =
   return { id, from, to, points: points.map(([x, y]) => ({ x, y })) };
 }
 
-function drawn(boxes: Record<string, Box>, lines: DrawnLine[] = [], flows: Record<string, DrawnFlow> = {}): PageGeometry {
-  return { boxes: new Map(Object.entries(boxes)), lines, flows: new Map(Object.entries(flows)) };
+function drawn(boxes: Record<string, Box>, lines: DrawnLine[] = []): PageGeometry {
+  return { boxes: new Map(Object.entries(boxes)), lines };
 }
 
 /** A row of cards far apart, joined by lines, so only the check under test finds anything. */
@@ -63,11 +84,11 @@ function quiet(ids: string[]): { cards: Card[]; boxes: Record<string, Box>; line
   return { cards: ids.map((id) => card(id)), boxes, lines };
 }
 
-const kinds = (checks: ReturnType<typeof pageChecks>) => checks.map((check) => check.kind);
+const kinds = (checks: ReturnType<typeof run>) => checks.map((check) => check.kind);
 
 describe("overlap", () => {
   it("finds cards on top of each other, naming both", () => {
-    const checks = pageChecks(page([card("alpha"), card("beta"), card("gamma")]), drawn({ alpha: box(0, 0), beta: box(150, 50), gamma: box(800, 0) }, [line("l1", "alpha", "beta"), line("l2", "beta", "gamma")]));
+    const checks = run(page([card("alpha"), card("beta"), card("gamma")]), drawn({ alpha: box(0, 0), beta: box(150, 50), gamma: box(800, 0) }, [line("l1", "alpha", "beta"), line("l2", "beta", "gamma")]));
     expect(checks).toEqual([
       { kind: "overlap", items: ["alpha", "beta"], message: "Two items overlap: alpha and beta.", suggestion: "Call arrange_page, or move them apart with its moves." },
     ]);
@@ -77,7 +98,7 @@ describe("overlap", () => {
     const cards = [card("alpha"), card("beta")];
     const frames = [frame("api", ["alpha", "beta"])];
     const geometry = drawn({ alpha: box(0, 0), beta: box(200, 0), api: box(-24, -40, 448, 164) }, [line("l1", "alpha", "beta")]);
-    expect(kinds(pageChecks(page(cards, { frames }), geometry))).not.toContain("overlap");
+    expect(kinds(run(page(cards, { frames }), geometry))).not.toContain("overlap");
   });
 
   it("finds a frame over a card it doesn't hold, measuring an undrawn frame around its members", () => {
@@ -87,7 +108,7 @@ describe("overlap", () => {
     const geometry = drawn({ alpha: box(0, 0), beta: box(220, 0), gamma: box(0, 110) }, [line("l1", "alpha", "beta"), line("l2", "beta", "gamma")]);
     const tree = frameTree(page(cards, { frames }));
     expect(frameBox(tree, geometry.boxes, "api")).toEqual(box(-16, -44, 452, 160));
-    const [check] = pageChecks(page(cards, { frames }), geometry);
+    const [check] = run(page(cards, { frames }), geometry);
     expect(check?.kind).toBe("overlap");
     expect(check?.items).toEqual(["gamma", "api"]);
     expect(check?.message).toBe('Two items overlap: gamma and the frame "API".');
@@ -97,7 +118,7 @@ describe("overlap", () => {
     const cards = [card("alpha"), card("beta")];
     const notes = [note("n1", { attach: "alpha" }), note("n2")];
     const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(20, 20, 120, 40), n2: box(620, 20, 120, 40) }, [line("l1", "alpha", "beta")]);
-    const [check] = pageChecks(page(cards, { notes }), geometry);
+    const [check] = run(page(cards, { notes }), geometry);
     expect(check?.items).toEqual(["beta", "n2"]);
   });
 
@@ -106,7 +127,7 @@ describe("overlap", () => {
     const frames = [frame("api", ["alpha"]), frame("system", ["api"])];
     const notes = [note("n1", { attach: "alpha" })];
     const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(0, 112, 120, 40), api: box(-16, -44, 232, 212), system: box(-40, -100, 280, 292) }, [line("l1", "alpha", "beta")]);
-    expect(kinds(pageChecks(page(cards, { frames, notes }), geometry))).not.toContain("overlap");
+    expect(kinds(run(page(cards, { frames, notes }), geometry))).not.toContain("overlap");
   });
 
   it("lets a frame hold a note on a line from or to an item in it", () => {
@@ -115,17 +136,17 @@ describe("overlap", () => {
     const links = [link("l1", "alpha", "beta")];
     const notes = [note("n1", { attach: "l1" })];
     const geometry = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(150, -40, 120, 40), api: box(-16, -44, 232, 160) }, [line("l1", "alpha", "beta")]);
-    expect(kinds(pageChecks(page(cards, { frames, links, notes }), geometry))).not.toContain("overlap");
+    expect(kinds(run(page(cards, { frames, links, notes }), geometry))).not.toContain("overlap");
     // Over a card, it is still in the way.
     const over = drawn({ alpha: box(0, 0), beta: box(600, 0), n1: box(150, 20, 120, 40), api: box(-16, -44, 232, 160) }, [line("l1", "alpha", "beta")]);
-    expect(pageChecks(page(cards, { frames, links, notes }), over)[0]?.items).toEqual(["alpha", "n1"]);
+    expect(run(page(cards, { frames, links, notes }), over)[0]?.items).toEqual(["alpha", "n1"]);
   });
 
   it("skips what a collapsed frame hides", () => {
     const cards = [card("alpha"), card("beta"), card("gamma")];
     const frames = [frame("api", ["alpha", "beta"], { collapsed: true })];
     const geometry = drawn({ alpha: box(0, 0), beta: box(10, 10), api: box(0, 0, 240, 80), gamma: box(600, 0) }, [line("l1", "api", "gamma")]);
-    expect(kinds(pageChecks(page(cards, { frames }), geometry))).toEqual([]);
+    expect(kinds(run(page(cards, { frames }), geometry))).toEqual([]);
   });
 });
 
@@ -146,7 +167,7 @@ describe("crossings", () => {
 
   it("finds lines that cross more often than the page allows", () => {
     const { page: drawnPage, geometry } = grid();
-    const [check] = pageChecks(drawnPage, geometry);
+    const [check] = run(drawnPage, geometry);
     expect(check?.kind).toBe("crossings");
     expect(check?.items).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"]);
     expect(check?.message).toMatch(/^Lines cross 4 times: the line from a to b crosses the line from e to f, /);
@@ -162,7 +183,7 @@ describe("crossings", () => {
       // Crosses v1 within the end slack of its own start.
       line("h2", "d", "e", [[95, 300], [400, 300]]),
     ];
-    expect(kinds(pageChecks(page(ids.map((id) => card(id))), drawn(boxes, lines)))).toEqual([]);
+    expect(kinds(run(page(ids.map((id) => card(id))), drawn(boxes, lines)))).toEqual([]);
     expect(THRESHOLDS.lineCrossings).toBe(3);
   });
 
@@ -176,7 +197,7 @@ describe("crossings", () => {
         line("out", "beta", "delta", [[500, 400], [500, 600]]),
       ],
     );
-    const checks = pageChecks(page(cards, { frames }), geometry);
+    const checks = run(page(cards, { frames }), geometry);
     expect(checks).toEqual([
       {
         kind: "crossings",
@@ -192,7 +213,7 @@ describe("crossings", () => {
     const links = [link("call-api", "alpha", "gamma", { kind: "http", author: AGENT, anchors: [{ key: "src/app.ts#function:alpha" }] })];
     const frames = [frame("api", ["beta"])];
     const geometry = drawn({ alpha: box(0, 0), beta: box(400, 100), gamma: box(800, 0), api: box(376, 56, 248, 148) }, [line("call-api", "alpha", "gamma", [[200, 70], [800, 70]])]);
-    const [check] = pageChecks(page(cards, { frames, links }), geometry);
+    const [check] = run(page(cards, { frames, links }), geometry);
     expect(check?.items).toEqual(["api", "call-api"]);
     expect(check?.message).toBe('1 line crosses the frame "API" without starting or ending in it: the http connection from alpha to gamma.');
   });
@@ -223,7 +244,7 @@ describe("crossings", () => {
         line("framed", "zone", "gamma", [[300, 850], [1300, 100]]),
       ],
     );
-    const checks = pageChecks(page(cards, { frames, resources, notes }), geometry);
+    const checks = run(page(cards, { frames, resources, notes }), geometry);
     expect(checks).toEqual([
       {
         kind: "crossings",
@@ -234,7 +255,7 @@ describe("crossings", () => {
     ]);
     // Under a collapsed frame's node it doesn't end at, too.
     const past = [line("past", "alpha", "gamma", [[200, 450], [1300, 450]])];
-    expect(pageChecks(page(cards, { frames, resources }), drawn({ alpha: box(0, 400), gamma: box(1300, 400), api: box(600, 400, 240, 80) }, past))[0]?.items).toEqual(["alpha", "gamma", "api"]);
+    expect(run(page(cards, { frames, resources }), drawn({ alpha: box(0, 400), gamma: box(1300, 400), api: box(600, 400, 240, 80) }, past))[0]?.items).toEqual(["alpha", "gamma", "api"]);
   });
 });
 
@@ -242,55 +263,59 @@ describe("density", () => {
   it("finds a page with more visible items than it reads well with, counting a collapsed frame once", () => {
     const ids = Array.from({ length: 33 }, (_, index) => `c${index}`);
     const { cards, boxes, lines } = quiet(ids);
-    const crowded = pageChecks(page(cards), drawn(boxes, lines));
+    const crowded = run(page(cards), drawn(boxes, lines));
     expect(crowded.map((check) => [check.kind, check.items])).toEqual([["density", []]]);
     expect(crowded[0]?.message).toBe("The page shows 33 items (cards, resource cards, and collapsed frames); about 30 is the most a page reads well with.");
 
     const frames = [frame("folded", ["c0", "c1", "c2", "c3"], { collapsed: true })];
-    expect(kinds(pageChecks(page(cards, { frames }), drawn(boxes, lines)))).not.toContain("density");
+    expect(kinds(run(page(cards, { frames }), drawn(boxes, lines)))).not.toContain("density");
   });
 
   it("finds a frame with too many items, counting nested frames' items", () => {
     const ids = Array.from({ length: 14 }, (_, index) => `c${index}`);
     const { cards, boxes, lines } = quiet(ids);
     const frames = [frame("outer", ["inner", ...ids.slice(0, 7)]), frame("inner", ids.slice(7))];
-    const [check] = pageChecks(page(cards, { frames }), drawn(boxes, lines));
+    const [check] = run(page(cards, { frames }), drawn(boxes, lines));
     expect(check).toMatchObject({ kind: "density", items: ["outer"], message: 'The frame "OUTER" shows 14 items; about 12 is the most a frame reads well with.' });
 
     const collapsed = [frame("outer", ["inner", ...ids.slice(0, 7)]), frame("inner", ids.slice(7), { collapsed: true })];
-    expect(kinds(pageChecks(page(cards, { frames: collapsed }), drawn(boxes, lines)))).not.toContain("density");
+    expect(kinds(run(page(cards, { frames: collapsed }), drawn(boxes, lines)))).not.toContain("density");
   });
 
-  it("finds an expanded function card with too many steps, a legacy Code card too, and counts no compact card", () => {
+  it("finds an expanded card with too many steps, named by what it draws, and counts no compact card", () => {
     const { cards, boxes, lines } = quiet(["alpha", "beta", "gamma", "delta"]);
-    const views = [{ view: "flow" }, { view: "flow" }, { view: "code" }, { view: "diagram" }] as const;
+    const views = [{ view: "expanded" }, { view: "expanded" }, {}, { view: "compact" }] as const;
     const shown = cards.map((item, index) => ({ ...item, ...views[index] }));
-    const flows = { alpha: { steps: 13 }, beta: { steps: 12 }, gamma: { steps: 14 }, delta: { steps: 20 } };
-    const suggestion = "Combine with group_steps: 3 to 7 combined steps, collapsed: true for the ones the page isn't about; or set_view expanded: false.";
-    expect(pageChecks(page(shown), drawn(boxes, lines, flows))).toEqual([
-      { kind: "density", items: ["alpha"], message: "alpha shows 13 steps expanded; about 12 is the most an expanded card reads well with.", suggestion },
-      { kind: "density", items: ["gamma"], message: "gamma shows 14 steps expanded; about 12 is the most an expanded card reads well with.", suggestion },
+    const flows = new Map([
+      ["alpha", drawnCard("placeOrder", 13)],
+      ["beta", drawnCard("beta", 12)],
+      ["gamma", drawnCard("gamma", 14)],
+      ["delta", drawnCard("delta", 20)],
     ]);
-    // The Code lens shows source, not steps.
-    expect(kinds(pageChecks(page(shown, { defaultView: "code" }), drawn(boxes, lines, flows)))).not.toContain("density");
+    const suggestion = "Combine its steps: 3 to 7 combined steps, collapsed for the ones the page isn't about; or set_view to compact.";
+    expect(run(page(shown), drawn(boxes, lines), flows)).toEqual([
+      { kind: "density", items: ["alpha"], message: "placeOrder shows 13 steps expanded; about 12 is the most an expanded card reads well with.", suggestion },
+    ]);
+    // Expanded by the page's default: gamma's 14 steps count too.
+    expect(run(page(shown, { defaultView: "expanded" }), drawn(boxes, lines), flows).map((check) => check.items)).toEqual([["alpha"], ["gamma"]]);
   });
 });
 
 describe("words", () => {
-  it("finds frames, step groups, and resource cards without descriptions, in page order", () => {
+  it("finds frames, combined steps, and resource cards without descriptions, in page order", () => {
     const { cards, boxes, lines } = quiet(["alpha", "beta"]);
     const extra: Partial<Page> = {
       frames: [undescribed(frame("api", ["alpha", "beta"]))],
-      groups: [group("checks", "alpha"), undescribed(group("reply", "alpha", { title: "Reply" }))],
+      combined: [combined("checks"), undescribed(combined("reply", { title: "Reply" }))],
       resources: [undescribed(resource("orders"))],
     };
     const linked = [...lines, line("w", "alpha", "orders")];
-    const checks = pageChecks(page(cards, extra), drawn({ ...boxes, orders: box(0, 400) }, linked));
+    const checks = run(page(cards, extra), drawn({ ...boxes, orders: box(0, 400) }, linked));
     expect(checks).toEqual([
       {
         kind: "missingWords",
         items: ["api", "orders", "reply"],
-        message: 'No description on the frame "API", the table "orders", and the step group "Reply".',
+        message: 'No description on the frame "API", the table "orders", and the combined step "Reply".',
         suggestion: "describe each in one sentence: what it is and why, not how.",
       },
     ]);
@@ -298,19 +323,19 @@ describe("words", () => {
 });
 
 describe("evidence", () => {
-  it("finds resource cards and connections that cite no code, but not actors, grounded steps, or drawn links", () => {
+  it("finds resource cards and connections that cite no code, but not actors or grounded steps", () => {
     const cards = [card("alpha"), card("beta")];
     const resources = [resource("orders", { anchors: [] }), resource("customer", { kind: "actor", name: "Customer", anchors: [] }), resource("jobs", { kind: "queue" })];
     const links = [
       link("drawn", "alpha", "beta"),
-      link("post", "alpha", "beta", { kind: "http", author: PERSON, step: "src/app.ts#function:alpha/call[0]" }),
-      link("save", "alpha", "orders", { kind: "writes", author: PERSON, step: "src/app.ts#function:alpha/call[1]" }),
-      link("read", "beta", "orders", { kind: "reads", author: PERSON }),
+      link("post", "alpha", "beta", { kind: "http", author: PERSON, step: "src/app.ts#function:alpha/call[0]", anchors: [] }),
+      link("save", "alpha", "orders", { kind: "writes", author: PERSON, step: "src/app.ts#function:alpha/call[1]", anchors: [] }),
+      link("read", "beta", "orders", { kind: "reads", author: PERSON, anchors: [] }),
       link("enqueue", "alpha", "jobs", { kind: "queue", author: AGENT, anchors: [{ key: "src/app.ts#function:alpha" }] }),
     ];
     const boxes = { alpha: box(0, 0), beta: box(400, 0), orders: box(0, 400), customer: box(400, 400), jobs: box(800, 400) };
     const lines = [...links.map((item) => line(item.id, item.from, item.to)), line("c", "customer", "alpha")];
-    const checks = pageChecks(page(cards, { resources, links }), drawn(boxes, lines));
+    const checks = run(page(cards, { resources, links }), drawn(boxes, lines));
     expect(checks).toEqual([
       {
         kind: "evidence",
@@ -329,7 +354,7 @@ describe("strays", () => {
     const resources = [resource("orders")];
     const frames = [frame("api", ["delta"])];
     const boxes = { alpha: box(0, 0), beta: box(400, 0), gamma: box(800, 0), delta: box(1200, 0), orders: box(0, 400) };
-    const checks = pageChecks(page(cards, { resources, frames }), drawn(boxes, [line("arrow", "alpha", "beta")]));
+    const checks = run(page(cards, { resources, frames }), drawn(boxes, [line("arrow", "alpha", "beta")]));
     expect(checks).toEqual([
       {
         kind: "strays",
@@ -341,19 +366,20 @@ describe("strays", () => {
   });
 
   it("leaves a page about one card alone, and counts links the canvas didn't draw", () => {
-    expect(pageChecks(page([card("alpha")]), drawn({ alpha: box(0, 0) }))).toEqual([]);
+    expect(run(page([card("alpha")]), drawn({ alpha: box(0, 0) }))).toEqual([]);
     const cards = [card("alpha"), card("beta")];
-    expect(pageChecks(page(cards, { links: [link("l", "alpha", "beta")] }), drawn({ alpha: box(0, 0), beta: box(400, 0) }))).toEqual([]);
+    expect(run(page(cards, { links: [link("l", "alpha", "beta")] }), drawn({ alpha: box(0, 0), beta: box(400, 0) }))).toEqual([]);
   });
 });
 
 describe("pageChecks", () => {
   it("is deterministic and lists findings in the checklist's order", () => {
-    const cards = [card("alpha", { view: "flow" }), card("beta"), card("gamma")];
+    const cards = [card("alpha", { view: "expanded" }), card("beta"), card("gamma")];
     const resources = [resource("orders", { anchors: [] })];
-    const geometry = drawn({ alpha: box(0, 0), beta: box(100, 0), gamma: box(800, 0), orders: box(0, 400) }, [line("l", "alpha", "beta")], { alpha: { steps: 14 } });
-    const first = pageChecks(page(cards, { resources }), geometry);
+    const geometry = drawn({ alpha: box(0, 0), beta: box(100, 0), gamma: box(800, 0), orders: box(0, 400) }, [line("l", "alpha", "beta")]);
+    const views = new Map([["alpha", drawnCard("alpha", 14)]]);
+    const first = run(page(cards, { resources }), geometry, views);
     expect(kinds(first)).toEqual(["overlap", "density", "evidence", "strays"]);
-    expect(pageChecks(page(cards, { resources }), geometry)).toEqual(first);
+    expect(run(page(cards, { resources }), geometry, views)).toEqual(first);
   });
 });

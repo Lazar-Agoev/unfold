@@ -10,7 +10,7 @@ vi.mock("electron", async () => (await import("../fake-electron")).electronModul
 
 const OTHER = "p-python0000";
 const ID = ".unfold/boards/orders.json";
-const PAGE: AgentPage = { id: "page-2", title: "Async path", defaultView: "flow", cards: [], groups: [], labels: [], guards: [], links: [] };
+const PAGE: AgentPage = { id: "page-2", title: "Async path", defaultView: "compact", cards: [], names: [], combined: [], guards: [], links: [] };
 
 function summary(project: string): BoardSummary {
   return { project, id: ID, name: "orders", title: "Orders", folder: null, pages: 2, cards: 0, updatedAtMs: 0, label: null, error: null };

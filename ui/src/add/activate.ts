@@ -1,33 +1,8 @@
-/**
- * What Enter does with Add's selection: an entrance or a definition goes onto the page (a type
- * declaration as a Diagram card, its fields); a file opens in the peek sheet.
- */
+/** What Enter does with Add's selection: its card goes onto the page (or the card already there is focused). */
 
-import { showToast } from "../components";
-import { toUnfoldError, type Key, type View } from "../ipc";
-import { addBlock, openEntrance, type PageTarget } from "../state/boards";
-import { openPeek } from "../state/overlays";
+import { addRef, type PageTarget } from "../state/boards";
+import type { ResultItem } from "./search";
 
-export type AddChoice =
-  | { readonly kind: "entrance"; readonly key: Key }
-  | { readonly kind: "definition"; readonly key: Key; readonly view?: View }
-  | { readonly kind: "file"; readonly path: string };
-
-/** Carries out a choice on `page`; failures become a toast. */
-export async function activateChoice(choice: AddChoice, page: PageTarget): Promise<void> {
-  try {
-    switch (choice.kind) {
-      case "file":
-        openPeek({ project: page.board.project, path: choice.path });
-        return;
-      case "entrance":
-        await openEntrance(page, choice.key);
-        return;
-      case "definition":
-        addBlock(page, choice.key, choice.view);
-        return;
-    }
-  } catch (error) {
-    showToast({ title: "Couldn't add it", body: toUnfoldError(error).message, tone: "danger" });
-  }
+export function addResult(item: ResultItem, page: PageTarget): void {
+  addRef(page, item.ref, item.hit.name);
 }

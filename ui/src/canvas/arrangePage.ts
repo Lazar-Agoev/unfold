@@ -5,16 +5,16 @@
  * arrows that cross its border join it at the card they reach inside. A collapsed frame is one node of
  * its own size, and what it holds is laid out inside it too, ready for when it opens. Type cards rank
  * by their type arrows, as calls. A connection orders its ends as data flows: a `reads` connection's
- * resource card goes before the code that reads it, any other after the side that acts; drawn links
- * don't count. A note attached to a card, resource card, or frame goes under it (several in id order),
- * and the item takes room for them; once the items are placed, a note on a link goes beside its line's
- * middle, clear of them (`lineNoteSpots`); free notes aren't placed.
+ * resource card goes before the code that reads it, any other after the side that acts. A note
+ * attached to a card, resource card, or frame goes under it (several in id order), and the item takes
+ * room for them; once the items are placed, a note on a connection goes beside its line's middle,
+ * clear of them (`lineNoteSpots`); free notes aren't placed. App and entrance cards come first.
  *
  * It is deterministic: the order of the items depends only on what they are and where they are now,
- * so arranging again changes nothing. A page without frames arranges exactly as it did before frames.
+ * so arranging again changes nothing.
  */
 
-import type { Frame, FrameDirection, Link, Note } from "../ipc/generated";
+import type { Connection, Frame, FrameDirection, Note } from "../ipc/generated";
 import { frameChain } from "../state/boards/frames";
 import type { Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
@@ -22,12 +22,12 @@ import { HEADER_PORT, arrange, boundsOf, type ArrangeCall, type Point, type Rect
 import { lineMiddle, lineNoteSpot } from "./notes/spots";
 
 export interface ArrangeInput {
-  readonly page: FramedPage & { readonly links: readonly Link[] };
+  readonly page: FramedPage & { readonly links: readonly Connection[] };
   /** Each drawn item's rectangle now (`pageGeometry`): it orders the items, and the page keeps its top-left. */
   readonly rects: ReadonlyMap<string, Rect>;
   /** The sizes of cards, resource cards, notes, and collapsed frames' nodes. */
   readonly sizeOf: (id: string) => Size;
-  /** The page's arrows between cards (`computeArrows`): calls, handlers, and type arrows. */
+  /** The page's arrows between cards (`computeArrows`): calls, starts, and type arrows. */
   readonly arrows: readonly Arrow[];
   /** An arrow's port offset below its card's top, when known (else the header's). */
   readonly portOffset: (arrow: Arrow) => number | undefined;
@@ -144,13 +144,10 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
 
   const edges: Edge[] = [
     ...input.arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: input.portOffset(arrow), order: arrow.order })),
-    ...page.links.flatMap((link): Edge[] => {
-      if (link.kind === undefined) {
-        return [];
-      }
+    ...page.links.map((link): Edge => {
       // A resource card goes before the code that reads it, after the code that writes it.
       const [source, target] = link.kind === "reads" ? [link.to, link.from] : [link.from, link.to];
-      return [{ source, target, port: undefined, order: 0 }];
+      return { source, target, port: undefined, order: 0 };
     }),
   ];
 
@@ -284,7 +281,7 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
  * start or end in. A note whose line isn't drawn between its own ends (one is hidden in a collapsed
  * frame) stays as it is. `links`, when given, limits it to the notes on those links.
  */
-export function lineNoteSpots(page: FramedPage & { readonly links: readonly Link[] }, sizeOf: (id: string) => Size, links?: ReadonlySet<string>): Record<string, [number, number]> {
+export function lineNoteSpots(page: FramedPage & { readonly links: readonly Connection[] }, sizeOf: (id: string) => Size, links?: ReadonlySet<string>): Record<string, [number, number]> {
   const lines = new Map(page.links.filter((link) => links?.has(link.id) ?? true).map((link) => [link.id, link]));
   const notes = (page.notes ?? []).filter((note) => note.attach !== undefined && lines.has(note.attach)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const placing = new Set(notes.map((note) => note.id));

@@ -4,27 +4,26 @@ import type { BoardDocument, Card, Page } from "../../ipc/generated";
 import { boardDocument, page } from "../../test/workspace";
 import {
   addCard,
-  addGroup,
-  addLink,
   addPage,
-  callExpansions,
   deletePage,
-  isCallExpanded,
+  findCombined,
   isFreeId,
-  keyDisplayName,
-  labelTexts,
+  isOpen,
   movePage,
+  nameTexts,
   nextPageId,
+  openPaths,
   removeCard,
+  removeCombined,
   setCardDescription,
-  setCardExpanded,
+  setCardView,
   setDefaultView,
-  setLabel,
-  setLinkLabel,
-  toggleCallExpansion,
+  setName,
+  toggleOpen,
   uniqueId,
-  updateGroup,
+  updateCombined,
 } from "./document";
+import { setLinkLabel } from "./connections";
 import { addProposal, proposalReason, proposalTitle, removeProposal, updateProposal } from "./proposals";
 
 function onPage(recipe: (draft: Page) => void, start: Page = page("page-1")): Page {
@@ -35,27 +34,13 @@ function onBoard(recipe: (draft: BoardDocument) => void, start: BoardDocument = 
   return produce(start, recipe);
 }
 
-describe("keyDisplayName", () => {
-  it("names a block by its last two steps, a file by its name, and an entrance by its method and trigger", () => {
-    expect(keyDisplayName("src/services/order-service.ts#class:OrderService/method:place")).toBe("OrderService.place");
-    expect(keyDisplayName("src/a.ts#function:alpha/if[0]")).toBe("alpha.if");
-    expect(keyDisplayName("src/a.ts#")).toBe("a.ts");
-    expect(keyDisplayName('entrance:["express.route","http","POST","/orders","requireUser"]')).toBe("POST /orders");
-  });
-
-  it("reads the steps after the last `#`, as a path may hold one", () => {
-    expect(keyDisplayName("src/c#x/orders.ts#function:alpha")).toBe("alpha");
-    expect(keyDisplayName("src/c#/orders.ts#")).toBe("orders.ts");
-  });
-});
-
-describe("card, group, and link ids", () => {
-  it("are unique together within the page, slugged, and at most 100 characters", () => {
+describe("card, combined step, and connection ids", () => {
+  it("are made from the card's name, unique together within the page, slugged, and at most 100 characters", () => {
     const result = onPage((draft) => {
-      addCard(draft, { ref: { block: "src/a.ts#function:createOrder" }, at: [0.4, 9.6] });
-      addCard(draft, { ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] });
-      draft.groups.push({ id: "create-order-3", card: "create-order", title: "x", members: [], collapsed: false });
-      addCard(draft, { ref: { block: "src/b.ts#function:createOrder" }, at: [0, 0] });
+      addCard(draft, { ref: { block: "key-1" }, name: "createOrder", at: [0.4, 9.6] });
+      addCard(draft, { ref: { block: "key-1" }, name: "createOrder", at: [0, 0] });
+      draft.combined.push({ id: "create-order-3", title: "x", members: ["k"], collapsed: false, author: "agent:claude", signature: "" });
+      addCard(draft, { ref: { block: "key-2" }, name: "createOrder", at: [0, 0] });
     });
     expect(result.cards.map((card) => card.id)).toEqual(["create-order", "create-order-2", "create-order-4"]);
     expect(result.cards[0]?.at).toEqual([0, 10]);
@@ -83,81 +68,66 @@ describe("ids an agent names", () => {
   });
 });
 
-describe("step groups", () => {
-  const card: Card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] };
+describe("combined steps", () => {
+  const start = page("page-1", [], { combined: [{ id: "g", title: "Checks", members: ["k1", "k2"], collapsed: false, author: "agent:claude", signature: "" }] });
 
-  it("take a named id, start collapsed when asked, and record who titled them", () => {
-    const result = onPage((draft) => {
-      expect(addGroup(draft, "a", ["k1"], "Checks", { id: "guard", collapsed: true, author: "agent:claude" })).toBe("guard");
-      expect(addGroup(draft, "a", ["k2"], "Rest")).toBe("rest");
-    }, page("page-1", [card]));
-    expect(result.groups).toEqual([
-      { id: "guard", card: "a", title: "Checks", members: ["k1"], collapsed: true, author: "agent:claude" },
-      { id: "rest", card: "a", title: "Rest", members: ["k2"], collapsed: false },
-    ]);
+  it("are renamed, described, collapsed, and opened; a new title is its writer's", () => {
+    const same = onPage((draft) => { updateCombined(draft, "g", { title: "Checks", author: "person:maya", collapsed: true }); }, start);
+    expect(same.combined[0]).toMatchObject({ title: "Checks", collapsed: true, author: "agent:claude" });
+    const renamed = onPage((draft) => { updateCombined(draft, "g", { title: "Guard", author: "person:maya", description: { text: "Stops early.", author: "person:maya" } }); }, start);
+    expect(findCombined(renamed, "g")).toEqual({
+      id: "g",
+      title: "Guard",
+      members: ["k1", "k2"],
+      collapsed: false,
+      author: "person:maya",
+      signature: "",
+      description: { text: "Stops early.", author: "person:maya", signature: "" },
+    });
+    expect(onPage((draft) => { updateCombined(draft, "g", { description: { text: " ", author: "person:maya" } }); }, renamed).combined[0]).not.toHaveProperty("description");
   });
 
-  it("change their statements, and a new title is its writer's: no one else's", () => {
-    const start = page("page-1", [card], { groups: [{ id: "g", card: "a", title: "Checks", members: ["k1"], collapsed: false, author: "agent:claude" }] });
-    const same = onPage((draft) => { updateGroup(draft, "g", { title: "Checks", author: "person:maya", members: ["k1", "k2"] }); }, start);
-    expect(same.groups[0]).toEqual({ id: "g", card: "a", title: "Checks", members: ["k1", "k2"], collapsed: false, author: "agent:claude" });
-    expect(onPage((draft) => { updateGroup(draft, "g", { title: "Guard", author: "person:maya" }); }, start).groups[0]?.author).toBe("person:maya");
-    expect(onPage((draft) => { updateGroup(draft, "g", { title: "Guard" }); }, start).groups[0]).not.toHaveProperty("author");
+  it("apply page-wide by key: removing a card keeps them, and removing one draws its blocks again", () => {
+    const withCard = page("page-1", [{ id: "a", ref: { block: "key-a" }, at: [0, 0] }], { combined: start.combined });
+    expect(onPage((draft) => { removeCard(draft, "a"); }, withCard).combined).toHaveLength(1);
+    expect(onPage((draft) => { removeCombined(draft, "g"); }, withCard).combined).toEqual([]);
   });
 });
 
 describe("an agent's words", () => {
   it("become the person's when the person edits them", () => {
     const start = page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0], description: { text: "Old.", author: "agent:claude", signature: "s" } }], {
-      links: [{ id: "l", from: "a", to: "a", label: { text: "calls", author: "agent:claude", signature: "s" } }],
-      labels: [{ key: "k", text: "Check", author: "agent:claude", signature: "s" }],
+      links: [{ id: "l", from: "a", to: "a", kind: "http", label: { text: "calls", author: "agent:claude", signature: "s" }, author: "agent:claude" }],
+      names: [{ key: "k", text: "Check", author: "agent:claude", signature: "s" }],
     });
     const edited = onPage((draft) => {
       setCardDescription(draft, "a", "New.", "person:maya");
       setLinkLabel(draft, "l", "posts", "person:maya");
-      setLabel(draft, "k", "Checked?", "person:maya");
+      setName(draft, "k", "Checked?", "person:maya");
     }, start);
     expect(edited.cards[0]?.description).toEqual({ text: "New.", author: "person:maya", signature: "" });
     expect(edited.links[0]?.label).toEqual({ text: "posts", author: "person:maya", signature: "" });
-    expect(edited.labels[0]).toEqual({ key: "k", text: "Checked?", author: "person:maya", signature: "" });
+    expect(edited.names[0]).toEqual({ key: "k", text: "Checked?", author: "person:maya", signature: "" });
   });
 });
 
 describe("the page's default view", () => {
   it("is set for the cards without their own", () => {
-    expect(onPage((draft) => { setDefaultView(draft, "diagram"); }).defaultView).toBe("diagram");
+    expect(onPage((draft) => { setDefaultView(draft, "expanded"); }).defaultView).toBe("expanded");
   });
 });
 
-describe("links", () => {
-  it("join two different cards of the page, take a label, and go with either card", () => {
-    const start = page("page-1", [
-      { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
-      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [0, 0] },
-    ]);
-    const linked = onPage((draft) => {
-      expect(addLink(draft, "a", "a")).toBeUndefined();
-      expect(addLink(draft, "a", "missing")).toBeUndefined();
-      const id = addLink(draft, "a", "b") ?? "";
-      setLinkLabel(draft, id, "calls over HTTP", "person:me");
-    }, start);
-    expect(linked.links).toEqual([{ id: "a-to-b", from: "a", to: "b", label: { text: "calls over HTTP", author: "person:me", signature: "" } }]);
-    expect(onPage((draft) => { setLinkLabel(draft, "a-to-b", " ", "person:me"); }, linked).links[0]).toEqual({ id: "a-to-b", from: "a", to: "b" });
-    expect(onPage((draft) => { removeCard(draft, "b"); }, linked).links).toEqual([]);
-  });
-});
-
-describe("labels", () => {
+describe("names", () => {
   it("are one per key, sorted as the file writes them, replaced by new text, cleared by blank text", () => {
-    const labeled = onPage((draft) => {
-      setLabel(draft, "src/k.ts#function:k/if[0]", "Paid?", "person:me");
-      setLabel(draft, "src/a.ts#function:a/if[0]", "First?", "person:me");
-      setLabel(draft, "src/k.ts#function:k/if[0]", "Valid?", "person:me");
+    const named = onPage((draft) => {
+      setName(draft, "key-k", "Paid?", "person:me");
+      setName(draft, "key-a", "First?", "person:me");
+      setName(draft, "key-k", "Valid?", "person:me");
     });
-    expect(labeled.labels.map((label) => label.key)).toEqual(["src/a.ts#function:a/if[0]", "src/k.ts#function:k/if[0]"]);
-    expect(labelTexts(labeled.labels)).toEqual({ "src/a.ts#function:a/if[0]": "First?", "src/k.ts#function:k/if[0]": "Valid?" });
-    const cleared = onPage((draft) => { setLabel(draft, "src/k.ts#function:k/if[0]", "", "person:me"); }, labeled);
-    expect(cleared.labels).toHaveLength(1);
+    expect(named.names.map((name) => name.key)).toEqual(["key-a", "key-k"]);
+    expect(nameTexts(named.names)).toEqual({ "key-a": "First?", "key-k": "Valid?" });
+    const cleared = onPage((draft) => { setName(draft, "key-k", "", "person:me"); }, named);
+    expect(cleared.names).toHaveLength(1);
   });
 });
 
@@ -175,6 +145,7 @@ describe("pages", () => {
       ["page-3", "Page page-3"],
       ["page-4", "Refunds"],
     ]);
+    expect(result.pages[1]).toMatchObject({ defaultView: "compact", names: [], combined: [] });
   });
 
   it("move up and down, and never delete the only page", () => {
@@ -192,74 +163,68 @@ describe("pages", () => {
   });
 });
 
-describe("expansion", () => {
-  const CARD: Card = { id: "create-order", ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] };
-  const CALL = "src/a.ts#function:createOrder/call[0]";
-  const INNER = "src/b.ts#function:place/call[1]";
+describe("views and open calls", () => {
+  const CARD: Card = { id: "create-order", ref: { block: "key-create" }, at: [0, 0] };
+  const CALL = "key-create-call";
+  const INNER = "key-place-call";
 
-  it("expands a card by saving its view, and calls in place as paths that collapse with what is inside them", () => {
+  it("expands a card by saving its view, and opens calls in place as paths that close with what is inside them", () => {
     let next = onPage((draft) => {
       draft.cards.push({ ...CARD });
-      setCardExpanded(draft, CARD.id, true);
-      toggleCallExpansion(draft, CARD.id, [CALL]);
-      toggleCallExpansion(draft, CARD.id, [CALL, INNER]);
+      setCardView(draft, CARD.id, "expanded");
+      toggleOpen(draft, CARD.id, [CALL]);
+      toggleOpen(draft, CARD.id, [CALL, INNER]);
     });
-    expect(next.cards[0]?.view).toBe("flow");
-    expect(next.cards[0]?.expanded).toEqual([[CALL], [CALL, INNER]]);
-    expect(isCallExpanded(next.cards[0] ?? CARD, [CALL, INNER])).toBe(true);
+    expect(next.cards[0]?.view).toBe("expanded");
+    expect(next.cards[0]?.open).toEqual([[CALL], [CALL, INNER]]);
+    expect(isOpen(next.cards[0] ?? CARD, [CALL, INNER])).toBe(true);
     next = onPage((draft) => {
-      toggleCallExpansion(draft, CARD.id, [CALL]);
-      setCardExpanded(draft, CARD.id, false);
+      toggleOpen(draft, CARD.id, [CALL]);
+      setCardView(draft, CARD.id, "compact");
     }, next);
-    expect(next.cards[0]?.view).toBe("diagram");
-    expect("expanded" in (next.cards[0] ?? {})).toBe(false);
+    expect(next.cards[0]?.view).toBe("compact");
+    expect("open" in (next.cards[0] ?? {})).toBe(false);
   });
 
   it("never saves a path deeper than three calls", () => {
     const next = onPage((draft) => {
       draft.cards.push({ ...CARD });
-      toggleCallExpansion(draft, CARD.id, ["a", "b", "c", "d"]);
+      toggleOpen(draft, CARD.id, ["a", "b", "c", "d"]);
     });
-    expect(callExpansions(next.cards[0] ?? CARD)).toEqual([]);
+    expect(openPaths(next.cards[0] ?? CARD)).toEqual([]);
   });
 });
 
 describe("proposed steps", () => {
-  const CARD: Card = { id: "create-order", ref: { block: "src/a.ts#function:createOrder" }, at: [0, 0] };
-  const AFTER = "src/a.ts#function:createOrder/variable:order";
+  const CARD: Card = { id: "create-order", ref: { block: "key-create" }, at: [0, 0] };
+  const AFTER = "key-create-load";
 
-  it("adds, rewords, moves, and removes a proposal, and removing its card removes it", () => {
+  it("adds a proposal after a block or at the start of a body, rewords it, and removes it; removing a card keeps it", () => {
     let next = onPage((draft) => {
       draft.cards.push({ ...CARD });
-      addProposal(draft, { card: CARD.id, after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+      addProposal(draft, { after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+      addProposal(draft, { start: "key-create", title: "Check the cart", author: "agent:claude" });
     });
-    const [proposal] = next.proposals ?? [];
-    expect(proposal).toEqual({ id: "proposal", card: CARD.id, after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+    expect(next.proposals).toEqual([
+      { id: "proposal", after: AFTER, title: "Email a confirmation", author: "agent:claude" },
+      { id: "proposal-2", start: "key-create", title: "Check the cart", author: "agent:claude" },
+    ]);
     expect(isFreeId(next, "proposal")).toBe(false);
     next = onPage((draft) => {
-      updateProposal(draft, "proposal", { after: `${AFTER}/call[0]`, path: "yes" }, "person:ada");
-    }, next);
-    // Moving it keeps its author.
-    expect(next.proposals?.[0]).toMatchObject({ after: `${AFTER}/call[0]`, path: "yes", author: "agent:claude" });
-    next = onPage((draft) => {
-      updateProposal(draft, "proposal", { reason: "Only the queued path emails one.", path: null }, "person:ada");
+      updateProposal(draft, "proposal", { reason: "Only the queued path emails one." }, "person:ada");
     }, next);
     expect(next.proposals?.[0]).toMatchObject({ reason: "Only the queued path emails one.", author: "person:ada" });
-    expect("path" in (next.proposals?.[0] ?? {})).toBe(false);
+    next = onPage((draft) => {
+      updateProposal(draft, "proposal", { reason: null }, "person:bo");
+    }, next);
+    expect("reason" in (next.proposals?.[0] ?? {})).toBe(false);
     // A blank title changes nothing.
     next = onPage((draft) => {
-      updateProposal(draft, "proposal", { title: "  " }, "person:bo");
+      updateProposal(draft, "proposal", { title: "  " }, "person:cy");
     }, next);
-    expect(next.proposals?.[0]?.title).toBe("Email a confirmation");
-    const removed = onPage((draft) => {
-      removeCard(draft, CARD.id);
-    }, next);
-    expect("proposals" in removed).toBe(false);
-    expect(
-      onPage((draft) => {
-        removeProposal(draft, "proposal");
-      }, next).proposals,
-    ).toBeUndefined();
+    expect(next.proposals?.[0]).toMatchObject({ title: "Email a confirmation", author: "person:bo" });
+    expect(onPage((draft) => { removeCard(draft, CARD.id); }, next).proposals).toHaveLength(2);
+    expect(onPage((draft) => { removeProposal(draft, "proposal"); removeProposal(draft, "proposal-2"); }, next).proposals).toBeUndefined();
   });
 
   it("refuses blank, multi-line, and over-long words", () => {

@@ -93,8 +93,8 @@ In ts-orders:
   can show where it goes at runtime, citing createProvider.
 - `events.emit("order.placed", order)` resolves into src/services/events.ts, but there
   `handler(payload)` is unresolved (not a concrete function): the handlers come from a
-  list. notifyCustomer is reached only through `events.on`, which an event connection
-  can show.
+  list. notifyCustomer is reached only through `events.on`, which an other connection
+  labeled with the event can show.
 - `res.status(202).json(…)`: res.status is external (express); json, called on its
   result, has receiver type unknown.
 

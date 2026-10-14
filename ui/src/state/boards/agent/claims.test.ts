@@ -3,7 +3,7 @@ import type { AgentEditSuccess, AgentFailure, AgentOp } from "@unfold/desktop/ag
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../../ipc/client";
-import type { BoardDocument, Card, CardView, Frame, Link, Page, Relations, Resource, TypeDefinition, TypeMember } from "../../../ipc/generated";
+import type { BoardDocument, Card, CardView, Connection, Frame, Page, Relations, Resource, TypeDefinition, TypeMember } from "../../../ipc/generated";
 import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
@@ -16,15 +16,17 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
-const CREATE = "src/routes/orders.ts#function:createOrder";
-const WORKER = "entrance:worker-orders";
-const STEP = `${CREATE}/if[0]/variable:job/call[0]`;
+// Keys as the goldens write them; nothing here takes them apart.
+const CREATE = "src/routes/orders.ts#createOrder";
+const WORKER = "entrance:worker/orders";
+/** createOrder's `ordersQueue.add(…)` call, a call its card draws. */
+const STEP = "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add";
 const ORDER = "src/types.ts#interface:Order";
 const CUSTOMER = "src/types.ts#interface:Customer";
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
 const cards: Card[] = [
-  { id: "create-order", ref: { block: CREATE }, at: [0, 0], view: "diagram" },
+  { id: "create-order", ref: { block: CREATE }, at: [0, 0], view: "compact" },
   { id: "worker", ref: { entrance: WORKER }, at: [800, 0] },
 ];
 
@@ -53,7 +55,7 @@ let saves: number;
 let refuseSave: { code: string; message: string } | null;
 
 function noCalls(key: string): Relations {
-  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: { onBoard: [], openable: [], externalOrUnresolved: [] }, targetNames: {}, reachedFrom: [] };
+  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: [], reachedFrom: [] };
 }
 
 function open(overrides: Partial<Page> = {}): void {
@@ -139,8 +141,7 @@ afterEach(() => {
 
 describe("add_resources", () => {
   it("adds a table backed by a type, its columns the type's fields with the marks laid on, placed beside the card it's near", async () => {
-    // A page in Diagram: in the Code lens, createOrder would show its source.
-    open({ defaultView: "diagram" });
+    open({ defaultView: "compact" });
     const result = await edit([
       {
         op: "add_resources",
@@ -175,7 +176,7 @@ describe("add_resources", () => {
       author: "agent:claude",
       description: { text: "Placed orders, kept in memory.", author: "agent:claude" },
     });
-    // Right of createOrder's Diagram node, level with its top.
+    // Right of createOrder's compact card, level with its top.
     expect(orders?.at[0]).toBeGreaterThan(240);
     expect(orders?.at[1]).toBe(0);
     expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).toEqual(["Claude · Connect"]);
@@ -255,17 +256,19 @@ describe("connect", () => {
     expect((await refusal([{ op: "connect", connections: [{ kind: "relates", from: "create-order", to: "customers" }] }])).message).toContain("joins two tables");
   });
 
-  it("refuses an other connection without a label, a step outside its card, columns off a relationship, and ends that aren't there", async () => {
-    open({ groups: [{ id: "checks", card: "create-order", title: "Checks", members: [`${CREATE}/if[0]`], collapsed: false }] });
+  it("refuses an other connection without a label, a step that isn't a call its card draws, columns off a relationship, and ends that aren't there", async () => {
+    open({ combined: [{ id: "checks", title: "Checks", members: [`${CREATE}/if[0]`], collapsed: false, author: "agent:claude", signature: "" }] });
     expect((await refusal([{ op: "connect", connections: [{ kind: "other", from: "create-order", to: "worker" }] }])).message).toContain("needs a label");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: "src/x.ts#function:x/call[0]" }] }])).message).toContain("isn't inside createOrder");
+    expect((await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: "key-elsewhere" }] }])).message).toContain("isn't a call of createOrder");
+    // A part of the card is drawn, but isn't a call.
+    expect((await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: `${CREATE}/if[0]/then` }] }])).message).toContain("isn't a call of createOrder");
     expect((await refusal([{ op: "connect", connections: [{ kind: "writes", from: "create-order", to: "worker", cardinality: "one-to-one" }] }])).message).toContain("Columns and cardinality are for a relates");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "checks", to: "worker" }] }])).message).toContain("is a step group");
+    expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "checks", to: "worker" }] }])).message).toContain("is a combined step");
     expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "gone", to: "worker" }] }])).message).toContain("There is no card, resource card, or frame");
   });
 
-  it("leaves a person's drawn link as it is unless the person asked, then makes it the agent's", async () => {
-    const drawn: Link = { id: "talks", from: "create-order", to: "worker", label: { text: "sends jobs", author: "person:maya", signature: "" } };
+  it("leaves a person's connection as it is unless the person asked, then makes it the agent's", async () => {
+    const drawn: Connection = { id: "talks", from: "create-order", to: "worker", kind: "other", label: { text: "sends jobs", author: "person:maya", signature: "" }, author: "person:maya" };
     open({ links: [drawn] });
     expect((await refusal([{ op: "connect", connections: [{ id: "talks", kind: "queue", from: "create-order", to: "worker" }] }])).code).toBe("people_text");
     const result = await edit([{ op: "connect", connections: [{ id: "talks", kind: "queue", from: "create-order", to: "worker" }], replacePeopleText: true }]);
@@ -310,27 +313,24 @@ describe("add_notes", () => {
 });
 
 describe("describing and removing claims", () => {
-  it("describes resource cards and connections; a drawn link's words are its label", async () => {
-    open({ resources: [table("orders", ORDER)], links: [{ id: "q", from: "create-order", to: "worker", kind: "queue", author: "agent:claude" }, { id: "d", from: "create-order", to: "worker" }] });
+  it("describes resource cards and connections", async () => {
+    open({ resources: [table("orders", ORDER)], links: [{ id: "q", from: "create-order", to: "worker", kind: "queue", author: "agent:claude" }] });
     const result = await edit([
       {
         op: "describe",
         items: [
           { id: "orders", text: "Placed orders." },
           { id: "q", text: "The job carries the draft." },
-          { id: "d", text: "talks to" },
         ],
       },
     ]);
     expect(result.items).toMatchObject([
       { kind: "resource", id: "orders", status: "created" },
       { kind: "link", id: "q", status: "created", connection: "queue" },
-      { kind: "link", id: "d", status: "created", name: "talks to" },
     ]);
     const page = current();
     expect(page.resources?.[0]?.description?.text).toBe("Placed orders.");
     expect(page.links.find((link) => link.id === "q")?.description?.text).toBe("The job carries the draft.");
-    expect(page.links.find((link) => link.id === "d")?.label?.text).toBe("talks to");
   });
 
   it("removes resource cards with the links to them, leaving attached notes where they were, and a person's only when asked", async () => {

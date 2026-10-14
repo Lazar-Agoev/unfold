@@ -1,47 +1,41 @@
 /**
  * `get_current_view` (design §5.6, §6.2): what the person is looking at in the window they used
  * last, from that window's view report, with the page as the window holds it (unsaved edits
- * included): its lens (Diagram or Code), the selection (a proposed step, or a step shown in a call
- * expanded in place with the block that owns it, among the rest), and the items in view. Loaded with
+ * included): the selection (a proposed step, or a step shown in a call opened in place with the
+ * definition that owns it, among the rest), and the items in view. Loaded with
  * the session's first tools. It reads; it never moves the person's view.
  */
 
 import { z } from "zod";
 import type { ViewSelection } from "../../../shared/agent-api";
 import type { Page } from "../engine-types";
-import { cardExpanded, fieldsOnlyKey, pageLens } from "../page-code";
+import { cardKey, cardView } from "../page-code";
 import { textResult, windowRefusal } from "../results";
 import { defineTool } from "../tool";
 
 /** The most items in view it lists; `read_page` reads the whole page. */
 const MAX_LISTED = 60;
 
-const LENSES = { diagram: "Diagram", code: "Code" } as const;
-
 /** One item of the page, by id, as a line an agent can act on: its kind, id, and what it shows. */
 function describeItem(page: Page, id: string): string {
   const card = page.cards.find((item) => item.id === id);
   if (card) {
-    const key = "block" in card.ref ? card.ref.block : card.ref.entrance;
-    const calls = card.expanded?.length ?? 0;
-    const facts = [
-      fieldsOnlyKey(key) ? null : cardExpanded(page, card) ? "expanded" : "compact",
-      calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} expanded in place` : null,
-    ];
-    return `card ${id}: ${key}${facts.some(Boolean) ? ` (${facts.filter(Boolean).join(", ")})` : ""}`;
+    const calls = card.open?.length ?? 0;
+    const facts = [cardView(page, card), calls > 0 ? `${calls} ${calls === 1 ? "call" : "calls"} open in place` : null];
+    return `card ${id}: ${cardKey(card)} (${facts.filter(Boolean).join(", ")})`;
   }
   const proposal = page.proposals?.find((item) => item.id === id);
   if (proposal) {
-    return `proposed step ${id} in card ${proposal.card}: "${proposal.title}", after the step ${proposal.after}${proposal.path !== undefined ? ` on its "${proposal.path}" path` : ""} (an intention, not code)`;
+    return `proposed step ${id}: "${proposal.title}", ${"after" in proposal ? `after ${proposal.after}` : `at the start of ${proposal.start}`} (an intention, not code)`;
   }
-  const group = page.groups.find((item) => item.id === id);
-  if (group) {
-    return `step group ${id} in card ${group.card}: "${group.title}"${group.collapsed ? " (collapsed)" : ""}`;
+  const combined = page.combined.find((item) => item.id === id);
+  if (combined) {
+    return `combined step ${id}: "${combined.title}"${combined.collapsed ? " (collapsed)" : ""}`;
   }
   const link = page.links.find((item) => item.id === id);
   if (link) {
     const label = link.label ?? link.description;
-    return `${link.kind === undefined ? "drawn link" : `${link.kind} connection`} ${id}: ${link.from} → ${link.to}${label ? `, "${label.text}"` : ""}`;
+    return `${link.kind} connection ${id}: ${link.from} → ${link.to}${label ? `, "${label.text}"` : ""}`;
   }
   const frame = page.frames?.find((item) => item.id === id);
   if (frame) {
@@ -60,7 +54,7 @@ function selectionText(page: Page, selection: ViewSelection): string {
     case "none":
       return "Nothing is selected.";
     case "card":
-    case "group":
+    case "combined":
     case "link":
     case "frame":
     case "resource":
@@ -70,24 +64,17 @@ function selectionText(page: Page, selection: ViewSelection): string {
     case "step":
       return selection.owner === undefined
         ? `Selected: the step ${selection.key} of card ${selection.card}.`
-        : `Selected: the step ${selection.key} of ${selection.owner}, shown in a call card ${selection.card} expands in place; read_code without key reads that block.`;
-    case "line":
-      return `Selected: the line from card ${selection.from} to card ${selection.to}: ${callText(selection)}. read_call says what it sends.`;
-    case "calls":
-      return `Selected: the arrow from card ${selection.from} to card ${selection.to}, which draws ${selection.calls.length} calls: ${selection.calls.map(callText).join("; ")}. read_call says what each sends.`;
+        : `Selected: the step ${selection.key} of ${selection.owner}, shown in a call card ${selection.card} opens in place; read_code without key reads that definition.`;
+    case "arrow":
+      return `Selected: the arrow from card ${selection.from} to card ${selection.to}, which draws ${selection.calls.length === 1 ? "the call" : `${selection.calls.length} calls:`} ${selection.calls.join(", ")}. read_call with a call's key says what it sends.`;
   }
-}
-
-/** A call by its occurrence: `the call at src/orders.ts#function:createOrder/call[0] (occurrence 0, line 12)`. */
-function callText(call: { readonly source: string; readonly seq: number; readonly line: number | null }): string {
-  return `the call at ${call.source} (occurrence ${call.seq}${call.line === null ? "" : `, line ${call.line}`})`;
 }
 
 export const getCurrentView = defineTool({
   name: "get_current_view",
   title: "Get current view",
   description:
-    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the lens (Diagram or Code), the selection (a card, a step (one shown in a call expanded in place names the block that owns it), a step group, a proposed step, a frame, a resource card, a note, a connection or drawn link, or a line between two cards: one call, or the calls a Diagram arrow merges), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
+    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the selection (a card, a step (one shown in a call opened in place names the definition that owns it), a combined step, a proposed step, a frame, a resource card, a note, a connection, or an arrow between two cards with the calls it draws), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
   input: z.object({}),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
@@ -122,7 +109,7 @@ export const getCurrentView = defineTool({
         revision: read.revision,
       }),
       `Ids: project ${report.board.project}, board ${report.board.id}, page ${page.id}.`,
-      `Lens: ${LENSES[report.lens ?? pageLens(page)]}.${read.board.unsaved ? " The window has edits it hasn't saved yet." : ""}`,
+      read.board.unsaved ? "The window has edits it hasn't saved yet." : null,
       selectionText(page, report.selection),
       `The page has ${page.cards.length} cards. In view: ${report.visible.length} items${listed.length < report.visible.length ? ` (the first ${listed.length} listed)` : ""}${report.visible.length > 0 ? ":" : "."}`,
       ...listed.map((id) => `- ${describeItem(page, id)}`),

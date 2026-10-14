@@ -21,7 +21,7 @@ interface RenderState {
 
 export const useRenderJob = create<RenderState>(() => ({ job: null, frame: null }));
 
-const NO_HEALTH: Health = { items: [], missing: 0, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 };
+const NO_HEALTH: Health = { items: [], missing: 0, outdated: 0, review: 0, brokenCombined: 0, brokenLinks: 0 };
 
 /** The lowest zoom the page is measured at: everything on a large page is drawn, so everything is measured. */
 const MEASURE_MIN_ZOOM = 0.05;

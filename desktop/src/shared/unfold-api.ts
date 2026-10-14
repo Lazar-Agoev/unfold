@@ -93,6 +93,11 @@ export interface WindowInfo {
    * when the app last quit. Null for Home.
    */
   readonly board: ShownBoard | null;
+  /**
+   * Whether Show all calls is on: as it last reported with `report_show_all_calls`, else as it was
+   * when the app last quit.
+   */
+  readonly showAllCalls: boolean;
 }
 
 /** What `export_png` wrote. */
@@ -141,6 +146,11 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    * bounds, so the window comes back to it.
    */
   report_shown_board: { args: { board: ShownBoard | null }; result: null };
+  /**
+   * The Show all calls switch was turned on or off. The main process saves it with the window's
+   * bounds, so it comes back at launch.
+   */
+  report_show_all_calls: { args: { on: boolean }; result: null };
 }
 
 export type WindowCommand = keyof WindowCommands;

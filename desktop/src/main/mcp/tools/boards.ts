@@ -13,6 +13,7 @@ import type { AgentBoardOp, AgentBoardOpResult, AgentBoardRef, AgentPageSummary 
 import type { ToolContext } from "../context";
 import type { Page, ProjectRow } from "../engine-types";
 import { cardText, keyName } from "../format";
+import { startKeys } from "../edits";
 import { cant, textResult, ToolError, windowRefusal } from "../results";
 import { pagePlace, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
@@ -33,7 +34,7 @@ async function traced(context: ToolContext, board: AgentBoardRef, page: string, 
     page,
     agent: context.agent,
     title: "Trace",
-    ops: [{ op: "add_cards", cards: [{ key: entrance, follow: { callees: 1 } }] }],
+    ops: [{ op: "add_cards", cards: [{ ref: { entrance }, follow: { callees: 1 } }] }],
   });
   if (!edit.ok) {
     return [`Couldn't trace ${keyName(entrance)} onto it: ${edit.message} add_cards with the entrance's key places it.`];
@@ -57,13 +58,9 @@ export const createBoard = defineTool({
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   async run({ project, title, folder, trace, pages }, context) {
     const row = await context.project(project);
-    if (trace !== undefined) {
-      // Refuse an unknown entrance before anything is created.
-      await context.engine("peek", { project: row.id, key: trace }).catch((error: unknown) => {
-        throw error instanceof ToolError && error.code === "not_found"
-          ? cant("trace the entrance", `${row.name} has no entrance with the key ${trace}`, "list_entrances lists its entrances with their keys.")
-          : error;
-      });
+    // Refuse an unknown entrance before anything is created.
+    if (trace !== undefined && !(await startKeys(context, row.id)).has(trace)) {
+      throw cant("trace the entrance", `${row.name} has no app or entrance with the key ${trace}`, "list_entrances lists its apps and entrances with their keys.");
     }
     const created = await context.bridge.create({
       project: row.id,
@@ -256,7 +253,7 @@ function itemName(page: Page, id: string): string {
     return `the card ${keyName("block" in card.ref ? card.ref.block : card.ref.entrance)}`;
   }
   const named =
-    page.groups.find((item) => item.id === id)?.title ??
+    page.combined.find((item) => item.id === id)?.title ??
     page.frames?.find((item) => item.id === id)?.title ??
     page.resources?.find((item) => item.id === id)?.name;
   return named === undefined ? `the item ${id}` : `“${named}”`;
@@ -266,7 +263,7 @@ export const show = defineTool({
   name: "show",
   title: "Show",
   description:
-    'Shows the person a board, a page, or an item in Unfold. Use it only when they ask to see something, or to present finished work, never while building: it moves their view. mode "focus" (the default) brings the window forward, switches to the board and the page, and selects and centers the item; "background" only loads the board in Unfold, without switching to it. board, page, and item are ids or a link (default: the board and page in view); an item is a card, step group, link, frame, resource card, or note of the page.',
+    'Shows the person a board, a page, or an item in Unfold. Use it only when they ask to see something, or to present finished work, never while building: it moves their view. mode "focus" (the default) brings the window forward, switches to the board and the page, and selects and centers the item; "background" only loads the board in Unfold, without switching to it. board, page, and item are ids or a link (default: the board and page in view); an item is a card, combined step, connection, frame, resource card, or note of the page.',
   input: z.object({
     board: boardArg.optional(),
     page: z.string().min(1).optional().describe("A page's id or a link (absent: the page the board shows)"),

@@ -122,32 +122,6 @@ export async function waitForEvent(
   return found;
 }
 
-/**
- * Starts watching, in the window, for an element matching `selector` to contain `text`, and
- * resolves with the wall-clock time (ms) of the first frame that shows it. Start it before the
- * action, then await it: unlike `expect` polling (100–1000 ms apart), this sees the exact frame.
- */
-export function whenTextShows(page: Page, selector: string, text: string, timeout = 30_000): Promise<number> {
-  return page.evaluate(
-    ([wanted, needle, limit]) =>
-      new Promise<number>((resolve, reject) => {
-        const started = Date.now();
-        const tick = () => {
-          const shown = [...document.querySelectorAll(wanted)].some((element) => element.textContent.includes(needle));
-          if (shown) {
-            resolve(Date.now());
-          } else if (Date.now() - started > limit) {
-            reject(new Error(`${needle} never showed in ${wanted}`));
-          } else {
-            requestAnimationFrame(tick);
-          }
-        };
-        tick();
-      }),
-    [selector, text, timeout] as const,
-  );
-}
-
 /** The window's engine connection state. */
 async function connection(page: Page): Promise<string> {
   return page.evaluate(() => {

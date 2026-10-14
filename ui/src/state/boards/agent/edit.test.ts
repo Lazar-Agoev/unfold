@@ -4,15 +4,14 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STACK_GAP, type Rect } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
-import { estimatedBlockSize } from "../../../canvas/sizing";
+import { estimatedCardSize } from "../../../canvas/sizing";
 import { queryClient } from "../../../ipc/client";
-import type { BoardDocument, Card, CardView, Group, LabelEntry, Link, Page, Relations, SaveBoardArgs } from "../../../ipc/generated";
+import type { BoardDocument, Card, CardView, Combined, Connection, Page, Relations, SaveBoardArgs } from "../../../ipc/generated";
 import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
 import { getShownBoard, showBoard, useShownBoardStore } from "../../shownBoard";
 import { displayedRects } from "../api";
-import { keyDisplayName } from "../document";
 import { addNote } from "../notes";
 import * as store from "../store";
 import { applyAgentEdit, finishAgentWork, openBoardForAgent, readAgentPage } from "./edit";
@@ -25,13 +24,16 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
-const CREATE = "src/routes/orders.ts#function:createOrder";
-const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
-const SLACK = "src/lib/slack.ts#variable:slack/method:post";
-const INSERT = "src/db/orders.ts#function:insertOrder";
+// Keys as the goldens write them; nothing here takes them apart.
+const CREATE = "src/routes/orders.ts#createOrder";
+const PLACE = "src/services/order-service.ts#OrderService.place";
+const SLACK = "src/lib/slack.ts#slack.post";
+const INSERT = "src/db/orders.ts#insertOrder";
 const FILE = "src/routes/orders.ts#";
-const MISSING = "src/gone.ts#function:gone";
+const MISSING = "src/gone.ts#gone";
 const IF = `${CREATE}/if[0]`;
+/** What each card's drawn flow calls its definition. */
+const NAMES: Readonly<Record<string, string>> = { [PLACE]: "OrderService.place", [SLACK]: "slack.post", [INSERT]: "insertOrder", [FILE]: "src/routes/orders.ts" };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
 const createCard: Card = { id: "create-order", ref: { block: CREATE }, at: [0, 0] };
@@ -42,17 +44,17 @@ let refuseSave: { code: string; message: string } | null;
 /** Holds the next save until it settles. */
 let holdSave: Promise<void> | null;
 
-/** createOrder's golden card, or a copy named for another key. */
+/** createOrder's golden card, or a copy for another definition, named by its label. */
 function model(key: string): CardView {
   const card = fixture("card", "card_create_order");
-  if (key === CREATE || card.type !== "block") {
+  if (key === CREATE || card.type !== "definition") {
     return card;
   }
-  return { ...card, header: { ...card.header, key, name: keyDisplayName(key), qualifiedName: keyDisplayName(key) } };
+  return { ...card, flow: { ...card.flow, header: { ...card.flow.header, key, label: NAMES[key] ?? key } } };
 }
 
 function noCalls(key: string): Relations {
-  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: { onBoard: [], openable: [], externalOrUnresolved: [] }, targetNames: {}, reachedFrom: [] };
+  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: [], reachedFrom: [] };
 }
 
 function open(pageOverrides: Partial<Page> = {}, cards: Card[] = [createCard]): void {
@@ -127,15 +129,14 @@ beforeEach(() => {
           return fixture("relations", "relations_create_order");
         }
         if (key === PLACE) {
-          const relations = noCalls(key);
-          return {
-            ...relations,
-            outgoing: { ...relations.outgoing, openable: [{ source: `${PLACE}/call[0]`, seq: 0, kind: "calls", resolution: "resolved", target: INSERT, text: "insertOrder", line: 12 }] },
-          };
+          return { ...noCalls(key), outgoing: [{ call: `${PLACE}/call:insertOrder`, line: 12, kind: "calls", text: "insertOrder", to: { outcome: "project", key: INSERT } }] };
         }
         return noCalls(key);
       },
-      callers: ({ key }) => (key === CREATE ? { ...fixture("callers", "callers_create_order"), total: 3 } : { project: P, key, total: 0, callers: [] }),
+      callers: ({ key }) =>
+        key === CREATE
+          ? { project: P, key, total: 3, callers: [{ key: FILE, name: "src/routes/orders.ts", qualifiedName: "src/routes/orders.ts", path: "src/routes/orders.ts", line: 49, sites: 1 }] }
+          : { project: P, key, total: 0, callers: [] },
       save_board: async (args) => {
         const held = holdSave;
         holdSave = null;
@@ -166,7 +167,7 @@ afterEach(() => {
 describe("an agent's edit", () => {
   it("is one undo step named for the agent and the tool, saved at once, answering with the page as saved", async () => {
     open({}, []);
-    const result = await edit([{ op: "add_cards", cards: [{ key: CREATE }] }, { op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE } }] }, { op: "describe", items: [{ id: "create-order", text: "Takes an order." }] }]);
     expect(saved).toHaveLength(1);
     expect(result.page.id).toBe("page-1");
     expect((result.page as unknown as Page).cards[0]?.description).toEqual({ text: "Takes an order.", author: "agent:claude", signature: "sha256:signed" });
@@ -253,16 +254,16 @@ describe("working marks", () => {
 describe("add_cards", () => {
   it("keeps a card already on the page, and changes only its view when asked", async () => {
     open();
-    const kept = await edit([{ op: "add_cards", cards: [{ key: CREATE }] }]);
+    const kept = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE } }] }]);
     expect(kept.items).toEqual([{ kind: "card", id: "create-order", status: "kept", key: CREATE, name: "createOrder" }]);
-    const viewed = await edit([{ op: "add_cards", cards: [{ key: CREATE, view: "diagram" }] }]);
+    const viewed = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE }, view: "compact" }] }]);
     expect(viewed.items).toMatchObject([{ id: "create-order", status: "updated" }]);
-    expect(onPage().cards).toEqual([{ ...createCard, view: "diagram" }]);
+    expect(onPage().cards).toEqual([{ ...createCard, view: "compact" }]);
   });
 
   it("places a card beside the card that calls it, level with the calling line, never covering a card", async () => {
     open({}, [createCard, { id: "in-the-way", ref: { block: SLACK }, at: [600, 220] }]);
-    const result = await edit([{ op: "add_cards", cards: [{ key: PLACE }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: PLACE } }] }]);
     const added = onPage().cards.find((card) => "block" in card.ref && card.ref.block === PLACE);
     expect(result.items).toMatchObject([{ status: "created", key: PLACE, name: "OrderService.place" }]);
     const board = store.getOpenBoard(REF);
@@ -278,22 +279,32 @@ describe("add_cards", () => {
   });
 
   it("places a card near the item it names, and refuses an item that isn't there", async () => {
-    open({}, [createCard, { id: "far", ref: { block: "src/misc.ts#function:misc" }, at: [3000, 3000] }]);
-    await edit([{ op: "add_cards", cards: [{ key: INSERT, near: "far" }] }]);
+    open({}, [createCard, { id: "far", ref: { block: "key-misc" }, at: [3000, 3000] }]);
+    await edit([{ op: "add_cards", cards: [{ ref: { block: INSERT }, near: "far" }] }]);
     const added = onPage().cards.at(-1);
     expect(added?.at[0]).toBeGreaterThan(3000);
     expect(added?.at[1]).toBe(3000);
-    expect((await refusal([{ op: "add_cards", cards: [{ key: MISSING.replace("gone", "other"), near: "nowhere" }] }])).message).toContain("no item with id “nowhere”");
+    expect((await refusal([{ op: "add_cards", cards: [{ ref: { block: "key-other" }, near: "nowhere" }] }])).message).toContain("no item with id “nowhere”");
   });
 
   it("refuses a key that isn't in the graph", async () => {
     open();
-    expect(await refusal([{ op: "add_cards", cards: [{ key: MISSING }] }])).toMatchObject({ code: "invalid_op" });
+    expect(await refusal([{ op: "add_cards", cards: [{ ref: { block: MISSING } }] }])).toMatchObject({ code: "invalid_op" });
+  });
+
+  it("adds an entrance's start card, its id made from the name its card draws", async () => {
+    open({}, []);
+    const start = "entrance:server/place-an-order";
+    engine.uninstall();
+    engine = installFakeEngine({ handlers: { card: () => fixture("card", "card_place_an_order"), save_board: (args) => boardState(P, ID, boardDocument(structuredClone(args.board.pages) as BoardDocument["pages"]), { revision: "r2" }) } });
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { entrance: start } }] }]);
+    expect(result.items).toMatchObject([{ kind: "card", id: "place-an-order", status: "created", key: start, name: "Place an order" }]);
+    expect(onPage().cards.map((card) => [card.id, card.ref])).toEqual([["place-an-order", { entrance: start }]]);
   });
 
   it("follows resolved calls to the depth asked for, and says where following stopped", async () => {
     open({}, []);
-    const result = await edit([{ op: "add_cards", cards: [{ key: CREATE, follow: { callees: 1 } }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE }, follow: { callees: 1 } }] }]);
     expect(result.items.map((item) => (item.kind === "card" ? [item.name, item.status, item.via?.depth] : []))).toEqual([
       ["createOrder", "created", undefined],
       ["OrderService.place", "created", 1],
@@ -310,7 +321,7 @@ describe("add_cards", () => {
     expect(place?.kind === "card" ? place.stops : undefined).toEqual([{ reason: "depth", count: 1 }]);
     expect(onPage().cards.map((card) => card.id)).toEqual(["create-order", "order-service-place", "slack-post"]);
 
-    const deeper = await edit([{ op: "add_cards", cards: [{ key: CREATE, follow: { callees: 2 } }] }]);
+    const deeper = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE }, follow: { callees: 2 } }] }]);
     expect(deeper.items.map((item) => (item.kind === "card" ? `${item.name} ${item.status}` : ""))).toEqual([
       "createOrder kept",
       "OrderService.place kept",
@@ -321,7 +332,7 @@ describe("add_cards", () => {
 
   it("follows callers, to the left, saying how many it didn't list", async () => {
     open();
-    const result = await edit([{ op: "add_cards", cards: [{ key: CREATE, follow: { callers: 1 } }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: CREATE }, follow: { callers: 1 } }] }]);
     expect(result.items).toMatchObject([
       { id: "create-order", status: "kept", stops: [{ reason: "limit", count: 2 }] },
       { key: FILE, status: "created", via: { from: "create-order", direction: "callers", depth: 1 } },
@@ -331,25 +342,23 @@ describe("add_cards", () => {
 });
 
 describe("set_view", () => {
-  const group: Group = { id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false };
+  const combined: Combined = { id: "checks", title: "Checks", members: [IF], collapsed: false, author: "agent:claude", signature: "" };
 
-  it("sets cards' views, step groups' collapse, and the page's default view", async () => {
-    open({ groups: [group] });
-    const result = await edit([
-      { op: "set_view", items: [{ id: "create-order", view: "flow" }, { id: "checks", collapsed: true }], defaultView: "diagram" },
+  it("sets cards compact or expanded, and combined steps collapsed", async () => {
+    open({ combined: [combined] });
+    const result = await edit([{ op: "set_view", items: [{ id: "create-order", view: "expanded" }, { id: "checks", collapsed: true }] }]);
+    expect(result.items).toEqual([
+      { kind: "card", id: "create-order", status: "updated", key: CREATE, name: "createOrder", view: "expanded", open: [] },
+      { kind: "combined", id: "checks", status: "updated", name: "Checks", members: [IF], collapsed: true },
     ]);
-    expect(result.items).toMatchObject([
-      { kind: "card", id: "create-order", status: "updated" },
-      { kind: "group", id: "checks", status: "updated" },
-    ]);
-    expect(onPage()).toMatchObject({ defaultView: "diagram", cards: [{ view: "flow" }], groups: [{ collapsed: true }] });
+    expect(onPage()).toMatchObject({ cards: [{ view: "expanded" }], combined: [{ collapsed: true }] });
   });
 
   it("refuses what an item doesn't take, and ids that aren't on the page", async () => {
-    open({ groups: [group] });
-    expect((await refusal([{ op: "set_view", items: [{ id: "checks", view: "flow" }] }])).message).toContain("is a step group");
+    open({ combined: [combined] });
+    expect((await refusal([{ op: "set_view", items: [{ id: "checks", view: "expanded" }] }])).message).toContain("is a combined step");
     expect((await refusal([{ op: "set_view", items: [{ id: "create-order", collapsed: true }] }])).message).toContain("is a card");
-    expect((await refusal([{ op: "set_view", items: [{ id: "nope", expanded: true }] }])).code).toBe("invalid_op");
+    expect((await refusal([{ op: "set_view", items: [{ id: "nope", view: "expanded" }] }])).code).toBe("invalid_op");
   });
 });
 
@@ -366,7 +375,7 @@ describe("arrange", () => {
     expect(cards.get("slack-post")?.[0]).toBeGreaterThan(cards.get("create-order")?.[0] ?? 0);
     // The page was never drawn: sizes are estimated from the cards' models.
     const create = cards.get("create-order") ?? [0, 0];
-    expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedBlockSize(model(CREATE), measureText).height + STACK_GAP]);
+    expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedCardSize({ model: model(CREATE), view: "compact" }, measureText).height + STACK_GAP]);
     expect(result.items.map((item) => (item.kind === "card" ? item.id : "")).sort()).toEqual(["create-order", "insert-order", "slack-post"]);
     expect((await refusal([{ op: "arrange", moves: [{ id: "nope", at: [0, 0] }] }])).code).toBe("invalid_op");
   });
@@ -398,132 +407,30 @@ describe("people's words are safe", () => {
     expect((await refusal([{ op: "describe", items: [{ id: "create-order", text: "Again." }] }])).code).toBe("people_text");
   });
 
-  it("remove_items won't remove a person's description, group, or label unless asked", async () => {
-    const link: Link = { id: "to-slack", from: "create-order", to: "slack", label: { text: "notifies", author: "person:maya", signature: "" } };
+  it("remove_items won't remove a person's description, combined step, or label unless asked", async () => {
+    const link: Connection = { id: "to-slack", from: "create-order", to: "slack", kind: "calls", label: { text: "notifies", author: "person:maya", signature: "" }, author: "agent:claude" };
     const slack: Card = { id: "slack", ref: { block: SLACK }, at: [900, 0] };
-    open({ links: [link], groups: [{ id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false, author: "agent:claude" }] }, [described, slack]);
+    open({ links: [link], combined: [{ id: "checks", title: "Checks", members: [IF], collapsed: false, author: "agent:claude", signature: "" }] }, [described, slack]);
     expect((await refusal([{ op: "remove_items", ids: ["create-order"] }])).code).toBe("people_text");
     expect((await refusal([{ op: "remove_items", ids: ["to-slack"] }])).message).toContain("the label “notifies”");
     const removed = await edit([{ op: "remove_items", ids: ["checks"] }]);
-    expect(removed.items).toEqual([{ kind: "group", id: "checks", status: "removed", card: "create-order", name: "Checks" }]);
+    expect(removed.items).toEqual([{ kind: "combined", id: "checks", status: "removed", name: "Checks", members: [IF], collapsed: false }]);
     const all = await edit([{ op: "remove_items", ids: ["create-order", "to-slack"], replacePeopleText: true }]);
     expect(all.items.map((item) => `${item.kind} ${item.status}`)).toEqual(["card removed", "link removed"]);
-    expect(onPage()).toMatchObject({ cards: [slack], links: [], groups: [] });
+    expect(onPage()).toMatchObject({ cards: [slack], links: [], combined: [] });
     expect((await refusal([{ op: "remove_items", ids: ["nope"] }])).code).toBe("invalid_op");
   });
 
-  it("remove_items counts a drawn link and a person's connection as theirs, also when they would go with a card", async () => {
+  it("remove_items counts a person's connection as theirs, also when it would go with a card", async () => {
     const slack: Card = { id: "slack", ref: { block: SLACK }, at: [900, 0] };
-    open({ links: [{ id: "drawn", from: "create-order", to: "slack" }] }, [createCard, slack]);
-    expect((await refusal([{ op: "remove_items", ids: ["drawn"] }])).message).toContain("Can't change the link a person drew: a person wrote it.");
-    expect((await refusal([{ op: "remove_items", ids: ["slack"] }])).code).toBe("people_text");
     open({ links: [{ id: "posts", kind: "http", from: "create-order", to: "slack", author: "person:maya" }] }, [createCard, slack]);
+    expect((await refusal([{ op: "remove_items", ids: ["posts"] }])).message).toContain("Can't change the http connection: Maya wrote it.");
     expect((await refusal([{ op: "remove_items", ids: ["slack"] }])).message).toContain("Can't change the http connection: Maya wrote it.");
     const removed = await edit([{ op: "remove_items", ids: ["slack"], replacePeopleText: true }]);
     expect(removed.items).toMatchObject([
       { kind: "card", id: "slack", status: "removed" },
       { kind: "link", id: "posts", status: "removed" },
     ]);
-  });
-
-  it("a step group titled before titles were attributed counts as a person's", async () => {
-    open({ groups: [{ id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false }] });
-    expect((await refusal([{ op: "remove_items", ids: ["checks"] }])).message).toContain("a person wrote it");
-  });
-});
-
-describe("group_steps", () => {
-  const job = `${IF}/variable:job`;
-  const json = `${IF}/expression_statement[0]`;
-
-  it("keeps the card's group of the same statements when the call comes again, and retitles it", async () => {
-    open();
-    const queue: AgentOp = { op: "group_steps", card: "create-order", groups: [{ title: "Queue it", steps: [job, json] }] };
-    await edit([queue]);
-    expect((await edit([queue])).items).toMatchObject([{ kind: "group", id: "queue-it", status: "kept" }]);
-    const retitled = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Hand off", steps: [job, json] }] }]);
-    expect(retitled.items).toMatchObject([{ kind: "group", id: "queue-it", status: "updated", name: "Hand off" }]);
-    expect(onPage().groups).toMatchObject([{ id: "queue-it", title: "Hand off", members: [job, json] }]);
-  });
-
-  it("groups steps into whole statements of one branch, and names the statements it took", async () => {
-    open();
-    const result = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Queue it", steps: [job, json], description: "Hands it to a worker." }] }]);
-    expect(result.items).toEqual([
-      {
-        kind: "group",
-        id: "queue-it",
-        status: "created",
-        card: "create-order",
-        name: "Queue it",
-        lines: [28, 29],
-        statements: [
-          { key: job, kind: "variable", lines: [28, 28] },
-          { key: json, kind: "expression_statement", lines: [29, 29] },
-        ],
-      },
-    ]);
-    expect(result.warnings).toEqual([]);
-    expect(onPage().groups).toEqual([
-      { id: "queue-it", card: "create-order", title: "Queue it", members: [job, json], collapsed: false, author: "agent:claude", description: { text: "Hands it to a worker.", author: "agent:claude", signature: "" } },
-    ]);
-  });
-
-  it("refuses steps that overlap another group", async () => {
-    open();
-    const guard = await edit([{ op: "group_steps", card: "create-order", groups: [{ title: "Guard", steps: [IF] }] }]);
-    expect(guard.items).toMatchObject([{ lines: [27, 31], statements: [{ key: IF, kind: "if" }] }]);
-    const overlapping = await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "Again", steps: [job] }] }]);
-    expect(overlapping.message).toContain("overlap the group \"Guard\"");
-  });
-
-  it("takes step keys that are consecutive in one branch, and refuses ones that aren't", async () => {
-    open();
-    const result = await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "queue", title: "Queue it", steps: [json, job] }] }]);
-    expect(result.items).toMatchObject([{ id: "queue", lines: [28, 29] }]);
-    const gap = await refusal([
-      { op: "group_steps", card: "create-order", groups: [{ title: "Gap", steps: [`${CREATE}/variable:draft`, `${CREATE}/variable:order`] }] },
-    ]);
-    expect(gap.message).toContain("aren't consecutive statements of one branch");
-    expect(gap.message).toContain("The statements there:");
-    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: ["nope"] }] }])).message).toContain("isn't a statement of createOrder");
-    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: [] }] }])).message).toContain("its steps");
-  });
-
-  it("updates a group by id, but not a person's title unless asked", async () => {
-    open({ groups: [{ id: "checks", card: "create-order", title: "Checks", members: [IF], collapsed: false, author: "person:maya" }] });
-    expect((await refusal([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", steps: [IF] }] }])).code).toBe("people_text");
-    const kept = await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Checks", steps: [IF], collapsed: true }] }]);
-    expect(kept.items).toMatchObject([{ id: "checks", status: "updated" }]);
-    expect(onPage().groups[0]).toMatchObject({ title: "Checks", author: "person:maya", collapsed: true });
-    await edit([{ op: "group_steps", card: "create-order", groups: [{ id: "checks", title: "Guard", steps: [IF] }], replacePeopleText: true }]);
-    expect(onPage().groups[0]).toMatchObject({ title: "Guard", author: "agent:claude" });
-  });
-
-  it("refuses a card whose code isn't available", async () => {
-    open();
-    queryClient.setQueryData(engineKey("card", { project: P, key: CREATE }), { ...model(CREATE), code: null });
-    expect(await refusal([{ op: "group_steps", card: "create-order", groups: [{ title: "X", steps: [job, json] }] }])).toMatchObject({ code: "code_unavailable" });
-  });
-});
-
-describe("label_steps", () => {
-  const job = `${IF}/variable:job`;
-
-  it("labels a card's Flow steps as the agent, and keeps a person's label unless asked", async () => {
-    const theirs: LabelEntry = { key: IF, text: "Wants it later?", author: "person:maya", signature: "" };
-    open({ labels: [theirs] });
-    const result = await edit([{ op: "label_steps", card: "create-order", labels: [{ step: job, text: "Queue the order" }] }]);
-    expect(result.items).toEqual([{ kind: "label", status: "created", card: "create-order", step: job, name: "Queue the order" }]);
-    expect(onPage().labels).toEqual([theirs, { key: job, text: "Queue the order", author: "agent:claude", signature: "" }]);
-    expect(readWorking().items).toEqual(["create-order"]);
-    expect((await refusal([{ op: "label_steps", card: "create-order", labels: [{ step: IF, text: "Later?" }] }])).code).toBe("people_text");
-  });
-
-  it("refuses a key that isn't one of the card's Flow steps, and blank text", async () => {
-    open();
-    expect((await refusal([{ op: "label_steps", card: "create-order", labels: [{ step: "src/x.ts#function:x", text: "X" }] }])).message).toContain("isn't a Flow step of createOrder");
-    expect((await refusal([{ op: "label_steps", card: "create-order", labels: [{ step: job, text: "  " }] }])).message).toContain("is blank");
   });
 });
 

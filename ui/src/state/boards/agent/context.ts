@@ -4,11 +4,9 @@
  * and how items are named, sized, and found on the page.
  */
 
-import type { AgentBoardInfo, AgentCardResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
+import type { AgentBoardInfo, AgentCardResult, AgentCombinedResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
-import { lastVerifiedCode } from "../../../canvas/cardData";
-import { cardBody } from "../../../code/typeKinds";
-import type { BoardState, Card, Description, Link, Note, Page, Resource } from "../../../ipc/generated";
+import type { BoardState, Card, CardView, Combined, Connection, Description, Note, Page, Resource, View } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
 import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
 import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
@@ -16,13 +14,12 @@ import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { estimatedCardSize } from "../../../canvas/sizing";
 import { authorName } from "../../../code/text";
-import { entranceTitle } from "../api";
-import { cardKey, findCard, keyDisplayName } from "../document";
+import { cardName as drawnName } from "../../cards";
+import { cardKey, cardView, findCard, findCombined } from "../document";
 import { findFrame } from "../frames";
 import { findNote } from "../notes";
 import { findProposal } from "../proposals";
 import { findResource } from "../resources";
-import { shownView } from "../store";
 import type { BoardRef, CardSize } from "../types";
 import type { AgentData } from "./data";
 
@@ -101,9 +98,9 @@ export function noteName(note: Pick<Note, "text">): string {
   return note.text.length > NOTE_NAME ? `${note.text.slice(0, NOTE_NAME - 1)}…` : note.text;
 }
 
-/** A link itself as someone's words: a drawn link is the person's who drew it, a connection its author's. */
-export function lineWords(link: Pick<Link, "kind" | "author">): Words {
-  return [link.kind === undefined ? "the link a person drew" : `the ${link.kind} connection`, link.author];
+/** A connection itself as someone's words: its author's. */
+export function lineWords(link: Pick<Connection, "kind" | "author">): Words {
+  return [`the ${link.kind} connection`, link.author];
 }
 
 function describedWords(what: string, description: Pick<Description, "author"> | undefined): Words[] {
@@ -112,7 +109,7 @@ function describedWords(what: string, description: Pick<Description, "author"> |
 
 /**
  * The words item `id` of a page carries, each with who wrote it (design §6.1): descriptions, labels,
- * step group and frame titles, and a resource card, connection, drawn link, note, or proposed step itself. An agent
+ * combined step and frame titles, and a resource card, connection, note, or proposed step itself. An agent
  * replaces or removes none a person wrote unless the person asked (`guardPeopleText`).
  */
 export function itemWords(page: Page, id: string, nameCard: (card: Card) => string): Words[] {
@@ -120,10 +117,10 @@ export function itemWords(page: Page, id: string, nameCard: (card: Card) => stri
   if (card) {
     return describedWords(nameCard(card), card.description);
   }
-  const group = page.groups.find((item) => item.id === id);
-  if (group) {
-    const what = `the step group “${group.title}”`;
-    return [[what, group.author], ...describedWords(what, group.description)];
+  const combined = findCombined(page, id);
+  if (combined) {
+    const what = `the combined step “${combined.title}”`;
+    return [[what, combined.author], ...describedWords(what, combined.description)];
   }
   const link = page.links.find((item) => item.id === id);
   if (link) {
@@ -159,13 +156,24 @@ export function guardRemoval(ctx: OpContext, page: Page, ids: Iterable<string>, 
   }
 }
 
-/** Unfold's name for a card: `OrderService.place`, `POST /orders`. */
+/** Unfold's name for a card, from its loaded card (`place_order`, `Place an order`); its key as written while there is none. */
 export function cardName(ctx: OpContext, card: Pick<Card, "ref">): string {
   const model = ctx.data.model(ctx.board.project, cardKey(card));
-  if (model?.type === "block") {
-    return model.header.qualifiedName;
-  }
-  return model?.type === "entrance" ? entranceTitle(model) : keyDisplayName(cardKey(card));
+  return model ? drawnName(model) : cardKey(card);
+}
+
+/** A combined step's result entry. */
+export function combinedResult(combined: Combined, status: AgentItemStatus): AgentCombinedResult {
+  return { kind: "combined", id: combined.id, status, name: combined.title, members: [...combined.members], collapsed: combined.collapsed };
+}
+
+/**
+ * Whether a card shows its type's fields in `view`: a type's card always, a class's when compact (its
+ * class-level code shows expanded).
+ */
+export function showsFields(model: CardView | undefined, view: View): boolean {
+  const kind = model?.type === "definition" ? model.flow.header.kind : undefined;
+  return kind === "type" || (kind === "class" && view === "compact");
 }
 
 /** A card's result entry. */
@@ -178,15 +186,6 @@ export function cardResult(ctx: OpContext, card: Pick<Card, "id" | "ref">, statu
     name: cardName(ctx, card),
     ...extra,
   };
-}
-
-/** A card on the page, or a refusal naming what isn't there. */
-export function cardOf(page: Page, id: string): Card {
-  const card = findCard(page, id);
-  if (!card) {
-    throw invalid(`There is no card with id “${id}” on this page. read_page lists the page's ids.`);
-  }
-  return card;
 }
 
 /**
@@ -203,9 +202,8 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
   const definition = ctx.data.definition(project, key);
   return estimatedCardSize(
     {
-      key,
       model: ctx.data.model(project, key),
-      view: shownView(null, card, page.defaultView),
+      view: cardView(card, page.defaultView),
       ...(card.description ? { description: card.description } : {}),
       ...(definition ? { definition } : {}),
     },
@@ -213,18 +211,16 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
   );
 }
 
-/** The page's arrows between cards (calls, handlers, type arrows), from the loaded models, each card in the view it shows. */
+/** The page's arrows between cards (calls, starts, type arrows), from the loaded models, each card in the view it shows. */
 export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
   return computeArrows(
     page.cards.map((card) => ({
       id: card.id,
       key: cardKey(card),
       project: ctx.board.project,
-      entrance: "entrance" in card.ref,
-      body: cardBody(cardKey(card), shownView(null, card, page.defaultView)),
+      view: cardView(card, page.defaultView),
     })),
     ctx.data.loadedModels(),
-    lastVerifiedCode,
     ctx.data.loadedDefinitions(),
   );
 }

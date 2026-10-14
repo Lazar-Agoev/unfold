@@ -10,7 +10,7 @@ vi.mock("electron", async () => (await import("./fake-electron")).electronModule
 
 const PROJECT = "p-7k2m9q4xab";
 const BOARD = { project: PROJECT, board: ".unfold/boards/orders.json" };
-const SAVED = { bounds: { x: 80, y: 60, width: 1440, height: 900 }, maximized: false, board: BOARD };
+const SAVED = { bounds: { x: 80, y: 60, width: 1440, height: 900 }, maximized: false, board: BOARD, showAllCalls: true };
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe("restore", () => {
-  it("opens the window where it was, maximized if it was, and hands the UI the last board shown", async () => {
+  it("opens the window where it was, maximized if it was, and hands the UI the last board shown and Show all calls", async () => {
     const { engine, workspace, current } = setup();
     engine.answers.set("window_state", () => Promise.resolve({ ...SAVED, maximized: true }));
     await workspace.restore();
@@ -101,6 +101,7 @@ describe("restore", () => {
     current()?.window.emit("ready-to-show");
     expect(current()?.window.maximized).toBe(true);
     expect(workspace.shownBoard()).toEqual(BOARD);
+    expect(workspace.showAllCalls()).toBe(true);
   });
 
   it("moves the window onto a visible screen when its display is gone", async () => {
@@ -122,6 +123,7 @@ describe("restore", () => {
       expect(createdWindows).toHaveLength(1);
       expect(current()?.window.bounds).toEqual({ x: 0, y: 0, width: 1280, height: 820 });
       expect(workspace.shownBoard()).toBeNull();
+      expect(workspace.showAllCalls()).toBe(false);
     }
   });
 
@@ -153,7 +155,7 @@ describe("restore", () => {
 });
 
 describe("saving the window's state", () => {
-  it("saves the bounds and the board shown once they settle, and nothing else", async () => {
+  it("saves the bounds, the board shown, and Show all calls once they settle, and nothing else", async () => {
     vi.useFakeTimers();
     const { engine, workspace, current } = setup();
     await workspace.restore();
@@ -165,12 +167,23 @@ describe("saving the window's state", () => {
     expect(engine.callsOf("save_window_state")).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(100);
-    expect(engine.calls.at(-1)).toEqual([entry?.id, "save_window_state", { state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: false, board: BOARD } }]);
+    expect(engine.calls.at(-1)).toEqual([
+      entry?.id,
+      "save_window_state",
+      { state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: false, board: BOARD, showAllCalls: false } },
+    ]);
 
     workspace.showBoard(null);
     await vi.advanceTimersByTimeAsync(500);
     expect(engine.callsOf("save_window_state").at(-1)).toMatchObject({ state: { board: null } });
     expect(workspace.shownBoard()).toBeNull();
+
+    workspace.setShowAllCalls(true);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(engine.callsOf("save_window_state")).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(engine.callsOf("save_window_state").at(-1)).toMatchObject({ state: { board: null, showAllCalls: true } });
+    expect(workspace.showAllCalls()).toBe(true);
   });
 
   it("saves a change still waiting as the window closes, and detaches it only after that save settled", async () => {
@@ -184,7 +197,9 @@ describe("saving the window's state", () => {
     workspace.showBoard(BOARD);
 
     entry.window.close();
-    expect(engine.callsOf("save_window_state")).toEqual([{ state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: true, board: BOARD } }]);
+    expect(engine.callsOf("save_window_state")).toEqual([
+      { state: { bounds: { x: 0, y: 0, width: 1280, height: 820 }, maximized: true, board: BOARD, showAllCalls: false } },
+    ]);
     await flush();
     expect(detached).toEqual([]);
 

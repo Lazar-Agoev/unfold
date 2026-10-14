@@ -10,20 +10,20 @@ vi.mock("electron", async () => (await import("../../fake-electron")).electronMo
 
 const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
 const BOARD_INFO = { title: "Orders", revision: "r1", unsaved: false } as const;
-const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
+const PLACE = "src/services/order-service.ts#OrderService.place";
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
-  defaultView: "diagram",
+  defaultView: "compact",
   cards: [{ id: "place", ref: { block: PLACE }, at: [0, 0], description: { text: "Places it.", author: "person:lazar", signature: "s" } }],
-  groups: [],
-  labels: [],
+  names: [],
+  combined: [],
   guards: [],
   links: [],
   frames: [{ id: "shared", title: "Shared", members: ["place"], look: "box", author: "agent:claude", description: { text: "Code both services call.", author: "agent:claude", signature: "s" } }],
 };
 
-const MISSING: HealthItem = { page: "page-1", kind: "missing", target: { card: "place" }, message: `${PLACE} is not in the graph.`, repairs: ["reconnect", "removeCard"] };
+const MISSING: HealthItem = { page: "page-1", kind: "missing", target: { card: "place" }, message: `${PLACE} is not in the graph.`, repairs: ["reconnect", "remove"] };
 const OUTDATED_CARD: HealthItem = { page: "page-1", kind: "outdated", target: { card: "place" }, message: "The code changed since it was described.", repairs: ["resign", "removeDescription"] };
 const OUTDATED_FRAME: HealthItem = { page: "page-1", kind: "outdated", target: { frame: "shared" }, message: "A member's code changed.", repairs: ["resign", "removeDescription"] };
 
@@ -58,7 +58,7 @@ describe("check", () => {
       `Ids: board ${BOARD.id}, page page-1.`,
       "Health (3):",
       `- missing: the card OrderService.place (item place): ${PLACE} is not in the graph.`,
-      `  Fix: repair({board: "${BOARD.id}", page: "page-1", item: "place", repair: "reconnect", to: <the new key>}) · repair({board: "${BOARD.id}", page: "page-1", item: "place", repair: "remove_card"})`,
+      `  Fix: repair({board: "${BOARD.id}", page: "page-1", item: "place", repair: "reconnect", to: <the new key>}) · repair({board: "${BOARD.id}", page: "page-1", item: "place", repair: "remove"})`,
       "- outdated: the card OrderService.place (item place): The code changed since it was described.",
       `  Fix: resign is Lazar (a person)'s to do: they wrote the description of OrderService.place · repair({board: "${BOARD.id}", page: "page-1", item: "place", repair: "remove_description"})`,
       "- outdated: the frame “Shared” (item shared): A member's code changed.",
@@ -88,7 +88,7 @@ describe("check", () => {
       "Nothing to fix.",
     ]);
     expect(lines[4]).toBe(`Page “Async path” (page id page-2, rev ${pageRevision({ ...PAGE, id: "page-2" })}):`);
-    expect(lines).toContain(`  Fix: repair({board: "${BOARD.id}", page: "page-2", item: "place", repair: "reconnect", to: <the new key>}) · repair({board: "${BOARD.id}", page: "page-2", item: "place", repair: "remove_card"})`);
+    expect(lines).toContain(`  Fix: repair({board: "${BOARD.id}", page: "page-2", item: "place", repair: "reconnect", to: <the new key>}) · repair({board: "${BOARD.id}", page: "page-2", item: "place", repair: "remove"})`);
 
     // A link with a page checks that page only.
     const linked = harness({ window, renderer: { check: () => Promise.resolve({ ok: true, title: "Orders", page: "page-1", pageTitle: "Placing an order", health: [], checks: [] }) } });

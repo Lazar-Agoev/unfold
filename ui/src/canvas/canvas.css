@@ -1,11 +1,8 @@
-/* The page's canvas: the stage ground, arrows, drawn links and their labels. */
+/* The page's canvas: the stage ground and the arrows between cards (connections: connections.css). */
 
 .board-canvas {
   --xy-background-color: var(--color-canvas);
 }
-
-.board-canvas.linking .react-flow__pane,
-.board-canvas.linking .board-card { cursor: crosshair; }
 
 /* Nodes size themselves; React Flow's default node chrome is not used. */
 .board-canvas .react-flow__node-card {
@@ -16,10 +13,10 @@
   cursor: default;
 }
 
-/* Arrows: opened calls in the arrow color, an entrance to its handler in the gray contour. */
+/* Arrows: calls in the arrow color, an app or entrance to its code in the gray contour. */
 .board-canvas .react-flow__edge.board-arrow-edge { pointer-events: none; }
 .board-arrow { color: var(--color-arrow); }
-.board-arrow.handler { color: var(--color-contour); }
+.board-arrow.start { color: var(--color-contour); }
 
 .board-arrow-line {
   fill: none;
@@ -43,63 +40,5 @@
 .board-arrow-hit:focus { outline: none; }
 .board-arrow-hit:focus-visible { stroke: var(--color-focus-ring); stroke-opacity: 0.35; }
 
-/* Link labels sit over the cards. */
+/* Connections' chips sit over the cards. */
 .board-canvas .react-flow__edgelabel-renderer { z-index: 1; }
-
-/* Drawn links: dashed; the selected one in the accent at 1.75px. */
-.board-link { color: var(--color-contour); cursor: pointer; }
-.board-link.selected { color: var(--color-accent); }
-
-.board-link-line {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-}
-
-.board-link.selected .board-link-line { stroke-width: 1.75; }
-
-.board-link-hit {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 16;
-}
-
-/* While an agent that changed it is working: a soft authored band under the line. */
-.board-link.working .board-link-hit { stroke: var(--color-authored-tint); stroke-width: 10; }
-
-.board-link-head { fill: currentColor; }
-
-.board-link-start {
-  fill: var(--color-surface);
-  stroke: currentColor;
-  stroke-width: 1.5;
-}
-
-.board-link-label {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  font-size: var(--text-12);
-  line-height: var(--leading-16);
-  white-space: nowrap;
-  pointer-events: all;
-}
-
-.board-link-text { font-weight: 500; color: var(--color-text); }
-.board-link-author { color: var(--color-muted); }
-
-.board-link-label.selected {
-  border-color: var(--color-accent);
-  background: var(--color-selection);
-  box-shadow: var(--shadow-ring);
-}
-
-.board-link-label.selected .board-link-text,
-.board-link-label.selected .board-link-author { color: var(--color-accent-text); }

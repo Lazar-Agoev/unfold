@@ -8,7 +8,6 @@ import { engineKey } from "../../../ipc/queries";
 import { fixture, installFakeEngine, type FakeEngine } from "../../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../../test/workspace";
 import { useShownBoardStore } from "../../shownBoard";
-import { keyDisplayName } from "../document";
 import * as store from "../store";
 import { applyAgentEdit } from "./edit";
 import { resetWorking, useWorkingItems } from "./working";
@@ -17,10 +16,13 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
-const CREATE = "src/routes/orders.ts#function:createOrder";
-const PROCESS = "src/workers/orders.ts#function:processOrder";
-const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
-const SLACK = "src/lib/slack.ts#variable:slack/method:post";
+// Keys as the goldens write them; nothing here takes them apart.
+const CREATE = "src/routes/orders.ts#createOrder";
+const PROCESS = "src/workers/orders.ts#processOrder";
+const PLACE = "src/services/order-service.ts#OrderService.place";
+const SLACK = "src/lib/slack.ts#slack.post";
+/** What each card's drawn flow calls its definition. */
+const NAMES: Readonly<Record<string, string>> = { [PROCESS]: "processOrder", [PLACE]: "OrderService.place", [SLACK]: "slack.post" };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
 const cards: Card[] = [
@@ -35,21 +37,21 @@ let engine: FakeEngine;
 
 /** "frame server updated": an item of a result, in words. */
 function said(item: AgentItemResult, status = true): string {
-  return [item.kind, "id" in item ? item.id : item.step, ...(status ? [item.status] : [])].join(" ");
+  return [item.kind, item.id, ...(status ? [item.status] : [])].join(" ");
 }
 let saves: number;
 
-/** createOrder's golden card (it calls OrderService.place and slack.post), or a copy named for another key. */
+/** createOrder's golden card (it calls OrderService.place and slack.post), or a copy for another definition, named by its label. */
 function model(key: string): CardView {
   const card = fixture("card", "card_create_order");
-  if (key === CREATE || card.type !== "block") {
+  if (key === CREATE || card.type !== "definition") {
     return card;
   }
-  return { ...card, header: { ...card.header, key, name: keyDisplayName(key), qualifiedName: keyDisplayName(key) } };
+  return { ...card, flow: { ...card.flow, header: { ...card.flow.header, key, label: NAMES[key] ?? key } } };
 }
 
 function noCalls(key: string): Relations {
-  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: { onBoard: [], openable: [], externalOrUnresolved: [] }, targetNames: {}, reachedFrom: [] };
+  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: [], reachedFrom: [] };
 }
 
 function open(overrides: Partial<Page> = {}, onPage: Card[] = cards): void {
@@ -201,14 +203,14 @@ describe("frame_cards", () => {
   });
 
   it("refuses what breaks the frames' rules, saying why and what to do", async () => {
-    open({ frames: [frame("a", ["b"]), frame("b", ["c"]), frame("c", ["create-order"]), frame("other", ["place"])], groups: [{ id: "checks", card: "create-order", title: "Checks", members: [], collapsed: false }] });
+    open({ frames: [frame("a", ["b"]), frame("b", ["c"]), frame("c", ["create-order"]), frame("other", ["place"])], combined: [{ id: "checks", title: "Checks", members: [`${CREATE}/if[0]`], collapsed: false, author: "agent:claude", signature: "" }] });
     const deep = await refusal([{ op: "frame_cards", frames: [{ title: "Too deep", members: ["slack"], parent: "c" }] }]);
     expect(deep).toMatchObject({ code: "invalid_op" });
     expect(deep.message).toContain("“Too deep” would be 4 frames deep, and frames nest at most 3 deep");
     const taken = await refusal([{ op: "frame_cards", frames: [{ title: "Mine", members: ["place"] }] }]);
     expect(taken.message).toContain("OrderService.place (id place) is already in the frame “other” (id other)");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: ["nope"] }] }])).message).toContain("There is no item with id “nope”");
-    expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: ["checks"] }] }])).message).toContain("is a step group");
+    expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: ["checks"] }] }])).message).toContain("is a combined step");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: ["slack"], parent: "nope" }] }])).message).toContain("There is no frame with id “nope”");
     expect((await refusal([{ op: "frame_cards", frames: [{ id: "c", title: "c", members: ["a"] }] }])).message).toContain("frames can't hold each other in a cycle");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: " ", members: ["slack"] }] }])).message).toContain("needs a title");
@@ -235,8 +237,8 @@ describe("frame_cards", () => {
     expect(refused).toMatchObject({ code: "people_text" });
     expect(refused.message).toContain("Can't change the frame “mine”: Maya wrote it.");
     // A frame of the agent's that it leaves empty goes, unless a person's line goes with it.
-    open({ frames: [frame("zone", ["server"], { look: "zone" }), frame("server", ["create-order"])], links: [{ id: "to-zone", from: "slack", to: "zone" }] });
-    expect((await refusal([out])).message).toContain("the link a person drew");
+    open({ frames: [frame("zone", ["server"], { look: "zone" }), frame("server", ["create-order"])], links: [{ id: "to-zone", from: "slack", to: "zone", kind: "other", label: { text: "talks to", author: "person:maya", signature: "" }, author: "person:maya" }] });
+    expect((await refusal([out])).message).toContain("the label “talks to”: Maya wrote it");
     const moved = await edit([{ ...out, replacePeopleText: true }]);
     expect(moved.items.map((item) => said(item))).toEqual(["frame server updated", "frame zone removed"]);
     expect(current()).toMatchObject({ frames: [frame("server", ["create-order"])], links: [] });
@@ -251,7 +253,7 @@ describe("frames in the other operations", () => {
     expect(current().frames?.[0]?.collapsed).toBe(true);
     await edit([{ op: "set_view", items: [{ id: "server", collapsed: false }] }]);
     expect(current().frames?.[0]).not.toHaveProperty("collapsed");
-    expect((await refusal([{ op: "set_view", items: [{ id: "server", view: "flow" }] }])).message).toContain("is a frame");
+    expect((await refusal([{ op: "set_view", items: [{ id: "server", view: "expanded" }] }])).message).toContain("is a frame");
   });
 
   it("describe writes a frame's description", async () => {
@@ -285,10 +287,10 @@ describe("frames in the other operations", () => {
 
   it("add_cards puts the cards it adds into a frame, beside what the frame holds", async () => {
     open({ frames: [frame("server", ["create-order"])] }, cards.slice(0, 1));
-    const result = await edit([{ op: "add_cards", cards: [{ key: PLACE, frame: "server" }] }]);
+    const result = await edit([{ op: "add_cards", cards: [{ ref: { block: PLACE }, frame: "server" }] }]);
     expect(result.items).toMatchObject([{ kind: "card", id: "order-service-place", status: "created", frame: "server" }]);
     expect(current().frames?.[0]?.members).toEqual(["create-order", "order-service-place"]);
-    expect((await refusal([{ op: "add_cards", cards: [{ key: SLACK, frame: "nope" }] }])).message).toContain("There is no frame with id “nope”");
+    expect((await refusal([{ op: "add_cards", cards: [{ ref: { block: SLACK }, frame: "nope" }] }])).message).toContain("There is no frame with id “nope”");
   });
 
   it("add_resources puts a resource card in a frame from no frame or the frame around it, never out of another frame", async () => {
@@ -313,7 +315,7 @@ describe("frames in the other operations", () => {
         },
         cards.slice(0, 1),
       );
-      const result = await edit([{ op: "add_cards", cards: [{ key: PROCESS, near }] }]);
+      const result = await edit([{ op: "add_cards", cards: [{ ref: { block: PROCESS }, near }] }]);
       return result.items[0]?.kind === "card" ? result.items[0].at : undefined;
     };
     const [x, y] = (await at("orders")) ?? [];

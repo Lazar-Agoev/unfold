@@ -1,7 +1,4 @@
-/*
- * The board view: the top bar over the stage. Floating chrome centers on the canvas a sheet leaves
- * uncovered: `--covered-right` is its width.
- */
+/* The board view: the top bar over the stage. */
 
 .board-view {
   position: relative;
@@ -21,7 +18,7 @@
   align-items: center;
   gap: 8px;
   height: var(--topbar);
-  padding: 0 12px 0 20px;
+  padding: 0 16px 0 20px;
   border-bottom: 1px solid var(--color-border-shell);
   background: var(--color-chrome);
   /* It moves the window; its controls don't. */
@@ -32,17 +29,13 @@
   -webkit-app-region: no-drag;
 }
 
-/* The title; on a narrow canvas it shortens to the room the lens leaves (TopBar). */
+/* The title, which shortens to the room the switch leaves. */
 .board-topbar-left {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 8px;
   min-width: 0;
-}
-
-.board-topbar-left.narrow {
-  max-width: var(--topbar-left-room);
-  overflow: hidden;
 }
 
 .board-topbar-title {
@@ -58,16 +51,15 @@
 /* "Claude is working…" while an agent works on the page. */
 .board-working {
   display: flex;
-  flex-shrink: 0;
+  flex-shrink: 10;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   font-size: var(--text-12);
   line-height: var(--leading-16);
   color: var(--color-muted);
   white-space: nowrap;
 }
-
-.board-topbar-left.narrow .board-working { flex-shrink: 10; min-width: 0; }
 
 .board-working-text {
   min-width: 0;
@@ -75,12 +67,9 @@
   text-overflow: ellipsis;
 }
 
-.board-topbar .board-lens {
-  position: absolute;
-  display: flex;
-  top: 9px;
-  left: calc((100% - var(--covered-right, 0px)) / 2);
-  translate: -50%;
+.board-show-all-calls {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Stage: the canvas, with the notices at its top and the dock at its bottom. */
@@ -94,58 +83,41 @@
 .board-notices {
   position: absolute;
   top: 12px;
-  left: calc((100% - var(--covered-right, 0px)) / 2);
+  left: 50%;
   z-index: 6;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   width: max-content;
-  max-width: calc(100% - var(--covered-right, 0px) - 32px);
+  max-width: calc(100% - 32px);
   translate: -50%;
   pointer-events: none;
 }
 
-.board-banner,
-.board-hint {
+.board-banner {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   max-width: 100%;
+  padding: 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
   box-shadow: var(--shadow-float);
   font-size: var(--text-12);
   line-height: var(--leading-16);
-  pointer-events: auto;
-}
-
-.board-banner {
-  gap: 6px;
-  padding: 6px 12px;
   color: var(--color-text);
+  pointer-events: auto;
 }
 
 .board-banner > .icon { flex-shrink: 0; color: var(--color-muted); }
 .board-banner-text { min-width: 0; }
 
-.board-hint {
-  padding: 6px 12px;
-  color: var(--color-muted);
-}
-
-.board-hint kbd {
-  padding: 0 4px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-chip);
-  font: 500 11px/14px var(--font-ui);
-}
-
 .board-empty {
   position: absolute;
   top: 45%;
-  left: calc((100% - var(--covered-right, 0px)) / 2);
+  left: 50%;
   translate: -50% -50%;
   font-size: var(--text-13);
   line-height: var(--leading-20);
@@ -154,10 +126,10 @@
   pointer-events: none;
 }
 
-/* Dock: centered in a lane over the uncovered canvas, whose width decides which parts it shows. */
+/* Dock: centered in a lane over the canvas, whose width decides which parts it shows. */
 .board-dock-lane {
   position: absolute;
-  right: var(--covered-right, 0px);
+  right: 0;
   bottom: 24px;
   left: 0;
   z-index: 5;
@@ -211,11 +183,3 @@
   text-align: center;
 }
 
-/* Combine…: the run, as chosen on the canvas (read-only), and its title. */
-.combine-form { display: flex; flex-direction: column; gap: 12px; }
-
-.combine-form-steps .text-field-input {
-  background: var(--color-step);
-  font-family: var(--font-code);
-  color: var(--color-muted);
-}

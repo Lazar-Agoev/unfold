@@ -1,7 +1,7 @@
 /**
  * A connection (design §4.7): a line in the authored color, in its kind's pattern (solid for HTTP,
- * RPC, reads and writes; long dashes for a queue; dots for an event; short dashes for a runtime call;
- * thin with crow's-foot ends for a relationship; dashed for other), with a filled head where the data
+ * reads and writes; long dashes for a queue; short dashes for a runtime call; thin with crow's-foot
+ * ends for a relationship; dashed for other), with a filled head where the data
  * goes (into the table for `writes`, back into the code for `reads`), and a chip that says its kind and
  * what travels, with the agent mark when an agent drew it and a review dot while something about it
  * needs review. The chip joins the page's label layout, so it never covers a card, a link's label, or
@@ -15,26 +15,25 @@ import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xy
 import { memo, useLayoutEffect, useMemo } from "react";
 import { AgentMark } from "../../agent";
 import { useContextMenu } from "../../components";
-import type { Cardinality, LinkKind } from "../../ipc/generated";
+import type { Cardinality, ConnectionKind } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { select, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
-import { LINK_LABEL_FIELD } from "../cards/select";
 import { CHIP_CODE_FONT, CHIP_TEXT_FONT, CHIP_WORD_FONT, useMeasure } from "../measure";
 import { useLabelLayout, useLabelPlacement } from "../lines/labelLayout";
 import { bezierCurve, type Curve } from "../lines/placeLabels";
 import type { Measure } from "../../flow/layout";
 import type { ChipPart } from "./chip";
 import { INTO, arrowHead, cardinalityMark, manyEnds } from "./ends";
-import { linkMenuEntries } from "./linkMenu";
+import { LINK_LABEL_FIELD, linkMenuEntries } from "./linkMenu";
 import "./connections.css";
 
 /** What a connection's edge draws (`BoardCanvas` computes it from the page). */
 export interface ConnectionData extends Record<string, unknown> {
   readonly target: PageTarget;
-  /** The connection's link; absent for one that stands for several at a collapsed frame (it selects nothing). */
+  /** The connection; absent for one that stands for several at a collapsed frame (it selects nothing). */
   readonly linkId?: string;
-  readonly kind: LinkKind;
+  readonly kind: ConnectionKind;
   /** Its chip's forms, longest first, and its whole text (its accessible name). */
   readonly forms: readonly (readonly ChipPart[])[];
   readonly full: string;

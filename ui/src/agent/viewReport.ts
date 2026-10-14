@@ -1,37 +1,36 @@
 /**
  * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
- * the view of the window used last by default: the shown board and page, the selection, the lens
- * (Diagram or Code), the items in view, and the boards whose sessions the window holds (`held`). Sent
- * ~150 ms after any of them changes, and at once when the window gains focus.
+ * the view of the window used last by default: the shown board and page, the selection, the items in
+ * view, and the boards whose sessions the window holds (`held`). Sent ~150 ms after any of them
+ * changes, and at once when the window gains focus.
  */
 
 import type { ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
 import type { Rect, Size } from "../canvas/layout";
-import { windowCommand, type Page } from "../ipc";
-import { displayedRects, findPage, getOpenBoard, getPageView, pageLens, useBoards, type Camera, type Selection } from "../state/boards";
+import { queryClient } from "../ipc/client";
+import { windowCommand, type CardView, type Page } from "../ipc";
+import { displayedRects, findPage, getOpenBoard, getPageView, useBoards, type Camera, type PageTarget, type Selection } from "../state/boards";
+import { cardArgsOf, cardQuery, overlayIds } from "../state/cards";
 import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
 
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-/**
- * The selection as agents read it: a card selected at its own block (a click on its header) is the
- * card; a step shown in a call expanded in place carries the block that owns it.
- */
+/** The selection as agents read it: a card selected at its own block (a click on its header) is the card. */
 function viewSelection(page: Page, selection: Selection): ViewSelection {
   switch (selection.kind) {
     case "none":
       return { kind: "none" };
     case "card": {
       const ref = page.cards.find((card) => card.id === selection.cardId)?.ref;
-      const own = ref !== undefined && "block" in ref && ref.block === selection.key && selection.owner === undefined;
+      const own = ref !== undefined && "block" in ref && ref.block === selection.key;
       if (selection.key === null || own) {
         return { kind: "card", id: selection.cardId };
       }
-      return { kind: "step", card: selection.cardId, key: selection.key, ...(selection.owner !== undefined ? { owner: selection.owner } : {}) };
+      return { kind: "step", card: selection.cardId, key: selection.key };
     }
-    case "group":
-      return { kind: "group", id: selection.groupId };
+    case "combined":
+      return { kind: "combined", id: selection.combinedId };
     case "link":
       return { kind: "link", id: selection.linkId };
     case "frame":
@@ -41,9 +40,9 @@ function viewSelection(page: Page, selection: Selection): ViewSelection {
     case "note":
       return { kind: "note", id: selection.noteId };
     case "line":
-      return { kind: "line", from: selection.from, to: selection.to, source: selection.source, seq: selection.seq, line: selection.line };
+      return { kind: "arrow", from: selection.from, to: selection.to, calls: [selection.call] };
     case "calls":
-      return { kind: "calls", from: selection.from, to: selection.to, calls: selection.calls };
+      return { kind: "arrow", from: selection.from, to: selection.to, calls: selection.calls };
     case "proposal":
       return { kind: "proposal", id: selection.proposalId };
   }
@@ -54,11 +53,18 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 /**
- * The ids of a page's cards, step groups and proposed steps (their card in view), links (an end in
- * view), frames, resource cards, and notes that the canvas shows through `camera` at `size` (`rects` holds what is
- * drawn: a card inside a collapsed frame isn't); all of them before the canvas has a camera or a size.
+ * The ids of a page's cards, combined and proposed steps (a card in view draws them, as `drawn` says),
+ * connections (an end in view), frames, resource cards, and notes that the canvas shows through
+ * `camera` at `size` (`rects` holds what is drawn: a card inside a collapsed frame isn't); all of them
+ * before the canvas has a camera or a size.
  */
-export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camera: Camera | null, size: Size | null): string[] {
+export function visibleItems(
+  page: Page,
+  rects: ReadonlyMap<string, Rect>,
+  camera: Camera | null,
+  size: Size | null,
+  drawn: (cardId: string) => CardView | undefined,
+): string[] {
   const area = camera && size ? { x: -camera.x / camera.zoom, y: -camera.y / camera.zoom, width: size.width / camera.zoom, height: size.height / camera.zoom } : null;
   const shown = (id: string) => {
     const rect = rects.get(id);
@@ -68,15 +74,25 @@ export function visibleItems(page: Page, rects: ReadonlyMap<string, Rect>, camer
   const frames = (page.frames ?? []).flatMap((frame) => (shown(frame.id) ? [frame.id] : []));
   const resources = (page.resources ?? []).flatMap((resource) => (shown(resource.id) ? [resource.id] : []));
   const ends = new Set([...cards, ...frames, ...resources]);
+  const overlay = new Set([...cards].flatMap((card) => {
+    const view = drawn(card);
+    return view ? overlayIds(view) : [];
+  }));
   return [
     ...cards,
-    ...page.groups.flatMap((group) => (cards.has(group.card) ? [group.id] : [])),
-    ...(page.proposals ?? []).flatMap((proposal) => (cards.has(proposal.card) ? [proposal.id] : [])),
+    ...page.combined.flatMap((combined) => (overlay.has(combined.id) ? [combined.id] : [])),
+    ...(page.proposals ?? []).flatMap((proposal) => (overlay.has(proposal.id) ? [proposal.id] : [])),
     ...page.links.flatMap((link) => (ends.has(link.from) || ends.has(link.to) ? [link.id] : [])),
     ...frames,
     ...resources,
     ...(page.notes ?? []).flatMap((note) => (shown(note.id) ? [note.id] : [])),
   ];
+}
+
+/** A card of a page as the window's cache holds it now. */
+function loadedCard(target: PageTarget, cardId: string): CardView | undefined {
+  const args = cardArgsOf(target, cardId);
+  return args ? queryClient.getQueryData<CardView>(cardQuery(args).queryKey) : undefined;
 }
 
 /** The window's view now; `canvas` is the canvas's size on screen (null when none is shown). */
@@ -88,13 +104,13 @@ export function currentView(canvas: Size | null): ViewReport {
   if (!ref || !board || !page) {
     return { selection: { kind: "none" }, visible: [], held };
   }
-  const view = getPageView({ board: ref, page: page.id });
+  const target: PageTarget = { board: ref, page: page.id };
+  const view = getPageView(target);
   return {
     board: { project: ref.project, id: ref.id },
     page: page.id,
     selection: viewSelection(page, view.selection),
-    lens: pageLens(view.lens, page.defaultView),
-    visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas),
+    visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas, (cardId) => loadedCard(target, cardId)),
     held,
   };
 }

@@ -5,10 +5,9 @@
  */
 
 export const INSTRUCTIONS = `Unfold compiles TypeScript and Python repos into a graph of entrances, functions,
-types, and calls, shown on boards: pages of cards in Diagram (each compact or
-expanded to its written flow) or the Code lens. These tools build pages that explain
-code: expand calls in place, combine steps, frame cards, add tables and queues, and
-draw typed connections. You place compiled code; you never write code or change
+types, and calls, shown on boards: pages of cards, each compact or expanded to its
+drawn flow. These tools build pages that explain code: expand cards, frame cards,
+add tables and queues, and draw typed connections. You place compiled code; you never write code or change
 what the compiler proved.
 Call get_guide({topic: "start"}) before any other Unfold tool.
 

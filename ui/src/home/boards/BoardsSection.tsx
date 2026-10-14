@@ -89,7 +89,7 @@ export function BoardsSection({ project }: { readonly project: ProjectId }) {
       {list.data?.boards.length === 0 ? (
         <EmptyState
           title="No boards yet"
-          body="A board is where you follow the code: trace an entrance above, or start an empty one."
+          body="A board is where you follow the code: start one, then add what you want to read."
           action={
             <Button variant="secondary" icon="plus" onClick={() => void newBoardIn(project)}>
               New board

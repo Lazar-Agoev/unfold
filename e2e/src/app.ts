@@ -1,7 +1,7 @@
 /**
  * Launching the built, unpackaged app with a sandbox's user data and home, and driving what only
- * the main process can do: stubbing dialogs, the application menu, the clipboard, finding and killing
- * the engine host, memory, quitting.
+ * the main process can do: stubbing the folder picker, the application menu, finding and killing the
+ * engine host, quitting.
  */
 
 import type { ElectronApplication, Page } from "@playwright/test";
@@ -86,41 +86,6 @@ export class UnfoldApp {
     }, folder);
   }
 
-  /** The save dialog answers `file` from now on. */
-  async stubSaveDialog(file: string): Promise<void> {
-    await this.electron.evaluate(({ dialog }, chosen) => {
-      dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: chosen });
-    }, file);
-  }
-
-  /**
-   * Message boxes (Remove from workspace's confirmation) answer with button `response` from now on,
-   * and record the messages they showed (`messageBoxes`).
-   */
-  async stubMessageBox(response: number): Promise<void> {
-    await this.electron.evaluate(({ dialog }, answer) => {
-      const store = globalThis as unknown as { __messageBoxes?: string[] };
-      const shown: string[] = [];
-      store.__messageBoxes = shown;
-      const stub = (...args: unknown[]): Promise<Electron.MessageBoxReturnValue> => {
-        const options = args.at(-1) as Electron.MessageBoxOptions;
-        shown.push(options.message);
-        return Promise.resolve({ response: answer, checkboxChecked: false });
-      };
-      dialog.showMessageBox = stub;
-    }, response);
-  }
-
-  /** The messages the stubbed message boxes showed, oldest first. */
-  async messageBoxes(): Promise<string[]> {
-    return this.electron.evaluate(() => (globalThis as unknown as { __messageBoxes?: string[] }).__messageBoxes ?? []);
-  }
-
-  /** What the clipboard holds (the main process writes it for the windows). */
-  async clipboardText(): Promise<string> {
-    return this.electron.evaluate(({ clipboard }) => clipboard.readText());
-  }
-
   /**
    * Clicks an item of the application menu (`["Edit", "Undo"]`) for the window of `page`, as choosing
    * it with the mouse does: Electron passes that window to the item. Key presses never reach the
@@ -162,13 +127,6 @@ export class UnfoldApp {
     }
     process.kill(pid, "SIGKILL");
     return pid;
-  }
-
-  /** Every Unfold process with its working set in KB (main, renderers, GPU, utilities). */
-  async processMemory(): Promise<{ readonly type: string; readonly name: string; readonly pid: number; readonly kb: number }[]> {
-    return this.electron.evaluate(({ app }) =>
-      app.getAppMetrics().map((metric) => ({ type: metric.type, name: metric.name ?? metric.serviceName ?? "", pid: metric.pid, kb: metric.memory.workingSetSize })),
-    );
   }
 
   /** Quits like the person would (Unfold > Quit): the window is restored from this on relaunch. */

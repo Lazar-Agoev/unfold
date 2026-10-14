@@ -1,7 +1,10 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import cardCreateOrder from "../../../../testdata/workspace/commands/card_create_order.json";
-import fileViewPage from "../../../../testdata/workspace/commands/file_view_orders_page.json";
+import codeTextCreateOrder from "../../../../testdata/workspace/commands/code_text_create_order.json";
+import codeViewCreateOrder from "../../../../testdata/workspace/commands/code_view_create_order.json";
+import entrances from "../../../../testdata/workspace/commands/entrances.json";
+import flowTextCreateOrder from "../../../../testdata/workspace/commands/flow_text_create_order.json";
 import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
 import searchPlace from "../../../../testdata/workspace/commands/search_place.json";
 import type { AgentPage, AgentShellEvent, ViewReport } from "../../shared/agent-api";
@@ -23,10 +26,10 @@ const BOARD = { project: PROJECT, id: ".unfold/boards/orders.json" };
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
-  defaultView: "flow",
-  cards: [{ id: "create-order", ref: { block: "src/orders.ts#function:createOrder" }, at: [0, 0] }],
-  groups: [{ id: "checks", card: "create-order", title: "Check the request", members: [], collapsed: false }],
-  labels: [],
+  defaultView: "expanded",
+  cards: [{ id: "create-order", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }],
+  names: [],
+  combined: [{ id: "checks", title: "Check the request", members: ["src/routes/orders.ts#createOrder/if[0]"], collapsed: false, author: "agent:claude", signature: "s" }],
   guards: [],
   links: [],
 };
@@ -55,7 +58,7 @@ const SUMMARY: ProjectSummary = {
   updatedAtMs: 0,
   files: 12,
   languages: ["typescript"],
-  health: { doesntParse: 0, boardsNeedingReview: 0, boards: [] },
+  health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0 },
 };
 
 const BOARDS: BoardList = {
@@ -77,7 +80,7 @@ const BOARDS: BoardList = {
   ],
 };
 
-const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
+const CREATE_ORDER = "src/routes/orders.ts#createOrder";
 
 /** The board as its file holds it. */
 const FILE: ReadBoardResult = {
@@ -91,11 +94,11 @@ const FILE: ReadBoardResult = {
 /** The board's health: the card is missing. */
 const HEALTH: BoardHealthView = {
   health: {
-    items: [{ page: "page-1", kind: "missing", target: { card: "create-order" }, message: "src/orders.ts#function:createOrder is not in the graph.", repairs: ["reconnect", "removeCard"] }],
+    items: [{ page: "page-1", kind: "missing", target: { card: "create-order" }, message: "src/routes/orders.ts#createOrder is not in the graph.", repairs: ["reconnect", "remove"] }],
     missing: 1,
     outdated: 0,
-    brokenGroups: 0,
     review: 0,
+    brokenCombined: 0,
     brokenLinks: 0,
   },
   label: "1 missing",
@@ -128,13 +131,11 @@ const SIGNATURES = [
   "set_view",
   "arrange_page",
   "remove_items",
-  "group_steps",
   "frame_cards",
   "add_resources",
   "connect",
   "add_notes",
   "describe",
-  "label_steps",
   "propose",
   "repair",
   "finish_work",
@@ -155,36 +156,32 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
   project_config: () => ({
     exists: true,
     text: "",
-    settings: { languages: null, include: [], exclude: ["dist/**"], disabledDetectors: [], pythonProjects: [], entrances: [], evidence: ["docs/queues.md"] },
+    settings: { languages: null, include: [], exclude: ["dist/**"], pythonProjects: [], evidence: ["docs/queues.md"], apps: [] },
     error: null,
   }),
-  entrances: () => ({
-    view: "overview",
-    project: PROJECT,
-    counts: { applications: 1, launches: 0, routes: 2, entrances: 3 },
-    categories: [{ category: "services", applications: [{ id: "src/server.ts#", name: "server", description: null, origin: "inferred", entrances: 3, routes: 2, alsoIn: [], launches: [] }] }],
-    unreached: 0,
+  entrances: () => entrances,
+  compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, entrancesChanged: true, complete: true, problems: 0, durationMs: 900 }),
+  update_project_config: () => ({
+    config: { exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null },
+    diff: '--- a/unfold.toml\n+++ b/unfold.toml\n@@ -0,0 +1,2 @@\n+[scope]\n+exclude = ["scripts"]\n',
   }),
-  compile: () => ({ files: 12, changedFiles: 12, removedFiles: 0, changedEntrances: 3, complete: true, problems: 0, durationMs: 900 }),
-  update_project_config: () => ({ exists: true, text: '[scope]\nexclude = ["scripts"]\n', settings: null, error: null }),
-  peek: () => ({ key: "entrance:x" }),
   search: () => searchPlace,
-  file_view: () => fileViewPage,
+  code_view: () => codeViewCreateOrder,
   card: () => cardCreateOrder,
+  code_text: () => codeTextCreateOrder,
+  flow_text: () => flowTextCreateOrder,
   relations: () => relationsCreateOrder,
   board_refs: () => ({ refs: [], truncated: false }),
   read_board: () => FILE,
   board_health: () => HEALTH,
   call_contract: () => ({
-    source: `${CREATE_ORDER}/variable:order/call[0]`,
-    seq: 0,
-    target: "src/services/order-service.ts#class:OrderService/method:place",
-    callerLine: 32,
+    call: `${CREATE_ORDER}/call:orderService.place`,
+    line: 32,
+    text: "orderService.place",
+    callee: { outcome: "project", key: "src/services/order-service.ts#OrderService.place" },
     sends: [],
-    returns: { binding: "variable", text: "order", awaited: true },
-    throws: [],
-    caught: false,
-    calleeLines: [],
+    returns: { awaited: true, lands: { kind: "binds", target: "order" } },
+    raises: [],
   }),
 };
 
@@ -331,17 +328,16 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain("# Diagrams: pages that read well");
 
     expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("No Unfold window has reported");
-    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, lens: "diagram", visible: ["create-order", "checks"], held: [BOARD] };
+    const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, visible: ["create-order", "checks"], held: [BOARD] };
     views.report(1, report);
     const view = text(await client.callTool({ name: "get_current_view", arguments: {} })).split("\n");
     expect(view).toEqual([
       `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1.`,
-      "Lens: Diagram.",
-      "Selected: card create-order: src/orders.ts#function:createOrder (expanded).",
+      `Selected: card create-order: ${CREATE_ORDER} (expanded).`,
       "The page has 1 cards. In view: 2 items:",
-      "- card create-order: src/orders.ts#function:createOrder (expanded)",
-      '- step group checks in card create-order: "Check the request"',
+      `- card create-order: ${CREATE_ORDER} (expanded)`,
+      '- combined step checks: "Check the request"',
       "Next: read_page reads the whole page. From now on, pass these board and page ids to other tools.",
     ]);
 
@@ -351,14 +347,14 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       "2 projects:",
       `- ts-orders (id ${PROJECT}): current · TypeScript · 1 board`,
       "- py-orders (id p-resting000): resting (last: current) · 0 boards",
-      "Next: get_project for one project's applications, settings, and boards.",
+      "Next: get_project for one project's apps, settings, and boards.",
     ]);
     // Listing never wakes a resting project.
     expect(calls.filter(([command, args]) => command === "project_summary" && args["project"] === "p-resting000")).toEqual([]);
 
     const project = text(await client.callTool({ name: "get_project", arguments: { project: "ts-orders" } }));
     expect(project.split("\n")[0]).toBe("Unfold · ts-orders · as Claude");
-    expect(project).toContain("1 application, 3 entrances in all:\n- server (id src/server.ts#, no launch defined): 3 entrances");
+    expect(project).toContain("7 apps, 18 entrances in all:\n- Server (key entrance:server; run npm run start): 9 entrances");
     expect(project).toContain("evidence files docs/queues.md");
     expect(project).toContain(`- Order placement (id ${BOARD.id}): 1 page, 1 card`);
   });
@@ -380,7 +376,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["search", { query: "place", kinds: ["functions", "files"] }],
       ["list_entrances", { project: "ts-orders" }],
       ["read_code", { key: CREATE_ORDER, project: "ts-orders" }],
-      ["read_call", { source: `${CREATE_ORDER}/variable:order/call[0]`, project: "ts-orders" }],
+      ["read_call", { call: `${CREATE_ORDER}/call:orderService.place`, project: "ts-orders" }],
       ["read_file", { project: "ts-orders", path: "src/routes/orders.ts" }],
       ["get_relations", { key: CREATE_ORDER, project: "ts-orders" }],
     ];
@@ -393,7 +389,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 
   it("calls each tool that reads, checks, builds, and repairs boards", async () => {
     const { url, views } = await start();
-    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, lens: "diagram", visible: [], held: [BOARD] });
+    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const client = await connect(url, era);
     const at = { board: BOARD.id, project: "ts-orders", page: "page-1" };
     const calls: [string, Record<string, unknown>][] = [
@@ -401,18 +397,16 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
       ["read_page", at],
       ["check", at],
       ["add_cards", { ...at, cards: [{ key: CREATE_ORDER }] }],
-      ["set_view", { ...at, items: [{ id: "create-order", expanded: true, expandCalls: [[`${CREATE_ORDER}/variable:order/call[0]`]] }] }],
+      ["set_view", { ...at, items: [{ id: "create-order", view: "expanded" }] }],
       ["arrange_page", at],
       ["remove_items", { ...at, ids: ["create-order"] }],
-      ["group_steps", { ...at, card: "create-order", groups: [{ title: "Read the draft", steps: [`${CREATE_ORDER}/variable:draft`] }] }],
       ["frame_cards", { ...at, frames: [{ title: "server", members: ["create-order"] }] }],
-      ["add_resources", { ...at, resources: [{ kind: "table", name: "orders", anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }] }] }],
+      ["add_resources", { ...at, resources: [{ kind: "table", name: "orders", anchors: [{ key: "src/db/repository.ts#OrderRepository" }] }] }],
       ["connect", { ...at, connections: [{ kind: "writes", from: "create-order", to: "orders", description: "It inserts the order." }] }],
       ["add_notes", { ...at, notes: [{ text: "The client gets a job id, not the order." }] }],
       ["describe", { ...at, items: [{ id: "create-order", text: "Places the order." }] }],
-      ["label_steps", { ...at, card: "create-order", labels: [{ step: `${CREATE_ORDER}/variable:draft`, text: "Read the draft" }] }],
-      ["propose", { ...at, card: "create-order", proposals: [{ after: `${CREATE_ORDER}/variable:order`, title: "Email a confirmation" }] }],
-      ["repair", { ...at, item: "create-order", repair: "remove_card" }],
+      ["propose", { ...at, proposals: [{ after: `${CREATE_ORDER}/call:orderService.place`, title: "Email a confirmation" }] }],
+      ["repair", { ...at, item: "create-order", repair: "remove" }],
       ["finish_work", { summary: "Built the order flow" }],
     ];
     for (const [name, args] of calls) {
@@ -449,7 +443,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 });
 
 describe("the tools", () => {
-  it("are exactly the 35, design §6.11's and propose, in their order", () => {
+  it("are exactly the 33, in their order", () => {
     expect(TOOLS.map((tool) => tool.name)).toEqual(SIGNATURES);
   });
 
@@ -458,7 +452,7 @@ describe("the tools", () => {
     for (const name of ["list_boards", "read_page", "check", "get_screenshot"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: true });
     }
-    for (const name of ["add_cards", "set_view", "arrange_page", "group_steps", "frame_cards", "add_resources", "connect", "add_notes", "describe", "label_steps", "propose", "finish_work"]) {
+    for (const name of ["add_cards", "set_view", "arrange_page", "frame_cards", "add_resources", "connect", "add_notes", "describe", "propose", "finish_work"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     }
     for (const name of ["remove_items", "repair"]) {

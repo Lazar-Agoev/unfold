@@ -106,6 +106,14 @@
   --color-loop-line: #a5b4fc;
   --color-failure: #c42020;
   --color-failure-fill: #fee2e2;
+  /* Drawn flows (diagram-blocks-examples.html): call boxes, insets, decision and loop frames, unknown calls, gap ticks */
+  --color-call-line: #c7cbef;
+  --color-call-fill: #f8f9ff;
+  --color-inset-fill: #f5f6fd;
+  --color-decision-line: #f2c46d;
+  --color-loop-fill: #f1f2ff;
+  --color-unknown: #6f7584;
+  --color-dashed: #c9cdd6;
 
   /* Typography: bundled fonts (imported in theme.ts), so text measures the same everywhere.
      Sizes pair with a leading: `font-size: var(--text-13); line-height: var(--leading-20)`. */
@@ -139,10 +147,8 @@
   /* Sizes */
   --row: 28px;
   --topbar: 48px;
-  --peek-width: 640px;
 
   /* Layers: floating surfaces stack in this order. */
-  --z-sheet: 30;
   --z-popover: 40;
   --z-dialog: 50;
   --z-menu: 60;

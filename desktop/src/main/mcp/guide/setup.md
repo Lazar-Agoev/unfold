@@ -7,7 +7,7 @@ changed: it shows in their git diff.
 ## Projects
 - list_projects: every project's name, id, state, languages, and boards. A
   resting project isn't open right now; get_project opens it and reports everything:
-  applications, health, settings, boards.
+  apps, health, settings, boards.
 - add_project({path}): an absolute path, or one starting with `~/`. Call it only for a
   folder the person named. Unfold asks them in a dialog ("Claude wants to add
   ~/repos/payments to your workspace."). If they cancel, nothing was added; don't ask
@@ -48,20 +48,10 @@ compile_project or background update.
 set_python_project with its root, sourceRoots (import roots relative to root), and
 version (3.12, 3.13, or 3.14); remove_python_project by root.
 
-### Declared entrances
-For an entrance the detectors can't see, such as a command dispatched by hand or a
-signal handler: add_entrance, replace_entrance, and remove_entrance (by the id
-get_project lists).
-- id: a short name, unique among the manual entrances, such as import-orders. The
-  entrance's key comes from it, so it survives edits to everything else.
-- kind: process, command, http, worker, schedule, or event; trigger (the path, queue,
-  schedule, command, or event name); method for http; an optional label.
-- handler: locators, middleware first (every kind but process); startup: one locator
-  (process only).
-- Locators: `path#name` (an export or a top-level declaration), `path#Owner.member`,
-  `path#default`, or `path:line`. Prefer names: a line doesn't follow edits.
-- ts-orders declares its SIGTERM handler: kind event, trigger SIGTERM, handler
-  `src/server.ts#shutdown`.
+### Apps and entrances
+Apps and their entrances are declared in `unfold.toml` as `[[app]]` tables, never
+detected. list_entrances lists them with each code key's state; the person edits them
+in `unfold.toml`.
 
 ### Evidence files
 Files Unfold doesn't compile but can cite: SQL migrations, Prisma schemas, OpenAPI
@@ -74,7 +64,7 @@ a TypeScript declaration file, or a configuration input keeps that role.
 ### Example
 "Add ~/repos/ts-orders to Unfold. Leave the scripts folder out; it's one-off tooling."
 - add_project({path: "~/repos/ts-orders"}); the person clicks Add. The project
-  compiles, and the result names its applications.
+  compiles, and the result names its apps.
 - update_project_settings({project: "ts-orders", edits: [{op: "exclude_from_graph",
   path: "scripts"}]}). The result shows the change:
   ```diff

@@ -1,6 +1,6 @@
-/** Display text for external and unresolved occurrences (reader.md "External and unresolved text"). */
+/** Display text for library and unknown links (reader.md "External and unresolved text"), paths, and authors. */
 
-import type { CallLink, Reason } from "../ipc/generated";
+import type { LinkEnd, Reason } from "../ipc/generated";
 
 const REASONS: Readonly<Record<Reason, string>> = {
   unknown_name: "unknown name",
@@ -23,15 +23,17 @@ export function reasonText(reason: Reason | null | undefined): string {
   return reason ? REASONS[reason] : "unresolved";
 }
 
-/** What a link's tooltip says when it can't be followed: its module, or why it is unresolved. */
-export function linkNote(link: Pick<CallLink, "resolution" | "note" | "reason" | "module">): string | null {
-  if (link.resolution === "external") {
-    return `external · ${link.module ?? link.note ?? "module"}`;
+/** What a link's tooltip says when it can't be followed: its module, or why it is unknown. */
+export function linkNote(to: LinkEnd): string | null {
+  switch (to.outcome) {
+    case "library":
+      return `library · ${to.module ?? to.note ?? "module"}`;
+    case "unknown":
+      return `unknown · ${to.note ?? reasonText(to.reason)}`;
+    case "project":
+    case "builtin":
+      return null;
   }
-  if (link.resolution === "unresolved") {
-    return `unresolved · ${link.note ?? reasonText(link.reason)}`;
-  }
-  return null;
 }
 
 /** `src/routes/orders.ts` → `routes/orders.ts`: the last two path segments, for card headers. */

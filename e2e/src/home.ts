@@ -1,6 +1,6 @@
 /**
- * The window in Home mode: the sidebar's projects, Home's header and state line, its Boards, and How it
- * starts. Locators use what a person sees (roles and names); waits are on state.
+ * The window in Home mode: the sidebar's projects, Home's header and state line, and its Boards.
+ * Locators use what a person sees (roles and names); waits are on state.
  */
 
 import type { Locator, Page } from "@playwright/test";
@@ -23,15 +23,6 @@ interface WorkspaceInfo {
 
 export function workspace(page: Page): Promise<WorkspaceInfo> {
   return invoke<WorkspaceInfo>(page, "workspace");
-}
-
-/** The id of the project named `name` (its folder's name). */
-export async function projectId(page: Page, name: string): Promise<string> {
-  const row = (await workspace(page)).projects.find((project) => project.name === name);
-  if (!row) {
-    throw new Error(`no project named ${name}`);
-  }
-  return row.id;
 }
 
 // --- Sidebar ----------------------------------------------------------------------------------
@@ -64,11 +55,6 @@ export function rowState(page: Page, name: string): Locator {
 /** A board's row under its project in the sidebar tree, by its title. */
 export function sidebarBoard(page: Page, title: string): Locator {
   return projectsTree(page).locator(".home-tree-row[data-board-key]").filter({ has: page.locator(".home-tree-label", { hasText: new RegExp(`^${escapeRegExp(title)}$`) }) });
-}
-
-/** A folder's row in the sidebar tree, by its name. */
-export function sidebarFolder(page: Page, name: string): Locator {
-  return projectsTree(page).locator(".home-tree-row:not([data-board-key])").filter({ has: page.locator(".home-tree-label", { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
 }
 
 /** Opens the project menu (`⋯` on the project's sidebar row) and chooses `item`. */
@@ -118,38 +104,6 @@ export async function addProjectFromSidebar(app: UnfoldApp, page: Page, folder: 
   await app.stubFolderDialog(folder);
   await expectConnection(page, "connected");
   await sidebar(page).getByRole("button", { name: "Add Project…" }).click();
-}
-
-/** Home's How it starts section. */
-export function howItStarts(page: Page): Locator {
-  return homeMain(page).getByRole("region", { name: "How it starts" });
-}
-
-/** An application's row in How it starts (with its launches, and its entrances while expanded), by name. */
-export function applicationRow(page: Page, name: string): Locator {
-  return howItStarts(page).getByRole("region", { name, exact: true });
-}
-
-/** Expands `application` in How it starts, or every application with entrances besides its launches. */
-export async function showEntrances(page: Page, application?: string): Promise<void> {
-  const scope = application === undefined ? howItStarts(page) : applicationRow(page, application);
-  await expect(howItStarts(page).locator(".home-launch-table")).toBeVisible();
-  for (const toggle of await scope.getByRole("button", { name: /'s entrances$/ }).all()) {
-    if ((await toggle.getAttribute("aria-expanded")) === "false") {
-      await toggle.click();
-      await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    }
-  }
-}
-
-/**
- * An entrance's row in How it starts, by its kind column (`POST`, `COMMAND`, `LAUNCH`) and trigger,
- * optionally in one application. Rows show while their application is expanded (`showEntrances`) or
- * under "Not reached from a launch".
- */
-export function entranceRow(page: Page, kind: string, trigger: string, application?: string): Locator {
-  const scope = application === undefined ? howItStarts(page) : applicationRow(page, application);
-  return scope.getByRole("button", { name: new RegExp(`^${escapeRegExp(kind)} ${escapeRegExp(trigger)}( |$)`) });
 }
 
 // --- Window-wide layers -----------------------------------------------------------------------

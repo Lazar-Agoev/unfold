@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import type { AgentBoardRef, AgentEditSuccess, AgentItemResult, AgentItemStatus, AgentOp } from "../../shared/agent-api";
+import type { AgentBoardRef, AgentCardRef, AgentEditSuccess, AgentItemResult, AgentItemStatus, AgentOp } from "../../shared/agent-api";
 import type { ToolContext } from "./context";
 import type { ProjectRow } from "./engine-types";
 import { cardText, count, joined, keyName } from "./format";
@@ -59,6 +59,17 @@ export function defined<T>(value: T): Defined<T> {
     ) as Defined<T>;
   }
   return value as Defined<T>;
+}
+
+/** The keys of a project's apps and entrances (`entrances`), as written in its `unfold.toml`. */
+export async function startKeys(context: ToolContext, project: string): Promise<ReadonlySet<string>> {
+  const view = await context.engine("entrances", { project });
+  return new Set(view.apps.flatMap((app) => [app.key, ...app.entrances.map((entrance) => entrance.key)]).filter((key) => key !== undefined));
+}
+
+/** What a card for `key` shows: an app's start or an entrance (one of `starts`), else a block. */
+export function cardRef(starts: ReadonlySet<string>, key: string): AgentCardRef {
+  return starts.has(key) ? { entrance: key } : { block: key };
 }
 
 /** The page a write tool edits. */
@@ -159,21 +170,15 @@ export function itemsHeading(noun: string, items: readonly AgentItemResult[]): s
   return `${noun.charAt(0).toUpperCase()}${noun.slice(1)} (${counts.join(", ") || "none"}):`;
 }
 
-function linesText([from, to]: readonly [number, number]): string {
-  return from === to ? `line ${from}` : `lines ${from}–${to}`;
-}
-
 /** One item an edit created, updated, kept, or removed, as a result line with its name and id. */
 export function itemLine(item: AgentItemResult): string {
   switch (item.kind) {
     case "card":
       return `- ${cardText(item)}`;
-    case "group": {
-      const statements = (item.statements ?? []).map((statement) => `${statement.kind} (${linesText(statement.lines)})`);
-      return `- “${item.name}” (${joined([`step group id ${item.id}`, item.status])}) in card ${item.card}${item.lines ? `, ${linesText(item.lines)}` : ""}${statements.length > 0 ? `: ${statements.join(", ")}` : ""}`;
-    }
+    case "combined":
+      return `- “${item.name}” (${joined([`combined step id ${item.id}`, item.collapsed ? "collapsed" : "open", item.status])}): ${item.members.join(", ")}`;
     case "link": {
-      const what = item.connection === undefined ? "link" : `${item.connection} connection`;
+      const what = `${item.connection} connection`;
       const details = [
         item.step !== undefined ? `from step ${item.step}` : null,
         item.channel !== undefined ? `channel ${item.channel}` : null,
@@ -182,8 +187,6 @@ export function itemLine(item: AgentItemResult): string {
       ].filter((detail) => detail !== null);
       return `- ${what} ${item.from} → ${item.to} (${joined([`link id ${item.id}`, item.status])})${details.length > 0 ? `: ${details.join(", ")}` : ""}`;
     }
-    case "label":
-      return `- “${item.name}” on step ${item.step} of card ${item.card} (${item.status})`;
     case "frame": {
       const shape = [item.look, item.icon, item.direction, item.collapsed === true ? "collapsed" : null, item.parent !== undefined ? `in frame ${item.parent}` : null]
         .filter((part) => part !== null && part !== undefined)
@@ -201,10 +204,8 @@ export function itemLine(item: AgentItemResult): string {
     case "note":
       return `- note “${item.name}” (${joined([`note id ${item.id}`, item.status])})${item.attach !== undefined ? `, attached to ${item.attach}` : ", free"}`;
     case "proposal": {
-      const step = item.afterLabel !== undefined ? `the step “${item.afterLabel}”${item.afterLine !== undefined ? ` (line ${item.afterLine})` : ""}, key ${item.after}` : `the step ${item.after}`;
-      return `- proposed step “${item.title}” (${joined([`proposal id ${item.id}`, item.status])}) in card ${item.card}, after ${step}${item.path !== undefined ? `, on its “${item.path}” path` : ""}${
-        item.reason !== undefined ? `; reason “${item.reason}”` : ""
-      }`;
+      const spot = "after" in item ? `after ${item.after}` : `at the start of ${item.start}`;
+      return `- proposed step “${item.title}” (${joined([`proposal id ${item.id}`, item.status])}), ${spot}${item.reason !== undefined ? `; reason “${item.reason}”` : ""}`;
     }
   }
 }

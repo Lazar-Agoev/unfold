@@ -15,6 +15,7 @@ import { BoardCanvas, useBoardArrows } from "../canvas";
 import { collapsedPlaces } from "../canvas/frames/geometry";
 import type { Card, Page } from "../ipc/generated";
 import { findPage, useOpenBoard } from "../state/boards";
+import { usePageCards } from "../state/cards";
 import { drawnGeometry, drawnNodeIds } from "./geometry";
 import { answer, useRenderJob } from "./jobs";
 import { whenQuiet } from "./quiet";
@@ -53,12 +54,15 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
   const notes = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.notes);
   const links = useOpenBoard(target.board, (open) => findPage(open.document, target.page)?.links);
   const boardArrows = useBoardArrows(target, cards);
+  const views = usePageCards(target);
   const frame = useRenderJob((state) => state.frame);
 
   // Read once the page is drawn, by functions that must stay the same while it loads.
   const settled = useRef(boardArrows.settled);
+  const drawnCards = useRef(views);
   useLayoutEffect(() => {
     settled.current = boardArrows.settled;
+    drawnCards.current = views;
   });
 
   // The cards drawn as themselves: a collapsed frame draws the ones it holds as its own node.
@@ -109,7 +113,7 @@ export function RenderPage({ job }: { readonly job: RenderJob }) {
       }
       const page = job.page as unknown as Page;
       const geometry = drawnGeometry(element, store.getState());
-      answer(job.requestId, job.purpose === "check" ? { ok: true, checks: pageChecks(page, geometry) } : imageBounds(page, geometry, job.item));
+      answer(job.requestId, job.purpose === "check" ? { ok: true, checks: pageChecks(page, geometry, drawnCards.current) } : imageBounds(page, geometry, job.item));
     });
     return () => {
       controller.abort();

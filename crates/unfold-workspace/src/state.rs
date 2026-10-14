@@ -49,7 +49,8 @@ pub struct ShownBoard {
 }
 
 /// `window.json` in the app-data folder: the window as it should come back at launch. The main
-/// process saves it; the window's renderer reports the board it shows to the main process.
+/// process saves it; the window's renderer reports the board it shows and the Show all calls
+/// switch to the main process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowState {
@@ -59,6 +60,8 @@ pub struct WindowState {
     pub maximized: bool,
     /// The last board shown, or `None` for Home.
     pub board: Option<ShownBoard>,
+    /// Whether Show all calls is on.
+    pub show_all_calls: bool,
 }
 
 /// `.unfold/local/state.json`: what one project remembers on this machine.
@@ -249,8 +252,11 @@ mod tests {
                 project: ProjectId::new_unchecked("p-aaaaaaaaaa"),
                 board: ".unfold/boards/orders.json".to_owned(),
             }),
+            show_all_calls: true,
         };
         app.set_window(&window).expect("save");
+        let text = std::fs::read_to_string(app.dir().join("window.json")).expect("read");
+        assert!(text.contains("\"showAllCalls\": true"), "{text}");
         assert_eq!(app.window(), Some(window));
         std::fs::write(app.dir().join("window.json"), "{ nope").expect("write");
         assert_eq!(app.window(), None);

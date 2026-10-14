@@ -21,14 +21,14 @@ describe("Health rows", () => {
         title: "Doesn't parse — line 88: expected ':'",
         explanation: "Showing its last version that parsed.",
         location: "billing/tasks.py:88",
-        action: { kind: "open", path: "billing/tasks.py", line: 88 },
+        action: { path: "billing/tasks.py", line: 88 },
       },
       {
         id: "1",
         title: '[tool.unfold] python = "3.11" isn\'t supported',
         explanation: "Unfold uses the defaults until the settings file is fixed.",
         location: "pyproject.toml",
-        action: { kind: "edit", path: "pyproject.toml" },
+        action: { path: "pyproject.toml", line: null },
       },
       {
         id: "3",
@@ -42,8 +42,8 @@ describe("Health rows", () => {
 
   it("opens the settings file in the editor, and unfold.toml for a folder that can't be read", () => {
     const [settings, discovery] = healthRows([problem("settings", "", "expected a table at line 3"), problem("discovery", "vendor", "permission denied")]);
-    expect(settings?.action).toEqual({ kind: "edit", path: "unfold.toml" });
-    expect(discovery?.action).toEqual({ kind: "edit", path: "unfold.toml" });
+    expect(settings?.action).toEqual({ path: "unfold.toml", line: null });
+    expect(discovery?.action).toEqual({ path: "unfold.toml", line: null });
   });
 
   it("explains each board that needs review by its first item", () => {

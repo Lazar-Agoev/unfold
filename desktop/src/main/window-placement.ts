@@ -24,6 +24,8 @@ export interface WindowPlacement {
 export interface WindowState extends WindowPlacement {
   /** The board the window showed; null for Home. */
   readonly board: ShownBoard | null;
+  /** Whether Show all calls was on. */
+  readonly showAllCalls: boolean;
 }
 
 /** A `window_state` result, or null when there is none or it is malformed. */
@@ -35,7 +37,12 @@ export function savedWindowState(result: unknown): WindowState | null {
   if (bounds === null) {
     return null;
   }
-  return { bounds, maximized: result["maximized"] === true, board: shownBoard(result["board"]) };
+  return {
+    bounds,
+    maximized: result["maximized"] === true,
+    board: shownBoard(result["board"]),
+    showAllCalls: result["showAllCalls"] === true,
+  };
 }
 
 /** A saved board as `{project, board}`, or null unless both are strings. */

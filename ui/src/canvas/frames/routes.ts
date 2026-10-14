@@ -1,11 +1,11 @@
 /**
- * Arrows and drawn links at collapsed frames (design §4.4): an end inside a collapsed frame attaches
- * to the frame instead, an arrow or link with both ends inside one isn't drawn, and the ones that would
- * then draw on top of each other merge into one (a merged link counts them), as a Diagram node's calls
- * to one card merge. A line that only moved an end keeps its id and contract. Pure.
+ * Arrows and connections at collapsed frames (design §4.4): an end inside a collapsed frame attaches
+ * to the frame instead, an arrow or connection with both ends inside one isn't drawn, and the ones that
+ * would then draw on top of each other merge into one (a merged connection counts them), as a compact
+ * card's calls to one card merge. A line that only moved an end keeps its id and contract. Pure.
  */
 
-import type { Link, LinkKind } from "../../ipc/generated";
+import type { Connection, ConnectionKind } from "../../ipc/generated";
 import { NODE_PORT, type Arrow } from "../arrows";
 
 /** Groups items by key, in the order each key first appears. */
@@ -38,42 +38,39 @@ export function routeArrows(arrows: readonly Arrow[], shownAs: ReadonlyMap<strin
     if (!first || group.length === 1) {
       return group;
     }
-    const { calls: _calls, cards: _cards, ...rest } = first;
+    const { cards: _cards, ...rest } = first;
     return [
       {
         ...rest,
         id: `${first.source}|${first.sourceHandle}|${first.target}`,
         dashed: group.every((arrow) => arrow.dashed),
-        line: null,
+        calls: [],
         merged: true,
       },
     ];
   });
 }
 
-/** A link between what is drawn: one of the page's links, or several merged (`count`). */
+/** A connection between what is drawn: one of the page's connections, or several of a kind merged (`count`). */
 export interface RoutedLink {
-  /** The link's id; a merged one's is `<from>|links|<to>` (drawn links) or `<from>|<kind>|<to>` (connections). */
+  /** The connection's id; a merged one's is `<from>|<kind>|<to>`. */
   readonly id: string;
   readonly from: string;
   readonly to: string;
-  /** The link, when it stands for one. */
-  readonly link?: Link;
+  /** The connection, when it stands for one. */
+  readonly link?: Connection;
   readonly count: number;
-  /** The kind of the connections a merged one stands for; absent for drawn links. */
-  readonly kind?: LinkKind;
+  readonly kind: ConnectionKind;
 }
 
 /**
- * The page's links between what is drawn. Drawn links that a collapsed frame makes draw on top of each
- * other merge into one; connections merge only with connections of their kind. A link whose ends are
- * both drawn as themselves stays itself (with its own step, columns, and label), even beside another
- * between the same two items.
+ * The page's connections between what is drawn. Connections of one kind that a collapsed frame makes
+ * draw on top of each other merge into one. A connection whose ends are both drawn as themselves stays
+ * itself (with its own step, columns, and label), even beside another between the same two items.
  */
-export function routeLinks(links: readonly Link[], shownAs: ReadonlyMap<string, string>): RoutedLink[] {
+export function routeLinks(links: readonly Connection[], shownAs: ReadonlyMap<string, string>): RoutedLink[] {
   const moved = links.map((link) => ({ link, from: shownAs.get(link.from) ?? link.from, to: shownAs.get(link.to) ?? link.to }));
-  const key = ({ link, from, to }: (typeof moved)[number]) =>
-    from === to ? null : from === link.from && to === link.to ? link.id : `${from}|${link.kind ?? "links"}|${to}`;
+  const key = ({ link, from, to }: (typeof moved)[number]) => (from === to ? null : from === link.from && to === link.to ? link.id : `${from}|${link.kind}|${to}`);
   return grouped(moved, key).flatMap((group): RoutedLink[] => {
     const [first] = group;
     if (!first) {
@@ -82,8 +79,8 @@ export function routeLinks(links: readonly Link[], shownAs: ReadonlyMap<string, 
     const { from, to } = first;
     const { kind } = first.link;
     if (group.length === 1) {
-      return [{ id: first.link.id, from, to, link: first.link, count: 1 }];
+      return [{ id: first.link.id, from, to, link: first.link, count: 1, kind }];
     }
-    return [{ id: `${from}|${kind ?? "links"}|${to}`, from, to, count: group.length, ...(kind !== undefined ? { kind } : {}) }];
+    return [{ id: `${from}|${kind}|${to}`, from, to, count: group.length, kind }];
   });
 }

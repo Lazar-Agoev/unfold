@@ -1,0 +1,40 @@
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  transition: background-color var(--duration-fast) ease;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.08);
+  transition: transform var(--duration-fast) ease;
+}
+
+.switch-track.on {
+  background: var(--color-accent);
+}
+
+.switch-track.on::after {
+  transform: translateX(12px);
+}

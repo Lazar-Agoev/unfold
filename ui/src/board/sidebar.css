@@ -295,7 +295,6 @@
 button.relation-value:hover { color: var(--color-accent-text); }
 .relation-value.wrap { padding: 2px 0; white-space: normal; overflow-wrap: anywhere; }
 
-.relation-group,
 .relation-more { font-family: var(--font-ui); }
 .relation-more { color: var(--color-muted); }
 .relation-path { font-family: var(--font-ui); color: var(--color-muted); }

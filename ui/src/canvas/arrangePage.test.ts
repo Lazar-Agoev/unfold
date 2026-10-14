@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Card, Frame, Link, Note, Resource } from "../ipc/generated";
+import type { Card, Connection, Frame, Note, Resource } from "../ipc/generated";
 import { arrangePage, lineNoteSpots, type ArrangeInput } from "./arrangePage";
 import type { Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
@@ -9,7 +9,7 @@ const card = (id: string, at: [number, number], entrance = false): Card => (entr
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
 
 function call(source: string, target: string, port: string, order = 0): Arrow {
-  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, project: "p", occurrence: port, seq: 0, kind: "calls", dashed: false, order, line: null };
+  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, project: "p", kind: "call", dashed: false, order, calls: [port] };
 }
 
 const SIZES: Readonly<Record<string, { width: number; height: number }>> = {
@@ -30,7 +30,7 @@ interface Setup {
   readonly frames?: readonly Frame[];
   readonly resources?: readonly Resource[];
   readonly notes?: readonly Note[];
-  readonly links?: readonly Link[];
+  readonly links?: readonly Connection[];
   readonly arrows: readonly Arrow[];
 }
 
@@ -70,8 +70,8 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 describe("Arrange without frames", () => {
-  it("gives exactly what Arrange gave before frames", () => {
-    const setup = { cards: CARDS, arrows: ARROWS, links: [{ id: "drawn", from: "loose", to: "route" }] };
+  it("lays the page out by call depth, as `arrange` does", () => {
+    const setup = { cards: CARDS, arrows: ARROWS };
     const expected = todaysArrange(CARDS, pageGeometry({ cards: CARDS }, sizeOf).rects, ARROWS);
     expect([...arrangePage(input(setup))].sort()).toEqual([...expected].sort());
   });
@@ -165,12 +165,11 @@ describe("Arrange with frames", () => {
     expect(arrangePage(input({ ...setup, cards: moved }, { frame: "inner" }))).toEqual(first);
   });
 
-  it("orders connections as data flows: after the code that writes, before the code that reads; drawn links don't count", () => {
+  it("orders connections as data flows: after the code that writes, before the code that reads", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
-    const links: Link[] = [
+    const links: Connection[] = [
       { id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" },
       { id: "r", from: "loose", to: "orders", kind: "reads", author: "agent:claude" },
-      { id: "drawn", from: "notify", to: "loose" },
     ];
     const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS }));
     expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "insert").x);
@@ -181,7 +180,7 @@ describe("Arrange with frames", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
     const note = (id: string, attach?: string): Note => ({ id, text: id, at: [5, 5], author: "agent:claude", ...(attach !== undefined ? { attach } : {}) });
     const notes = [note("b-on-create", "create"), note("a-on-create", "create"), note("on-orders", "orders"), note("on-server", "server"), note("on-link", "w"), note("free")];
-    const links: Link[] = [{ id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" }];
+    const links: Connection[] = [{ id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" }];
     const frames = [frame("server", ["route"])];
     const setup = { cards: CARDS, frames, resources, notes, links, arrows: ARROWS };
     const positions = arrangePage(input(setup));
@@ -206,9 +205,9 @@ describe("Arrange with frames", () => {
 
   it("then puts the notes on links beside their lines' middles, clear of every card and of each other", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
-    const links: Link[] = [
+    const links: Connection[] = [
       { id: "w", from: "place", to: "orders", kind: "writes", author: "agent:claude" },
-      { id: "c", from: "create", to: "place" },
+      { id: "c", from: "create", to: "place", kind: "calls", author: "agent:claude" },
     ];
     // An old offset that would put each over createOrder.
     const notes: Note[] = ["on-c", "on-c-too", "on-w"].map((id) => ({ id, text: id, at: [-200, 0], attach: id === "on-w" ? "w" : "c", author: "agent:claude" }));
@@ -216,7 +215,7 @@ describe("Arrange with frames", () => {
     const positions = arrangePage(input(setup));
     // The page as arranged: the notes' offsets are from the midpoint of their links' ends' corners.
     const at = (id: string) => [positions.get(id)?.x ?? 0, positions.get(id)?.y ?? 0] as [number, number];
-    const middleOf = (link: Link): [number, number] => {
+    const middleOf = (link: Connection): [number, number] => {
       const [fx, fy] = at(link.from);
       const [tx, ty] = at(link.to);
       return [(fx + tx) / 2, (fy + ty) / 2];

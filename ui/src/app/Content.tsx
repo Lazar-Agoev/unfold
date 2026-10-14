@@ -1,13 +1,11 @@
 /**
  * The content area (`#content-area`, a positioned flex row): Home's main area while Home shows, else
- * the shown board's view (only that board is mounted), with the peek sheet as its last child. The
- * window's title follows what it shows.
+ * the shown board's view (only that board is mounted). The window's title follows what it shows.
  */
 
 import { useEffect } from "react";
 import { BoardView } from "../board";
 import { HomeMain } from "../home";
-import { PeekSheet } from "../peek";
 import { boardKey, useOpenBoard, type BoardRef } from "../state/boards";
 import { useShownBoard } from "../state/shownBoard";
 import { useSelectedProject } from "../state/window";
@@ -35,7 +33,6 @@ export function Content() {
   return (
     <main id="content-area" className="app-content">
       {board ? <BoardContent key={boardKey(board)} board={board} /> : <HomeContent />}
-      <PeekSheet />
     </main>
   );
 }

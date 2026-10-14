@@ -108,11 +108,18 @@ function useFontEpoch(): number {
   );
 }
 
-/** The card fonts (cards.css, code.css): code rows, the header's name, location, and an entrance's method. */
+/** The card fonts (cards.css): a field's or a code row's text, the header's name, and its location. */
 export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
 export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
-export const METHOD_FONT = '500 11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** What an expanded card says from its code (cards.css): the signature, the doc, and the imports and what runs when it is defined. */
+export const SIGNATURE_FONT = '11.5px "JetBrains Mono Variable", ui-monospace, monospace';
+export const DOC_FONT = '12.5px "Inter Variable", system-ui, sans-serif';
+export const LINKS_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** An app's or entrance's card (cards.css): the app in small caps, its name, and what starts it. */
+export const START_APP_FONT = '600 10px "Inter Variable", system-ui, sans-serif';
+export const START_NAME_FONT = '600 14px "Inter Variable", system-ui, sans-serif';
+export const START_ON_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A type card's kind before its name (`interface`, cards.css `.tcard-kind`). */
 export const TYPE_KIND_FONT = '13px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A description's text (cards.css). */
@@ -120,9 +127,6 @@ export const DESCRIPTION_FONT = '12px "Inter Variable", system-ui, sans-serif';
 /** A collapsed frame's title, and the agent mark's word beside it (frames.css). */
 export const FRAME_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
 export const MARK_FONT = '11px "Inter Variable", system-ui, sans-serif';
-/** A drawn link's label (canvas.css): its words, and its author after them. */
-export const LINK_LABEL_FONT = '500 12px "Inter Variable", system-ui, sans-serif';
-export const LINK_AUTHOR_FONT = '12px "Inter Variable", system-ui, sans-serif';
 /** A connection's chip (connections.css): its kind's word, its words, and the code it names. */
 export const CHIP_WORD_FONT = '600 11px "Inter Variable", system-ui, sans-serif';
 export const CHIP_TEXT_FONT = '11px "Inter Variable", system-ui, sans-serif';

@@ -1,0 +1,444 @@
+{
+  "header": {
+    "key": "mail/route.py#route_message",
+    "kind": "function",
+    "form": "function",
+    "label": "route_message",
+    "signature": "def route_message(message, override)",
+    "path": "mail/route.py",
+    "line": 8,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "mail/route.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "mail/route.py#route_message/call:cached_profile",
+    "mail/route.py#route_message/call:fetch_profile",
+    "mail/route.py#route_message/ternary[0]",
+    "mail/route.py#route_message/comprehension[0]",
+    "mail/route.py#route_message/return[0]"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "call",
+        "key": "mail/route.py#route_message/call:cached_profile",
+        "callee": "cached_profile",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "mail/profiles.py#cached_profile"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "mail/route.py#route_message"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "call",
+        "key": "mail/route.py#route_message/call:fetch_profile",
+        "callee": "fetch_profile",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "mail/profiles.py#fetch_profile"
+        },
+        "awaited": false,
+        "sometimes": true,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "mail/route.py#route_message"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 3,
+        "state": "reached",
+        "kind": "decision",
+        "key": "mail/route.py#route_message/ternary[0]",
+        "form": "ternary",
+        "headerCalls": [],
+        "binds": "decision",
+        "lanes": [
+          {
+            "id": 4,
+            "key": "mail/route.py#route_message/ternary[0]/then",
+            "form": "then",
+            "state": "reached",
+            "test": {
+              "text": "override",
+              "calls": []
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "mail/route.py#route_message/ternary[0]/then/call:Routed"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 5,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "mail/route.py#route_message/ternary[0]/then/call:Routed",
+                  "callee": "Routed",
+                  "form": "new",
+                  "to": {
+                    "outcome": "project",
+                    "key": "mail/routing.py#Routed"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "mail/route.py#route_message/ternary[0]/then"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 6,
+            "key": "mail/route.py#route_message/ternary[0]/else",
+            "form": "else",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "mail/route.py#route_message/ternary[0]/else/call:classify"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 7,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "mail/route.py#route_message/ternary[0]/else/call:classify",
+                  "callee": "classify",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "mail/classify.py#classify"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "mail/route.py#route_message/ternary[0]/else"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "mail/route.py#route_message"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 8,
+        "state": "reached",
+        "kind": "loop",
+        "key": "mail/route.py#route_message/comprehension[0]",
+        "form": "comprehension",
+        "header": "for part in message.parts",
+        "headerCalls": [],
+        "binds": "labels",
+        "lanes": [
+          {
+            "id": 9,
+            "key": "mail/route.py#route_message/comprehension[0]/body",
+            "form": "body",
+            "state": "reached",
+            "test": {
+              "text": "is_relevant(part)",
+              "calls": [
+                {
+                  "key": "mail/route.py#route_message/comprehension[0]/body/call:is_relevant",
+                  "callee": "is_relevant",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "mail/classify.py#is_relevant"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "role": "test",
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "after": false,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "mail/route.py#route_message/comprehension[0]/body/call:label_for"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 10,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "mail/route.py#route_message/comprehension[0]/body/call:label_for",
+                  "callee": "label_for",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "mail/labels.py#label_for"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "mail/route.py#route_message/comprehension[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "mail/route.py#route_message"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 11,
+        "state": "reached",
+        "kind": "exit",
+        "key": "mail/route.py#route_message/return[0]",
+        "form": "return",
+        "value": {
+          "kind": "call",
+          "key": "mail/route.py#route_message/return[0]/call:deliver",
+          "callee": "deliver",
+          "form": "call",
+          "to": {
+            "outcome": "project",
+            "key": "mail/delivery.py#deliver"
+          },
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "actions": {
+            "after": false,
+            "start": false,
+            "open": true
+          }
+        },
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "mail/route.py#route_message"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "on",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "yes",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "no",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 6,
+      "kind": "on",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "each",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "done",
+      "to": {
+        "step": 11
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "yes",
+      "to": {
+        "step": 10
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "next",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 10,
+      "kind": "next",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 11,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

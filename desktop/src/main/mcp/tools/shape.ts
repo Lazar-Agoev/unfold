@@ -1,13 +1,14 @@
 /**
- * Shape and explain (design §6.7): `group_steps` (the person's Combine), `frame_cards`, `add_resources`,
- * `connect`, `add_notes`, `describe`, `label_steps`, and `propose` (proposed steps, on request only).
+ * Shape and explain (design §6.7): `frame_cards`, `add_resources`, `connect`, `add_notes`, `describe`,
+ * and `propose` (proposed steps, on request only).
  * Each is one agent edit of one page (one undo step in the window that holds the board, saved at once).
  * The save checks what agents claim: resource cards and connections must cite code (anchors) whose
  * verified text holds their names, and a refusal says what failed and what to cite instead. A proposed
- * step is an intention placed after a real step, never code.
+ * step is an intention placed after a block or at the start of a body, never code.
  */
 
 import { z } from "zod";
+import type { AgentProposalSpec } from "../../../shared/agent-api";
 import { anchorArg, applyEdit, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs } from "../edits";
 import { isLink } from "../target";
 import { defineTool } from "../tool";
@@ -16,50 +17,6 @@ import { defineTool } from "../tool";
 function keepWords(tool: string, what: string): string {
   return `${tool} keeps them: pass ${what} as they are, or ask the person to change them.`;
 }
-
-// ---------------------------------------------------------------------------------------------
-// group_steps
-
-export const groupSteps = defineTool({
-  name: "group_steps",
-  title: "Group steps",
-  description:
-    'Combine: gathers consecutive steps of one function\'s card into step groups, the same operation as the person\'s Combine, so a long expanded card reads in a few named steps. card is the card\'s id (or a link to it); to Combine inside a call expanded in place, use the callee\'s own card. Each group takes steps (the statements\' keys from read_code), a concise title that says what the steps achieve in 2 to 6 words ("Queue it for a worker, reply 202"), and an optional one-sentence description. A step group is whole, consecutive statements of one branch: Unfold refuses steps that cross into another branch or overlap another group, listing the statements there so you can choose again. Groups don\'t nest. Passing an existing id updates that group. collapsed: true shows it as one combined step (a new concise summary can pass it at once); collapse when the person asked, when your brief said, or when check finds the card too long. The original steps and their source stay. The result names the statements each group took. Read get_guide("diagrams") first. One undo step for the whole call.',
-  input: z.object({
-    ...pageArgs,
-    card: z.string().min(1).describe("The card's id, or a link to it"),
-    groups: z
-      .array(
-        z.object({
-          id: z.string().min(1).optional().describe("An existing group's id updates it; absent: a new group with an id from its title"),
-          title: z.string().trim().min(1).max(120),
-          description: z.string().trim().min(1).max(400).optional(),
-          steps: z.array(z.string().min(1)).min(1).describe("The statements' keys"),
-          collapsed: z.boolean().optional(),
-        }),
-      )
-      .min(1),
-    expectRevision,
-  }),
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  async run({ board, page, project, card, groups, expectRevision: revision }, context) {
-    const target = await editTarget(context, { board, page, project, item: isLink(card) ? card : undefined });
-    const [cardId = card] = await localIds(context, target, [card]);
-    const edit = await applyEdit(context, target, {
-      title: "Group steps",
-      op: { op: "group_steps", card: cardId, groups: defined(groups) },
-      expectRevision: revision,
-      peopleAdvice: keepWords("group_steps", "a step group's title and description"),
-    });
-    return editResult(
-      context,
-      target,
-      edit,
-      [itemsHeading("step groups", edit.items), ...edit.items.map(itemLine)],
-      "label_steps for its steps (those inside the groups too), set_view to collapse groups if the card is still long, then check.",
-    );
-  },
-});
 
 // ---------------------------------------------------------------------------------------------
 // frame_cards
@@ -162,16 +119,16 @@ export const connect = defineTool({
   name: "connect",
   title: "Connect",
   description:
-    'Draws typed connections for what the compiled graph can\'t show: how code talks through HTTP, RPC, queues, events, and data. Never restate a compiled call. kind: http, rpc, queue, event, writes, reads, calls (where an unresolved call goes at runtime), relates (between two table columns), or other (needs a label). from is the side that acts; step is the call or statement it leaves from (a key from read_code), so the line starts where the code talks. anchors cite the receiving side: the worker entrance, the handler\'s registration, the route, the queue\'s creation. If you can\'t cite both sides, don\'t draw it: say what you found in the chat. When to is an entrance, Unfold fills in the channel from it. carries names the type that travels (a type key the code writes on either side, such as Queue<OrderJob>). description, the evidence in one sentence, is required. relates takes fromColumn, toColumn, and a cardinality; calls takes the unresolved call itself as its step. Read get_guide("connections") first. One undo step for the whole call.',
+    'Draws typed connections for what the compiled graph can\'t show: how code talks through HTTP, queues, and data. Never restate a compiled call. kind: http, queue, reads, writes, calls (where an unresolved call goes at runtime), relates (between two table columns), or other (needs a label). from is the side that acts; step is the call it leaves from (a call\'s key from read_code), so the line starts where the code talks. anchors cite the receiving side: the worker entrance, the handler\'s registration, the route, the queue\'s creation. If you can\'t cite both sides, don\'t draw it: say what you found in the chat. When to is an entrance, Unfold fills in the channel from it. carries names the type that travels (a type key the code writes on either side, such as Queue<OrderJob>). description, the evidence in one sentence, is required. relates takes fromColumn, toColumn, and a cardinality; calls takes the unresolved call itself as its step. Read get_guide("connections") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     connections: z
       .array(
         z.object({
           id: z.string().min(1).optional().describe("An existing connection's id updates it"),
-          kind: z.enum(["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"]),
+          kind: z.enum(["http", "queue", "reads", "writes", "calls", "relates", "other"]),
           from: z.string().min(1).describe("The id of the side that acts: a card, resource card, or frame"),
-          step: z.string().min(1).optional().describe("The key of the call or statement it leaves from, inside from's code"),
+          step: z.string().min(1).optional().describe("The key of the call it leaves from, inside from's code"),
           to: z.string().min(1).describe("The id of the other side"),
           fromColumn: z.string().min(1).optional().describe("relates: from's column"),
           toColumn: z.string().min(1).optional().describe("relates: to's column"),
@@ -235,13 +192,13 @@ export const addNotes = defineTool({
 });
 
 // ---------------------------------------------------------------------------------------------
-// describe and label_steps
+// describe
 
 export const describe = defineTool({
   name: "describe",
   title: "Describe",
   description:
-    'Writes descriptions: one sentence on what an item does and why, not how ("Places the order now, or queues it when the client asks for an async reply."), never a paragraph that restates the code. items name cards, step groups, frames, resource cards, and connections by id (or a link); on a drawn link (one without a kind) the text is its label, which says what travels. A note\'s text is what it says: change it with add_notes. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. Read get_guide("writing") first. One undo step for the whole call.',
+    'Writes descriptions: one sentence on what an item does and why, not how ("Places the order now, or queues it when the client asks for an async reply."), never a paragraph that restates the code. items name cards, combined steps, frames, resource cards, and connections by id (or a link). A note\'s text is what it says: change it with add_notes. Unfold signs each text against the code it describes, so it goes to review when that code changes. Replacing a person\'s text is refused unless replacePeopleText is true: set it only when the person asked for that change. Writing the same text again keeps it. Read get_guide("writing") first. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
     items: z
@@ -272,77 +229,43 @@ export const describe = defineTool({
   },
 });
 
-export const labelSteps = defineTool({
-  name: "label_steps",
-  title: "Label steps",
-  description:
-    'Writes Flow labels for a card\'s steps, in place of the names from the code: 2 to 8 words, a verb ("Queue the order"), or a question for a condition ("Did the client ask for an async reply?"); never raw code, never step numbers. card is the card\'s id (or a link); step is a Flow step\'s key, from read_code (view "flow"); label every step of a card you expanded, those inside collapsed step groups too (they show when the person expands the group). Unfold signs each label against its step\'s code, so it goes to review when that code changes. Replacing a person\'s label is refused unless replacePeopleText is true: set it only when the person asked for that change. Read get_guide("writing") first. One undo step for the whole call.',
-  input: z.object({
-    ...pageArgs,
-    card: z.string().min(1).describe("The card's id, or a link to it"),
-    labels: z
-      .array(
-        z.object({
-          step: z.string().min(1).describe("A Flow step's key"),
-          text: z.string().trim().min(1).max(120),
-        }),
-      )
-      .min(1),
-    replacePeopleText: z.boolean().optional().describe("Only when the person asked you to replace their labels"),
-    expectRevision,
-  }),
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  async run({ board, page, project, card, labels, replacePeopleText, expectRevision: revision }, context) {
-    const target = await editTarget(context, { board, page, project, item: isLink(card) ? card : undefined });
-    const [cardId = card] = await localIds(context, target, [card]);
-    const edit = await applyEdit(context, target, {
-      title: "Label steps",
-      op: { op: "label_steps", card: cardId, labels, ...(replacePeopleText !== undefined ? { replacePeopleText } : {}) },
-      expectRevision: revision,
-    });
-    return editResult(
-      context,
-      target,
-      edit,
-      [itemsHeading("Flow labels", edit.items), ...edit.items.map(itemLine)],
-      "check, then get_screenshot of the card.",
-    );
-  },
-});
-
 // ---------------------------------------------------------------------------------------------
 // propose
+
+const proposalArg = z
+  .object({
+    id: z.string().min(1).optional().describe("An existing proposed step's id updates it; absent: a new one (or the page's one with the same spot and title)"),
+    after: z.string().min(1).optional().describe("The key of the block it goes after (read_code lists the keys)"),
+    start: z.string().min(1).optional().describe("The key of a definition or a part: it goes at the start of its body"),
+    title: z.string().trim().min(1).max(120).optional().describe("What it would do, 1 to 120 characters; needed for a new one"),
+    reason: z.string().trim().min(1).max(400).nullable().optional().describe("Why it's wanted, 1 to 400 characters; null clears it"),
+  })
+  .refine((spec) => spec.after === undefined || spec.start === undefined, "A proposed step goes after a block or at the start of a body: pass after or start, not both.");
+
+function proposalOf({ after, start, ...words }: z.output<typeof proposalArg>): AgentProposalSpec {
+  if (after !== undefined) {
+    return { ...defined(words), after };
+  }
+  return start !== undefined ? { ...defined(words), start } : defined(words);
+}
 
 export const propose = defineTool({
   name: "propose",
   title: "Propose steps",
   description:
-    'Adds or changes proposed steps on one function\'s card, only when the person asks for an intended change ("send a confirmation email after placing the order"); explaining existing code never adds proposals, and you never invent missing behavior. A proposed step is a title, an optional reason, and where it would go: after a real step of the card\'s own Flow (after: a step\'s key from read_code; not Start, End, or a return, throw, break, or continue), on one of that step\'s paths when it has several (path "yes" or "no" after a condition, "each" or "done" after a loop). Unfold draws it dashed green as PROPOSED beside the compiled path, which stays as it is: it is not code, and nothing marks it built. Title: the intended behavior in 1 to 120 characters ("Email a confirmation"); reason: why, in a sentence. No status, completion, or "would call": once the code exists, remove_items takes the proposal off (that never edits code) and you label or Combine the real steps. Passing an existing id updates it: a new after or path moves it, keeping its author (the explicit repair when check finds its anchor missing or held); reason: null clears the reason. Changing a person\'s title or reason is refused unless replacePeopleText is true. card is the card\'s id or a link; for a callee shown in place, propose on its own card. One undo step for the whole call.',
+    'Adds or changes proposed steps on a page, only when the person asks for an intended change ("send a confirmation email after placing the order"); explaining existing code never adds proposals, and you never invent missing behavior. A proposed step is a title, an optional reason, and where it would go: after a block (after: its key from read_code; not a return, raise, break, or continue), or at the start of the body of a definition or a part (start: its key). It applies page-wide, wherever that block is drawn. Unfold draws it dashed green as PROPOSED beside the compiled path, which stays as it is: it is not code, and nothing marks it built. Title: the intended behavior in 1 to 120 characters ("Email a confirmation"); reason: why, in a sentence. No status, completion, or "would call": once the code exists, remove_items takes the proposal off (that never edits code). Passing an existing id updates it: a new after or start moves it, keeping its author (the explicit repair when check finds its anchor missing or held); reason: null clears the reason. Changing a person\'s title or reason is refused unless replacePeopleText is true. One undo step for the whole call.',
   input: z.object({
     ...pageArgs,
-    card: z.string().min(1).describe("The function card's id, or a link to it"),
-    proposals: z
-      .array(
-        z.object({
-          id: z.string().min(1).optional().describe("An existing proposed step's id updates it; absent: a new one (or the card's one with the same after, path, and title)"),
-          after: z.string().min(1).optional().describe("The key of the real step it goes after (read_code lists the steps' keys); needed for a new one"),
-          path: z.enum(["yes", "no", "each", "done"]).optional().describe("After a step with several paths: a condition's yes or no, a loop's each or done"),
-          title: z.string().trim().min(1).max(120).optional().describe("What it would do, 1 to 120 characters; needed for a new one"),
-          reason: z.string().trim().min(1).max(400).nullable().optional().describe("Why it's wanted, 1 to 400 characters; null clears it"),
-        }),
-      )
-      .min(1)
-      .max(50),
+    proposals: z.array(proposalArg).min(1).max(50),
     replacePeopleText: z.boolean().optional().describe("Only when the person asked you to change their proposed step's words"),
     expectRevision,
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  async run({ board, page, project, card, proposals, replacePeopleText, expectRevision: revision }, context) {
-    const target = await editTarget(context, { board, page, project, item: isLink(card) ? card : undefined });
-    const [cardId = card] = await localIds(context, target, [card]);
+  async run({ board, page, project, proposals, replacePeopleText, expectRevision: revision }, context) {
+    const target = await editTarget(context, { board, page, project });
     const edit = await applyEdit(context, target, {
       title: "Propose steps",
-      op: { op: "propose", card: cardId, proposals: defined(proposals), ...(replacePeopleText !== undefined ? { replacePeopleText } : {}) },
+      op: { op: "propose", proposals: proposals.map(proposalOf), ...(replacePeopleText !== undefined ? { replacePeopleText } : {}) },
       expectRevision: revision,
     });
     return editResult(
@@ -350,7 +273,7 @@ export const propose = defineTool({
       target,
       edit,
       [itemsHeading("proposed steps", edit.items), ...edit.items.map(itemLine), "Proposed steps are intentions, not code: the compiled path stays as it is."],
-      `get_screenshot of the card (item ${cardId}), then tell the person in chat what you proposed and why.`,
+      "get_screenshot of the page, then tell the person in chat what you proposed and why.",
     );
   },
 });

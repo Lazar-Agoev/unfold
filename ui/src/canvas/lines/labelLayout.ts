@@ -1,5 +1,5 @@
 /**
- * The page's line labels (drawn links' labels and connections' chips) and the cards they must not
+ * The page's line labels (connections' chips) and the cards they must not
  * cover: each label reports its curve and the widths of its forms, the canvas reports the cards'
  * rectangles, and each label reads back where `placeLabels` puts it (or that it isn't drawn at rest). One per canvas (`LabelLayoutContext`).
  * Reports in one commit are placed together: listeners hear once, after the commit's reports are in.

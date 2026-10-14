@@ -3,12 +3,14 @@
  *
  * - At launch, the window comes back ({@link Workspace.restore}): the main process asks the engine
  *   (trusted `window_state`) and opens the window with its bounds, moved onto a visible screen if
- *   its display is gone. The UI asks `window_info` for the board to show. With nothing saved, or no
- *   answer from the engine, the window opens at its default size on Home. Anything else that needs
+ *   its display is gone. The UI asks `window_info` for the board to show and whether Show all calls
+ *   is on. With nothing saved, or no answer from the engine, the window opens at its default size on
+ *   Home, with Show all calls off. Anything else that needs
  *   the window (an agent, the Dock, File › Add Project…) opens it through {@link Workspace.open},
  *   which waits for the restore.
- * - The UI reports the board it shows (`report_shown_board`). The window's bounds, whether it is
- *   maximized, and that board are saved with `save_window_state` whenever one of them changes
+ * - The UI reports the board it shows (`report_shown_board`) and the Show all calls switch
+ *   (`report_show_all_calls`). The window's bounds, whether it is maximized, that board, and the
+ *   switch are saved with `save_window_state` whenever one of them changes
  *   (debounced, and flushed as the window closes so the last change before closing or quitting is
  *   kept). Nothing else is remembered.
  * - A folder from File › Add Project… joins the workspace through the trusted `add_project`, the
@@ -35,6 +37,8 @@ type EngineRequests = Pick<EngineHost, "request">;
 export class Workspace {
   /** The board the window shows (null: Home): as saved at launch, then as the UI reports it. */
   private shown: ShownBoard | null = null;
+  /** Whether Show all calls is on: as saved at launch, then as the UI reports it. */
+  private allCalls = false;
   /** The latest `save_window_state` until it settles (never rejects). */
   private saving: Promise<void> = Promise.resolve();
   /** The launch restore, so anything that needs the window during it waits for it ({@link Workspace.open}). */
@@ -76,6 +80,17 @@ export class Workspace {
   /** The UI shows another board, or Home: remember it. */
   showBoard(board: ShownBoard | null): void {
     this.shown = board;
+    this.pendingSave.schedule();
+  }
+
+  /** Whether Show all calls is on, for `window_info`. */
+  showAllCalls(): boolean {
+    return this.allCalls;
+  }
+
+  /** The person turned Show all calls on or off: remember it. */
+  setShowAllCalls(on: boolean): void {
+    this.allCalls = on;
     this.pendingSave.schedule();
   }
 
@@ -129,16 +144,17 @@ export class Workspace {
       console.warn(`[main] could not read the window's state: ${describe(error)}`);
     }
     this.shown = saved?.board ?? null;
+    this.allCalls = saved?.showAllCalls ?? false;
     this.window.open(saved ?? undefined);
   }
 
-  /** Saves the window's bounds and the board it shows, so it comes back there. */
+  /** Saves the window's bounds, the board it shows, and Show all calls, so it comes back as it was. */
   private save(): void {
     const entry = this.window.current();
     if (!entry || entry.window.isDestroyed()) {
       return;
     }
-    const state: WindowState = { ...this.window.placement(entry), board: this.shown };
+    const state: WindowState = { ...this.window.placement(entry), board: this.shown, showAllCalls: this.allCalls };
     this.saving = this.engine.request(entry.id, "save_window_state", { state }).then(
       () => undefined,
       (error: unknown) => {

@@ -21,9 +21,9 @@ description; don't present it as a database.
 
 ## Type cards
 - add_cards: a type card lists the type's fields (name, written type, `?`,
-  `readonly`, a default as ` = …`), an enum's values, or an alias's type, in Diagram
-  and Code alike; it takes no expansion. A class's card shows its fields while compact;
-  expanded, it shows its detail, and in Code its source. A card with 12 or more rows
+  `readonly`, a default as ` = …`), an enum's values, or an alias's type, compact or
+  expanded alike. A class's card shows its fields while compact; expanded, it shows its
+  class-level code. A card with 12 or more rows
   shows 8, then "N more".
 - follow: {types: 1} on a type card adds the types its fields link to (up to 2 levels).
   Unfold draws a type arrow from the field's row to each linked type card of the same
@@ -92,8 +92,8 @@ An ERD is tables and connections you author, grounded in the code:
   add_resources (tables and columns) and connect (relates, reads, writes). Unfold has
   no table editor and generates no ERD by itself: nothing appears unless you add it,
   citing where the code or a schema says so.
-- A table never becomes a function card: changing the lens or expanding nearby code
-  keeps its columns, key marks, and relationships.
+- A table never becomes a function card: expanding nearby code keeps its columns, key
+  marks, and relationships.
 - A typed table's type link opens the type's definition; it draws no arrows. The
   compiled field arrows between types come from type cards: add the types as cards
   when the page should show them.

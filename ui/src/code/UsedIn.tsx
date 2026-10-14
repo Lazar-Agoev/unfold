@@ -1,10 +1,9 @@
-/** "Used in N places": a popover of the places a type is written, each opening the peek sheet at its line. */
+/** "Used in N places": a popover of the places a type is written. */
 
 import { useState } from "react";
 import { ListRow, Popover } from "../components";
 import type { ProjectId, TypeDefinition } from "../ipc/generated";
 import { useEngineQuery } from "../ipc/queries";
-import { openPeek } from "../state/overlays";
 import "./types.css";
 
 /** `src/cart.ts` and 4 → `cart.ts:4`. */
@@ -46,14 +45,9 @@ export function UsedIn({ project, definition }: { readonly project: ProjectId; r
                 <ListRow
                   key={`${place.owner}:${place.path}:${place.line}`}
                   role="listitem"
-                  tabIndex={0}
                   className="type-uses-row"
                   label={<span className="type-uses-label">{place.label}</span>}
                   trailing={<span className="type-uses-place">{placeText(place.path, place.line)}</span>}
-                  onClick={() => {
-                    close();
-                    openPeek({ project, path: place.path, line: place.line });
-                  }}
                 />
               ))}
             </div>

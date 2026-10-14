@@ -1,11 +1,10 @@
 /**
  * Connects the open boards to the engine's events once per window: outside changes to a board's file
- * (`board_reloaded`), graph updates of a board's project (its health and label refresh; card models
- * refresh through the query cache's own invalidation), a project's folder changing (`project_reset`
- * forgets its remembered renders), and the page going away (unsaved edits are sent at once). The engine-restart order lives in the window's session code.
+ * (`board_reloaded`), graph updates of a board's project (its health and label refresh; cards refresh
+ * through the query cache's own invalidation), and the page going away (unsaved edits are sent at
+ * once). The engine-restart order lives in the window's session code.
  */
 
-import { forgetVerifiedCode } from "../../canvas/cardData";
 import { onEngineEvent } from "./engine";
 import { boardKey } from "./keys";
 import { adoptOutsideChange, openBoards, refreshHealth, saveAllNow } from "./store";
@@ -38,9 +37,6 @@ export function installBoardEvents(): () => void {
           }, HEALTH_DELAY_MS),
         );
       }
-    }),
-    onEngineEvent("project_reset", (event) => {
-      forgetVerifiedCode(event.project);
     }),
   ];
   window.addEventListener("pagehide", saveAllNow);

@@ -492,8 +492,8 @@ pub struct ExitTarget {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CombinedStep {
-    /// Its id on the page.
-    pub id: String,
+    /// The id of the page's combined step it draws (`id` is the step's id in the flow).
+    pub item: String,
     /// Its title.
     pub title: String,
     /// Its blocks.
@@ -539,8 +539,8 @@ pub struct CallRef {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProposedStep {
-    /// Its id on the page.
-    pub id: String,
+    /// The id of the page's proposal it draws (`id` is the step's id in the flow).
+    pub item: String,
     /// What it would do.
     pub title: String,
 }

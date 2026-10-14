@@ -12,7 +12,6 @@ import { Author, copyLink } from "../../agent";
 import { useContextMenu } from "../../components";
 import { useAuthor } from "../../state/author";
 import { NOTE_MAX, editNote, findNote, findPage, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
-import { clickNote } from "../cards/select";
 import "./notes.css";
 
 interface NoteNodeData extends Record<string, unknown> {
@@ -79,7 +78,7 @@ export const NoteNode = memo(function NoteNode({ id, data }: NodeProps<NoteNodeT
       data-note-id={id}
       aria-label={`Note: ${note.text}`}
       onClick={() => {
-        clickNote(target, id);
+        select(target, { kind: "note", noteId: id });
       }}
       onDoubleClick={() => {
         setEditing(author !== null);

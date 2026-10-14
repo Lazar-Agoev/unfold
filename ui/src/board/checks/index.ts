@@ -5,4 +5,4 @@
 
 export { pageChecks } from "./checks";
 export { frameBox, frameTree } from "./frames";
-export { boundsOf, type Box, type DrawnFlow, type DrawnLine, type PageGeometry, type Point } from "./geometry";
+export { boundsOf, type Box, type DrawnLine, type PageGeometry, type Point } from "./geometry";

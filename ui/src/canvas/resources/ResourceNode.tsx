@@ -7,7 +7,7 @@
  * (`PK`, `FK → customers.id`, `unique`); up to 12, then "N more". A relationship (`relates`) leaves
  * and enters at a column's row; other lines at the card's edges.
  *
- * A click selects it (or ends a link being drawn there); its menu has Describe…, Copy link, and Remove
+ * A click selects it; its menu has Describe…, Copy link, and Remove
  * resource card; double-clicking its description edits it in place.
  */
 
@@ -24,7 +24,6 @@ import { describeResource, findPage, findResource, removeItem, select, useOpenBo
 import { showInSelected } from "../cards/cardMenu";
 import { CardHandles, DescriptionStrip } from "../cards/parts";
 import { ClaimReviewBanner } from "../cards/ReviewBanner";
-import { clickResource } from "../cards/select";
 import { useMeasure } from "../measure";
 import { resourceCardWidth } from "../sizing";
 import { columnHandle, listedColumns, markText, tableColumns, type TableColumn } from "./columns";
@@ -153,7 +152,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
       style={{ width }}
       aria-label={`${word} ${resource.name}`}
       onClick={() => {
-        clickResource(target, id);
+        select(target, { kind: "resource", resourceId: id });
       }}
       onContextMenu={(event) => {
         event.stopPropagation();

@@ -11,7 +11,7 @@ const engine = vi.hoisted(() => ({
 }));
 vi.mock("./engine", () => engine);
 
-const { addCard, moveItems, setCardExpanded, setTitle } = await import("./document");
+const { addCard, moveItems, setCardView, setTitle } = await import("./document");
 const store = await import("./store");
 const { closeBoard, closeBoardsOfProject, openBoard, reopenBoards } = await import("./open");
 const { addPage } = await import("./pages");
@@ -60,7 +60,7 @@ describe("opening and closing", () => {
     expect(engine.call).toHaveBeenCalledWith("open_board", { project: P, id: ID });
     const board = store.getOpenBoard(REF);
     expect(board?.activePage).toBe("page-1");
-    expect(board?.pages["page-1"]).toMatchObject({ camera: null, lens: null });
+    expect(board?.pages["page-1"]).toMatchObject({ camera: null, selection: { kind: "none" } });
     expect(getShownBoard()).toEqual(REF);
   });
 
@@ -78,7 +78,7 @@ describe("opening and closing", () => {
     store.adoptBoardState(boardState(Q, ID));
     showBoard(REF);
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.setCamera(PAGE, { x: 1, y: 2, zoom: 1 });
     await closeBoardsOfProject(P);
     expect(engine.call.mock.calls.map(([command]) => command as string).sort()).toEqual(["close_board", "save_board"]);
@@ -94,7 +94,7 @@ describe("opening and closing", () => {
     store.adoptBoardState(state());
     showBoard(REF);
     engine.call.mockRejectedValue(new UnfoldError({ code: "io", message: "Disk full." }));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await expect(closeBoardsOfProject(P)).rejects.toMatchObject({ code: "unsaved_edits", message: "Disk full." });
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
@@ -106,9 +106,9 @@ describe("editing and autosave", () => {
   it("autosaves once, after the last of several edits, as a BoardEdit of the title and pages only", async () => {
     store.adoptBoardState(state(boardDocument([page("page-1")], { folder: "Checkout" })));
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     vi.advanceTimersByTime(store.AUTOSAVE_MS - 100);
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     vi.advanceTimersByTime(store.AUTOSAVE_MS - 100);
     expect(engine.call).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(200);
@@ -135,10 +135,10 @@ describe("editing and autosave", () => {
           };
         }),
     );
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     const first = store.saveBoard(REF);
     await vi.advanceTimersByTimeAsync(0);
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     const waiting = [store.saveBoard(REF), store.flushBoard(REF), store.saveBoard(REF)];
     expect(engine.call).toHaveBeenCalledTimes(1);
     release?.();
@@ -155,7 +155,7 @@ describe("editing and autosave", () => {
 
   it("keeps the identity of everything a save didn't change, so unchanged cards don't redraw", async () => {
     store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     const before = store.getOpenBoard(REF);
     // The engine answers with an equal copy, one card signed.
     engine.call.mockImplementation((_command: string, args: SaveBoardArgs) => {
@@ -177,7 +177,7 @@ describe("editing and autosave", () => {
   it("keeps a failed save's edit and why it failed until a save succeeds; a disconnected one isn't a failure", async () => {
     store.adoptBoardState(state());
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "board_problem", message: "missing reference" }));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBe("missing reference");
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(true);
@@ -185,7 +185,7 @@ describe("editing and autosave", () => {
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBeNull();
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "disconnected", message: "gone" }));
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBeNull();
@@ -195,8 +195,8 @@ describe("editing and autosave", () => {
   it("sends every unsaved board at once when the page goes away", () => {
     store.adoptBoardState(state());
     engine.call.mockReturnValue(new Promise(() => undefined));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
-    store.setPageLens(PAGE, "code");
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    store.setCamera(PAGE, { x: 0, y: 0, zoom: 2 });
     store.saveAllNow();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
     // The autosave it replaced doesn't run later.
@@ -211,7 +211,7 @@ describe("a step saved at once (an agent's edit)", () => {
     document: produce(document, (draft) => {
       const target = draft.pages[0];
       if (target) {
-        addCard(target, { ref: A, at: [0, 0] });
+        addCard(target, { name: "a", ref: A, at: [0, 0] });
       }
     }),
     value: "added",
@@ -250,14 +250,14 @@ describe("a step saved at once (an agent's edit)", () => {
   it("saves the person's pending edit first, and refuses while their edits can't be saved", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
     await store.saveStep(REF, "page-1", "Claude · Add cards", addA);
     const saves = engine.call.mock.calls.map(([, args]) => (args as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id));
     expect(saves).toEqual([["b"], ["b", "a"]]);
     expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
 
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
-    edit((draft) => addCard(draft, { ref: { block: "src/c.ts#function:c" }, at: [900, 0] }));
+    edit((draft) => addCard(draft, { name: "c", ref: { block: "src/c.ts#function:c" }, at: [900, 0] }));
     expect(await store.saveStep(REF, "page-1", "Claude · Add cards", addA)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
   });
 
@@ -277,7 +277,7 @@ describe("a step saved at once (an agent's edit)", () => {
       const next = produce(document, (draft) => {
         const target = draft.pages[0];
         if (target) {
-          id = addCard(target, { ref: A, at: [0, 0] });
+          id = addCard(target, { name: "a", ref: A, at: [0, 0] });
         }
       });
       return { document: next, value: id };
@@ -285,7 +285,7 @@ describe("a step saved at once (an agent's edit)", () => {
     const outcome = store.saveStep(REF, "page-1", "Claude · Add cards", addOne);
     await vi.advanceTimersByTimeAsync(0);
     // The person adds a card for the same function meanwhile: theirs takes the id `a`.
-    edit((draft) => addCard(draft, { ref: A, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: A, at: [600, 0] }));
     releases[0]?.();
     await vi.advanceTimersByTimeAsync(0);
     releases[1]?.();
@@ -324,7 +324,7 @@ describe("a step saved at once (an agent's edit)", () => {
         document: produce(document, (draft) => {
           const target = draft.pages[0];
           if (target) {
-            setCardExpanded(target, "a", true);
+            setCardView(target, "a", "expanded");
           }
         }),
         value: "expanded",
@@ -353,7 +353,7 @@ describe("a step saved at once (an agent's edit)", () => {
       document: produce(document, (draft) => {
         const target = draft.pages[0];
         if (target) {
-          addCard(target, { ref: { block: "src/b.ts#function:b" }, at: [600, 0] });
+          addCard(target, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] });
         }
       }),
       value: "b",
@@ -368,10 +368,10 @@ describe("a step saved at once (an agent's edit)", () => {
 describe("undo and redo", () => {
   it("undoes one edit at a time, merges a coalesced burst, and keeps at most 200 steps", () => {
     store.adoptBoardState(state());
-    const id = edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] })) ?? "";
+    const id = edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] })) ?? "";
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [10, 0] }); }, { coalesce: "drag" });
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [20, 0] }); }, { coalesce: "drag" });
-    edit((draft) => { setCardExpanded(draft, id, true); });
+    edit((draft) => { setCardView(draft, id, "expanded"); });
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(3);
     store.undo(REF);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBeUndefined();
@@ -393,9 +393,9 @@ describe("undo and redo", () => {
   it("keeps one history across the board's pages, and undo or redo shows the page each step changed", () => {
     store.adoptBoardState(state(boardDocument([page("page-1"), page("page-2")])));
     const second = { board: REF, page: "page-2" };
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.setActivePage(REF, "page-2");
-    edit((draft) => addCard(draft, { ref: { block: "src/b.ts#function:b" }, at: [0, 0] }), second);
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [0, 0] }), second);
     store.setActivePage(REF, "page-1");
 
     store.undo(REF);
@@ -477,58 +477,52 @@ describe("a step the engine writes (a repair)", () => {
 });
 
 describe("view state", () => {
-  it("keeps the active page and each page's camera and lens while the app runs, never saving them or making undo steps", async () => {
+  it("keeps the active page and each page's camera and selection while the app runs, never saving them or making undo steps", async () => {
     store.adoptBoardState(state(boardDocument([page("page-1"), page("page-2")])));
     store.setCamera(PAGE, { x: 10, y: 20, zoom: 0.8 });
     store.setActivePage(REF, "page-2");
-    store.setPageLens({ board: REF, page: "page-2" }, "code");
+    store.select({ board: REF, page: "page-2" }, { kind: "combined", combinedId: "checks" });
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS * 2);
     expect(engine.call).not.toHaveBeenCalled();
     expect(store.getOpenBoard(REF)?.history.past).toHaveLength(0);
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
     expect(store.getPageView(PAGE).camera).toEqual({ x: 10, y: 20, zoom: 0.8 });
-    expect(store.getPageView({ board: REF, page: "page-2" }).lens).toBe("code");
+    expect(store.getPageView({ board: REF, page: "page-2" }).selection).toEqual({ kind: "combined", combinedId: "checks" });
+  });
+});
+
+describe("card views and open calls", () => {
+  it("shows a card compact or expanded: its own view, else the page's default, which is compact", async () => {
+    const { cardView } = await import("./document");
+    expect(page("page-1").defaultView).toBe("compact");
+    expect(cardView({}, "compact")).toBe("compact");
+    expect(cardView({ view: "expanded" }, "compact")).toBe("expanded");
+    expect(cardView({}, "expanded")).toBe("expanded");
+    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
+    edit((draft) => {
+      setCardView(draft, "a", "expanded");
+    });
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("expanded");
+    store.undo(REF);
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBeUndefined();
   });
 
-  it("shows Code in the Code lens, and each card compact or expanded in Diagram", () => {
-    store.adoptBoardState(state());
-    // No lens picked: the page's default decides; only a Code default opens Code.
-    expect(store.pageLens(null, "code")).toBe("code");
-    expect(store.pageLens(null, "flow")).toBe("diagram");
-    expect(store.pageLens(null, "diagram")).toBe("diagram");
-    // A Flow lens is Diagram.
-    expect(store.pageLens("flow", "code")).toBe("diagram");
-    expect(store.shownView("code", { view: "diagram" }, "diagram")).toBe("code");
-    // In Diagram a card's own view, else the page's default, says whether it is expanded; a legacy Code card is.
-    expect(store.shownView("diagram", { view: "flow" }, "diagram")).toBe("flow");
-    expect(store.shownView("diagram", { view: "code" }, "diagram")).toBe("flow");
-    expect(store.shownView("diagram", {}, "flow")).toBe("flow");
-    expect(store.shownView("diagram", {}, "code")).toBe("flow");
-    expect(store.shownView("diagram", { view: "diagram" }, "flow")).toBe("diagram");
-    expect(store.shownView(null, {}, "diagram")).toBe("diagram");
-    store.setPageLens(PAGE, "code");
-    expect(store.getPageView(PAGE).lens).toBe("code");
-    expect(store.getOpenBoard(REF)?.edits).toBe(0);
-  });
-
-  it("keeps camera, selection, and expansions across Code", () => {
-    const card = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number], view: "flow" as const, expanded: [["src/a.ts#function:a/call[0]"]] };
-    store.adoptBoardState(state(doc([card])));
-    store.setCamera(PAGE, { x: 1, y: 2, zoom: 0.5 });
-    const { defaultView } = store.getOpenBoard(REF)?.document.pages[0] ?? { defaultView: "code" as const };
-
-    store.select(PAGE, { kind: "card", cardId: "a", key: "src/a.ts#function:a/call[0]" });
-    const document = store.getOpenBoard(REF)?.document;
-    const selection = store.getPageView(PAGE).selection;
-    for (const lens of ["code", "diagram"] as const) {
-      store.setPageLens(PAGE, lens);
-      expect(store.pageLens(store.getPageView(PAGE).lens, defaultView)).toBe(lens);
-      expect(store.getPageView(PAGE).camera).toEqual({ x: 1, y: 2, zoom: 0.5 });
-      expect(store.getPageView(PAGE).selection).toBe(selection);
-      expect(store.getOpenBoard(REF)?.document).toBe(document);
-    }
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]).toMatchObject({ view: "flow", expanded: [["src/a.ts#function:a/call[0]"]] });
-    expect(store.getOpenBoard(REF)?.edits).toBe(0);
+  it("opens calls in place as paths of up to three keys, closing a path with every path inside it", async () => {
+    const { isOpen, openPaths, toggleOpen } = await import("./document");
+    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "key-a" }, at: [0, 0] }])));
+    edit((draft) => {
+      toggleOpen(draft, "a", ["call-1"]);
+      toggleOpen(draft, "a", ["call-1", "call-2"]);
+      toggleOpen(draft, "a", ["call-1", "call-2", "call-3", "call-4"]);
+    });
+    const card = () => store.getOpenBoard(REF)?.document.pages[0]?.cards[0] ?? { open: [] };
+    expect(openPaths(card())).toEqual([["call-1"], ["call-1", "call-2"]]);
+    expect(isOpen(card(), ["call-1", "call-2"])).toBe(true);
+    edit((draft) => {
+      toggleOpen(draft, "a", ["call-1"]);
+    });
+    // The file leaves out an empty list.
+    expect("open" in card()).toBe(false);
   });
 });
 
@@ -538,7 +532,7 @@ describe("outside changes", () => {
   it("take the file's version and start the undo history over", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await vi.advanceTimersByTimeAsync(store.AUTOSAVE_MS);
     store.adoptOutsideChange(state(theirs, "r9"));
     const board = store.getOpenBoard(REF);
@@ -559,7 +553,7 @@ describe("outside changes", () => {
           };
         }),
     );
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     const saving = store.saveBoard(REF);
     store.adoptOutsideChange(state(theirs, "r9"));
     release?.();
@@ -573,7 +567,7 @@ describe("outside changes", () => {
   it("are ignored while edits wait for the autosave, which then writes the person's version over the file", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r10"));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     store.adoptOutsideChange(state(theirs, "r9"));
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
     expect(store.canUndo(REF)).toBe(true);
@@ -587,7 +581,7 @@ describe("outside changes", () => {
   it("are ignored while the board's save is failing; the next save writes the person's version over the file", async () => {
     store.adoptBoardState(state());
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     await store.saveBoard(REF);
     store.adoptOutsideChange(state(theirs, "r9"));
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
@@ -604,7 +598,7 @@ describe("outside changes", () => {
 describe("engine-host restarts", () => {
   it("opens each board again before writing its unsaved edits", async () => {
     store.adoptBoardState(state());
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state()) : savesAs("r2")(command, args)));
     await reopenBoards();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["open_board", "save_board"]);
@@ -618,7 +612,7 @@ describe("engine-host restarts", () => {
     await reopenBoards();
     expect(store.getOpenBoard(REF)?.revision).toBe("r7");
 
-    edit((draft) => addCard(draft, { ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
     engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state(doc(), "r8")) : savesAs("r9")(command, args)));
     await reopenBoards();
     expect(engine.call.mock.calls.at(-1)?.[0]).toBe("save_board");

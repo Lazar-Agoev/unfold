@@ -38,7 +38,7 @@ describe("jobState", () => {
   });
 
   it("carries the board's health for the review banners", () => {
-    const health: Health = { items: [], missing: 1, outdated: 0, brokenGroups: 0, review: 0, brokenLinks: 0 };
+    const health: Health = { items: [], missing: 1, outdated: 0, brokenCombined: 0, review: 0, brokenLinks: 0 };
     expect(jobState({ ...job, health }).health).toBe(health);
   });
 });

@@ -1,11 +1,9 @@
 /**
  * The shown board: the top bar over the stage, where the active page's canvas sits with the banners at
- * its top, the dock at its bottom, and the link-drawing hint. Only the shown board is mounted; each
- * page has its own React Flow store, so switching pages starts from that page's camera.
+ * its top and the dock at its bottom. Only the shown board is mounted; each page has its own React Flow
+ * store, so switching pages starts from that page's camera.
  *
- * It keeps a View code peek sheet following the page's selection, and applies Edit › Undo and Redo to
- * the board (the preload keeps them for a focused text field). Floating chrome centers on the canvas a
- * sheet leaves uncovered.
+ * It applies Edit › Undo and Redo to the board (the preload keeps them for a focused text field).
  */
 
 import { ReactFlowProvider, useReactFlow, useStoreApi } from "@xyflow/react";
@@ -14,12 +12,9 @@ import { BoardCanvas, arrangeBoard, useBoardArrows } from "../canvas";
 import { isModalOpen, showToast } from "../components";
 import { onShellEvent } from "../ipc";
 import { boardKey, canUndo, findPage, redo, requestCardFocus, undo, useOpenBoard, usePageView, type BoardRef, type PageTarget } from "../state/boards";
-import { useLayout } from "../state/layout";
-import { usePeekTarget } from "../state/overlays";
 import { BoardBanner } from "./BoardBanner";
 import { Dock } from "./Dock";
 import { TopBar } from "./TopBar";
-import { useFollowSelection } from "./viewCode";
 import "./board.css";
 
 const EMPTY_CARDS: readonly never[] = [];
@@ -34,10 +29,9 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const notes = useOpenBoard(board, (open) => findPage(open.document, target.page)?.notes);
   const links = useOpenBoard(board, (open) => findPage(open.document, target.page)?.links);
   const hasCamera = usePageView(target, (view) => view.camera !== null);
-  const linking = usePageView(target, (view) => view.linking !== null);
   // Computed once here: the canvas draws them, Arrange orders by them.
   const boardArrows = useBoardArrows(target, cards);
-  const { arrows, bodies } = boardArrows;
+  const { arrows } = boardArrows;
 
   // A page shown for the first time fits itself once its cards (or resource cards) are measured.
   const hasItems = cards.length > 0 || (resources ?? []).length > 0;
@@ -56,7 +50,7 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const onZoomOut = useCallback(() => void flow.zoomOut({ duration: 160 }), [flow]);
   const onArrange = useCallback(() => {
     const lookup = store.getState().nodeLookup;
-    const moved = arrangeBoard(target, arrows, bodies, (arrow) => {
+    const moved = arrangeBoard(target, arrows, (arrow) => {
       const bounds = lookup.get(arrow.source)?.internals.handleBounds?.source?.find((item) => item.id === arrow.sourceHandle);
       return bounds ? bounds.y + bounds.height / 2 : undefined;
     });
@@ -74,30 +68,18 @@ function PageStage({ target }: { readonly target: PageTarget }) {
         },
       });
     }
-  }, [target, board, arrows, bodies, store]);
+  }, [target, board, arrows, store]);
 
   return (
     <>
       <BoardCanvas target={target} cards={cards} frames={frames} resources={resources} notes={notes} links={links} boardArrows={boardArrows} />
       <div className="board-notices">
         <BoardBanner board={board} />
-        {linking ? (
-          <p className="board-hint" role="status">
-            Click the card to link to · <kbd>esc</kbd> cancels
-          </p>
-        ) : null}
       </div>
       {cards.length === 0 && resources === undefined && notes === undefined ? <p className="board-empty">Open an entrance or a definition to start this page.</p> : null}
       <Dock hasItems={hasItems} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} onArrange={onArrange} />
     </>
   );
-}
-
-/** The width a floating sheet covers on the right of the content area (0 when none, or when it is pinned). */
-function useCoveredRight(): string {
-  const peek = usePeekTarget();
-  const pinned = useLayout((layout) => layout.peek.pinned);
-  return peek !== null && !pinned ? "var(--peek-width)" : "0px";
 }
 
 /**
@@ -125,14 +107,12 @@ export function BoardView({ board }: { readonly board: BoardRef }) {
   const page = useOpenBoard(board, (open) => open.activePage);
   const { project, id } = board;
   const target = useMemo(() => (page !== undefined ? { board: { project, id }, page } : null), [project, id, page]);
-  const covered = useCoveredRight();
   useMenuUndo(board);
 
   return (
-    <div className="board-view" data-board-key={boardKey(board)} tabIndex={-1} style={{ ["--covered-right" as string]: covered }}>
+    <div className="board-view" data-board-key={boardKey(board)} tabIndex={-1}>
       {target ? (
         <>
-          <FollowSelection target={target} />
           <TopBar target={target} />
           <div className="board-stage">
             {/* Each page has its own React Flow store, so switching pages starts from that page's camera. */}
@@ -146,9 +126,4 @@ export function BoardView({ board }: { readonly board: BoardRef }) {
       )}
     </div>
   );
-}
-
-function FollowSelection({ target }: { readonly target: PageTarget }) {
-  useFollowSelection(target);
-  return null;
 }

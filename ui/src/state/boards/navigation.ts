@@ -33,6 +33,8 @@ export interface FollowRequest {
   readonly fromCardId: string;
   /** The block to open. */
   readonly targetKey: string;
+  /** What the block is called (the drawn flow's name for the callee), which the new card's id is made from. */
+  readonly name: string;
   /** The calling line's center below the source card's top (defaults to its header). */
   readonly lineOffset?: number;
 }
@@ -53,7 +55,7 @@ export function followCall(request: FollowRequest): string | undefined {
   }
   const rect = displayedRects(board, target.page).get(request.fromCardId);
   const at = rect ? followPlacement(rect, request.lineOffset ?? HEADER_PORT) : ([0, 0] as [number, number]);
-  const cardId = editPage(target, (draft) => addCard(draft, { ref: { block: request.targetKey }, at }));
+  const cardId = editPage(target, (draft) => addCard(draft, { ref: { block: request.targetKey }, name: request.name, at }));
   if (cardId === undefined) {
     return undefined;
   }

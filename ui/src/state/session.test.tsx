@@ -11,6 +11,7 @@ import { editBoard, getOpenBoard, openBoard } from "./boards";
 import { resetBoards } from "./boards/store";
 import { installSession, resetSession } from "./session";
 import { getShownBoard, showHome, useShownBoardStore } from "./shownBoard";
+import { getShowAllCalls, setShowAllCalls } from "./showAllCalls";
 import { useWindowStore } from "./window";
 
 const P = "p-orders0000";
@@ -35,7 +36,12 @@ function reports(): unknown[] {
   return engine.windowCalls.filter((entry) => entry.command === "report_shown_board").map((entry) => entry.args);
 }
 
-function setup(shown: ShownBoard | null, options: { gone?: string } = {}): void {
+/** What the window reported about Show all calls, in order. */
+function switchReports(): unknown[] {
+  return engine.windowCalls.filter((entry) => entry.command === "report_show_all_calls").map((entry) => entry.args);
+}
+
+function setup(shown: ShownBoard | null, options: { gone?: string; showAllCalls?: boolean } = {}): void {
   engine = installFakeEngine({
     handlers: {
       workspace: () => workspaceView([projectRow(P, "orders"), projectRow(Q, "payments")]),
@@ -50,7 +56,7 @@ function setup(shown: ShownBoard | null, options: { gone?: string } = {}): void 
       save_board: ({ project, id, board }) => boardState(project, id, { ...document(), title: board.title }, { revision: "r2" }),
     },
   });
-  useWindowStore.setState({ info: { windowId: 1, board: shown }, selectedProject: Q });
+  useWindowStore.setState({ info: { windowId: 1, board: shown, showAllCalls: options.showAllCalls ?? false }, selectedProject: Q });
 }
 
 async function install(client = testQueryClient()): Promise<void> {
@@ -63,6 +69,7 @@ async function install(client = testQueryClient()): Promise<void> {
 beforeEach(() => {
   resetSession();
   resetBoards();
+  setShowAllCalls(false);
   useShownBoardStore.setState({ board: null });
 });
 
@@ -117,6 +124,31 @@ describe("restoring the window", () => {
       await openBoard(B);
     });
     expect(reports()).toHaveLength(3);
+  });
+
+  it("puts Show all calls back as the window had it, without reporting what it was told", async () => {
+    setup(null, { showAllCalls: true });
+    await install();
+    expect(getShowAllCalls()).toBe(true);
+    expect(switchReports()).toEqual([]);
+  });
+
+  it("then reports each change of Show all calls, and stops when uninstalled", async () => {
+    setup(null);
+    await install();
+    expect(getShowAllCalls()).toBe(false);
+    act(() => {
+      setShowAllCalls(true);
+      setShowAllCalls(true);
+      setShowAllCalls(false);
+    });
+    expect(switchReports()).toEqual([{ on: true }, { on: false }]);
+    uninstall?.();
+    uninstall = null;
+    act(() => {
+      setShowAllCalls(true);
+    });
+    expect(switchReports()).toHaveLength(2);
   });
 });
 

@@ -15,10 +15,9 @@
 
 .board-connection.selected .connection-line { stroke-width: 1.75; }
 
-/* Each kind's line: solid (HTTP, RPC, reads, writes), long dashes (a queue), dots (an event), short
-   dashes (a runtime call), thin (a relationship), dashed as drawn links (other). */
+/* Each kind's line: solid (HTTP, reads, writes), long dashes (a queue), short dashes (a runtime call),
+   thin (a relationship), dashed (other). */
 .kind-queue .connection-line { stroke-dasharray: 10 5; }
-.kind-event .connection-line { stroke-width: 2; stroke-linecap: round; stroke-dasharray: 0.1 5; }
 .kind-calls .connection-line { stroke-dasharray: 4 3; }
 .kind-relates .connection-line { stroke-width: 1; }
 .kind-other .connection-line { stroke-dasharray: 5 4; }

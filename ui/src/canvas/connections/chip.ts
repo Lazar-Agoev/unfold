@@ -6,7 +6,7 @@
  * for the label layout: without the label, then without the type, then the word alone. Pure.
  */
 
-import type { Cardinality, LinkKind } from "../../ipc/generated";
+import type { Cardinality, ConnectionKind } from "../../ipc/generated";
 import { manyEnds } from "./ends";
 
 /** One part of a chip: the kind's word, code as written (a channel, a type), words (a label), or a separator. */
@@ -15,12 +15,10 @@ export interface ChipPart {
   readonly tone: "word" | "code" | "text" | "sep";
 }
 
-/** Each kind's word on its chip and where the page and Selected list connections (menus use `MENU_WORDS`). */
-export const KIND_WORDS: Readonly<Record<LinkKind, string>> = {
+/** Each kind's word on its chip and where the page and Selected list connections (menus use `CONNECTION_WORDS`). */
+const KIND_WORDS: Readonly<Record<ConnectionKind, string>> = {
   http: "HTTP",
-  rpc: "RPC",
   queue: "queue",
-  event: "event",
   writes: "writes",
   reads: "reads",
   calls: "runtime call",
@@ -36,7 +34,7 @@ export function cardinalityText(cardinality: Cardinality): string {
 
 /** What a chip reads. */
 export interface ChipInput {
-  readonly kind: LinkKind;
+  readonly kind: ConnectionKind;
   readonly channel?: string;
   /** The carried type's name as written (`OrderJob`). */
   readonly carries?: string;

@@ -1,51 +1,37 @@
 /**
- * What screens do to a page's cards: add a definition or an entrance of the board's project, bring a
- * card, resource card, or note into view, author descriptions, labels, groups, links and connections,
- * and notes, and read which project-qualified keys a page shows (for the on-page marks). Each change is
- * one undo step and autosaves. A page shows one project: its board's.
+ * What screens do to a page's cards: add a definition, a type, an app, or an entrance of the board's
+ * project, bring a card, resource card, or note into view, author descriptions, names, combined steps,
+ * connections, and notes, and read which project-qualified keys a page shows (for the on-page marks).
+ * Each change is one undo step and autosaves. A page shows one project: its board's.
  */
 
 import { useMemo } from "react";
-import { queryClient } from "../../ipc/client";
-import type { CardRef, CardView, Key, LinkKind, Page, ProjectId, View } from "../../ipc/generated";
-import { cardQuery } from "../../canvas/cardData";
+import type { CardRef, ConnectionKind, Key, Page } from "../../ipc/generated";
 import { fallbackItemSize, pageGeometry } from "../../canvas/frames/geometry";
-import { handlerPlacement, newCardPlacement, type Rect } from "../../canvas/layout";
-import { measureText } from "../../canvas/measure";
-import { entranceCardText, entranceTitle } from "../../canvas/entranceText";
-import { entranceHandlerRows, estimatedCardSize } from "../../canvas/sizing";
-import { cardBody } from "../../code/typeKinds";
+import { newCardPlacement, type Rect } from "../../canvas/layout";
 import { showBoard } from "../shownBoard";
 import {
   addCard,
-  addLink as addLinkTo,
   cardKey,
   findCard,
   findCardByKey,
   findPage,
   removeCard as removeCardFrom,
-  removeGroup,
+  removeCombined,
   removeItems,
   removeLink as removeLinkFrom,
   setCardDescription,
-  setLabel,
-  setLinkLabel as setLinkLabelOf,
-  updateGroup,
-  type GroupChange,
+  setName,
+  updateCombined,
+  type CombinedChange,
 } from "./document";
-import { setConnectionKind, setLinkDescription } from "./connections";
+import { setConnectionKind, setLinkDescription, setLinkLabel as setLinkLabelOf } from "./connections";
 import { findFrame, frameChain, removeFrame as removeFrameFrom, updateFrame, type FrameChange } from "./frames";
 import { findNote, setNoteText } from "./notes";
 import { findResource, setResourceDescription } from "./resources";
 import { cardRefKey, boardKey } from "./keys";
-import { newBoard } from "./open";
-import { editPage, getOpenBoard, getPageView, requestCardFocus, select, setActivePage, shownView, useBoards } from "./store";
-import type { BoardRef, OpenBoard, PageId, PageTarget } from "./types";
-
-/** A card ref for `key`. */
-function refOf(kind: "block" | "entrance", key: Key): CardRef {
-  return kind === "block" ? { block: key } : { entrance: key };
-}
+import { editPage, getOpenBoard, requestCardFocus, select, setActivePage, useBoards } from "./store";
+import type { OpenBoard, PageId, PageTarget } from "./types";
 
 /**
  * Every drawn item's rectangle on a page as the canvas shows it (saved positions reflowed by measured
@@ -84,24 +70,24 @@ export function focusCard(target: PageTarget, cardId: string): void {
 }
 
 /**
- * Adds a definition (or any indexed block) of the board's project as a full card on the page, in its
- * own `view` when given, or focuses the card that already shows it. Shows the page. Returns the card's
- * id (undefined when it can't be added).
+ * Adds a card for `ref` (a module, definition, or type; or an app or entrance) of the board's project to
+ * the page, or focuses the card that already shows it. `name` is what the card is called, which its id
+ * is made from. Shows the page. Returns the card's id (undefined when it can't be added).
  */
-export function addBlock(target: PageTarget, key: Key, view?: View): string | undefined {
+export function addRef(target: PageTarget, ref: CardRef, name: string): string | undefined {
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
   if (!board || !page) {
     return undefined;
   }
   showPage(target);
-  const existing = findCardByKey(page, key);
+  const existing = findCardByKey(page, cardKey({ ref }));
   if (existing) {
     focusCard(target, existing.id);
     return existing.id;
   }
   const at = newCardPlacement([...displayedRects(board, target.page).values()]);
-  const cardId = editPage(target, (draft) => addCard(draft, { ref: refOf("block", key), at, ...(view ? { view } : {}) }));
+  const cardId = editPage(target, (draft) => addCard(draft, { ref, name, at }));
   if (cardId === undefined) {
     return undefined;
   }
@@ -110,75 +96,9 @@ export function addBlock(target: PageTarget, key: Key, view?: View): string | un
   return cardId;
 }
 
-export { entranceCardText, entranceTitle };
-
-/** An entrance's card model, read through the cache (its card then draws from it at once). */
-async function entranceModel(project: ProjectId, entranceKey: Key): Promise<Extract<CardView, { type: "entrance" }>> {
-  const view = await queryClient.query(cardQuery(project, entranceKey));
-  if (view.type !== "entrance") {
-    throw new Error("That key is not an entrance.");
-  }
-  return view;
-}
-
-/**
- * Opens an entrance card and a full card for each resolved handler on the page (or focuses the
- * entrance card if it is already there), in one step: the handlers stand in a column to its right,
- * each level with its handler row, placed from the cards' models before they are drawn, so nothing
- * moves them afterwards (measuring them only fits the camera).
- */
-export async function openEntrance(target: PageTarget, entranceKey: Key): Promise<void> {
-  const { project } = target.board;
-  const view = await entranceModel(project, entranceKey);
-  // Every resolved handler opens as a full card, in registration order, once each. Their models size
-  // them, and the cards draw from the same cache at once.
-  const resolved = [...new Set(view.targets.flatMap((handler) => (handler.resolution === "resolved" && handler.target !== null ? [handler.target] : [])))];
-  const models = await Promise.all(resolved.map((key) => queryClient.query(cardQuery(project, key)).catch(() => undefined)));
-  const board = getOpenBoard(target.board);
-  const page = board ? findPage(board.document, target.page) : undefined;
-  if (!board || !page) {
-    return;
-  }
-  showPage(target);
-  const existing = page.cards.find((card) => "entrance" in card.ref && card.ref.entrance === entranceKey);
-  if (existing) {
-    focusCard(target, existing.id);
-    return;
-  }
-  const [x, y] = newCardPlacement([...displayedRects(board, target.page).values()]);
-  const onPage = new Set(page.cards.map(cardKey));
-  const handlers = resolved.flatMap((key, index) => (onPage.has(key) ? [] : [{ key, model: models[index] }]));
-  // The entrance and its handlers open expanded (in Diagram: the entrance's ordered handler rows and the
-  // handlers' written flow), so tracing shows them in full; the page's lens still decides.
-  const shown = shownView(getPageView(target).lens, { view: "flow" }, page.defaultView);
-  const { width } = estimatedCardSize({ key: entranceKey, model: view, view: shown }, measureText);
-  const rows = cardBody(entranceKey, shown) === "handlers" ? entranceHandlerRows(entranceCardText(view), width, measureText) : [];
-  const positions = handlerPlacement(
-    { x, y, width },
-    handlers.map(({ key }) => rows[view.targets.findIndex((handler) => handler.target === key)]),
-    handlers.map(({ key, model }) => estimatedCardSize({ key, model, view: shown }, measureText)),
-  );
-  const opened = editPage(target, (draft) => [
-    addCard(draft, { ref: refOf("entrance", entranceKey), at: [x, y], view: "flow" }),
-    ...handlers.map(({ key }, index) => addCard(draft, { ref: refOf("block", key), at: positions[index] ?? [x, y], view: "flow" })),
-  ]);
-  const entranceId = opened?.[0];
-  if (!opened || entranceId === undefined) {
-    return;
-  }
-  select(target, { kind: "card", cardId: entranceId, key: null });
-  requestCardFocus(target, opened, "fit");
-}
-
-/** Traces an entrance: a new board in its project, titled after it, with the entrance and its handlers. */
-export async function traceEntrance(project: ProjectId, entranceKey: Key): Promise<BoardRef> {
-  const view = await entranceModel(project, entranceKey);
-  const ref = await newBoard(project, { title: entranceTitle(view) });
-  const page = getOpenBoard(ref)?.activePage;
-  if (page !== undefined) {
-    await openEntrance({ board: ref, page }, entranceKey);
-  }
-  return ref;
+/** Adds a module, definition, or type of the board's project (`addRef`). */
+export function addBlock(target: PageTarget, key: Key, name: string): string | undefined {
+  return addRef(target, { block: key }, name);
 }
 
 const NO_KEYS: ReadonlySet<string> = new Set();
@@ -210,35 +130,36 @@ export function describeCard(target: PageTarget, cardId: string, text: string, a
   );
 }
 
-/** Sets or clears (blank text) the Flow label of a block on the page. */
-export function labelNode(target: PageTarget, key: Key, text: string, author: string): void {
+/** Sets or clears (blank text) the page's name for a block. */
+export function nameBlock(target: PageTarget, key: Key, text: string, author: string): void {
   editPage(
     target,
     (page) => {
-      setLabel(page, key, text, author);
+      setName(page, key, text, author);
     },
-    { coalesce: `label:${key}` },
+    { coalesce: `name:${key}` },
   );
 }
 
-/** Renames a group, sets its description, or collapses it. */
-export function editGroup(target: PageTarget, groupId: string, change: GroupChange): void {
+/** Renames a combined step, sets its description, or collapses or opens it. */
+export function editCombined(target: PageTarget, combinedId: string, change: CombinedChange): void {
   editPage(
     target,
     (page) => {
-      updateGroup(page, groupId, change);
+      updateCombined(page, combinedId, change);
     },
-    change.collapsed === undefined ? { coalesce: `group:${groupId}` } : {},
+    change.collapsed === undefined ? { coalesce: `combined:${combinedId}` } : {},
   );
 }
 
-export function ungroup(target: PageTarget, groupId: string): void {
+/** Removes a combined step: its blocks are drawn one by one again. */
+export function uncombine(target: PageTarget, combinedId: string): void {
   editPage(target, (page) => {
-    removeGroup(page, groupId);
+    removeCombined(page, combinedId);
   });
 }
 
-/** Removes a card from the page, with its groups and links (and a frame it leaves empty). */
+/** Removes a card from the page, with its connections (and a frame it leaves empty). */
 export function removeCard(target: PageTarget, cardId: string): void {
   editPage(target, (page) => {
     removeCardFrom(page, cardId);
@@ -287,12 +208,7 @@ export function removeFrame(target: PageTarget, frameId: string): void {
   });
 }
 
-/** Draws a link between two cards of the page. Returns its id, or undefined when it can't be drawn. */
-export function addLink(target: PageTarget, from: string, to: string): string | undefined {
-  return editPage(target, (page) => addLinkTo(page, from, to));
-}
-
-/** Sets or clears (blank text) a link's label. */
+/** Sets or clears (blank text) a connection's label; typing merges into one undo step. */
 export function setLinkLabel(target: PageTarget, linkId: string, text: string, author: string): void {
   editPage(
     target,
@@ -309,8 +225,8 @@ export function removeLink(target: PageTarget, linkId: string): void {
   });
 }
 
-/** Gives a link a kind (a drawn link becomes a connection), which makes you the one who drew it. */
-export function setLinkKind(target: PageTarget, linkId: string, kind: LinkKind, author: string): void {
+/** Gives a connection another kind, which makes you the one who drew it. */
+export function setLinkKind(target: PageTarget, linkId: string, kind: ConnectionKind, author: string): void {
   editPage(target, (page) => {
     setConnectionKind(page, linkId, kind, author);
   });

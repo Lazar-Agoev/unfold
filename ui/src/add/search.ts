@@ -1,40 +1,27 @@
 /**
- * Add's search: names in the board's project (entrances, definitions, and files) as one ranked list.
- * Entrances and definitions share the engine's score and merge by it, entrances first on a tie; files,
- * which the engine ranks by their path alone, follow.
+ * Add's search: names in the board's project (modules, definitions and types, apps and entrances) as
+ * one ranked list, best first by the engine's score, entrances first on a tie. Each row's kind is the
+ * engine's.
  */
 
-import { declarationWord } from "../code/typeKinds";
-import type { FileHit, ProjectId, SearchArgs, SearchHit, SearchResults } from "../ipc/generated";
+import type { CardRef, ProjectId, SearchArgs, SearchHit, SearchResults } from "../ipc/generated";
 
-export type ResultItem =
-  | { readonly type: "entrance"; readonly id: string; readonly hit: SearchHit }
-  | { readonly type: "definition"; readonly id: string; readonly hit: SearchHit }
-  | { readonly type: "file"; readonly id: string; readonly hit: FileHit };
+/** A result: its hit, and the card it adds. */
+export interface ResultItem {
+  readonly id: string;
+  readonly hit: SearchHit;
+  readonly ref: CardRef;
+}
 
 /** The `search` arguments for a query in one project. */
 export function searchArgs(query: string, project: ProjectId): SearchArgs {
-  return { query, projects: [project] };
+  return { query, kinds: ["definitions", "entrances"], projects: [project] };
 }
 
 /** The results as one list, best first. */
 export function resultItems(results: SearchResults): ResultItem[] {
-  const names: ResultItem[] = [
-    ...results.entrances.hits.map((hit) => ({ type: "entrance" as const, id: `entrance:${hit.key}`, hit })),
-    ...results.definitions.hits.map((hit) => ({ type: "definition" as const, id: `definition:${hit.key}`, hit })),
+  return [
+    ...results.entrances.hits.map((hit) => ({ id: `entrance:${hit.key}`, hit, ref: { entrance: hit.key } })),
+    ...results.definitions.hits.map((hit) => ({ id: `definition:${hit.key}`, hit, ref: { block: hit.key } })),
   ].sort((a, b) => b.hit.score - a.hit.score);
-  const files = results.files.hits.map((hit): ResultItem => ({ type: "file", id: `file:${hit.path}`, hit }));
-  return [...names, ...files];
-}
-
-/** A result's kind as its row shows it: `entrance`, `file`, or a definition's kind (`function`, `class`, `interface`, `type`). */
-export function kindText(item: ResultItem): string {
-  switch (item.type) {
-    case "entrance":
-      return "entrance";
-    case "definition":
-      return declarationWord(item.hit.kind) ?? item.hit.kind;
-    case "file":
-      return "file";
-  }
 }

@@ -10,11 +10,12 @@ fn state(project: &str, board: Option<&str>) -> Value {
         "bounds": { "x": 80, "y": 60, "width": 1440, "height": 900 },
         "maximized": false,
         "board": board.map(|board| json!({ "project": project, "board": board })),
+        "showAllCalls": false,
     })
 }
 
 #[test]
-fn the_window_comes_back_with_its_bounds_and_last_board() {
+fn the_window_comes_back_with_its_bounds_last_board_and_show_all_calls() {
     let harness = Harness::new("ts-orders", false);
     assert_eq!(
         harness.trusted("window_state", json!({})).expect("state"),
@@ -25,8 +26,9 @@ fn the_window_comes_back_with_its_bounds_and_last_board() {
         .trusted("save_window_state", json!({ "state": shown }))
         .expect("save");
     assert_eq!(harness.trusted("window_state", json!({})).expect("state"), shown);
-    // Home shows no board.
-    let home = state(&harness.project, None);
+    // Home shows no board; Show all calls is remembered either way.
+    let mut home = state(&harness.project, None);
+    home["showAllCalls"] = json!(true);
     harness
         .trusted("save_window_state", json!({ "state": home }))
         .expect("save");
@@ -46,15 +48,19 @@ fn only_the_main_process_keeps_the_window_state() {
         harness.code(1, "save_window_state", json!({ "state": shown })),
         "untrusted"
     );
-    let mut extra = shown;
+    let mut extra = shown.clone();
     extra["tabs"] = json!([]);
-    assert_eq!(
-        harness
-            .trusted("save_window_state", json!({ "state": extra }))
-            .expect_err("unknown field")
-            .code,
-        "invalid_args"
-    );
+    let mut missing = shown;
+    missing.as_object_mut().expect("object").remove("showAllCalls");
+    for state in [extra, missing] {
+        assert_eq!(
+            harness
+                .trusted("save_window_state", json!({ "state": state }))
+                .expect_err("not a window state")
+                .code,
+            "invalid_args"
+        );
+    }
 }
 
 #[test]

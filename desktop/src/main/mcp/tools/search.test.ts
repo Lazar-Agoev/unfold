@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import entrances from "../../../../../testdata/workspace/commands/entrances.json";
 import searchPlace from "../../../../../testdata/workspace/commands/search_place.json";
 import searchWorker from "../../../../../testdata/workspace/commands/search_worker.json";
-import type { CatalogRow, EntranceScope, EntrancesView, SearchResults } from "../engine-types";
+import type { EntrancesView, SearchResults } from "../engine-types";
 import { listEntrances, search } from "./search";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -14,7 +14,7 @@ const NONE = { hits: [], total: 0, truncated: false };
 function names(args: Readonly<Record<string, unknown>>): SearchResults {
   const found = recorded<SearchResults>(args["query"] === "place" ? searchPlace : searchWorker);
   const kinds = args["kinds"] as string[];
-  const types = (args["definitionKinds"] as string[] | undefined)?.includes("interface") === true;
+  const types = (args["definitionKinds"] as string[] | undefined)?.includes("type") === true;
   return {
     ...found,
     definitions: kinds.includes("definitions") && !types ? found.definitions : NONE,
@@ -30,25 +30,25 @@ describe("search", () => {
     expect(text.split("\n")).toEqual([
       "Unfold · ts-orders · as Claude",
       "Entrances (4):",
-      `- worker (process, worker) declared in package.json: key entrance:["package.script","process","","worker","src/worker.ts"]`,
-      `- emails (worker, worker) declared in src/queues/email-worker.ts: key entrance:["bullmq.worker","worker","","emails","(…)"]`,
-      `- orders (worker, worker) declared in src/queues/orders-worker.ts: key entrance:["bullmq.worker","worker","","orders","processOrder"]`,
-      `- new URL("../../report-processor.js", import.meta.url) (worker, worker) declared in src/queues/report-worker.ts: key entrance:["bullmq.worker","worker","","","new URL(\\"../../report-processor.js\\", import.meta.url)"]`,
+      "- Worker (app): key entrance:worker",
+      "- Send an email (entrance of Worker): key entrance:worker/send-an-email",
+      "- Build a report (entrance of Worker): key entrance:worker/build-a-report",
+      "- Process an order (entrance of Worker): key entrance:worker/process-an-order",
       "Files (4):",
-      "- src/worker.ts: 1 definition",
-      "- src/queues/email-worker.ts: 1 definition",
-      "- src/queues/orders-worker.ts: 0 definitions",
-      "- src/queues/report-worker.ts: 0 definitions",
+      "- src/worker.ts: 2 definitions",
+      "- src/queues/email-worker.ts: 4 definitions",
+      "- src/queues/orders-worker.ts: 2 definitions",
+      "- src/queues/report-worker.ts: 2 definitions",
       "Next: read_code or get_relations with a key; add_cards puts it on a page.",
     ]);
     const asked = app.engineCalls.filter(([command]) => command === "search").map(([, args]) => args);
     expect(asked).toEqual([
-      { query: "worker", kinds: ["definitions"], definitionKinds: ["function", "method", "constructor", "getter", "setter"], limit: 10, projects: [PROJECT] },
-      { query: "worker", kinds: ["definitions"], definitionKinds: ["interface", "type_alias", "enum", "class"], limit: 10, projects: [PROJECT] },
+      { query: "worker", kinds: ["definitions"], definitionKinds: ["function"], limit: 10, projects: [PROJECT] },
+      { query: "worker", kinds: ["definitions"], definitionKinds: ["type", "class"], limit: 10, projects: [PROJECT] },
       { query: "worker", kinds: ["entrances", "files"], limit: 10, projects: [PROJECT] },
     ]);
     const place = await app.call(search, { query: "place", kinds: ["functions"] });
-    expect(place.text).toContain("Functions (1):\n- OrderService.place (method) at src/services/order-service.ts:13: key src/services/order-service.ts#class:OrderService/method:place");
+    expect(place.text).toContain("Functions (1):\n- OrderService.place (function) at src/services/order-service.ts:13: key src/services/order-service.ts#OrderService.place");
   });
 
   it("pages every kind with one cursor", async () => {
@@ -57,7 +57,7 @@ describe("search", () => {
     expect(first.text).toContain("Entrances (1–3 of 4):");
     expect(first.text).toContain('More: search with cursor "3" for the next page.');
     const second = await app.call(search, { query: "worker", kinds: ["entrances"], limit: 3, cursor: "3" });
-    expect(second.text).toContain("Entrances (4–4 of 4):\n- new URL");
+    expect(second.text).toContain("Entrances (4–4 of 4):\n- Process an order");
     expect(second.text).not.toContain("More:");
     expect(app.engineCalls.at(-1)?.[1]).toMatchObject({ limit: 6 });
     expect((await app.call(search, { query: "worker", cursor: "soon" })).text).toBe(
@@ -78,7 +78,7 @@ describe("search", () => {
   it("fits the largest page under the size guard, keeping its cursor, and reaches every hit across pages", async () => {
     const deep = `src/${"very-long-folder-name/".repeat(8)}module.ts`;
     const many = (kind: string, count: number) =>
-      Array.from({ length: count }, (_, index) => ({ project: PROJECT, key: `${deep}#class:Service${index}/method:${kind}${index}`, name: `${kind}${index}`, qualifiedName: `Service${index}.${kind}${index}`, path: deep, kind: "method", line: index + 1, application: null, score: 1 }));
+      Array.from({ length: count }, (_, index) => ({ project: PROJECT, key: `${deep}#Service${index}.${kind}${index}`, name: `${kind}${index}`, qualifiedName: `Service${index}.${kind}${index}`, path: deep, kind: "function", line: index + 1, app: null, score: 1 }));
     const group = (kind: string) => ({ hits: many(kind, 120), total: 120, truncated: false });
     const app = harness({
       engine: {
@@ -103,75 +103,56 @@ describe("search", () => {
   });
 });
 
-/** A catalog row named after its application. */
-function catalogRow(application: string, index: number, kind: CatalogRow["kind"] = "command"): CatalogRow {
-  return {
-    key: `entrance:["manual","${kind}","","${application}-${index}","src/${"very-long-folder-name/".repeat(6)}jobs.ts#${application}${index}"]`,
-    id: null,
-    section: 0,
-    kind,
-    method: null,
-    trigger: `${application}-${index}`,
-    title: `${kind} ${application}-${index}`,
-    handler: null,
-    path: "unfold.toml",
-    line: null,
-    reaches: 3,
-    alsoIn: [],
-  };
-}
-
-/** The recorded overview, and for a scope `entries` rows per application (and unreached), its launch rows first. */
-function catalog(entries: number): (args: Readonly<Record<string, unknown>>) => EntrancesView {
-  const overview = recorded<EntrancesView>(entrances);
-  return (args) => {
-    const id = args["application"];
-    if (id === undefined && args["unreached"] === undefined) {
-      return overview;
-    }
-    const application = overview.view === "overview" ? overview.categories.flatMap((group) => group.applications).find((item) => item.id === id) : undefined;
-    const name = application?.name ?? "unreached";
-    const launches = (application?.launches ?? []).map((_, index) => catalogRow(name, index, "process"));
-    const rows = [...launches, ...Array.from({ length: entries }, (_, index) => catalogRow(name, index))];
-    const sections: EntranceScope["sections"] = [
-      ...(launches.length > 0 ? [{ title: "Launch", kind: "launch" as const, mountedFrom: null, alsoIn: [], count: launches.length }] : []),
-      { title: "Commands", kind: "command", mountedFrom: null, alsoIn: [], count: entries },
-    ];
-    const limit = Number(args["limit"]);
-    return { view: "scope", project: PROJECT, sections, rows: rows.slice(0, limit), total: rows.length, nextCursor: null };
+/** The recorded apps, each with `entries` more entrances (with long keys) after its own. */
+function declared(entries: number): () => EntrancesView {
+  return () => {
+    const view = recorded<EntrancesView>(entrances);
+    const long = `src/${"very-long-folder-name/".repeat(6)}jobs.ts`;
+    return {
+      ...view,
+      apps: view.apps.map((app) => ({
+        ...app,
+        entrances: [
+          ...app.entrances,
+          ...Array.from({ length: entries }, (_, index) => ({ key: `${app.key ?? ""}/job-${index}`, name: `Job ${index}`, on: `job-${index}`, code: [{ key: `${long}#job${index}`, state: "found" as const }] })),
+        ],
+      })),
+    };
   };
 }
 
 describe("list_entrances", () => {
-  it("lists each application with its launches and entrances, with keys", async () => {
-    const app = harness({ engine: { entrances: catalog(9) } });
-    const { text } = await app.call(listEntrances, { project: "ts-orders", filter: "o" });
-    expect(app.engineCalls).toContainEqual(["entrances", { project: PROJECT }]);
-    expect(app.engineCalls).toContainEqual(["entrances", { project: PROJECT, application: "src/server.ts#", limit: 27, filter: "o" }]);
+  it("lists each app as unfold.toml declares it, with its entrances, their code, and each code's state", async () => {
+    const app = harness({ engine: { entrances: declared(0) } });
+    const { text } = await app.call(listEntrances, { project: "ts-orders" });
+    expect(app.engineCalls.filter(([command]) => command === "entrances")).toEqual([["entrances", { project: PROJECT }]]);
     const lines = text.split("\n");
     expect(lines[0]).toBe("Unfold · ts-orders · as Claude");
-    expect(lines).toContain("server (startup src/server.ts; started by npm run start (package.json), npm run dev (package.json)), entrances matching “o” (9):");
-    expect(lines).toContain(`- command server-0 (command) declared in unfold.toml, reaches 3 definitions: key ${catalogRow("server", 0).key}`);
-    expect(lines).not.toContain(`- process server-0 (process) declared in unfold.toml, reaches 3 definitions: key ${catalogRow("server", 0, "process").key}`);
-    expect(lines).toContain("legacy:export (started by npm run legacy:export (package.json)), entrances matching “o” (9):");
-    expect(lines).toContain("Launches into code Unfold doesn't index: npm run legacy:export (package.json).");
-    expect(lines.at(-1)).toBe("Next: read_code with an entrance's key shows its handlers; create_board with trace makes a board from it.");
+    expect(lines).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances (9):");
+    expect(lines).toContain(
+      "- Place an order: key entrance:server/place-an-order; on POST /orders; code src/routes/middleware.ts#requireUser (found), src/routes/middleware.ts#validateBody (found), src/routes/orders.ts#createOrder (found)",
+    );
+    expect(lines.at(-1)).toBe("Next: read_code with an app's or entrance's key shows its code; create_board with trace makes a board from it.");
+    const filtered = await app.call(listEntrances, { project: "ts-orders", filter: "POST" });
+    expect(filtered.text).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances matching “POST” (1):");
   });
 
-  it("narrows to one application, pages it, and names the applications when one isn't there", async () => {
-    const app = harness({ engine: { entrances: catalog(9) } });
-    const server = await app.call(listEntrances, { project: "ts-orders", application: "server", limit: 3 });
-    expect(server.text).toContain("server (startup src/server.ts; started by npm run start (package.json), npm run dev (package.json)), entrances (1–3 of 9):");
+  it("narrows to one app, pages it, and names the apps when one isn't there", async () => {
+    const app = harness({ engine: { entrances: declared(9) } });
+    const server = await app.call(listEntrances, { project: "ts-orders", app: "Server", limit: 3 });
+    expect(server.text).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances (1–3 of 18):");
     expect(server.text).toContain('More: list_entrances with cursor "3" for the next page.');
-    expect(server.text).not.toContain("cli (");
-    const missing = await app.call(listEntrances, { project: "ts-orders", application: "web" });
-    expect(missing.text).toBe("Can't list the entrances: ts-orders has no application “web”. Its applications: server, cli, legacy:export, worker, scheduler.");
+    expect(server.text).not.toContain("Worker (");
+    const byKey = await app.call(listEntrances, { project: "ts-orders", app: "entrance:server", limit: 3 });
+    expect(byKey.text).toContain("Server (key entrance:server;");
+    const missing = await app.call(listEntrances, { project: "ts-orders", app: "web" });
+    expect(missing.text).toMatch(/^Can't list the entrances: ts-orders has no app “web”\. Its apps: Server, /);
   });
 
   it("defaults to the project of the board in view", async () => {
     const app = harness({
       projects: [projectRow(PROJECT, "ts-orders"), projectRow("p-python0000", "py-orders")],
-      engine: { entrances: catalog(1) },
+      engine: { entrances: declared(0) },
     });
     expect((await app.call(listEntrances, {})).text).toBe(
       "Can't tell which project you mean: the workspace has 2 projects and no board is in view. Pass project: a name or id from list_projects.",
@@ -180,14 +161,12 @@ describe("list_entrances", () => {
     expect((await app.call(listEntrances, {})).text.split("\n")[0]).toBe("Unfold · py-orders · as Claude");
   });
 
-  it("fits the largest page of several applications under the size guard, keeping its cursor", async () => {
-    const app = harness({ engine: { entrances: catalog(150) } });
+  it("fits the largest page of several apps under the size guard, keeping its cursor", async () => {
+    const app = harness({ engine: { entrances: declared(150) } });
     const { text } = await app.call(listEntrances, { project: "ts-orders", limit: 100 });
     expect(text).not.toContain("Cut here");
     const next = Number(/More: list_entrances with cursor "(\d+)"/.exec(text)?.[1]);
     expect(next).toBeGreaterThan(0);
     expect(next).toBeLessThan(100);
-    // Every application shows the same rows, so the cursor skips none.
-    expect(text.match(/^- command cli-/gm)).toHaveLength(next);
   });
 });

@@ -111,11 +111,11 @@ describe("editing a board's pages for an agent", () => {
   });
 
   it("keeps people's words on a page unless the person asked, and keeps one page", async () => {
-    const labeled = { ...page("page-2"), title: "Scratch", labels: [{ key: "src/a.ts#function:a/if[0]", text: "Queue it", author: "person:lazar", signature: "" }] };
+    const labeled = { ...page("page-2"), title: "Scratch", names: [{ key: "key-a-branch", text: "Queue it", author: "person:lazar", signature: "" }] };
     openWith(boardDocument([page("page-1", [CARD]), labeled]));
     const refused = await editBoardForAgent({ requestId: 1, board: REF, agent: CLAUDE, title: "Edit pages", ops: [{ op: "delete_page", page: "page-2" }] });
     expect(refused).toMatchObject({ ok: false, code: "people_text" });
-    expect(!refused.ok && refused.message).toContain("Can't change the label “Queue it” on the page “Scratch”: Lazar wrote it.");
+    expect(!refused.ok && refused.message).toContain("Can't change the name “Queue it” on the page “Scratch”: Lazar wrote it.");
     expect(saved).toEqual([]);
 
     store.setActivePage(REF, "page-2");
@@ -133,24 +133,24 @@ describe("editing a board's pages for an agent", () => {
     expect(await editBoardForAgent({ requestId: 6, board: { project: P, id: "other.json" }, agent: CLAUDE, title: "Edit pages", ops: [] })).toMatchObject({ ok: false, code: "board_not_open" });
   });
 
-  it("counts a person's connection and a drawn link on a page as their words, as remove_items does", async () => {
+  it("counts a person's connection and name on a page as their words, as remove_items does", async () => {
     const B = { ...CARD, id: "b", at: [600, 0] as [number, number] };
     const connected = { ...page("page-2", [CARD, B], { links: [{ id: "posts", kind: "http", from: "a", to: "b", author: "person:lazar" }] }), title: "Scratch" };
-    const drawn = { ...page("page-3", [CARD, B], { links: [{ id: "a-to-b", from: "a", to: "b" }] }), title: "Sketch" };
-    openWith(boardDocument([page("page-1", [CARD]), connected, drawn]));
+    const named = { ...page("page-3", [CARD], { names: [{ key: "key-a-branch", text: "Paid?", author: "person:lazar", signature: "" }] }), title: "Sketch" };
+    openWith(boardDocument([page("page-1", [CARD]), connected, named]));
     const deleting = (id: string) => editBoardForAgent({ requestId: 1, board: REF, agent: CLAUDE, title: "Edit pages", ops: [{ op: "delete_page", page: id }] });
     const person = await deleting("page-2");
     expect(!person.ok && person.message).toContain("Can't change the http connection on the page “Scratch”: Lazar wrote it.");
-    const line = await deleting("page-3");
-    expect(!line.ok && line.message).toContain("Can't change the link a person drew on the page “Sketch”: a person wrote it.");
+    const name = await deleting("page-3");
+    expect(!name.ok && name.message).toContain("Can't change the name “Paid?” on the page “Sketch”: Lazar wrote it.");
     expect(saved).toEqual([]);
   });
 });
 
 describe("showing a board for an agent", () => {
   it("shows the board and page, selects the item, and centers it", () => {
-    const group = { id: "g", card: "a", title: "Check", members: [], collapsed: false };
-    openWith(boardDocument([page("page-1"), page("page-2", [CARD], { groups: [group] })]));
+    const combined = { id: "g", title: "Check", members: ["key-a-branch"], collapsed: false, author: "agent:claude", signature: "" };
+    openWith(boardDocument([page("page-1"), page("page-2", [CARD], { combined: [combined] })]));
     showHome();
     expect(showForAgent({ requestId: 1, board: REF, page: "page-2", item: "a" })).toEqual({ ok: true, page: "page-2" });
     expect(getShownBoard()).toEqual(REF);
@@ -160,7 +160,7 @@ describe("showing a board for an agent", () => {
     expect(store.getPageView(target).focus).toMatchObject({ cardIds: ["a"], mode: "center" });
 
     showForAgent({ requestId: 2, board: REF, page: "page-2", item: "g" });
-    expect(store.getPageView(target).selection).toEqual({ kind: "group", groupId: "g" });
+    expect(store.getPageView(target).selection).toEqual({ kind: "combined", combinedId: "g" });
   });
 
   it("refuses an item or page that isn't there", () => {

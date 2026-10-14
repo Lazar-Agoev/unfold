@@ -1,14 +1,13 @@
 /**
- * Where a connection leaves and enters (design §4.7): from its step's line in a card shown as Code and
- * its step in Flow (a `step:` port the card places, as compiled arrows leave from their calling line),
- * from the card's edge otherwise (a Diagram node, a resource card, a frame); a relationship from one
- * table column's row to the other's. An end inside a collapsed frame attaches to the frame's edge.
- * Drawn links leave and enter by the sides facing each other (`linkEnds`). Pure.
+ * Where a connection leaves and enters (design §4.7): from its step's call on an expanded card that
+ * draws it (a `stepPort` the card places level with the call, as arrows leave from their calls), from
+ * the card's edge otherwise (a compact card, a resource card, a frame); a relationship from one table
+ * column's row to the other's. An end inside a collapsed frame attaches to the frame's edge. Otherwise
+ * it leaves and enters by the sides facing each other (`linkEnds`). Pure.
  */
 
-import type { CardBody } from "../../code/typeKinds";
-import { stepPort } from "../../code/outline";
-import type { Link } from "../../ipc/generated";
+import type { Connection, Key } from "../../ipc/generated";
+import { stepPort } from "../arrows";
 import type { Rect } from "../layout";
 import { linkEnds } from "../linkSides";
 import { columnHandle } from "../resources/columns";
@@ -19,22 +18,20 @@ export interface Handles {
   readonly target: string;
 }
 
-/** Whether a card's body places a step's port at its line or Flow step. */
-function placesSteps(body: CardBody | undefined): boolean {
-  return body === "code" || body === "flow";
-}
-
-/** The ends a link is drawn between (`routeLinks`): each its own item, or the collapsed frame shown in its place. */
+/** The ends a connection is drawn between (`routeLinks`): each its own item, or the collapsed frame shown in its place. */
 interface DrawnEnds {
   readonly from: string;
   readonly to: string;
 }
 
+/** Whether card `cardId` draws block `step` where a connection can leave from it (expanded, in its drawn flow). */
+export type DrawsStep = (cardId: string, step: Key) => boolean;
+
 /**
  * The handles of a line drawn between `ends` (rectangles `from` and `to`): a connection's step port or
  * columns where its ends are drawn as themselves, else the facing sides.
  */
-export function lineHandles(link: Link | undefined, ends: DrawnEnds, from: Rect, to: Rect, bodyOf: (id: string) => CardBody | undefined): Handles {
+export function lineHandles(link: Connection | undefined, ends: DrawnEnds, from: Rect, to: Rect, drawsStep: DrawsStep): Handles {
   const sides = linkEnds(from, to);
   const own = { from: link?.from === ends.from, to: link?.to === ends.to };
   let source = `link-out-${sides.from}`;
@@ -47,17 +44,17 @@ export function lineHandles(link: Link | undefined, ends: DrawnEnds, from: Rect,
     if (own.to && link.toColumn !== undefined) {
       target = columnHandle(link.toColumn, "in", rightward ? "left" : "right");
     }
-  } else if (link?.step !== undefined && own.from && placesSteps(bodyOf(link.from))) {
+  } else if (link?.step !== undefined && own.from && drawsStep(link.from, link.step)) {
     source = stepPort(link.step);
   }
   return { source, target };
 }
 
-/** The step ports each card shows a connection leaving from (in Code or Flow, drawn as itself). */
-export function stepPorts(links: readonly Link[], shownAs: ReadonlyMap<string, string>, bodyOf: (id: string) => CardBody | undefined): Map<string, string[]> {
+/** The step ports each card shows a connection leaving from (drawn as itself, expanded, drawing the step). */
+export function stepPorts(links: readonly Connection[], shownAs: ReadonlyMap<string, string>, drawsStep: DrawsStep): Map<string, string[]> {
   const ports = new Map<string, string[]>();
   for (const link of links) {
-    if (link.kind !== undefined && link.kind !== "relates" && link.step !== undefined && !shownAs.has(link.from) && placesSteps(bodyOf(link.from))) {
+    if (link.kind !== "relates" && link.step !== undefined && !shownAs.has(link.from) && drawsStep(link.from, link.step)) {
       const port = stepPort(link.step);
       const list = ports.get(link.from) ?? [];
       if (!list.includes(port)) {
@@ -70,7 +67,7 @@ export function stepPorts(links: readonly Link[], shownAs: ReadonlyMap<string, s
 }
 
 /** The columns each table shows a relationship leaving or entering by (drawn as itself). */
-export function relatedColumns(links: readonly Link[], shownAs: ReadonlyMap<string, string>): Map<string, string[]> {
+export function relatedColumns(links: readonly Connection[], shownAs: ReadonlyMap<string, string>): Map<string, string[]> {
   const columns = new Map<string, string[]>();
   const add = (table: string, column: string | undefined) => {
     if (column === undefined || shownAs.has(table)) {

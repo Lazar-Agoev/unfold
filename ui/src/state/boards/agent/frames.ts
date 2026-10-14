@@ -10,12 +10,12 @@
 
 import type { AgentFrameMember, AgentFrameResult, AgentFrameSpec, AgentItemResult, AgentItemStatus, FrameCardsOp } from "@unfold/desktop/agent-api";
 import type { Frame, Page } from "../../../ipc/generated";
-import { findCard, isFreeId } from "../document";
+import { findCard, findCombined, isFreeId } from "../document";
 import { MAX_FRAME_DEPTH, addFrame, findFrame, frameChain, frameItems, frameOf, nestFrame, nestingRemoval, setFrameMembers, updateFrame } from "../frames";
 import { cardName, guardPeopleText, guardRemoval, invalid, noteName, pageArrows, type OpContext } from "./context";
 
 /** What an item of the page is, for frames' rules and results. */
-function itemKind(page: Page, id: string): AgentFrameMember["kind"] | "group" | "link" | null {
+function itemKind(page: Page, id: string): AgentFrameMember["kind"] | "combined" | "link" | null {
   if (findCard(page, id)) {
     return "card";
   }
@@ -28,8 +28,8 @@ function itemKind(page: Page, id: string): AgentFrameMember["kind"] | "group" | 
   if ((page.notes ?? []).some((item) => item.id === id)) {
     return "note";
   }
-  if (page.groups.some((item) => item.id === id)) {
-    return "group";
+  if (findCombined(page, id)) {
+    return "combined";
   }
   return page.links.some((item) => item.id === id) ? "link" : null;
 }
@@ -84,8 +84,8 @@ function checkMembers(ctx: OpContext, page: Page, spec: AgentFrameSpec, title: s
     if (kind === null) {
       throw invalid(`There is no item with id “${id}” on this page. read_page lists the page's ids.`);
     }
-    if (kind === "group" || kind === "link") {
-      throw invalid(`“${id}” is a ${kind === "group" ? "step group" : "link"}: a frame holds cards, resource cards, notes, and frames.`);
+    if (kind === "combined" || kind === "link") {
+      throw invalid(`“${id}” is a ${kind === "combined" ? "combined step" : "connection"}: a frame holds cards, resource cards, notes, and frames.`);
     }
     if (id === self?.id || id === spec.id) {
       throw invalid(`The frame “${title}” can't hold itself.`);
@@ -140,7 +140,7 @@ function applyFrameSpec(ctx: OpContext, page: Page, spec: AgentFrameSpec, replac
     const kind = itemKind(page, spec.id);
     throw invalid(
       kind !== null
-        ? `“${spec.id}” is the id of a ${kind === "group" ? "step group" : kind} on this page. Give the frame another id, or leave id out.`
+        ? `“${spec.id}” is the id of a ${kind === "combined" ? "combined step" : kind} on this page. Give the frame another id, or leave id out.`
         : `“${spec.id}” can't name a frame: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
     );
   }

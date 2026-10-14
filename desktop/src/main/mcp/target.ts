@@ -19,7 +19,7 @@ export interface TargetArgs {
   readonly board?: string | undefined;
   /** A page's id. */
   readonly page?: string | undefined;
-  /** An item's id (a card, step group, link, frame, resource card, note, or proposed step). */
+  /** An item's id (a card, combined step, connection, frame, resource card, note, or proposed step). */
   readonly item?: string | undefined;
 }
 
@@ -193,7 +193,7 @@ export function pagePlace(project: ProjectRow, read: ReadPage): ResultPlace {
 export interface CodeTarget {
   readonly project: ProjectRow;
   readonly key: string;
-  /** The Flow step or statement the person selected in the card. */
+  /** The block the person selected in the card. */
   readonly step?: string;
 }
 
@@ -208,8 +208,8 @@ function cardCode(target: BoardTarget, page: Page, id: string): CodeTarget {
 
 /**
  * The code a read tool works on: `key` (a key, or a link to a card), else the card selected in the
- * person's view (a selected step's, step group's, or proposed step's card too; a step shown in a call
- * expanded in place reads the block that owns it).
+ * person's view (a selected step's card too; a step shown in a call opened in place reads the
+ * definition that owns it).
  */
 export async function codeTarget(context: ToolContext, args: { readonly key?: string | undefined; readonly project?: string | undefined }): Promise<CodeTarget> {
   if (args.key !== undefined && isLink(args.key)) {
@@ -218,33 +218,21 @@ export async function codeTarget(context: ToolContext, args: { readonly key?: st
       throw cant("read the code", "the link names a board or a page, not a card", "Pass a key (from search or read_page), or a link to a card.");
     }
     const read = await readPage(context, target.board, target.page);
-    // A proposed step's link reads its card's code: the proposal has none of its own.
-    const proposal = read.page.proposals?.find((item) => item.id === target.item);
-    return cardCode(target, read.page, proposal?.card ?? target.item);
+    return cardCode(target, read.page, target.item);
   }
   if (args.key !== undefined) {
     return { project: await projectOrView(context, args.project), key: args.key };
   }
   const view = currentView(context);
   const selection = view?.selection;
-  if (view?.board && view.page !== undefined && selection && (selection.kind === "card" || selection.kind === "step" || selection.kind === "group" || selection.kind === "proposal")) {
+  if (view?.board && view.page !== undefined && selection && (selection.kind === "card" || selection.kind === "step")) {
     const target = await resolveBoard(context, {});
     const read = await readPage(context, view.board, view.page);
-    const cardId =
-      selection.kind === "card"
-        ? selection.id
-        : selection.kind === "step"
-          ? selection.card
-          : selection.kind === "group"
-            ? read.page.groups.find((group) => group.id === selection.id)?.card
-            : read.page.proposals?.find((proposal) => proposal.id === selection.id)?.card;
-    if (cardId !== undefined) {
-      const code = cardCode(target, read.page, cardId);
-      if (selection.kind !== "step") {
-        return code;
-      }
-      return { ...code, ...(selection.owner !== undefined ? { key: selection.owner } : {}), step: selection.key };
+    if (selection.kind === "card") {
+      return cardCode(target, read.page, selection.id);
     }
+    const code = cardCode(target, read.page, selection.card);
+    return { ...code, ...(selection.owner !== undefined ? { key: selection.owner } : {}), step: selection.key };
   }
   throw cant(
     "tell which code you mean",

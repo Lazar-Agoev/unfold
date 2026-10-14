@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import entrances from "../../../../../testdata/workspace/commands/entrances.json";
 import type { AgentBoardEditRequest, AgentCreateRequest, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
-import type { BoardSummary } from "../engine-types";
+import type { BoardSummary, EntrancesView } from "../engine-types";
 import { createBoard, editPages, organizeBoards, show } from "./boards";
-import { harness, PROJECT, projectRow, refusal } from "./testing";
+import { harness, PROJECT, projectRow, recorded, refusal } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
@@ -12,14 +13,15 @@ const INFO = { title: "Order placement", revision: "r1" } as const;
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
-  defaultView: "diagram",
-  cards: [{ id: "create-order", ref: { block: "src/routes/orders.ts#function:createOrder" }, at: [0, 0] }],
-  groups: [],
-  labels: [],
+  defaultView: "compact",
+  cards: [{ id: "create-order", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }],
+  names: [],
+  combined: [],
   guards: [],
   links: [],
 };
-const ENTRANCE = 'entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]';
+const ENTRANCE = "entrance:server/place-an-order";
+const ENTRANCES = { entrances: () => recorded<EntrancesView>(entrances) };
 
 function summary(id: string, title: string): BoardSummary {
   return { project: PROJECT, id, name: id, title, folder: null, pages: 1, cards: 0, updatedAtMs: 0, label: null, error: null };
@@ -40,8 +42,8 @@ function answers(request: AgentShellEvent): unknown {
         page: PAGE,
         board: INFO,
         items: [
-          { kind: "card", id: "post-orders", status: "created", key: ENTRANCE, name: "POST /orders" },
-          { kind: "card", id: "create-order", status: "created", key: "src/routes/orders.ts#function:createOrder", name: "createOrder", stops: [{ reason: "external", call: "ordersQueue.add", line: 28, note: "bullmq" }] },
+          { kind: "card", id: "post-orders", status: "created", key: ENTRANCE, name: "Place an order" },
+          { kind: "card", id: "create-order", status: "created", key: "src/routes/orders.ts#createOrder", name: "createOrder", stops: [{ reason: "external", call: "ordersQueue.add", line: 28, note: "bullmq" }] },
         ],
         warnings: [],
       };
@@ -54,11 +56,11 @@ function answers(request: AgentShellEvent): unknown {
 
 describe("create_board", () => {
   it("has the window create the board, with its pages, and traces an entrance onto it", async () => {
-    const app = harness({ window: answers, engine: { peek: () => ({ key: ENTRANCE }) } });
+    const app = harness({ window: answers, engine: ENTRANCES });
     const { text } = await app.call(createBoard, { project: "ts-orders", title: "Order placement", folder: "orders", pages: ["Placing an order", "Async path"], trace: ENTRANCE });
     const [created, edit] = app.requests;
     expect(created).toMatchObject({ type: "agent_create_board", project: PROJECT, title: "Order placement", folder: "orders", pages: ["Placing an order", "Async path"] } satisfies Partial<AgentCreateRequest> & { type: string });
-    expect(edit).toMatchObject({ type: "agent_edit", board: BOARD, page: "page-1", title: "Trace", ops: [{ op: "add_cards", cards: [{ key: ENTRANCE, follow: { callees: 1 } }] }] });
+    expect(edit).toMatchObject({ type: "agent_edit", board: BOARD, page: "page-1", title: "Trace", ops: [{ op: "add_cards", cards: [{ ref: { entrance: ENTRANCE }, follow: { callees: 1 } }] }] });
     expect(app.views.holder(BOARD)).toBe(1);
     expect(text.split("\n")).toEqual([
       `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
@@ -66,26 +68,22 @@ describe("create_board", () => {
       "Pages:",
       "1. Placing an order (page id page-1)",
       "2. Async path (page id page-2)",
-      `Traced POST /orders on the first page (rev ${pageRevision(PAGE)}):`,
-      "- POST /orders (card id post-orders, created)",
+      `Traced server/place-an-order on the first page (rev ${pageRevision(PAGE)}):`,
+      "- Place an order (card id post-orders, created)",
       "- createOrder (card id create-order, created); stopped: ordersQueue.add (line 28) is external, bullmq",
       "Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.",
     ]);
   });
 
   it("refuses an entrance the project doesn't have before creating anything, and teaches from the window's refusals", async () => {
-    const app = harness({
-      window: answers,
-      engine: {
-        peek: () => {
-          throw refusal("not_found", "no such key");
-        },
-      },
+    const app = harness({ window: answers, engine: ENTRANCES });
+    const traced = await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: "entrance:server/refund" });
+    expect(traced).toMatchObject({
+      isError: true,
+      text: "Can't trace the entrance: ts-orders has no app or entrance with the key entrance:server/refund. list_entrances lists its apps and entrances with their keys.",
     });
-    const traced = await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: 'entrance:["x"]' });
-    expect(traced).toMatchObject({ isError: true, text: `Can't trace the entrance: ts-orders has no entrance with the key entrance:["x"]. list_entrances lists its entrances with their keys.` });
     expect(app.requests).toEqual([]);
-    expect((await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: "src/a.ts#function:a" })).isError).toBe(true);
+    expect((await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: "src/a.ts#a" })).isError).toBe(true);
 
     const late = harness({ window: () => ({ ok: false, code: "unconfirmed", message: "The Unfold window didn't answer within 30 s, so the change may still land." }) });
     expect((await late.call(createBoard, { project: "ts-orders", title: "Orders" })).text).toBe(

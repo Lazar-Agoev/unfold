@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 180_000,
   forbidOnly: Boolean(process.env["CI"]),
   retries: 0,
-  // Timing journeys (save to updated card) are measured; one app at a time keeps them honest.
+  // The agents' MCP server listens on a fixed port, so one app runs at a time.
   workers: 1,
   fullyParallel: false,
   reporter: process.env["CI"] ? [["list"], ["github"]] : [["list"]],

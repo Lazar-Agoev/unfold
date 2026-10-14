@@ -11,12 +11,12 @@ import { ViewTracker } from "./views";
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
 
 const BOARD: AgentBoardRef = { project: "p-orders0000", id: ".unfold/boards/orders.json" };
-const PAGE = { id: "page-1", title: "Placing an order", defaultView: "code", cards: [], groups: [], labels: [], guards: [], links: [] };
+const PAGE = { id: "page-1", title: "Placing an order", defaultView: "compact", cards: [], names: [], combined: [], guards: [], links: [] };
 const INFO = { title: "Orders", revision: "r1", unsaved: false };
 const OUTDATED: HealthItem = { page: "page-1", kind: "outdated", target: { card: "create-order" }, message: "The code changed.", repairs: ["resign"] };
 const ELSEWHERE: HealthItem = { ...OUTDATED, page: "page-2" };
 const HEALTH: BoardHealthView = {
-  health: { items: [OUTDATED, ELSEWHERE], missing: 0, outdated: 2, brokenGroups: 0, review: 0, brokenLinks: 0 },
+  health: { items: [OUTDATED, ELSEWHERE], missing: 0, outdated: 2, review: 0, brokenCombined: 0, brokenLinks: 0 },
   label: "2 outdated",
 };
 const STRAYS = { kind: "strays", items: ["a"], message: "a has no line.", suggestion: "connect it." } as const;

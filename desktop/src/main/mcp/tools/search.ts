@@ -7,15 +7,15 @@
  */
 
 import { z } from "zod";
-import type { AppRow, BlockKind, CatalogRow, EntranceScope, LaunchRow, ProjectRow, SearchHit } from "../engine-types";
+import type { AppView, EntranceCode, EntranceView, NodeKind, ProjectRow, SearchHit } from "../engine-types";
 import { count, place } from "../format";
 import { cant, cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
-const FUNCTION_KINDS: BlockKind[] = ["function", "method", "constructor", "getter", "setter"];
-const TYPE_KINDS: BlockKind[] = ["interface", "type_alias", "enum", "class"];
-/** The engine's most hits per kind, and most entrances per application. */
+const FUNCTION_KINDS: NodeKind[] = ["function"];
+const TYPE_KINDS: NodeKind[] = ["type", "class"];
+/** The engine's most hits per kind. */
 const MAX_ENGINE_LIMIT = 500;
 
 const KINDS = ["entrances", "functions", "types", "files"] as const;
@@ -59,18 +59,18 @@ function fitting(limit: number, room: number, build: (limit: number) => readonly
 }
 
 function hitLine(hit: SearchHit, tag: string): string {
-  const where = place(hit.path, hit.line);
-  if (hit.key.startsWith("entrance:")) {
-    return `- ${hit.name} (${hit.kind}${hit.application !== null ? `, ${hit.application}` : ""}) declared in ${where}${tag}: key ${hit.key}`;
-  }
-  return `- ${hit.qualifiedName || hit.name} (${hit.kind}) at ${where}${tag}: key ${hit.key}`;
+  return `- ${hit.qualifiedName || hit.name} (${hit.kind}) at ${place(hit.path, hit.line)}${tag}: key ${hit.key}`;
+}
+
+function entranceHitLine(hit: SearchHit, tag: string): string {
+  return `- ${hit.name} (${hit.kind}${hit.app !== null ? ` of ${hit.app}` : ""})${tag}: key ${hit.key}`;
 }
 
 export const search = defineTool({
   name: "search",
   title: "Search",
   description:
-    "Finds code by name, in one project or all of them. kinds (default: all): entrances (routes, workers, schedules, commands; by title, trigger, or path), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), and files (by path). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
+    "Finds code by name, in one project or all of them. kinds (default: all): entrances (the apps and entrances unfold.toml declares, by name), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), and files (by path). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
   input: z.object({
     query: z.string().min(1).describe("Words of a name"),
     kinds: z.array(z.enum(KINDS)).min(1).optional().describe("What to find (default: entrances, functions, types, files)"),
@@ -85,7 +85,7 @@ export const search = defineTool({
     const rows: readonly ProjectRow[] = projects === undefined ? await context.projects() : await Promise.all(projects.map((name) => context.project(name)));
     const ids = rows.map((row) => row.id);
     const engineLimit = Math.min(MAX_ENGINE_LIMIT, offset + limit);
-    const names = (definitionKinds: BlockKind[]) => context.engine("search", { query, kinds: ["definitions"], definitionKinds, limit: engineLimit, projects: ids });
+    const names = (definitionKinds: NodeKind[]) => context.engine("search", { query, kinds: ["definitions"], definitionKinds, limit: engineLimit, projects: ids });
     const others = [...(wanted.has("entrances") ? (["entrances"] as const) : []), ...(wanted.has("files") ? (["files"] as const) : [])];
     const [functions, types, rest] = await Promise.all([
       wanted.has("functions") ? names(FUNCTION_KINDS) : null,
@@ -94,11 +94,11 @@ export const search = defineTool({
     ]);
     const projectNames = new Map(rows.map((row) => [row.id, row.name]));
     const tag = (project: string) => (rows.length > 1 ? ` in ${projectNames.get(project) ?? project}` : "");
-    const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number) =>
-      group ? section(title, group.hits, group.total, offset, size, (hit) => hitLine(hit, tag(hit.project))) : null;
+    const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number, line = hitLine) =>
+      group ? section(title, group.hits, group.total, offset, size, (hit) => line(hit, tag(hit.project))) : null;
     const page = fitting(limit, 0, (size) =>
       [
-        wanted.has("entrances") ? hits("Entrances", rest?.entrances, size) : null,
+        wanted.has("entrances") ? hits("Entrances", rest?.entrances, size, entranceHitLine) : null,
         hits("Functions", functions?.definitions, size),
         hits("Types", types?.definitions, size),
         wanted.has("files") && rest
@@ -119,78 +119,84 @@ export const search = defineTool({
 // ---------------------------------------------------------------------------------------------
 // list_entrances
 
-function entranceLine(entrance: CatalogRow): string {
-  const declared = place(entrance.path, entrance.line);
-  const reaches = entrance.reaches === null ? "" : `, reaches ${count(entrance.reaches, "definition")}`;
-  return `- ${entrance.title} (${entrance.kind}) declared in ${declared}${reaches}: key ${entrance.key}`;
+/** A `code` key with its state, and its fix when one exists. */
+function codeText(code: EntranceCode): string {
+  const state = code.state === undefined ? "" : ` (${code.state.replaceAll("_", " ")}${code.fix !== undefined ? `; fix: ${code.fix.kind.replaceAll("_", " ")} to ${code.fix.code}` : ""})`;
+  return `${code.key}${state}`;
 }
 
-function launchText(launch: LaunchRow): string {
-  return `${launch.label ?? launch.command ?? launch.key} (${launch.declaredIn.path})`;
+/** An entry's problem in `unfold.toml`, which keeps it out of the graph. */
+function problemText(problem: AppView["problem"]): string | null {
+  return problem === undefined ? null : `problem: ${problem.message}${problem.line !== undefined ? ` (unfold.toml line ${problem.line})` : ""}`;
 }
 
-/** An application's heading: what it starts and the launches that start it. */
-function applicationHeading(item: AppRow): string {
-  const startup = item.launches.find((launch) => launch.starts !== null)?.starts?.path;
-  const launches = item.launches.map(launchText).join(", ");
-  const facts = [...(startup === undefined ? [] : [`startup ${startup}`]), launches.length > 0 ? `started by ${launches}` : "no launch defined"];
-  return `${item.name} (${facts.join("; ")})`;
+function entranceLine(entrance: EntranceView): string {
+  const facts = [
+    entrance.key !== undefined ? `key ${entrance.key}` : null,
+    entrance.on !== undefined ? `on ${entrance.on}` : null,
+    entrance.code.length > 0 ? `code ${entrance.code.map(codeText).join(", ")}` : null,
+    entrance.about ?? null,
+    problemText(entrance.problem),
+  ].filter((fact) => fact !== null);
+  return `- ${entrance.name ?? "(no name)"}: ${facts.join("; ")}`;
 }
 
-/** A scope's entrance rows without its launch rows, and how many entrances it has. */
-function entranceRows(scope: EntranceScope | null): { readonly rows: readonly CatalogRow[]; readonly total: number } {
-  if (scope === null) {
-    return { rows: [], total: 0 };
+/** An app's heading: its name, key, run command, code, and problem. */
+function appHeading(app: AppView): string {
+  const facts = [
+    app.key !== undefined ? `key ${app.key}` : null,
+    app.run !== undefined ? `run ${app.run}` : null,
+    app.code !== undefined ? `code ${codeText(app.code)}` : null,
+    problemText(app.problem),
+  ].filter((fact) => fact !== null);
+  return `${app.name ?? "(no name)"}${facts.length > 0 ? ` (${facts.join("; ")})` : ""}`;
+}
+
+/** Whether an entrance's name, `on`, code, or about contains `filter`, ignoring case. */
+function matches(entrance: EntranceView, filter: string | undefined): boolean {
+  if (filter === undefined) {
+    return true;
   }
-  const launches = scope.sections.filter((item) => item.kind === "launch").reduce((sum, item) => sum + item.count, 0);
-  return { rows: scope.rows.filter((row) => row.kind !== "process"), total: scope.total - launches };
+  const text = [entrance.name, entrance.on, entrance.about, ...entrance.code.map((code) => code.key)].join("\n").toLowerCase();
+  return text.includes(filter.toLowerCase());
 }
 
 export const listEntrances = defineTool({
   name: "list_entrances",
   title: "List entrances",
   description:
-    "How a project starts: its applications (declared in unfold.toml, or named after their startup, such as server or worker), the launches that start each (configured commands, package scripts and bins, console scripts), and each application's entrances: HTTP routes, queue workers, schedules, commands, and events, each with its key and where it's declared. Then the entrances no launch reaches, and launches into code Unfold doesn't index. application narrows it to one (its name or id, as get_project lists them); filter keeps entrances whose title, trigger, handler, or path contains it, ignoring case. limit is per application (default 25, at most 100); pass the next cursor for more (a page of long lines shows fewer). Pass an entrance's key to read_code (its evidence and handlers), add_cards, or create_board's trace. The project must be compiled.",
+    "How a project starts, as its unfold.toml declares it: its apps in file order, each with its key, run command, and code, and each app's entrances with their key, what starts them (on), and their code, each code key with its state (found, missing, not analyzed, not a start, stale) and its fix when one exists. An entry with a problem in unfold.toml says so and stays out of the graph. app narrows it to one (its name or key); filter keeps entrances whose name, on, code, or about contains it, ignoring case. limit is per app (default 25, at most 100); pass the next cursor for more. Pass a key to read_code, add_cards, or create_board's trace.",
   input: z.object({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
-    application: z.string().min(1).optional().describe("An application's name or id"),
-    filter: z.string().min(1).optional().describe("Text an entrance's title, trigger, handler, or path contains"),
-    limit: z.number().int().min(1).max(100).default(25).describe("Entrances per application"),
+    app: z.string().min(1).optional().describe("An app's name or key"),
+    filter: z.string().min(1).optional().describe("Text an entrance's name, on, code, or about contains"),
+    limit: z.number().int().min(1).max(100).default(25).describe("Entrances per app"),
     cursor: z.string().optional().describe("The cursor an earlier page gave"),
   }),
   annotations: { readOnlyHint: true },
-  async run({ project, application, filter, limit, cursor }, context) {
+  async run({ project, app, filter, limit, cursor }, context) {
     const row = await projectOrView(context, project);
     const offset = cursorOffset(cursor);
-    const overview = await context.engine("entrances", { project: row.id });
-    const all = overview.view === "overview" ? overview.categories.flatMap((group) => group.applications) : [];
-    const applications = application === undefined ? all : all.filter((item) => item.name === application || item.id === application);
-    if (application !== undefined && applications.length === 0) {
-      throw cant("list the entrances", `${row.name} has no application “${application}”`, `Its applications: ${all.map((item) => item.name).join(", ") || "none"}.`);
+    const view = await context.engine("entrances", { project: row.id });
+    const apps = app === undefined ? view.apps : view.apps.filter((item) => item.name === app || item.key === app);
+    if (app !== undefined && apps.length === 0) {
+      throw cant("list the entrances", `${row.name} has no app “${app}”`, `Its apps: ${view.apps.map((item) => item.name ?? item.key ?? "(no name)").join(", ") || "none"}.`);
     }
-    const scope = async (args: { application: string } | { unreached: true }, launches: number): Promise<EntranceScope | null> => {
-      const view = await context.engine("entrances", { project: row.id, ...args, limit: Math.min(MAX_ENGINE_LIMIT, offset + limit + launches), ...(filter !== undefined ? { filter } : {}) });
-      return view.view === "scope" ? view : null;
-    };
-    const scopes = await Promise.all(applications.map((item) => scope({ application: item.id }, item.launches.length).then(entranceRows)));
-    const unreached = application === undefined && overview.view === "overview" && overview.unreached > 0 ? entranceRows(await scope({ unreached: true }, 0)) : null;
     const matching = filter === undefined ? "" : ` matching “${filter}”`;
-    const notIndexed = applications.flatMap((item) => item.launches).filter((launch) => launch.status === "not_indexed");
-    const unindexed = application === undefined && notIndexed.length > 0 ? `Launches into code Unfold doesn't index: ${notIndexed.map(launchText).join(", ")}.` : null;
-    const page = fitting(limit, unindexed?.length ?? 0, (size) => [
-      ...applications.map((item, index) => {
-        const { rows, total } = scopes[index] ?? { rows: [], total: 0 };
-        return section(`${applicationHeading(item)}, entrances${matching}`, rows, total, offset, size, entranceLine);
+    const page = fitting(limit, 0, (size) =>
+      apps.map((item) => {
+        const entrances = item.entrances.filter((entrance) => matches(entrance, filter));
+        const shown = section(`${appHeading(item)}, entrances${matching}`, entrances, entrances.length, offset, size, entranceLine);
+        return shown.lines.length > 0 ? shown : { lines: [`${appHeading(item)}: no entrances${matching}.`], more: false };
       }),
-      ...(unreached === null ? [] : [section(`Not reached from a launch${matching}`, unreached.rows, unreached.total, offset, size, entranceLine)]),
-    ]);
+    );
     const lines = page.sections.flatMap((item) => item.lines);
     return textResult(
       context.header({ project: row.name }),
-      lines.length > 0 ? lines.join("\n") : `${row.name} has no entrances${matching}.`,
-      unindexed,
+      view.resolved ? null : "The code keys aren't looked up yet: compile_project, then list again.",
+      lines.length > 0 ? lines.join("\n") : `${row.name} declares no apps in unfold.toml.`,
       moreLine(page.sections, "list_entrances", offset + page.limit),
-      lines.length > 0 ? "Next: read_code with an entrance's key shows its handlers; create_board with trace makes a board from it." : null,
+      lines.length > 0 ? "Next: read_code with an app's or entrance's key shows its code; create_board with trace makes a board from it." : null,
     );
   },
 });

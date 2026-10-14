@@ -1,38 +1,19 @@
 /**
- * Selected for a card: its name and location (a link that opens its source, as View code does), its
- * description (edited here or on the card), then for a block Called by and Reached from (up to 3 each,
- * then "N more · Show callers"), and its groups. A type card says where the type is used ("Used in N
- * places", a popover of the places), instead of calls for a type declaration. For an entrance, its
- * handlers.
+ * Selected for a card: its name and where it is, its description (edited here or on the card), then for
+ * a module or definition Called by and Reached from (up to 3 each, then "N more · Show callers"). A
+ * class or type says where it is used ("Used in N places", a popover of the places). An app's or
+ * entrance's card lists the code it starts at.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { cardQuery, showCallers } from "../../canvas";
+import { showCallers } from "../../canvas";
 import { UsedIn } from "../../code/UsedIn";
 import { shortPath } from "../../code/text";
-import { declarationWord, isTypeKind } from "../../code/typeKinds";
 import { TextButton } from "../../components";
 import { useEngineQuery } from "../../ipc";
-import type { Card, CardView, ProjectId } from "../../ipc/generated";
+import type { Card, CardView, ProjectId, StartCard, TargetState } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import {
-  addBlock,
-  cardKey,
-  describeCard,
-  entranceTitle,
-  findCardByKey,
-  findPage,
-  focusCard,
-  getOpenBoard,
-  itemsFor,
-  keyDisplayName,
-  openEntrance,
-  select,
-  useOpenBoard,
-  type PageTarget,
-} from "../../state/boards";
-import { viewCode } from "../viewCode";
+import { addBlock, addRef, cardKey, describeCard, itemsFor, useOpenBoard, type PageTarget } from "../../state/boards";
+import { cardName, useCard } from "../../state/cards";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
 
@@ -42,20 +23,18 @@ const RELATIONS_SHOWN = 3;
 /** The focus target of the selected card's description. */
 const DESCRIPTION_FIELD = "selected.description";
 
-/** Brings a definition into view: its card when the page has one, else a new card. */
-function showDefinition(target: PageTarget, key: string): void {
-  const board = getOpenBoard(target.board);
-  const page = board ? findPage(board.document, target.page) : undefined;
-  const existing = page ? findCardByKey(page, key) : undefined;
-  if (existing) {
-    focusCard(target, existing.id);
-  } else {
-    addBlock(target, key);
-  }
-}
+/** What an app's or entrance's code key names, when it isn't found. */
+const STATE_WORDS: Readonly<Record<Exclude<TargetState, "found">, string>> = {
+  missing: "missing",
+  not_analyzed: "not analyzed",
+  not_a_start: "not a start",
+  stale: "stale",
+};
 
-function BlockRelations({ target, project, card }: { readonly target: PageTarget; readonly project: ProjectId; readonly card: Card }) {
-  const relations = useEngineQuery("relations", { project, key: cardKey(card), callersLimit: RELATIONS_SHOWN });
+/** Called by and Reached from, each bringing its card onto the page (or into view). */
+function Relations({ target, cardId, blockKey }: { readonly target: PageTarget; readonly cardId: string; readonly blockKey: string }) {
+  const { project } = target.board;
+  const relations = useEngineQuery("relations", { project, key: blockKey, callersLimit: RELATIONS_SHOWN });
   if (relations.isPending) {
     return <p className="selected-note">Loading…</p>;
   }
@@ -67,11 +46,11 @@ function BlockRelations({ target, project, card }: { readonly target: PageTarget
     <div className="selected-relations">
       {callers.map((caller, index) => (
         <RelationRow
-          key={`${caller.source}:${caller.kind}`}
+          key={caller.call}
           {...(index === 0 ? { label: "Called by" } : {})}
           title={`${shortPath(caller.path)}:${caller.line}`}
           onActivate={() => {
-            showDefinition(target, caller.owner);
+            addBlock(target, caller.owner, caller.ownerName);
           }}
         >
           {caller.ownerName}
@@ -83,7 +62,7 @@ function BlockRelations({ target, project, card }: { readonly target: PageTarget
             {callersTotal - callers.length} more ·{" "}
             <TextButton
               onClick={() => {
-                void showCallers(target, card.id);
+                void showCallers(target, cardId);
               }}
             >
               Show callers
@@ -95,12 +74,12 @@ function BlockRelations({ target, project, card }: { readonly target: PageTarget
         <RelationRow
           key={entrance.key}
           {...(index === 0 ? { label: "Reached from" } : {})}
-          title={entrance.path}
+          wrap
           onActivate={() => {
-            void openEntrance(target, entrance.key);
+            addRef(target, { entrance: entrance.key }, entrance.name);
           }}
         >
-          {entrance.method !== null && entrance.trigger !== null ? `${entrance.method} ${entrance.trigger}` : (entrance.trigger ?? entrance.title)}
+          {`${entrance.app} › ${entrance.name}`}
         </RelationRow>
       ))}
       {reachedFrom.length > RELATIONS_SHOWN ? (
@@ -112,7 +91,7 @@ function BlockRelations({ target, project, card }: { readonly target: PageTarget
   );
 }
 
-/** Where a type card's type is written: "Used in N places", opening the places. */
+/** Where a class or type is written: "Used in N places", opening the places. */
 function TypeUses({ project, typeKey }: { readonly project: ProjectId; readonly typeKey: string }) {
   const definition = useEngineQuery("type_definition", { project, key: typeKey });
   if (!definition.data) {
@@ -127,78 +106,57 @@ function TypeUses({ project, typeKey }: { readonly project: ProjectId; readonly 
   );
 }
 
-function EntranceHandlers({ model }: { readonly model: Extract<CardView, { type: "entrance" }> }) {
+/** The code an app or entrance starts at, in the order it runs: each found block brings its card onto the page. */
+function StartsAt({ target, start }: { readonly target: PageTarget; readonly start: StartCard }) {
   return (
     <div className="selected-relations">
-      {model.targets.map((handler, index) => (
-        <RelationRow key={handler.position} {...(index === 0 ? { label: "Handlers" } : {})}>
-          {handler.name ?? handler.text}
-        </RelationRow>
-      ))}
+      {start.code.map((code, index) => {
+        const label = code.label ?? code.key;
+        return code.state === "found" ? (
+          <RelationRow
+            key={code.key}
+            {...(index === 0 ? { label: "Starts at" } : {})}
+            {...(code.path !== undefined ? { title: `${shortPath(code.path)}${code.line !== undefined ? `:${code.line}` : ""}` } : {})}
+            onActivate={() => {
+              addBlock(target, code.key, label);
+            }}
+          >
+            {label}
+          </RelationRow>
+        ) : (
+          <RelationRow key={code.key} {...(index === 0 ? { label: "Starts at" } : {})} title={code.key}>
+            <span className="relation-dim">{`${label} · ${STATE_WORDS[code.state]}`}</span>
+          </RelationRow>
+        );
+      })}
     </div>
   );
 }
 
-function CardGroups({ target, card }: { readonly target: PageTarget; readonly card: Card }) {
-  const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
-  const groups = useMemo(() => (allGroups ?? []).filter((group) => group.card === card.id), [allGroups, card.id]);
-  if (groups.length === 0) {
-    return null;
+/** Where a card's code is: a definition's `file:line`, or an entrance's app and what starts it. */
+function location(view: CardView): string {
+  if (view.type === "definition") {
+    return `${view.flow.header.path}:${view.flow.header.line}`;
   }
-  return (
-    <div className="selected-relations">
-      {groups.map((group, index) => (
-        <RelationRow
-          key={group.id}
-          {...(index === 0 ? { label: "Groups" } : {})}
-          onActivate={() => {
-            select(target, { kind: "group", groupId: group.id });
-          }}
-        >
-          <span className="relation-group">{group.title}</span>
-        </RelationRow>
-      ))}
-    </div>
-  );
+  return view.kind === "entrance" ? [view.app, view.on].filter((part) => part !== undefined).join(" · ") : (view.on ?? "");
 }
 
 export function SelectedCard({ target, card }: { readonly target: PageTarget; readonly card: Card }) {
   const key = cardKey(card);
   const { project } = target.board;
   const author = useAuthor();
-  const query = useQuery(cardQuery(project, key));
+  const query = useCard(target, card);
   const health = useOpenBoard(target.board, (board) => board.health);
   const issues = itemsFor(health, target.page, { card: card.id });
   const held = issues.some((item) => item.kind === "review");
-  const model = query.data;
-  const name =
-    model?.type === "block" ? model.header.qualifiedName : model?.type === "entrance" ? entranceTitle(model) : keyDisplayName(key);
-  const location =
-    model?.type === "block"
-      ? `${model.header.path}:${model.header.startLine}`
-      : model?.type === "entrance"
-        ? `${model.evidence.path}${model.evidence.startLine !== null ? `:${model.evidence.startLine}` : ""}`
-        : "";
+  const view = query.data;
+  const kind = view?.type === "definition" ? view.flow.header.kind : undefined;
   const disabledReason = held ? "Held for review: accept or reconnect it on the card first." : author === null ? "Loading who you are…" : null;
   return (
     <>
       <div className="selected-identity">
-        <h3 className="selected-name">{name}</h3>
-        {location && model !== undefined ? (
-          <p className="selected-location">
-            <button
-              type="button"
-              className="selected-link"
-              onClick={() => {
-                viewCode(target, { kind: "card", cardId: card.id, key: null });
-              }}
-            >
-              {location}
-            </button>
-          </p>
-        ) : location ? (
-          <p className="selected-location">{location}</p>
-        ) : null}
+        <h3 className="selected-name">{view ? cardName(view) : query.isError ? query.error.message : "Loading…"}</h3>
+        {view ? <p className="selected-location">{location(view)}</p> : null}
       </div>
       <AuthoredField
         label="Description"
@@ -217,12 +175,9 @@ export function SelectedCard({ target, card }: { readonly target: PageTarget; re
           }
         }}
       />
-      {model?.type === "block" && isTypeKind(model.header.kind) ? <TypeUses project={project} typeKey={key} /> : null}
-      {model?.type === "block" && declarationWord(model.header.kind) === undefined ? (
-        <BlockRelations target={target} project={project} card={card} />
-      ) : null}
-      {model?.type === "entrance" ? <EntranceHandlers model={model} /> : null}
-      <CardGroups target={target} card={card} />
+      {kind === "class" || kind === "type" ? <TypeUses project={project} typeKey={key} /> : null}
+      {kind !== undefined && kind !== "type" ? <Relations target={target} cardId={card.id} blockKey={key} /> : null}
+      {view?.type === "start" ? <StartsAt target={target} start={view} /> : null}
     </>
   );
 }

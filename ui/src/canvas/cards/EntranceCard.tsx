@@ -1,182 +1,104 @@
 /**
- * An entrance card, expanded: the method and trigger, where it is declared, and its targets in
- * declaration order under a heading that follows their roles ("Starts" for a launch's startup,
- * "Handlers, in order" otherwise). A resolved target follows like a call; the opened ones (with a card
- * on the page) are accent links, and their arrows leave from their rows. In the Diagram lens its
- * header starts with the chevron that makes it compact again.
+ * An app's or entrance's card (entrance-definitions.md, "On a board"; core-scope.html's entrance): it
+ * looks declared, so it is drawn in the authored style. It shows the app in small caps, the name, and
+ * what starts it in mono: an entrance's `on`, an app's `run`. It points at the cards for its code, in
+ * order (`computeArrows`).
  *
- * Two different sources, two `</>`: the one beside where it is declared opens that declaration,
- * registration, or configuration evidence (View code of the card), and each resolved target's opens
- * that startup's or handler's own definition. A target's name still follows it to its card.
+ * Compact, its arrows leave from its edge. Expanded, it says its one sentence and lists its code in
+ * order, each row with where it is, and each arrow leaves from its row. Code that isn't found is
+ * always listed, dashed and labeled with its state (missing, not analyzed, not a start, stale).
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { Handle, Position, useUpdateNodeInternals } from "@xyflow/react";
+import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
-import { reasonText, shortPath } from "../../code/text";
-import { entranceTargetSource, viewCode, viewEntranceTarget } from "../../board/viewCode";
-import { ViewCodeButton } from "../../flow/ViewCodeButton";
-import type { Card, ProjectId, TargetView } from "../../ipc/generated";
-import { entranceCardText, entranceTitle, followCall, keyDisplayName, lineOffsetIn, select, type PageTarget } from "../../state/boards";
-import { targetHandle } from "../arrows";
-import { cardQuery, isMissing } from "../cardData";
+import type { Card, StartCard } from "../../ipc/generated";
+import { select, type PageTarget } from "../../state/boards";
+import { codePort, NODE_PORT } from "../arrows";
+import { TARGET_STATE_WORDS, startRowName, startRowPlace, startRows, type CardShape } from "../cardText";
 import { useMeasure } from "../measure";
-import { targetsHeading } from "../entranceText";
-import { entranceCardWidth } from "../sizing";
+import { startCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardNote, DescriptionStrip, ExpandToggle } from "./parts";
+import { CardHandles, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
-import { clickCard } from "./select";
-
 
 export interface EntranceCardProps {
   readonly target: PageTarget;
-  /** The project the card resolves to. */
-  readonly project: ProjectId;
-  readonly card: Card & { readonly ref: { readonly entrance: string } };
-  /** Whether it shows its chevron (the Diagram lens; Code always shows it expanded). */
-  readonly expandable: boolean;
+  readonly card: Card;
+  readonly start: StartCard & { readonly type: "start" };
+  readonly shape: CardShape;
   readonly ports: readonly string[];
   readonly selected: boolean;
 }
 
-function handlerName(handler: TargetView): string {
-  return handler.name ?? handler.text;
-}
-
-/** Where a handler is, or why it can't be followed (its tooltip). */
-function handlerNote(handler: TargetView): string | null {
-  if (handler.resolution === "external") {
-    return handler.module ?? handler.note ?? "external";
+/** What starts an entrance, its first word (`POST`) in bold when it has more than one. */
+function OnText({ on, entrance }: { readonly on: string; readonly entrance: boolean }) {
+  const space = on.indexOf(" ");
+  if (!entrance || space < 0) {
+    return <code className="start-on">{on}</code>;
   }
-  if (handler.resolution === "unresolved") {
-    return handler.note ?? reasonText(handler.reason);
-  }
-  return handler.path !== null ? `${shortPath(handler.path)}${handler.line !== null ? `:${handler.line}` : ""}` : null;
-}
-
-function HandlerRow({
-  handler,
-  port,
-  onFollow,
-  onView,
-}: {
-  readonly handler: TargetView;
-  readonly port: string | null;
-  readonly onFollow: (target: string, anchor: HTMLElement) => void;
-  /** Opens the target's own definition, when it has one. */
-  readonly onView: (() => void) | null;
-}) {
-  const followable = handler.resolution === "resolved" && handler.target !== null;
   return (
-    <li className="ecard-handler" data-port-row="target" data-target-key={handler.target ?? undefined}>
-      {followable ? (
-        <button
-          type="button"
-          className={`ecard-handler-name nodrag${port !== null ? " opened" : ""}`}
-          title={handlerNote(handler) ?? undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (handler.target !== null) {
-              onFollow(handler.target, event.currentTarget);
-            }
-          }}
-        >
-          {handlerName(handler)}
-        </button>
-      ) : (
-        <span className={`ecard-handler-name ${handler.resolution}`} title={handlerNote(handler) ?? undefined}>
-          {handlerName(handler)}
-        </span>
-      )}
-      {onView ? <ViewCodeButton label={`View ${handlerName(handler)}'s code`} onView={onView} /> : null}
-      {port !== null ? <Handle id={port} type="source" position={Position.Right} isConnectable={false} className="card-port" /> : null}
-    </li>
+    <code className="start-on">
+      <b>{on.slice(0, space)}</b>
+      {on.slice(space)}
+    </code>
   );
 }
 
-export function EntranceCard({ target, project, card, expandable, ports, selected }: EntranceCardProps) {
-  const key = card.ref.entrance;
-  const query = useQuery(cardQuery(project, key));
-  const model = query.data?.type === "entrance" ? query.data : undefined;
+export function EntranceCard({ target, card, start, shape, ports, selected }: EntranceCardProps) {
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
   const menu = useCardMenu(target, card.id, false);
-  const title = model ? entranceTitle(model) : keyDisplayName(key);
-  const text = useMemo(() => (model ? entranceCardText(model) : { method: null, title, location: "", handlers: [] }), [model, title]);
+  const expanded = shape === "expanded";
+  const width = useMemo(() => startCardWidth(start, shape, measure), [start, shape, measure]);
+  const rows = startRows(start, shape);
   const portSet = useMemo(() => new Set(ports), [ports]);
-
-  const width = useMemo(() => entranceCardWidth(text, measure), [text, measure]);
 
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, width, model]);
+  }, [updateNodeInternals, card.id, portsKey, width, start, shape]);
 
-  const follow = (handler: string, anchor: HTMLElement) => {
-    const offset = lineOffsetIn(anchor);
-    followCall({
-      target,
-      fromCardId: card.id,
-      targetKey: handler,
-      ...(offset !== undefined ? { lineOffset: offset } : {}),
-    });
-  };
-  const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card entrance-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
+      className={`board-card start-card${selected ? " selected" : ""}`}
       data-card-id={card.id}
-      data-key={key}
-      data-loading={query.isPending ? "true" : undefined}
+      data-key={start.key}
       style={{ width }}
-      aria-label={title}
+      aria-label={`${start.app} · ${start.name}`}
       onClick={() => {
-        clickCard(target, card.id, null);
+        select(target, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
-      <header className="card-header card-drag">
-        {expandable ? <ExpandToggle target={target} cardId={card.id} expanded name={title} /> : null}
-        {text.method !== null ? <span className="ecard-method">{text.method}</span> : null}
-        <h3 className="card-title" title={title}>
-          {text.title}
-        </h3>
+      <header className="start-head card-drag">
+        <span className="start-app">
+          <ExpandToggle target={target} cardId={card.id} expanded={expanded} name={start.name} />
+          <small>{start.app}</small>
+        </span>
+        <strong className="start-name">{start.name}</strong>
+        {start.on !== undefined ? <OnText on={start.on} entrance={start.kind === "entrance"} /> : null}
+        {expanded && start.about !== undefined ? <p className="start-about">{start.about}</p> : null}
+        <HeaderPorts ids={ports.filter((id) => id === NODE_PORT)} />
       </header>
-      <ReviewBanner target={target} project={project} cardId={card.id} />
-      <DescriptionStrip target={target} cardId={card.id} description={card.description} />
-      <div className="card-body ecard-body nodrag nopan">
-        {query.isPending ? <CardNote>Loading…</CardNote> : null}
-        {query.isError ? <CardNote warn>{missing ? "This entrance is missing from the graph." : query.error.message}</CardNote> : null}
-        {model ? (
-          <>
-            <div className="ecard-location-row">
-              <span className="ecard-location">{text.location}</span>
-              <ViewCodeButton
-                onView={() => {
-                  const own = { kind: "card", cardId: card.id, key: null } as const;
-                  select(target, own);
-                  viewCode(target, own);
-                }}
-              />
-            </div>
-            <h4 className="ecard-heading">{targetsHeading(model.targets)}</h4>
-            {model.targets.length === 0 ? <p className="ecard-empty">No handlers resolved.</p> : null}
-            <ul className="ecard-handlers">
-              {model.targets.map((handler) => {
-                const handle = targetHandle(handler.position);
-                const onView = entranceTargetSource(project, handler).target
-                  ? () => {
-                      viewEntranceTarget(target, key, handler.position);
-                    }
-                  : null;
-                return <HandlerRow key={handle} handler={handler} port={portSet.has(handle) ? handle : null} onFollow={follow} onView={onView} />;
-              })}
-            </ul>
-          </>
-        ) : null}
-      </div>
+      <ReviewBanner target={target} cardId={card.id} view={start} />
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap={!expanded} />
+      {rows.length > 0 ? (
+        <ul className="start-codes">
+          {rows.map(({ code, index }) => {
+            const place = startRowPlace(code);
+            const port = codePort(index);
+            return (
+              <li key={index} className={`start-code${code.state === "found" ? "" : " unfound"}`}>
+                <span className="start-code-name">{startRowName(code)}</span>
+                {place !== null ? <span className="start-code-place">{place}</span> : null}
+                {code.state !== "found" ? <span className="start-code-state">{TARGET_STATE_WORDS[code.state]}</span> : null}
+                {portSet.has(port) ? renderPorts([port]) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       {menu.element}
     </article>
   );

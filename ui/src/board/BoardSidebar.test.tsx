@@ -40,7 +40,7 @@ const cards: Card[] = [
 
 function open(items: HealthItem[] = []) {
   const document = boardDocument([
-    page("page-1", cards, { title: "Placing an order", links: [{ id: "a-to-pay", from: "create-order", to: "pay" }] }),
+    page("page-1", cards, { title: "Placing an order", links: [{ id: "a-to-pay", from: "create-order", to: "pay", kind: "calls", author: "person:lazar" }] }),
     page("page-2", [], { title: "Refunds" }),
   ]);
   store.adoptBoardState(boardState(P, ID, document, { health: { ...HEALTHY, items } }));
@@ -123,7 +123,7 @@ describe("the board sidebar", () => {
     expect(within(menu).getByRole("menuitem", { name: "Move down" }).getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("shows the selected link in Selected, edits its label, and removes it", () => {
+  it("shows the selected connection in Selected, edits its label, and removes it", () => {
     open();
     renderSidebar();
     act(() => {
@@ -134,7 +134,7 @@ describe("the board sidebar", () => {
     fireEvent.change(label, { target: { value: "calls over HTTP" } });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.links[0]?.label).toEqual({ text: "calls over HTTP", author: "person:lazar", signature: "" });
     act(() => {
-      within(selected).getByRole("button", { name: "Remove link" }).click();
+      within(selected).getByRole("button", { name: "Remove connection" }).click();
     });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.links).toEqual([]);
   });
@@ -142,12 +142,12 @@ describe("the board sidebar", () => {
   it("collapses Selected, remembered in the window layout", () => {
     open();
     renderSidebar();
-    expect(screen.getByText("Select a card, a group, a frame, a resource card, a note, or a link to see it here.")).not.toBeNull();
+    expect(screen.getByText("Select a card, a block, a frame, a resource card, a note, or a connection to see it here.")).not.toBeNull();
     act(() => {
       screen.getByRole("button", { name: "Hide Selected" }).click();
     });
     expect(useLayout.getState().selectedCollapsed).toBe(true);
-    expect(screen.queryByText("Select a card, a group, a frame, a resource card, a note, or a link to see it here.")).toBeNull();
+    expect(screen.queryByText("Select a card, a block, a frame, a resource card, a note, or a connection to see it here.")).toBeNull();
     act(() => {
       screen.getByRole("button", { name: "Show Selected" }).click();
     });

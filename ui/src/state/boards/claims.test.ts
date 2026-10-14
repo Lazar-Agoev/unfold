@@ -2,8 +2,8 @@ import { produce } from "immer";
 import { describe, expect, it } from "vitest";
 import type { Card, Page } from "../../ipc/generated";
 import { page } from "../../test/workspace";
-import { addConnection, claimOf, saysConnection, setConnectionClaim, setConnectionKind, setLinkDescription } from "./connections";
-import { addLink, moveItems, removeItems } from "./document";
+import { addConnection, claimOf, saysConnection, setConnectionClaim, setConnectionKind, setLinkDescription, setLinkLabel } from "./connections";
+import { moveItems, removeItems } from "./document";
 import { moveFrame } from "./frames";
 import { NOTE_MAX, addNote, noteLength, noteText, placeNote, setNoteText } from "./notes";
 import { addResource, saysClaim, setResourceClaim, setResourceDescription } from "./resources";
@@ -48,15 +48,15 @@ describe("resource cards", () => {
     expect(cleared.resources?.[0]?.description).toBeUndefined();
   });
 
-  it("can end drawn links, and go with the links to them, leaving their notes where they were", () => {
+  it("can end connections, and go with the connections to them, leaving their notes where they were", () => {
     const start = produce(base(), (draft) => {
       addResource(draft, { kind: "table", name: "orders", anchors: [], at: [100, 200], author: "agent:claude" });
-      addLink(draft, "create-order", "orders");
+      addConnection(draft, { kind: "writes", from: "create-order", to: "orders", anchors: [], author: "person:maya" });
       addNote(draft, { text: "Kept in memory.", at: [0, 120], attach: "orders", author: "agent:claude" });
     });
-    expect(start.links).toEqual([{ id: "create-order-to-orders", from: "create-order", to: "orders" }]);
+    expect(start.links).toEqual([{ id: "create-order-writes-orders", from: "create-order", to: "orders", kind: "writes", author: "person:maya" }]);
     const removed = produce(start, (draft) => {
-      expect(removeItems(draft, ["orders"])).toEqual(["create-order-to-orders", "orders"]);
+      expect(removeItems(draft, ["orders"])).toEqual(["create-order-writes-orders", "orders"]);
     });
     expect(removed.resources).toBeUndefined();
     expect(removed.notes).toEqual([{ id: "note", text: "Kept in memory.", at: [100, 320], author: "agent:claude" }]);
@@ -96,22 +96,38 @@ describe("connections", () => {
     expect(changed.links[0]).toEqual({ id: "enqueue", from: "create-order", to: "worker", author: "agent:claude", kind: "queue", step: STEP, channel: "orders-v2" });
   });
 
-  it("let a person give a drawn link a kind, keeping its ends and label, and describe it", () => {
+  it("let a person change a connection's kind, keeping its ends, and label and describe it", () => {
     const start = produce(base(), (draft) => {
-      addLink(draft, "create-order", "worker");
+      addConnection(draft, { kind: "other", from: "create-order", to: "worker", anchors: [], author: "agent:claude" });
     });
     const next = produce(start, (draft) => {
-      setConnectionKind(draft, "create-order-to-worker", "event", "person:maya");
-      setLinkDescription(draft, "create-order-to-worker", "Emitted after saving.", "person:maya");
+      setConnectionKind(draft, "create-order-other-worker", "queue", "person:maya");
+      setLinkLabel(draft, "create-order-other-worker", "order jobs", "person:maya");
+      setLinkDescription(draft, "create-order-other-worker", "Emitted after saving.", "person:maya");
     });
     expect(next.links[0]).toEqual({
-      id: "create-order-to-worker",
+      id: "create-order-other-worker",
       from: "create-order",
       to: "worker",
-      kind: "event",
+      kind: "queue",
       author: "person:maya",
+      label: { text: "order jobs", author: "person:maya", signature: "" },
       description: { text: "Emitted after saving.", author: "person:maya", signature: "" },
     });
+  });
+
+  it("keep an other connection's label, which says what it is", () => {
+    const labeled = produce(base(), (draft) => {
+      addConnection(draft, { kind: "other", from: "create-order", to: "worker", anchors: [], author: "person:maya" });
+      setLinkLabel(draft, "create-order-other-worker", "shares a cache", "person:maya");
+      setLinkLabel(draft, "create-order-other-worker", " ", "person:maya");
+    });
+    expect(labeled.links[0]?.label?.text).toBe("shares a cache");
+    const queued = produce(labeled, (draft) => {
+      setConnectionKind(draft, "create-order-other-worker", "queue", "person:maya");
+      setLinkLabel(draft, "create-order-other-worker", "", "person:maya");
+    });
+    expect(queued.links[0]?.label).toBeUndefined();
   });
 });
 

@@ -10,7 +10,7 @@ import { attachPoint } from "../../../canvas/frames/geometry";
 import { noteSize } from "../../../canvas/sizing";
 import { measureText } from "../../../canvas/measure";
 import type { Note, Page } from "../../../ipc/generated";
-import { findCard, isFreeId, isItemId } from "../document";
+import { findCard, findCombined, isFreeId, isItemId } from "../document";
 import { findFrame } from "../frames";
 import { NOTE_MAX, addNote, findNote, noteText, placeNote, setNoteText } from "../notes";
 import { findResource } from "../resources";
@@ -35,9 +35,9 @@ function checkAttach(page: Page, id: string): void {
     return;
   }
   throw invalid(
-    page.groups.some((group) => group.id === id) || findNote(page, id)
-      ? `A note attaches to a card, a frame, a resource card, or a link; “${id}” is a ${findNote(page, id) ? "note" : "step group"}. Attach it to the card instead.`
-      : `There is no card, frame, resource card, or link with id “${id}” on this page to attach the note to. read_page lists the page's ids.`,
+    findCombined(page, id) || findNote(page, id)
+      ? `A note attaches to a card, a frame, a resource card, or a connection; “${id}” is a ${findNote(page, id) ? "note" : "combined step"}. Attach it to a card instead.`
+      : `There is no card, frame, resource card, or connection with id “${id}” on this page to attach the note to. read_page lists the page's ids.`,
   );
 }
 

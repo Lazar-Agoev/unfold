@@ -1,684 +1,542 @@
 /**
- * The Flow view of a card (docs/reader.md#flow-view): "Paths from written structure", a flowchart
- * diagram of the reader's Flow model. Each node shows its compiler-derived type and a plain label
- * (the board's, else a fallback name with a dotted underline), never raw code. Step groups are
- * authored: a magenta region titled with the group's title, or, collapsed, one COMBINED step. A resolved
- * call and each callback can carry a chevron that expands it in place (`expansion`): the caller draws
- * the inset in the room the layout kept under the node. A step with recorded source and a combined
- * block show `</>` (View code) on hover or when selected; Shift-click extends the selection to a run
- * of steps, and right-click (or Shift+F10 on a focused step) opens the step's menu, when the caller
- * offers them. A proposed step is drawn in the room the layout kept for it: a dashed green box with a
- * PROPOSED type row (the agent mark when an agent wrote it) and its title as plain words, joined by
- * dashed green connectors beside the solid compiled route; it is never a node, a route, or a port.
- * Geometry comes from `layoutFlow`; this component only draws it. Ports are drawn by the caller
- * (`renderPorts`).
+ * Renders a laid-out drawn flow (`layoutFlow`) with the looks of diagram-blocks-examples.html's DRAWN
+ * panels and core-scope.html's board window: every piece absolutely placed at its rect, the wires in
+ * one SVG over them. It decides nothing: selection, opening calls in place, combined steps' toggles,
+ * listing thin rows, and gap ticks' lines all go to the callbacks.
  */
 
-import { useId, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import type { FlowCallback, FlowModel, FlowNode } from "../ipc/generated";
-import { isWithin, portStep } from "../code/outline";
-import { linkNote } from "../code/text";
-import { authorOf } from "../code/text";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { CallBox, Key, RepoPath } from "../ipc/generated";
 import { Icon } from "../icons";
-import { expandableCalls, type ExpandableCall } from "./insets";
-import { INSIDE_ACTION, followableCall, nodeTypeName, roundedPath, type FlowLayout, type GroupStep, type PlacedInset, type PlacedNode, type PlacedProposal } from "./layout";
-import { ViewCodeButton } from "./ViewCodeButton";
+import { callbackText, insetPlace, thinCount, type CallRow, type FlowGeometry, type FlowPiece, type FlowWire, type Point, type Rect } from "./layout";
+import { callMeta, combinedSummary, exitWord, frameWord, gapWords, hasMeta, outcomeWords, sectionWords } from "./words";
 import "./flow.css";
 
-/** A proposed step's author, and whether its step is missing or held for review. */
-export interface ProposalMark {
-  readonly author: string;
-  readonly state?: "missing" | "held";
-}
-
-/** The card's proposed steps (`layout.proposals`) as drawn: their marks, the selected one, and selecting one. */
-export interface FlowProposals {
-  readonly marks: ReadonlyMap<string, ProposalMark>;
-  readonly selected: string | null;
-  readonly onSelect: (id: string) => void;
-}
-
-/** Calls that can expand in place: their chevrons, and the insets drawn under their nodes. */
-export interface FlowExpansion {
-  /** Whether a call shows a chevron here (null for none), and whether it is expanded. */
-  readonly stateOf: (call: ExpandableCall) => "expanded" | "collapsed" | null;
-  readonly onToggle: (call: ExpandableCall) => void;
-  /** Draws what the layout keeps room for under a node (`layout.insets`). */
-  readonly renderInset: (inset: PlacedInset) => ReactNode;
-}
+/** What can be selected in a flow: a block, or a combined or proposed step (by its page id). */
+export type FlowSelection =
+  | { readonly kind: "block"; readonly key: Key }
+  | { readonly kind: "combined"; readonly item: string }
+  | { readonly kind: "proposed"; readonly item: string };
 
 export interface FlowViewProps {
-  readonly model: FlowModel;
-  readonly layout: FlowLayout;
-  /** The card's width, so ports can sit at its right edge. */
-  readonly width: number;
-  readonly selectedKey?: string | null;
-  readonly onSelect?: (key: string) => void;
-  /** Follows a node's main call. */
-  readonly onFollow?: (node: FlowNode, target: string, anchor: HTMLElement) => void;
-  readonly onOpenCallback?: (callback: FlowCallback, anchor: HTMLElement) => void;
-  readonly onToggleChain?: (key: string) => void;
-  /** The selected step group's id: its region or step shows selected. */
-  readonly selectedGroup?: string | null;
-  readonly onSelectGroup?: (groupId: string) => void;
-  /** Collapses or expands a step group. */
-  readonly onToggleGroup?: (groupId: string) => void;
-  /** Opens a step group's menu (right-click on its title or step, or Shift+F10 on its toggle). */
-  readonly onGroupMenu?: (groupId: string, at: MouseEvent | Element) => void;
-  /** Ports by placed node id (occurrences with arrows that this node shows). */
-  readonly ports?: ReadonlyMap<string, readonly string[]>;
-  readonly renderPorts?: (ids: readonly string[]) => ReactNode;
-  /** How far past the diagram's right edge its ports' leaders reach (an inset's, to its card's edge). */
-  readonly portReach?: number;
-  readonly expansion?: FlowExpansion;
-  /** Drawn inside an inset: the diagram alone, without the caption and the warnings. */
-  readonly inset?: boolean;
-  /** Extends the selection to a run of steps ending at `key` (Shift-click); without it Shift-click selects. */
-  readonly onExtend?: (key: string) => void;
-  /** The steps of a Shift-selected run, by key: each shows selected. */
-  readonly runKeys?: ReadonlySet<string>;
-  /** Opens a step's source (its `</>`). */
-  readonly onViewCode?: (key: string) => void;
-  /** Opens a combined block's source (its `</>`). */
-  readonly onViewGroupCode?: (groupId: string) => void;
-  /**
-   * Opens a step's menu (right-click on it, or Shift+F10 on it focused), once a step that wasn't
-   * selected (alone or in a run) is.
-   */
-  readonly onStepMenu?: (key: string, at: MouseEvent | Element) => void;
-  /** The card's proposed steps, when it draws them (only on its own card, never in an inset). */
-  readonly proposals?: FlowProposals;
+  readonly geometry: FlowGeometry;
+  /** What shows selected. */
+  readonly selected?: FlowSelection | null;
+  readonly onSelect?: (selection: FlowSelection) => void;
+  /** Opens or closes the call or callback at an open path (outermost first) in place. */
+  readonly onToggleOpen?: (path: readonly Key[]) => void;
+  /** Opens (`collapsed: false`) or collapses a combined step. */
+  readonly onToggleCombined?: (item: string, collapsed: boolean) => void;
+  /** Lists a thin row one call per row, or folds it (`FlowLayoutOptions.listed`). */
+  readonly onToggleRow?: (key: Key) => void;
+  /** Opens a gap tick's lines (first and last) in their file. */
+  readonly onOpenLines?: (path: RepoPath, lines: readonly [number, number]) => void;
 }
 
-/** Whether a node is a step with recorded source (`</>` opens it). */
-function hasSource(placed: PlacedNode): boolean {
-  const { node } = placed;
-  return !placed.summary && node.kind !== "start" && node.kind !== "end" && node.key !== undefined && (node.focus !== undefined || node.startLine !== undefined);
+interface Handlers {
+  readonly selected: FlowSelection | null;
+  readonly select: (selection: FlowSelection) => void;
+  readonly toggleOpen: (path: readonly Key[]) => void;
 }
 
-/** Whether a key event asks for a context menu (the menu key, or Shift+F10). */
-function isMenuKey(event: KeyboardEvent): boolean {
-  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+function place(rect: Rect) {
+  return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }
 
-/**
- * The node a connection's step leaves from: the node showing its call, else the collapsed step group
- * hiding it, else the innermost node that is or holds it.
- */
-function stepNode(layout: FlowLayout, step: string): PlacedNode | undefined {
-  const chip = layout.nodes.find((placed) => !placed.summary && placed.node.chips?.some((item) => item.source === step));
-  if (chip) {
-    return chip;
-  }
-  const group = layout.nodes.find((placed) => placed.group?.members.some((member) => isWithin(step, member)));
-  let holder: PlacedNode | undefined;
-  for (const placed of layout.nodes) {
-    const key = placed.node.key;
-    if (!placed.summary && key !== undefined && isWithin(step, key) && (holder?.node.key === undefined || key.length > holder.node.key.length)) {
-      holder = placed;
-    }
-  }
-  return group ?? holder;
+function classes(...names: (string | false | null | undefined)[]): string {
+  return names.filter((name) => typeof name === "string" && name.length > 0).join(" ");
 }
 
-/**
- * Which placed node shows an occurrence (its chip's node, or the node listing the callback that owns
- * it) or a connection's step (`stepNode`).
- */
-export function flowPortNodes(layout: FlowLayout, occurrences: ReadonlyMap<string, string>): { byNode: Map<string, string[]>; unplaced: string[] } {
-  const byNode = new Map<string, string[]>();
-  const unplaced: string[] = [];
-  for (const [occurrence, owner] of occurrences) {
-    const step = portStep(occurrence);
-    const holder =
-      step !== undefined
-        ? stepNode(layout, step)
-        : (layout.nodes.find((placed) => !placed.summary && placed.node.chips?.some((chip) => chip.source === occurrence)) ??
-          layout.nodes.find((placed) => placed.node.callbacks?.some((callback) => callback.key === owner)));
-    if (holder) {
-      const list = byNode.get(holder.id) ?? [];
-      list.push(occurrence);
-      byNode.set(holder.id, list);
-    } else {
-      unplaced.push(occurrence);
-    }
-  }
-  return { byNode, unplaced };
+function isBlock(selected: FlowSelection | null, key: Key): boolean {
+  return selected?.kind === "block" && selected.key === key;
 }
 
-function NodeLabel({ placed }: { placed: PlacedNode }) {
+function stop(event: MouseEvent | KeyboardEvent): void {
+  event.stopPropagation();
+}
+
+/** Props that make an element select `selection` on a click, Enter, or Space. */
+function selectable(handlers: Handlers, selection: FlowSelection) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: (event: MouseEvent) => {
+      stop(event);
+      handlers.select(selection);
+    },
+    onKeyDown: (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        stop(event);
+        handlers.select(selection);
+      }
+    },
+  } as const;
+}
+
+function Chevron({ open, name, onToggle }: { readonly open: boolean; readonly name: string; readonly onToggle: () => void }) {
   return (
-    <span className={`flow-label${placed.fallback ? " fallback" : ""}`} title={placed.fallback ? "A name from the code; no label yet" : undefined}>
-      {placed.label}
+    <button
+      type="button"
+      className="flow-chevron nodrag"
+      aria-expanded={open}
+      aria-label={open ? `Close ${name}` : `Open ${name} in place`}
+      onClick={(event) => {
+        stop(event);
+        onToggle();
+      }}
+    >
+      <Icon name="chevron-right-small" size={10} />
+    </button>
+  );
+}
+
+function Unknown() {
+  return (
+    <span className="flow-unknown" aria-label="unknown target">
+      ?
     </span>
   );
 }
 
-/** Opens a step group's menu on right-click, when the view has one. */
-function groupMenuHandler(groupId: string, props: FlowViewProps): ((event: MouseEvent) => void) | undefined {
-  const { onGroupMenu } = props;
-  return onGroupMenu
-    ? (event) => {
-        event.stopPropagation();
-        onGroupMenu(groupId, event);
-      }
-    : undefined;
+/** A call's name: the overlay's name with the code name beside it, or the code name. */
+function CallName({ box, className }: { readonly box: CallBox; readonly className: string }) {
+  return box.name !== undefined ? (
+    <>
+      <span className={`${className} named`}>{box.name}</span>
+      <span className="flow-code-name">{box.callee}</span>
+    </>
+  ) : (
+    <span className={className}>{box.callee}</span>
+  );
 }
 
-/** The chevron that collapses or expands a step group (the same toggle as Code's rail). */
-function GroupToggle({ groupId, title, collapsed, props }: { groupId: string; title: string; collapsed: boolean; props: FlowViewProps }) {
+/** A project call written in a test, a header, or an exit's value: a small box that opens in place like a call. */
+function Chip({ box, path, handlers }: { readonly box: CallBox; readonly path: readonly Key[]; readonly handlers: Handlers }) {
+  const own = [...path, box.key];
   return (
-    <button
-      type="button"
-      className="flow-group-toggle nodrag"
-      aria-label={`${collapsed ? "Expand" : "Collapse"} step group ${title}`}
-      aria-expanded={!collapsed}
+    <span className={classes("flow-chip", box.sometimes && "sometimes", isBlock(handlers.selected, box.key) && "selected")} data-key={box.key} {...selectable(handlers, { kind: "block", key: box.key })}>
+      <CallName box={box} className="flow-chip-name" />
+      {box.to.outcome === "unknown" ? <Unknown /> : null}
+      {box.actions.open ? <Chevron open={box.inset !== undefined} name={box.name ?? box.callee} onToggle={() => {
+            handlers.toggleOpen(own);
+          }} /> : null}
+    </span>
+  );
+}
+
+function CallPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "call" }>; readonly handlers: Handlers }) {
+  const { box } = piece;
+  const meta = callMeta(box);
+  const project = box.to.outcome === "project";
+  return (
+    <div
+      className={classes("flow-call", project ? "project" : "other", box.sometimes && "sometimes", piece.dim && "dim", isBlock(handlers.selected, box.key) && "selected")}
+      style={place(piece.rect)}
+      data-key={box.key}
+      {...selectable(handlers, { kind: "block", key: box.key })}
+    >
+      <div className="flow-call-head">
+        <CallName box={box} className="flow-call-name" />
+        {box.to.outcome === "unknown" ? <Unknown /> : null}
+        {box.actions.open ? <Chevron open={box.inset !== undefined} name={box.name ?? box.callee} onToggle={() => {
+            handlers.toggleOpen(piece.path);
+          }} /> : null}
+      </div>
+      {hasMeta(meta) ? (
+        <div className="flow-call-meta">
+          {meta.binds !== null ? <span className="flow-binds">{meta.binds}</span> : null}
+          {meta.feeds !== null ? <span className="flow-feeds">{meta.feeds}</span> : null}
+          {meta.tags.map((tag) => (
+            <span key={tag} className={classes("flow-tag", tag === "sometimes" && "sometimes")}>
+              {tag}
+            </span>
+          ))}
+          {meta.why !== null ? <span className="flow-why">{meta.why}</span> : null}
+        </div>
+      ) : null}
+      {piece.rows.length > 0 ? (
+        <div className="flow-call-rows">
+          {piece.rows.map((row) => (
+            <CallRowView key={row.call.key} row={row} handlers={handlers} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CallRowView({ row, handlers }: { readonly row: CallRow; readonly handlers: Handlers }) {
+  const { call } = row;
+  const why = outcomeWords(call.to);
+  return (
+    <div
+      className={classes("flow-call-row", isBlock(handlers.selected, call.key) && "selected")}
+      style={{ paddingLeft: row.depth * 14 }}
+      data-key={call.key}
+      {...selectable(handlers, { kind: "block", key: call.key })}
+    >
+      <span className="flow-row-name">{call.callee}</span>
+      {call.to.outcome === "unknown" ? <Unknown /> : null}
+      {why.length > 0 ? <span className="flow-why">{why}</span> : null}
+    </div>
+  );
+}
+
+function ThinPiece({ piece, handlers, onToggleRow }: { readonly piece: Extract<FlowPiece, { kind: "thin" }>; readonly handlers: Handlers; readonly onToggleRow: ((key: Key) => void) | undefined }) {
+  const { row, listed } = piece;
+  const count = thinCount(row);
+  const toggle = () => onToggleRow?.(piece.key);
+  return (
+    <div
+      className={classes("flow-thin", listed && "listed", piece.dim && "dim")}
+      style={place(piece.rect)}
+      role="button"
+      tabIndex={0}
+      aria-expanded={listed}
+      aria-label={listed ? "Fold these calls into one row" : "List these calls one per row"}
       onClick={(event) => {
-        event.stopPropagation();
-        props.onToggleGroup?.(groupId);
+        stop(event);
+        toggle();
       }}
       onKeyDown={(event) => {
-        if (isMenuKey(event) && props.onGroupMenu) {
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          event.stopPropagation();
-          props.onGroupMenu(groupId, event.currentTarget);
+          stop(event);
+          toggle();
         }
       }}
     >
-      <Icon name={collapsed ? "chevron-right-small" : "chevron-down-small"} size={10} />
-    </button>
+      <span className="flow-thin-mark">{listed ? "Library and unknown calls" : "·"}</span>
+      {row.calls.map((call, index) => {
+        const inside = insideNames(call.inside);
+        const why = outcomeWords(call.to);
+        return (
+          <span
+            key={call.key}
+            className={classes("flow-thin-item", call.to.outcome === "builtin" && "builtin", isBlock(handlers.selected, call.key) && "selected")}
+            data-key={call.key}
+            {...(listed ? selectable(handlers, { kind: "block", key: call.key }) : {})}
+          >
+            <span className="flow-thin-name">
+              {call.role === "decorator" ? "@" : ""}
+              {call.callee}
+              {call.to.outcome === "unknown" ? <Unknown /> : null}
+            </span>
+            {call.binds !== undefined ? <span className="flow-binds">→ {call.binds}</span> : null}
+            {listed && why.length > 0 ? <span className="flow-why">{why}</span> : null}
+            {listed && call.feeds !== undefined ? <span className="flow-thin-small">into {call.feeds.name ?? call.feeds.callee}(…)</span> : null}
+            {inside.length > 0 ? <span className="flow-thin-small">+ {inside.join(", ")}</span> : null}
+            {!listed && index < row.calls.length - 1 ? <span className="flow-thin-sep">,</span> : null}
+          </span>
+        );
+      })}
+      {!listed && count !== null ? <span className="flow-thin-count">{count}</span> : null}
+    </div>
   );
 }
 
-/** A collapsed step group: one step with the group's title and what can leave it early. */
-function GroupStepView({ placed, group, selected, props }: { placed: PlacedNode; group: GroupStep; selected: boolean; props: FlowViewProps }) {
+function insideNames(calls: CallRow["call"]["inside"]): string[] {
+  return calls.flatMap((call) => [call.callee, ...insideNames(call.inside)]);
+}
+
+function ExitPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "exit" }>; readonly handlers: Handlers }) {
+  const { exit } = piece;
+  const value = exit.value;
   return (
-    <div
-      className={`flow-node kind-group${selected ? " selected" : ""}`}
-      style={{ left: placed.x, top: placed.y, width: placed.width, height: placed.height }}
-      data-flow-node={placed.id}
-      data-port-row="flow"
-      onClick={(event) => {
-        event.stopPropagation();
-        props.onSelectGroup?.(group.id);
-      }}
-      onContextMenu={groupMenuHandler(group.id, props)}
-    >
-      <span className="flow-type">
-        <GroupToggle groupId={group.id} title={placed.label} collapsed props={props} />
-        COMBINED
-        <small>
-          {group.steps} {group.steps === 1 ? "step" : "steps"}
-        </small>
-        {props.onViewGroupCode ? (
-          <ViewCodeButton
-            tabbable={selected}
-            onView={() => {
-              props.onViewGroupCode?.(group.id);
-            }}
-          />
-        ) : null}
-      </span>
-      <NodeLabel placed={placed} />
-      {group.returns || group.throws ? (
-        <span className="flow-group-marks">
-          {group.returns ? <span className="returns">returns</span> : null}
-          {group.throws ? <span className="throws">throws</span> : null}
+    <div className={classes("flow-exit", `x-${exit.form}`, piece.dim && "dim", isBlock(handlers.selected, exit.key) && "selected")} style={place(piece.rect)} data-key={exit.key} {...selectable(handlers, { kind: "block", key: exit.key })}>
+      <span className="flow-exit-word">{exitWord(exit.form)}</span>
+      {exit.name !== undefined ? <span className="flow-name">{exit.name}</span> : null}
+      {value?.kind === "call" && value.to.outcome === "project" ? <Chip box={value} path={piece.path} handlers={handlers} /> : null}
+      {value?.kind === "call" && value.to.outcome !== "project" ? (
+        <span className="flow-exit-value" data-key={value.key}>
+          {value.callee}
+          {value.to.outcome === "unknown" ? <Unknown /> : null}
         </span>
       ) : null}
+      {value?.kind === "text" ? <span className="flow-exit-value">{value.text}</span> : null}
+      {piece.destination !== null ? <span className="flow-exit-destination">→ {piece.destination}</span> : null}
     </div>
   );
 }
 
-/** An expanded step group's title band: the toggle, the title, and `</>`, drawn over the routes that enter it. */
-function GroupHeading({ region, selected, props }: { region: FlowLayout["regions"][number]; selected: boolean; props: FlowViewProps }) {
-  const groupId = region.group ?? "";
+function FramePiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "frame" }>; readonly handlers: Handlers }) {
+  const { frame, look } = piece;
+  const cases = frame.form === "switch" || frame.form === "match";
   return (
-    <div
-      className={`flow-group-heading${selected ? " selected" : ""}`}
-      style={{ left: region.x, top: region.y, width: region.width }}
-      data-group={groupId}
-      onContextMenu={groupMenuHandler(groupId, props)}
-    >
-      <GroupToggle groupId={groupId} title={region.title} collapsed={false} props={props} />
-      <span
-        className="flow-group-title"
-        onClick={(event) => {
-          event.stopPropagation();
-          props.onSelectGroup?.(groupId);
-        }}
-      >
-        {region.title}
-      </span>
-      {props.onViewGroupCode ? (
-        <ViewCodeButton
-          tabbable={selected}
-          onView={() => {
-            props.onViewGroupCode?.(groupId);
-          }}
-        />
+    <div className={classes("flow-frame", look, piece.dim && "dim", isBlock(handlers.selected, frame.key) && "selected")} style={place(piece.rect)} data-key={frame.key} {...selectable(handlers, { kind: "block", key: frame.key })}>
+      {look === "try" ? null : (
+        <div className={classes("flow-frame-title", frame.headerCalls.length > 0 && !cases && "with-chips")}>
+          <span className="flow-frame-word">{frameWord(frame.form)}</span>
+          {frame.name !== undefined ? <span className="flow-name">{frame.name}</span> : null}
+          {!cases && frame.header !== undefined ? <span className="flow-frame-header">{frame.header}</span> : null}
+          {!cases ? frame.headerCalls.map((box) => <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />) : null}
+          {frame.binds !== undefined ? <span className="flow-binds">→ {frame.binds}</span> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HeadPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "head" }>; readonly handlers: Handlers }) {
+  const { lane } = piece;
+  const props = lane ? { "data-key": lane.key, ...selectable(handlers, { kind: "block", key: lane.key }) } : {};
+  const words =
+    lane?.name !== undefined ? (
+      <>
+        <span className="flow-name">{lane.name}</span>
+        <span className="flow-code-name">{piece.text}</span>
+      </>
+    ) : (
+      piece.text
+    );
+  return (
+    <div className={classes("flow-head", piece.look, piece.dim && "dim", lane && isBlock(handlers.selected, lane.key) && "selected")} style={place(piece.rect)} {...props}>
+      {piece.look === "test" ? (
+        <span className="flow-diamond" aria-hidden="true">
+          ◆
+        </span>
       ) : null}
+      <span className="flow-head-text" style={{ width: piece.textWidth }}>
+        {words}
+      </span>
+      {piece.chips.map((box) => (
+        <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />
+      ))}
     </div>
   );
 }
 
-/** The chevron that expands a call or a callback in place, or collapses it. */
-function CallToggle({ call, state, props }: { call: ExpandableCall; state: "expanded" | "collapsed"; props: FlowViewProps }) {
-  const expanded = state === "expanded";
+function SectionPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "section" }>; readonly handlers: Handlers }) {
+  const { lane } = piece;
+  const words = sectionWords(lane, piece.loop);
   return (
+    <section className={classes("flow-section", piece.look, piece.dim && "dim", isBlock(handlers.selected, lane.key) && "selected")} style={place(piece.rect)} data-key={lane.key} {...selectable(handlers, { kind: "block", key: lane.key })}>
+      <div className="flow-section-title">
+        <span className="flow-section-word">{words.title}</span>
+        {lane.name !== undefined ? <span className="flow-name">{lane.name}</span> : null}
+        {words.clause !== null ? <span className="flow-frame-header">{words.clause}</span> : null}
+        {words.note !== null ? <span className="flow-section-note">{words.note}</span> : null}
+      </div>
+    </section>
+  );
+}
+
+function CombinedPiece({
+  piece,
+  handlers,
+  onToggleCombined,
+}: {
+  readonly piece: Extract<FlowPiece, { kind: "combined" }>;
+  readonly handlers: Handlers;
+  readonly onToggleCombined: ((item: string, collapsed: boolean) => void) | undefined;
+}) {
+  const { step } = piece;
+  const selected = handlers.selected?.kind === "combined" && handlers.selected.item === step.item;
+  const toggle = onToggleCombined ? (
     <button
       type="button"
-      className="flow-call-toggle nodrag"
-      aria-label={`${expanded ? "Collapse" : "Expand"} ${call.name} here`}
-      aria-expanded={expanded}
+      className="flow-combined-toggle nodrag"
+      aria-expanded={!step.collapsed}
       onClick={(event) => {
-        event.stopPropagation();
-        props.expansion?.onToggle(call);
+        stop(event);
+        onToggleCombined(step.item, !step.collapsed);
       }}
     >
-      <Icon name={expanded ? "chevron-down-small" : "chevron-right-small"} size={10} />
+      {step.collapsed ? "open" : "fold"}
     </button>
-  );
-}
-
-function FlowNodeView({
-  placed,
-  selected,
-  props,
-}: {
-  placed: PlacedNode;
-  selected: boolean;
-  props: FlowViewProps;
-}) {
-  const { node } = placed;
-  const style = { left: placed.x, top: placed.y, width: placed.width, height: placed.height };
-  const select = (event: MouseEvent) => {
-    event.stopPropagation();
-    if (node.key === undefined) {
-      return;
-    }
-    if (event.shiftKey && props.onExtend) {
-      props.onExtend(node.key);
-    } else {
-      props.onSelect?.(node.key);
-    }
-  };
-  // A step's own menu and keyboard focus (a click focuses it, so Shift+F10 opens its menu). The menu
-  // acts on the selection: the step, unless it is already selected alone or in a run.
-  const key = node.key;
-  const openMenu = (step: string, at: MouseEvent | Element) => {
-    if (!selected) {
-      props.onSelect?.(step);
-    }
-    props.onStepMenu?.(step, at);
-  };
-  const menu =
-    props.onStepMenu && key !== undefined && node.kind !== "start" && node.kind !== "end" && !placed.summary
-      ? {
-          tabIndex: -1,
-          onMouseDown: (event: MouseEvent) => {
-            // Shift-click extends the selection, never the text selection.
-            if (event.shiftKey) {
-              event.preventDefault();
-            }
-          },
-          onContextMenu: (event: MouseEvent) => {
-            event.stopPropagation();
-            openMenu(key, event);
-          },
-          onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
-            if (isMenuKey(event) && event.target === event.currentTarget) {
-              event.preventDefault();
-              event.stopPropagation();
-              openMenu(key, event.currentTarget);
-            }
-          },
-        }
-      : {};
-  const code =
-    props.onViewCode && key !== undefined && hasSource(placed) ? (
-      <ViewCodeButton
-        tabbable={selected}
-        onView={() => {
-          props.onViewCode?.(key);
-        }}
-      />
-    ) : null;
-  const classes = ["flow-node", `kind-${node.kind}`];
-  if (selected) classes.push("selected");
-  if (placed.summary) classes.push("summary");
-  const main = node.call !== undefined ? node.chips?.[node.call] : undefined;
-  if (main) classes.push(main.resolution);
-
-  if (node.kind === "start" || node.kind === "end") {
-    return (
-      <div className={`flow-pill kind-${node.kind}${selected ? " selected" : ""}`} style={style} data-flow-node={placed.id} data-port-row="flow" onClick={select}>
-        <span className={node.kind === "start" ? "flow-pill-name" : undefined}>{placed.label}</span>
-      </div>
-    );
-  }
-  if (node.kind === "condition") {
-    return (
-      <div className={classes.join(" ")} style={style} data-flow-node={placed.id} data-port-row="flow" onClick={select} {...menu}>
-        {code ? <span className="flow-corner-code">{code}</span> : null}
-        <svg className="flow-shape" width={placed.width} height={placed.height} viewBox={`0 0 ${placed.width} ${placed.height}`} aria-hidden="true">
-          <path d={`M${placed.width / 2} 1 L${placed.width - 1} ${placed.height / 2} L${placed.width / 2} ${placed.height - 1} L1 ${placed.height / 2} Z`} />
-        </svg>
-        <div className="flow-diamond-text">
-          <span className="flow-type">{nodeTypeName(node)}</span>
-          <NodeLabel placed={placed} />
-          {node.checks !== undefined && node.key !== undefined ? (
-            <button
-              type="button"
-              className="flow-checks nodrag"
-              aria-expanded={placed.chainFolded === false}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (node.key !== undefined) {
-                  props.onToggleChain?.(node.key);
-                }
-              }}
-            >
-              {placed.chainFolded === false ? "▾" : "▸"} {node.checks} checks
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-  const follow = followableCall(node);
-  const note = main && main.resolution !== "resolved" ? linkNote({ resolution: main.resolution, ...(main.note !== undefined ? { note: main.note } : {}) }) : null;
-  // The chevrons of the calls that can expand in place here, by the key the card saves.
-  const toggles = new Map(
-    (!placed.summary && props.expansion ? expandableCalls(node) : []).flatMap((call) => {
-      const state = props.expansion?.stateOf(call) ?? null;
-      return state ? [[call.key, { call, state }] as const] : [];
-    }),
-  );
-  const toggle = (key: string) => {
-    const found = toggles.get(key);
-    return found ? <CallToggle call={found.call} state={found.state} props={props} /> : null;
-  };
-  return (
-    <div className={classes.join(" ")} style={style} data-flow-node={placed.id} data-port-row="flow" onClick={select} {...menu}>
-      {node.kind === "loop" ? (
-        <svg className="flow-shape" width={placed.width} height={placed.height} viewBox={`0 0 ${placed.width} ${placed.height}`} aria-hidden="true">
-          <path d={`M14 1 H${placed.width - 14} L${placed.width - 1} ${placed.height / 2} L${placed.width - 14} ${placed.height - 1} H14 L1 ${placed.height / 2} Z`} />
-        </svg>
-      ) : null}
-      <span className="flow-type">
-        <i aria-hidden="true" />
-        {nodeTypeName(node)}
-        {note !== null ? <small>{note.replace(/^(external|unresolved) · /, "")}</small> : null}
-        {code}
+  ) : null;
+  const head = (
+    <div className="flow-combined-head">
+      <span className="flow-combined-glyph" aria-hidden="true">
+        ⊞
       </span>
-      <NodeLabel placed={placed} />
-      {follow && !placed.summary ? (
-        <span className="flow-call-row">
-          {toggle(follow.source)}
-          <button
-            type="button"
-            className="flow-callee code-link resolved nodrag"
-            aria-label={`Follow ${follow.name}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (follow.target !== undefined) {
-                props.onFollow?.(node, follow.target, event.currentTarget);
-              }
-            }}
-          >
-            → {follow.name}
-          </button>
-        </span>
-      ) : null}
-      {!placed.summary
-        ? node.callbacks?.map((callback) => {
-            const chevron = toggle(callback.key);
-            return (
-              <span key={callback.key} className="flow-callback-row">
-                {chevron}
-                <button
-                  type="button"
-                  className={`flow-callback nodrag${toggles.get(callback.key)?.state === "expanded" ? " expanded" : ""}`}
-                  title="Open this definition as its own card"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    props.onOpenCallback?.(callback, event.currentTarget);
-                  }}
-                >
-                  {chevron ? null : <span aria-hidden="true">▸</span>}
-                  {callback.label}
-                  <small>
-                    {callback.lines} {callback.lines === 1 ? "line" : "lines"}
-                    {callback.throws ? " · throws" : ""}
-                  </small>
-                </button>
-              </span>
-            );
-          })
-        : null}
-      {node.kind === "opaque" ? (
-        <span className="flow-opaque-note">
-          <Icon name="warning-triangle" size={12} />
-          Routing not drawn · see Code
-        </span>
-      ) : null}
+      <span className="flow-combined-title">{step.title}</span>
+      {toggle}
     </div>
   );
-}
-
-/**
- * A proposed step: PROPOSED (with the agent mark for an agent's), its title as plain words, and why
- * where it goes needs review; one inside a collapsed step group says so, with the action that expands it.
- */
-function ProposalView({
-  placed,
-  mark,
-  selected,
-  onSelect,
-  onToggleGroup,
-}: {
-  placed: PlacedProposal;
-  mark: ProposalMark | undefined;
-  selected: boolean;
-  onSelect: ((id: string) => void) | undefined;
-  onToggleGroup: ((groupId: string) => void) | undefined;
-}) {
-  const inside = placed.inside;
-  const agent = mark ? authorOf(mark.author) : null;
-  const classes = ["flow-proposal"];
-  if (selected) classes.push("selected");
-  if (mark?.state) classes.push(mark.state);
-  const choose = (event: MouseEvent) => {
-    event.stopPropagation();
-    onSelect?.(placed.id);
-  };
+  const summary = combinedSummary(step);
   return (
     <div
-      className={classes.join(" ")}
-      style={{ left: placed.x, top: placed.y, width: placed.width, height: placed.height }}
-      data-proposal={placed.id}
-      role="button"
-      tabIndex={-1}
-      aria-label={`Proposed step: ${placed.title}`}
-      aria-pressed={selected}
-      onClick={choose}
-      onContextMenu={choose}
+      className={classes("flow-combined", step.collapsed ? "collapsed" : "open", piece.dim && "dim", selected && "selected")}
+      style={place(piece.rect)}
+      data-item={step.item}
+      {...selectable(handlers, { kind: "combined", item: step.item })}
     >
-      <span className="flow-type">
-        <i aria-hidden="true" />
-        PROPOSED
-        {agent?.agent === true ? (
-          <span className="flow-proposal-agent" title={`Written by ${agent.name}, an agent`}>
-            <Icon name="agent" size={10} />
-          </span>
-        ) : null}
-      </span>
-      <span className="flow-proposal-title">{placed.title}</span>
-      {placed.note !== undefined ? (
-        <span className={`flow-proposal-note${inside !== undefined ? " inside" : ""}`}>
-          {placed.note}
-          {inside !== undefined && onToggleGroup ? (
-            <>
-              {" "}
-              <button
-                type="button"
-                className="flow-proposal-reveal nodrag"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleGroup(inside);
-                }}
-              >
-                {INSIDE_ACTION}
-              </button>
-            </>
-          ) : null}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-export function FlowView(props: FlowViewProps) {
-  const { model, layout, ports, expansion } = props;
-  const marker = useId().replace(/:/g, "");
-  const selected = props.selectedKey ?? null;
-  const selectedGroup = props.selectedGroup ?? null;
-  return (
-    <div className={`flow-view${props.inset === true ? " inset" : ""}`}>
-      {props.inset === true ? null : <div className="flow-caption">Paths from written structure</div>}
-      {props.inset !== true && model.warnings.length > 0 ? (
-        <div className="flow-warnings" role="note">
-          <Icon name="warning-triangle" size={14} />
-          <div>
-            {model.warnings.map((warning) => (
-              <p key={warning.code}>{warning.message}</p>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <div className="flow-diagram" role="group" aria-label="Flow diagram" style={{ width: Math.max(layout.width, props.width), height: layout.height }}>
-        {layout.regions.map((region, index) => (
-          <div
-            key={`${region.kind}-${index}`}
-            className={`flow-region kind-${region.kind}${region.group !== undefined && region.group === selectedGroup ? " selected" : ""}`}
-            style={{ left: region.x, top: region.y, width: region.width, height: region.height }}
-          >
-            {region.kind !== "group" ? (
-              <span className="flow-region-title">
-                {region.title}
-                {region.subtitle !== undefined ? <small>{region.subtitle}</small> : null}
-              </span>
-            ) : null}
-          </div>
-        ))}
-        <svg className="flow-edges" width={Math.max(layout.width, props.width)} height={layout.height} aria-hidden="true">
-          <defs>
-            <marker id={`${marker}-arrow`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 Z" className="flow-arrowhead" />
-            </marker>
-            <marker id={`${marker}-error`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 Z" className="flow-arrowhead error" />
-            </marker>
-            <marker id={`${marker}-proposed`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 Z" className="flow-arrowhead proposed" />
-            </marker>
-          </defs>
-          {layout.edges.map((edge) => (
-            <g key={edge.id} className={`flow-edge kind-${edge.kind}${edge.dashed ? " dashed" : ""}`}>
-              <path d={roundedPath(edge.points)} markerEnd={`url(#${marker}-${edge.dashed ? "error" : "arrow"})`} />
-              {edge.label !== null && edge.labelAt ? (
-                <text x={edge.labelAt.x} y={edge.labelAt.y} className="flow-edge-label">
-                  {edge.label}
-                </text>
-              ) : null}
-            </g>
+      {head}
+      {step.collapsed && summary.length > 0 ? (
+        <div className="flow-combined-summary">
+          {summary.map((item) => (
+            <span key={item.text} className={item.tone}>
+              {item.text}
+              {item.tone === "unknown" ? <Unknown /> : null}
+            </span>
           ))}
-          {props.proposals
-            ? layout.proposalEdges.map((edge) => (
-                <path key={edge.id} className="flow-proposal-edge" d={roundedPath(edge.points)} markerEnd={`url(#${marker}-proposed)`} data-proposal-edge={edge.proposal} />
-              ))
-            : null}
-        </svg>
-        {layout.regions.map((region) =>
-          region.kind === "group" ? (
-            <GroupHeading key={`heading-${region.group ?? ""}`} region={region} selected={region.group !== undefined && region.group === selectedGroup} props={props} />
-          ) : null,
-        )}
-        {expansion
-          ? layout.insets.map((inset) => (
-              <div
-                key={`inset-${inset.node}`}
-                className="flow-inset-slot"
-                data-inset-node={inset.key}
-                style={{ left: inset.x, top: inset.y, width: inset.width, height: inset.height }}
-              >
-                {expansion.renderInset(inset)}
-              </div>
-            ))
-          : null}
-        {layout.nodes.map((placed) => {
-          const nodePorts = ports?.get(placed.id);
-          return (
-            <FlowNodeWithPorts
-              key={placed.id}
-              placed={placed}
-              selected={
-                placed.group
-                  ? placed.group.id === selectedGroup
-                  : !placed.summary && placed.node.key !== undefined && (placed.node.key === selected || props.runKeys?.has(placed.node.key) === true)
-              }
-              props={props}
-              ports={nodePorts}
-              diagramWidth={Math.max(layout.width, props.width)}
-            />
-          );
-        })}
-        {props.proposals
-          ? layout.proposals.map((placed) => (
-              <ProposalView
-                key={placed.id}
-                placed={placed}
-                mark={props.proposals?.marks.get(placed.id)}
-                selected={props.proposals?.selected === placed.id}
-                onSelect={props.proposals?.onSelect}
-                onToggleGroup={props.onToggleGroup}
-              />
-            ))
-          : null}
-      </div>
+        </div>
+      ) : null}
+      {piece.exits.length > 0 ? (
+        <div className="flow-combined-exits">
+          {piece.exits.map((exit) => (
+            <span key={`${exit.kind} ${exit.destination}`} className={`flow-combined-exit r-${exit.kind}`}>
+              <b>{exit.verb}</b>→ {exit.destination}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function FlowNodeWithPorts({
-  placed,
-  selected,
-  props,
-  ports,
-  diagramWidth,
-}: {
-  placed: PlacedNode;
-  selected: boolean;
-  props: FlowViewProps;
-  ports: readonly string[] | undefined;
-  diagramWidth: number;
-}) {
-  return (
-    <>
-      {ports && ports.length > 0 && props.renderPorts ? (
+function Piece({ piece, handlers, props }: { readonly piece: FlowPiece; readonly handlers: Handlers; readonly props: FlowViewProps }): ReactNode {
+  switch (piece.kind) {
+    case "start":
+      return (
         <div
-          className={`flow-leader${ports.every((port) => portStep(port) !== undefined) ? " authored" : ""}`}
-          style={{ left: placed.x + placed.width, top: placed.y + Math.min(placed.height / 2, 18), width: Math.max(0, diagramWidth - placed.x - placed.width) + (props.portReach ?? 0) }}
+          className={classes("flow-pill", "start", piece.named && "named", isBlock(handlers.selected, piece.key) && "selected")}
+          style={place(piece.rect)}
+          data-key={piece.key}
+          {...selectable(handlers, { kind: "block", key: piece.key })}
         >
-          {props.renderPorts(ports)}
+          {piece.label}
         </div>
-      ) : null}
-      {placed.group ? (
-        <GroupStepView placed={placed} group={placed.group} selected={selected} props={props} />
+      );
+    case "end":
+      return (
+        <div className="flow-pill end" style={place(piece.rect)}>
+          End
+        </div>
+      );
+    case "call":
+      return <CallPiece piece={piece} handlers={handlers} />;
+    case "callback": {
+      const { callback } = piece;
+      return (
+        <div
+          className={classes("flow-callback", callback.inset !== undefined && "open", piece.dim && "dim", isBlock(handlers.selected, callback.key) && "selected")}
+          style={place(piece.rect)}
+          data-key={callback.key}
+          {...selectable(handlers, { kind: "block", key: callback.key })}
+        >
+          <span className="flow-callback-word">callback</span>
+          {callback.name !== undefined ? <span className="flow-name">{callback.name}</span> : null}
+          <span className="flow-callback-text">{callbackText(callback)}</span>
+          {callback.actions.open ? <Chevron open={callback.inset !== undefined} name={callback.name ?? callback.label} onToggle={() => {
+            handlers.toggleOpen(piece.path);
+          }} /> : null}
+        </div>
+      );
+    }
+    case "thin":
+      return <ThinPiece piece={piece} handlers={handlers} onToggleRow={props.onToggleRow} />;
+    case "exit":
+      return <ExitPiece piece={piece} handlers={handlers} />;
+    case "frame":
+      return <FramePiece piece={piece} handlers={handlers} />;
+    case "head":
+      return <HeadPiece piece={piece} handlers={handlers} />;
+    case "section":
+      return <SectionPiece piece={piece} handlers={handlers} />;
+    case "combined":
+      return <CombinedPiece piece={piece} handlers={handlers} onToggleCombined={props.onToggleCombined} />;
+    case "proposed": {
+      const selected = handlers.selected?.kind === "proposed" && handlers.selected.item === piece.step.item;
+      return (
+        <div className={classes("flow-proposed", piece.dim && "dim", selected && "selected")} style={place(piece.rect)} data-item={piece.step.item} {...selectable(handlers, { kind: "proposed", item: piece.step.item })}>
+          <span className="flow-proposed-word">Proposed</span>
+          <span className="flow-proposed-title">{piece.step.title}</span>
+        </div>
+      );
+    }
+    case "inset": {
+      const { header } = piece.flow;
+      return (
+        <div className={classes("flow-inset", piece.dim && "dim")} style={place(piece.rect)}>
+          <div className={classes("flow-inset-title", isBlock(handlers.selected, header.key) && "selected")} data-key={header.key} {...selectable(handlers, { kind: "block", key: header.key })}>
+            <span className={classes("flow-inset-name", header.name !== undefined && "named")}>{header.name ?? header.label}</span>
+            <span className="flow-inset-place">{insetPlace(piece.flow)}</span>
+          </div>
+        </div>
+      );
+    }
+    case "gap": {
+      const { gap } = piece;
+      const { onOpenLines } = props;
+      // Until something opens its lines, a tick is only words.
+      return onOpenLines ? (
+        <button
+          type="button"
+          className="flow-gap nodrag"
+          style={place(piece.rect)}
+          onClick={(event) => {
+            stop(event);
+            onOpenLines(piece.path, gap.lines);
+          }}
+        >
+          {gapWords(gap)}
+        </button>
       ) : (
-        <FlowNodeView placed={placed} selected={selected} props={props} />
-      )}
-    </>
+        <span className="flow-gap" style={place(piece.rect)}>
+          {gapWords(gap)}
+        </span>
+      );
+    }
+    case "note":
+      return (
+        <div className={classes("flow-note", piece.tone, piece.dim && "dim")} style={place(piece.rect)}>
+          {piece.text}
+        </div>
+      );
+  }
+}
+
+/** The arrowhead at the end of a polyline: a 6px-long, 9px-wide triangle along its last segment. */
+function arrowhead(points: readonly Point[]): string {
+  const tip = points.at(-1);
+  const before = points.at(-2);
+  if (!tip || !before) {
+    return "";
+  }
+  const length = Math.hypot(tip.x - before.x, tip.y - before.y) || 1;
+  const dx = (tip.x - before.x) / length;
+  const dy = (tip.y - before.y) / length;
+  const base = { x: tip.x - dx * 6, y: tip.y - dy * 6 };
+  return `${tip.x},${tip.y} ${base.x - dy * 4.5},${base.y + dx * 4.5} ${base.x + dy * 4.5},${base.y - dx * 4.5}`;
+}
+
+function WireView({ wire }: { readonly wire: FlowWire }) {
+  const d = wire.points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join(" ");
+  return (
+    <g className={classes("flow-wire", wire.dashed && "dashed", wire.error && "error", wire.routes.length === 0 && "bare")}>
+      <path d={d} />
+      <polygon points={arrowhead(wire.points)} />
+      {wire.label ? (
+        <text x={wire.label.at.x} y={wire.label.at.y} textAnchor={wire.label.anchor}>
+          {wire.label.text}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
+/** A drawn flow, laid out by `layoutFlow`: its pieces at their rects and its wires over them. */
+export function FlowView(props: FlowViewProps) {
+  const { geometry, selected = null, onSelect, onToggleOpen } = props;
+  const handlers: Handlers = {
+    selected,
+    select: (selection) => onSelect?.(selection),
+    toggleOpen: (path) => onToggleOpen?.(path),
+  };
+  return (
+    <div className="flow" style={{ width: geometry.width, height: geometry.height }}>
+      {/* A geometry's pieces and wires are a list in paint order: their place in it is their identity. */}
+      {geometry.pieces.map((piece, index) => (
+        <Piece key={index} piece={piece} handlers={handlers} props={props} />
+      ))}
+      <svg className="flow-wires" width={geometry.width} height={geometry.height} aria-hidden="true">
+        {geometry.wires.map((wire, index) => (
+          <WireView key={index} wire={wire} />
+        ))}
+      </svg>
+    </div>
   );
 }

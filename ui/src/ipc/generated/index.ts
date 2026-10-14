@@ -1000,9 +1000,9 @@ signature: string, };
  */
 export type CombinedStep = { 
 /**
- * Its id on the page.
+ * The id of the page's combined step it draws (`id` is the step's id in the flow).
  */
-id: string, 
+item: string, 
 /**
  * Its title.
  */
@@ -2714,9 +2714,9 @@ title: string, };
  */
 export type ProposedStep = { 
 /**
- * Its id on the page.
+ * The id of the page's proposal it draws (`id` is the step's id in the flow).
  */
-id: string, 
+item: string, 
 /**
  * What it would do.
  */
@@ -3062,7 +3062,7 @@ board: BoardEdit, };
  */
 export type SaveWindowStateArgs = { 
 /**
- * The window's position and size, and the board it shows.
+ * The window's position and size, the board it shows, and the Show all calls switch.
  */
 state: WindowState, };
 
@@ -3793,7 +3793,8 @@ height: number, };
 
 /**
  * `window.json` in the app-data folder: the window as it should come back at launch. The main
- * process saves it; the window's renderer reports the board it shows to the main process.
+ * process saves it; the window's renderer reports the board it shows and the Show all calls
+ * switch to the main process.
  */
 export type WindowState = { 
 /**
@@ -3807,7 +3808,11 @@ maximized: boolean,
 /**
  * The last board shown, or `None` for Home.
  */
-board: ShownBoard | null, };
+board: ShownBoard | null, 
+/**
+ * Whether Show all calls is on.
+ */
+showAllCalls: boolean, };
 
 /**
  * One event. See the [module documentation](self).

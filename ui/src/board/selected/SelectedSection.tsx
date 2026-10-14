@@ -1,87 +1,47 @@
 /**
  * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
- * card, a Flow node inside one or a Shift-selected run of them, a group, a drawn link or a connection,
- * a frame, a resource card, a note, a proposed step, a line between cards, or the calls an arrow from a
- * Diagram node stands for; a hint when nothing is. It takes at most half
- * the sidebar's height and scrolls on its own; its collapse is remembered per window.
+ * card, a block drawn in one, a combined step, a connection, a frame, a resource card, a note, a
+ * proposed step, a call's arrow between cards, or the calls an arrow stands for; a hint when nothing
+ * is. It takes at most half the sidebar's height and scrolls on its own; its collapse is remembered per
+ * window.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { cardQuery } from "../../canvas";
 import { IconButton, SectionLabel } from "../../components";
-import { cardKey, findCard, findFrame, findNote, findPage, findProposal, findResource, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { cardKey, findCard, findCombined, findFrame, findNote, findPage, findProposal, findResource, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { setSelectedCollapsed, useLayout } from "../../state/layout";
+import { SelectedBlock } from "./SelectedBlock";
 import { SelectedCalls } from "./SelectedCalls";
 import { SelectedCard } from "./SelectedCard";
+import { SelectedCombined } from "./SelectedCombined";
 import { SelectedConnection } from "./SelectedConnection";
 import { SelectedFrame } from "./SelectedFrame";
-import { SelectedGroup } from "./SelectedGroup";
 import { SelectedLine } from "./SelectedLine";
-import { SelectedLink } from "./SelectedLink";
-import { SelectedNode, flowNodeFor } from "./SelectedNode";
 import { SelectedNote } from "./SelectedNote";
 import { SelectedProposal } from "./SelectedProposal";
 import { SelectedResource } from "./SelectedResource";
-import { SelectedRun } from "./SelectedRun";
-import type { Card, Key } from "../../ipc/generated";
-
-/**
- * A card, or the Flow node of it that is selected (a statement key falls back to the card), or the run
- * of its steps Shift-selected from that node to `last`. A step shown in a call expanded in place is
- * read from its owner's Flow.
- */
-function CardOrNode({
-  target,
-  card,
-  nodeKey,
-  owner,
-  last,
-}: {
-  readonly target: PageTarget;
-  readonly card: Card;
-  readonly nodeKey: Key | null;
-  readonly owner: Key | undefined;
-  readonly last: Key | undefined;
-}) {
-  const { project } = target.board;
-  const block = owner ?? cardKey(card);
-  const query = useQuery(cardQuery(project, block));
-  const view = query.data?.type === "block" ? query.data : undefined;
-  const flow = view?.flow ?? null;
-  const node = nodeKey !== null && nodeKey !== block ? flowNodeFor(flow, nodeKey) : undefined;
-  if (view && node && last !== undefined && owner === undefined) {
-    return <SelectedRun target={target} card={card} model={view} first={node.key ?? ""} last={last} />;
-  }
-  if (view && flow && node) {
-    const shownIn = owner !== undefined ? { owner: { key: owner, name: view.header.qualifiedName } } : {};
-    return <SelectedNode target={target} card={card} node={node} model={flow} {...shownIn} />;
-  }
-  return <SelectedCard target={target} card={card} />;
-}
 
 function SelectedBody({ target }: { readonly target: PageTarget }) {
   const selection = usePageView(target, (view) => view.selection);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   if (page && selection.kind === "card") {
     const card = findCard(page, selection.cardId);
-    if (card) {
-      return <CardOrNode key={card.id} target={target} card={card} nodeKey={selection.key} owner={selection.owner} last={selection.last} />;
+    if (card && (selection.key === null || selection.key === cardKey(card))) {
+      return <SelectedCard key={card.id} target={target} card={card} />;
+    }
+    if (card && selection.key !== null) {
+      return <SelectedBlock key={`${card.id}:${selection.key}`} target={target} card={card} blockKey={selection.key} />;
     }
   }
-  if (page && selection.kind === "group") {
-    const group = page.groups.find((item) => item.id === selection.groupId);
-    if (group) {
-      return <SelectedGroup key={group.id} target={target} group={group} />;
+  if (page && selection.kind === "combined") {
+    const combined = findCombined(page, selection.combinedId);
+    if (combined) {
+      return <SelectedCombined key={combined.id} target={target} combined={combined} />;
     }
   }
   if (page && selection.kind === "link") {
     const link = page.links.find((item) => item.id === selection.linkId);
-    const kind = link?.kind;
-    if (link && kind !== undefined) {
-      return <SelectedConnection key={link.id} target={target} link={{ ...link, kind }} />;
-    }
     if (link) {
-      return <SelectedLink key={link.id} target={target} link={link} />;
+      return <SelectedConnection key={link.id} target={target} link={link} />;
     }
   }
   if (page && selection.kind === "frame") {
@@ -114,7 +74,7 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
   if (page && selection.kind === "calls") {
     return <SelectedCalls key={selection.arrowId} target={target} calls={selection} />;
   }
-  return <p className="selected-note">Select a card, a group, a frame, a resource card, a note, or a link to see it here.</p>;
+  return <p className="selected-note">Select a card, a block, a frame, a resource card, a note, or a connection to see it here.</p>;
 }
 
 export function SelectedSection({ target }: { readonly target: PageTarget }) {

@@ -41,14 +41,17 @@
 }
 
 /*
- * Code, Diagram-node, and type headers keep one height (43px with the rule, 44 with the card's border:
+ * Definition and type headers keep one height (43px with the rule, 44 with the card's border:
  * sizing.ts BLOCK_HEADER), with or without the chevron.
  */
 .block-card > .card-header,
-.diagram-card > .card-header,
 .type-card > .card-header { min-height: 43px; }
 
-/* The expansion chevron at the start of a function's or an entrance's header (Diagram only). */
+/* A compact card is its header, review banner, and whole description; with neither, the header alone. */
+.block-card.compact .card-description { border-bottom: 0; }
+.block-card.compact:not(:has(.card-review, .card-description, .card-note)) .card-header { border-bottom-color: transparent; }
+
+/* The chevron at the start of a card's header: compact or expanded. */
 .card-expand {
   display: grid;
   flex-shrink: 0;
@@ -170,7 +173,62 @@
 
 .card-note.warn { color: var(--color-warn); }
 
-/* React Flow handles: arrows and links attach to them, but no port dots are drawn (an expanded frame's box too). */
+/* What an expanded card says from its code (diagram-blocks-examples.html's card head): its signature, its
+   doc as a description from code, a module's imports, and what runs when it is defined. */
+.card-code {
+  display: grid;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 8px 12px 9px;
+  border-bottom: 1px solid var(--color-card-rule);
+  cursor: default;
+}
+
+.card-signature {
+  font: 11.5px/17px var(--font-code);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.card-doc {
+  font: 12.5px/18px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.card-source-tag {
+  margin-right: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: 700 9px/14px var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  color: var(--color-faint);
+}
+
+.card-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font: 11px/17px var(--font-code);
+  color: var(--color-muted);
+}
+
+.card-links-label {
+  font: 700 9px/17px var(--font-ui);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.card-link.project { color: var(--color-accent-text); }
+.card-link.builtin { color: var(--color-faint); }
+.card-link.unknown { color: var(--color-unknown); }
+.card-link i { font-style: normal; color: var(--color-faint); }
+
+/* React Flow handles: arrows and connections attach to them, but no port dots are drawn (an expanded frame's box too). */
 .board-card .react-flow__handle,
 .frame-box .react-flow__handle {
   width: 1px;
@@ -183,119 +241,99 @@
   pointer-events: none;
 }
 
-/* The link handles' wrappers take no room in a card's flex column. */
+/* The connection handles' wrappers take no room in a card's flex column. */
 .card-link-handles { display: contents; }
 
-/* Arrows enter at the header's center; side links at the same height, top and bottom links mid-edge. */
+/* Arrows enter at the header's center; side connections at the same height, top and bottom ones mid-edge. */
 .board-card .react-flow__handle.card-target,
 .card-link-handles.left > .react-flow__handle,
 .card-link-handles.right > .react-flow__handle { top: 21px; }
 
-.code-row > .react-flow__handle.card-port { top: 10px; }
-.code-group-heading > .react-flow__handle.card-port { top: 50%; }
+/* An expanded card's arrows leave its edge level with their calls (BlockCard places each). */
+.card-body > .react-flow__handle.card-port { right: 0; }
 
-/* Entrance cards. */
-.ecard-method {
-  flex-shrink: 0;
-  padding: 2px 0;
-  font: 500 11px/14px var(--font-code);
-  color: var(--color-muted);
+/*
+ * An app's or entrance's card (core-scope.html's entrance; entrance-definitions.md, "On a board"): it looks
+ * declared, so it is drawn in the authored style, with the app in small caps, the name, and what starts it
+ * in mono; then the code it starts at.
+ */
+.start-card {
+  border: 1.5px solid var(--color-authored-line);
 }
 
-.entrance-card .card-header > .react-flow__handle,
-.entrance-card .card-link-handles.left > .react-flow__handle,
-.entrance-card .card-link-handles.right > .react-flow__handle { top: 18px; }
+.start-head {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 13px 15px 14px;
+  cursor: grab;
+}
 
-.ecard-body {
+.start-app {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 10px 12px 12px;
 }
 
-/* Where it is declared, and the `</>` that opens that evidence. */
-.ecard-location-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.ecard-location {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font: 11px/14px var(--font-code);
-  color: var(--color-muted);
-}
-
-.ecard-heading {
-  font-size: var(--text-11);
-  line-height: var(--leading-14);
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps);
+.start-app small {
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-subtle);
 }
 
-.ecard-empty { font-size: var(--text-12); line-height: var(--leading-16); color: var(--color-muted); }
+.start-name { font: 600 14px/20px var(--font-ui); }
+.start-on { font: 12px/16px var(--font-code); color: var(--color-muted); overflow-wrap: anywhere; }
+.start-on b { font-weight: 600; color: var(--color-text); }
+.start-about { font: 12px/18px var(--font-ui); color: var(--color-muted); }
 
-.ecard-handlers {
+.start-codes {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin: 0;
-  padding: 0;
+  padding: 0 15px 14px;
   list-style: none;
 }
 
-.ecard-handler {
+.start-head + .start-codes { margin-top: -6px; }
+
+.start-code {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
-}
-
-/* Arrows leave a handler row at the card's edge. */
-.ecard-handler > .react-flow__handle.card-port { top: 50%; right: -12px; }
-
-.ecard-handler-name {
-  min-width: 0;
-  overflow: hidden;
+  min-height: 20px;
   font: 12px/16px var(--font-code);
-  color: var(--color-text);
-  text-align: left;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-button.ecard-handler-name:hover { text-decoration: underline 1px; text-underline-position: from-font; }
+.start-code-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.start-code-place { flex: 1; min-width: 0; overflow: hidden; font-size: 11px; color: var(--color-muted); white-space: nowrap; text-overflow: ellipsis; }
 
-.ecard-handler-name.opened {
-  font-weight: 600;
-  color: var(--color-accent-text);
-  text-decoration: underline 1px;
-  text-underline-position: from-font;
+/* Code that isn't found: dashed, labeled with its state. */
+.start-code.unfound {
+  padding: 1px 6px;
+  border: 1px dashed var(--color-dashed);
+  border-radius: var(--radius-chip);
+  color: var(--color-muted);
 }
 
-.ecard-handler-name.external,
-.ecard-handler-name.unresolved { color: var(--color-muted); cursor: help; }
-
-/* A Diagram node (design §4.1): the header, the review banner, and the whole description, nothing under
-   it; with neither, the header alone. */
-.diagram-card .card-description { border-bottom: 0; }
-.diagram-card:not(:has(.card-review, .card-description, .card-note, .card-proposals)) .card-header { border-bottom-color: transparent; }
-
-/* A compact card's proposed steps: how many, with their dashed green mark (they show in its Flow). */
-.card-proposals {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px 8px;
-  font: 12px/16px var(--font-ui);
-  color: var(--color-proposed-ink);
+.start-code-state {
+  flex-shrink: 0;
+  margin-left: auto;
+  font: 500 10.5px/16px var(--font-ui);
+  color: var(--color-warn);
 }
 
+/* A start's arrows leave its edge: level with its header when compact, with each code row when expanded. */
+.start-head > .card-header-ports > .react-flow__handle { top: 21px; }
+.start-code > .react-flow__handle.card-port { top: 50%; right: -15px; }
+
+/* A selected start card: the accent border, as any card. */
+.start-card.selected { border-color: var(--color-accent); }
+
+/* A proposed step's dashed green mark (Selected). */
 .proposal-glyph {
   flex-shrink: 0;
   width: 10px;

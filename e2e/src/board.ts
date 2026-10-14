@@ -1,15 +1,12 @@
 /**
  * The window in board mode: the shown board's view (top bar, canvas, cards, arrows, dock) and its
- * sidebar (header, Pages, Selected), and the board files on disk. Only the shown board is
- * mounted, so every locator here is the shown board's.
+ * sidebar (header, Pages, Selected). Only the shown board is mounted, so every locator here is the
+ * shown board's.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { sidebar, sidebarBoard } from "./home";
-import { escapeRegExp } from "./window";
 
 /** The shown board's view. */
 export function boardView(page: Page): Locator {
@@ -26,9 +23,9 @@ export async function shownBoardRef(page: Page): Promise<{ readonly project: str
   return { project, id };
 }
 
-/** A card on the active page, by the end of its key (`#function:createOrder`, `"/orders","requireUser"]`). */
-export function card(page: Page, keySuffix: string): Locator {
-  return boardView(page).locator(`.board-card[data-key$='${keySuffix}']`);
+/** A card on the active page, by the name its header shows (`createOrder`, `place`). */
+export function card(page: Page, name: string): Locator {
+  return boardView(page).getByRole("article", { name, exact: true });
 }
 
 /** Every card on the active page. */
@@ -42,21 +39,8 @@ export async function expectCardsLoaded(page: Page): Promise<void> {
 }
 
 /**
- * A resolved call link inside a card or the peek sheet: in Code (and the sheet) by its written text
- * (`orderService.place`), in an expanded card's Flow (its `→` link) by the callee's name (`OrderService.place`).
- */
-export function callLink(from: Locator, text: string): Locator {
-  return from.getByRole("button", { name: `Follow ${text}`, exact: true }).first();
-}
-
-/** A step of an expanded card's Flow (or of a call expanded in place), by its label (`slack.post`, `req.header?`). */
-export function flowStep(from: Locator, label: string): Locator {
-  return from.locator(".flow-node").filter({ has: from.page().locator(".flow-label", { hasText: new RegExp(`^${escapeRegExp(label)}$`) }) });
-}
-
-/**
- * The arrow from card `from` to card `to` (a call or a passed function; its accessible name is "Call"
- * or "Passed function"), the stroke that takes its click.
+ * The arrow from card `from` to card `to` (its accessible name is "Call", or "3 calls" from a compact
+ * card), the stroke that takes its click.
  */
 export async function arrow(from: Locator, to: Locator): Promise<Locator> {
   const source = (await from.getAttribute("data-card-id")) ?? "";
@@ -64,40 +48,9 @@ export async function arrow(from: Locator, to: Locator): Promise<Locator> {
   return boardView(from.page()).locator(`.board-arrow-hit[data-arrow^='${source}|'][data-arrow$='|${target}']`);
 }
 
-/** The page's name in the canvas top bar. */
-export function pageTitle(page: Page): Locator {
-  return boardView(page).locator(".board-topbar-title");
-}
-
-/** The top bar's Diagram | Code lens. */
-export function lens(page: Page): Locator {
-  return boardView(page).getByRole("radiogroup", { name: "Lens" });
-}
-
-/**
- * Puts the active page in a lens with the top bar's radio: Code to read every card's verified source,
- * Diagram for the compact and expanded cards (new pages open in Diagram).
- */
-export async function chooseLens(page: Page, name: "Diagram" | "Code"): Promise<void> {
-  const radio = lens(page).getByRole("radio", { name, exact: true });
-  await radio.click();
-  await expect(radio).toHaveAttribute("aria-checked", "true");
-}
-
 /** The floating dock (Add, Arrange, the zoom). */
 export function dock(page: Page): Locator {
   return boardView(page).getByRole("toolbar", { name: "Board" });
-}
-
-/** The zoom the dock shows, in percent. */
-export async function zoomPercent(page: Page): Promise<number> {
-  const text = (await dock(page).locator(".board-dock-zoom").textContent()) ?? "";
-  return Number.parseInt(text, 10);
-}
-
-/** The canvas's camera transform (`translate(…) scale(…)`). */
-export async function camera(page: Page): Promise<string> {
-  return (await boardView(page).locator(".react-flow__viewport").getAttribute("style")) ?? "";
 }
 
 /**
@@ -191,28 +144,6 @@ export async function clickArrow(page: Page, line: Locator): Promise<void> {
   }).toPass();
 }
 
-/** Follows a resolved call link inside a card (pans it into reach first). */
-export async function follow(from: Locator, text: string): Promise<void> {
-  const link = callLink(from, text);
-  await panUntilHittable(from.page(), link);
-  await link.click();
-}
-
-/** Clicks the empty canvas (top left of the pane), which clears the selection and takes focus. */
-export async function clickCanvas(page: Page): Promise<void> {
-  await boardView(page).locator(".react-flow__pane").click({ position: { x: 12, y: 12 } });
-}
-
-/** Opens a card's context menu and chooses `item`. */
-export async function cardMenu(target: Locator, item: string | RegExp): Promise<void> {
-  const page = target.page();
-  await panUntilHittable(page, target.locator(".card-header"));
-  await target.locator(".card-header").click({ button: "right" });
-  const menu = page.getByRole("menu", { name: "Card actions" });
-  await menu.getByRole("menuitem", { name: item }).click();
-  await expect(menu).toBeHidden();
-}
-
 // --- The board's sidebar ----------------------------------------------------------------------
 
 /** The board's title in the sidebar header. */
@@ -226,83 +157,7 @@ export async function showBoard(page: Page, title: string): Promise<void> {
   await expect(boardTitle(page)).toHaveText(title);
 }
 
-/** The board menu (`⋯` in the sidebar header): opens it and chooses `item` (a submenu path for Move to folder). */
-export async function boardMenu(page: Page, ...path: readonly (string | RegExp)[]): Promise<void> {
-  await sidebar(page).getByRole("button", { name: "Board menu" }).click();
-  await chooseMenuPath(page, "Board menu", path);
-}
-
-/** A menu's item by its name (a string matches the whole name), checkable or not. */
-export function menuItem(menu: Locator, name: string | RegExp): Locator {
-  const options = { name, exact: true };
-  return menu.getByRole("menuitem", options).or(menu.getByRole("menuitemcheckbox", options));
-}
-
-/** Chooses `path` in the open menu named `menu`, opening submenus on the way. */
-export async function chooseMenuPath(page: Page, menu: string, path: readonly (string | RegExp)[]): Promise<void> {
-  let current = page.getByRole("menu", { name: menu });
-  await expect(current).toBeVisible();
-  for (const [index, item] of path.entries()) {
-    const entry = menuItem(current, item);
-    if (index < path.length - 1) {
-      await entry.click();
-      current = page.getByRole("menu", { name: item, exact: true });
-      await expect(current).toBeVisible();
-    } else {
-      await entry.click();
-    }
-  }
-}
-
-/** The Pages section's list of pages. */
-export function pagesList(page: Page): Locator {
-  return sidebar(page).getByRole("listbox", { name: "Pages of the board" });
-}
-
-/** A page's row in Pages, by its title. */
-export function pageRow(page: Page, title: string): Locator {
-  return pagesList(page).getByRole("option").filter({ has: page.locator(".list-row-label", { hasText: new RegExp(`^${escapeRegExp(title)}$`) }) });
-}
-
 /** The Selected section at the bottom of the board's sidebar. */
 export function selected(page: Page): Locator {
   return sidebar(page).getByRole("region", { name: "Selected" });
-}
-
-// --- Board files ------------------------------------------------------------------------------
-
-/** A board file, as the journeys read it. */
-export interface BoardFile {
-  readonly title?: string;
-  readonly folder?: string;
-  readonly pages: readonly {
-    readonly id: string;
-    readonly title: string;
-    readonly cards: readonly {
-      readonly id: string;
-      readonly ref: { readonly block?: string; readonly entrance?: string };
-      readonly at: readonly [number, number];
-      readonly view?: string;
-      readonly description?: { readonly text: string };
-    }[];
-    readonly groups: readonly { readonly id: string; readonly title: string }[];
-    readonly labels: readonly { readonly key: string; readonly text: string }[];
-    readonly links?: readonly {
-      readonly id: string;
-      readonly from: string;
-      readonly to: string;
-      readonly kind?: string;
-      readonly author?: string;
-      readonly channel?: string;
-      readonly label?: { readonly text: string };
-    }[];
-    readonly frames?: readonly { readonly id: string; readonly title: string; readonly members: readonly string[]; readonly look: string; readonly collapsed?: boolean; readonly author: string }[];
-    readonly resources?: readonly { readonly id: string; readonly kind: string; readonly name: string; readonly type?: string; readonly author: string }[];
-    readonly notes?: readonly { readonly id: string; readonly text: string; readonly attach?: string; readonly author: string }[];
-  }[];
-}
-
-/** Reads a board file (`id` is the project-relative path, such as `.unfold/boards/board-1.json`). */
-export function readBoard(folder: string, id: string): BoardFile {
-  return JSON.parse(readFileSync(join(folder, id), "utf8")) as BoardFile;
 }

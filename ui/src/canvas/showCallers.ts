@@ -1,28 +1,18 @@
 /**
- * Show callers (V1's References, now on the card menu): asks the engine for the distinct definitions
- * that call a card's block (`callers`), and adds the ones not on the page yet as cards in a column to
- * its left, sized from their models so each one's right edge lines up. One undo step.
+ * Show callers (the card menu, Selected): asks the engine for the distinct definitions that call a
+ * card's definition (`callers`), and adds the ones not on the page yet as cards in a column to its
+ * left, each named and sized from what the reader draws for it (in the page's default view), so each
+ * one's right edge lines up. One undo step.
  */
 
 import { queryClient } from "../ipc/client";
+import type { CallingDefinition } from "../ipc/generated";
 import { toUnfoldError } from "../ipc/unfold";
 import { showToast } from "../components";
-import {
-  addCard,
-  displayedRects,
-  findCard,
-  findCardByKey,
-  findPage,
-  getOpenBoard,
-  getPageView,
-  editPage,
-  keyDisplayName,
-  requestCardFocus,
-  shownView,
-  type PageTarget,
-} from "../state/boards";
+import { addCard, displayedRects, findCard, findCardByKey, findPage, getOpenBoard, editPage, requestCardFocus, type PageTarget } from "../state/boards";
 import { call } from "../state/boards/engine";
-import { cardQuery } from "./cardData";
+import { cardArgs, cardName, cardQuery, fetchCard, pageOverlay } from "../state/cards";
+import { getShowAllCalls } from "../state/showAllCalls";
 import { callerPlacement } from "./layout";
 import { measureText } from "./measure";
 import { estimatedCardSize } from "./sizing";
@@ -38,13 +28,14 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
     return;
   }
   const { project } = target.board;
-  const name = keyDisplayName(card.ref.block);
+  const own = await fetchCard(target, cardId).catch(() => undefined);
+  const name = own ? cardName(own) : card.id;
   let total: number;
-  let keys: string[];
+  let callers: CallingDefinition[];
   try {
     const result = await call("callers", { project, key: card.ref.block, limit: CALLERS_LIMIT });
     total = result.total;
-    keys = result.callers.map((caller) => caller.key);
+    callers = result.callers;
   } catch (error) {
     showToast({ title: "Couldn't find the callers", body: toUnfoldError(error).message, tone: "danger" });
     return;
@@ -53,8 +44,12 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
     showToast({ title: `Nothing in the graph calls ${name}.` });
     return;
   }
-  // Their models size the new cards, and the cards draw from the same cache at once.
-  const models = await Promise.all(keys.map((key) => queryClient.query(cardQuery(project, key)).catch(() => undefined)));
+  // What the reader draws for them sizes the new cards, and the cards draw from the same cache at once.
+  const overlay = startPage ? pageOverlay(startPage) : {};
+  const showAllCalls = getShowAllCalls();
+  const models = await Promise.all(
+    callers.map((caller) => queryClient.query(cardQuery(cardArgs(project, { ref: { block: caller.key } }, overlay, showAllCalls))).catch(() => undefined)),
+  );
 
   const board = getOpenBoard(target.board);
   const page = board ? findPage(board.document, target.page) : undefined;
@@ -62,11 +57,15 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   if (!board || !page || !rect) {
     return;
   }
-  const present = keys.flatMap((key) => findCardByKey(page, key)?.id ?? []);
-  // New cards have no view of their own: they show what the page's lens gives them.
-  const shown = shownView(getPageView(target).lens, {}, page.defaultView);
-  const size = (key: string, index: number) => estimatedCardSize({ key, model: models[index], view: shown }, measureText);
-  const missing = keys.flatMap((key, index) => (findCardByKey(page, key) ? [] : [{ key, size: size(key, index) }]));
+  const present = callers.flatMap((caller) => findCardByKey(page, caller.key)?.id ?? []);
+  // New cards have no view of their own: they show the page's default.
+  const missing = callers.flatMap((caller, index) => {
+    if (findCardByKey(page, caller.key)) {
+      return [];
+    }
+    const model = models[index];
+    return [{ key: caller.key, name: model ? cardName(model) : caller.name, size: estimatedCardSize({ model, view: page.defaultView }, measureText) }];
+  });
   const positions = callerPlacement(
     rect,
     missing.map((item) => item.size),
@@ -74,13 +73,11 @@ export async function showCallers(target: PageTarget, cardId: string): Promise<v
   const added =
     missing.length > 0
       ? (editPage(target, (draft) =>
-          missing.map(({ key }, index) =>
-            addCard(draft, { ref: { block: key }, at: positions[index] ?? [rect.x, rect.y] }),
-          ),
+          missing.map(({ key, name: callerName }, index) => addCard(draft, { ref: { block: key }, name: callerName, at: positions[index] ?? [rect.x, rect.y] })),
         ) ?? [])
       : [];
   requestCardFocus(target, [cardId, ...present, ...added], "fit");
-  if (total > keys.length) {
-    showToast({ title: `Showing the first ${keys.length} of ${total} callers of ${name}.` });
+  if (total > callers.length) {
+    showToast({ title: `Showing the first ${callers.length} of ${total} callers of ${name}.` });
   }
 }

@@ -1,7 +1,6 @@
 /**
- * The window's layout: the Selected section's collapse, the peek sheet's pin, Home's view, and the
- * expanded sidebar folders. It lasts only while the app runs; the board lens is not part of it (it is
- * per page).
+ * The window's layout: the Selected section's collapse, Home's view, and the expanded sidebar folders.
+ * It lasts only while the app runs.
  */
 
 import { create } from "zustand";
@@ -12,7 +11,6 @@ export type HomeView = "overview" | "health";
 
 export interface WindowLayout {
   readonly selectedCollapsed: boolean;
-  readonly peek: { readonly pinned: boolean };
   readonly home: { readonly view: HomeView };
   /** Expanded sidebar folders, as `folderKey(project, folder)`, oldest first. */
   readonly folders: readonly string[];
@@ -23,7 +21,6 @@ const FOLDERS_LIMIT = 500;
 
 export const initialLayout: WindowLayout = {
   selectedCollapsed: false,
-  peek: { pinned: false },
   home: { view: "overview" },
   folders: [],
 };
@@ -38,12 +35,6 @@ export function folderKey(project: ProjectId, folder: string): string {
 export function setSelectedCollapsed(collapsed: boolean): void {
   useLayout.setState((state) => {
     state.selectedCollapsed = collapsed;
-  });
-}
-
-export function setPeekPinned(pinned: boolean): void {
-  useLayout.setState((state) => {
-    state.peek.pinned = pinned;
   });
 }
 

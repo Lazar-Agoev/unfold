@@ -1,17 +1,14 @@
 /**
- * Board geometry (TypeScript lays out, docs/ui-shell.md#theme-and-components): reflow when cards change size, where a
- * followed card opens, where an entrance's handlers and new cards go, and Arrange by call depth. Pure
+ * Board geometry (TypeScript lays out, docs/ui-shell.md#theme-and-components): reflow when cards change
+ * size, where a followed card, a card's callers, and new cards go, and Arrange by call depth. Pure
  * functions over positions and measured sizes, so they are deterministic and testable without a DOM.
  */
 
-import type { CardBody } from "../code/typeKinds";
+import type { View } from "../ipc/generated";
 
 /** Block cards size to their content between these widths. */
-export const CARD_MIN_WIDTH = 280;
+const CARD_MIN_WIDTH = 280;
 export const CARD_MAX_WIDTH = 880;
-/** Entrance cards are narrower: their header, location, and handler names. */
-export const ENTRANCE_MIN_WIDTH = 200;
-export const ENTRANCE_MAX_WIDTH = 320;
 /** A followed card opens this far to the right of the card it was followed from. */
 export const FOLLOW_GAP = 80;
 /** The vertical center of a card's header, where arrows attach and a followed card's header aligns. */
@@ -41,16 +38,9 @@ export interface PlacedCard {
   readonly at: readonly [number, number];
 }
 
-/** A size for a card that hasn't been measured yet: an entrance or a block, shown as `body` (`cardBody`). */
-export function fallbackSize(entrance: boolean, body?: CardBody): Size {
-  switch (body) {
-    case "node":
-      return { width: 280, height: 64 };
-    case "fields":
-      return { width: 320, height: 200 };
-    default:
-      return entrance ? { width: 240, height: 160 } : { width: 520, height: 320 };
-  }
+/** A size for a card that hasn't been drawn or loaded yet, compact or expanded. */
+export function fallbackSize(view: View = "compact"): Size {
+  return view === "compact" ? { width: 280, height: 44 } : { width: 520, height: 320 };
 }
 
 /** A width clamped to `min`–`max` (default: a block card's), rounded up to whole pixels. */
@@ -112,26 +102,6 @@ export function callerPlacement(card: Rect, sizes: readonly Size[]): [number, nu
     y += size.height + STACK_GAP;
     return at;
   });
-}
-
-/**
- * Where an entrance's handler cards go (in the spirit of following a call): a column `FOLLOW_GAP` to
- * the right of the entrance card, the first handler's header level with its handler row, each next
- * one level with its own row or just below the one above it, so no arrow bends upward and no two
- * cards overlap. `rows[i]` is handler i's row center below the entrance card's top (undefined when
- * unknown), `sizes[i]` its card size.
- */
-export function handlerPlacement(entrance: Point & Pick<Size, "width">, rows: readonly (number | undefined)[], sizes: readonly Size[]): [number, number][] {
-  const x = Math.round(entrance.x + entrance.width + FOLLOW_GAP);
-  const positions: [number, number][] = [];
-  let below = Number.NEGATIVE_INFINITY;
-  rows.forEach((row, index) => {
-    const level = entrance.y + (row ?? HEADER_PORT) - HEADER_PORT;
-    const y = Math.round(Math.max(level, below));
-    positions.push([x, y]);
-    below = y + (sizes[index]?.height ?? fallbackSize(false).height) + STACK_GAP;
-  });
-  return positions;
 }
 
 /** Where a card opened from the sidebar goes: to the right of everything, level with the top card. */

@@ -1,15 +1,15 @@
 /**
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, frames as nodes
  * behind what they hold (`pageGeometry`), resource cards and notes as nodes of their own, one memoized
- * arrow per opened call occurrence, the page's drawn links and connections, and a camera that pans and
- * zooms without changing what any card shows. No minimap. Large pages render only the cards in view.
- * While a link is being drawn, the next card, resource card, or frame clicked ends it; Escape or a
- * click on the canvas cancels. A selected arrow shows its call in Selected; Escape or a click on the
- * canvas clears it. A card in Diagram view sends one arrow to each card it calls; a type card, one
- * from each field to each type it names on the page. A connection leaves from its step's line in Code
- * and Flow (`lineHandles`), a relationship from a table's column. A collapsed frame is one node: what
- * it holds isn't drawn, and their arrows and links attach to it, merged (`routeArrows`, `routeLinks`).
- * Dragging a frame moves everything in it, as one undo step; an attached note moves with its item.
+ * arrow per call (`computeArrows`), the page's connections, and a camera that pans and zooms without
+ * changing what any card shows. No minimap. Large pages render only the cards in view. A selected
+ * arrow shows its call's contract in Selected; Escape or a click on the canvas clears it. An expanded
+ * card sends an arrow from each call to the callee's card; a compact card, one from its edge to each
+ * card it calls; a type card, one from each field to each type it names on the page. A connection
+ * leaves from its step's call on an expanded card (`lineHandles`), a relationship from a table's
+ * column. A collapsed frame is one node: what it holds isn't drawn, and their arrows and connections
+ * attach to it, merged (`routeArrows`, `routeLinks`). Dragging a frame moves everything in it, as one
+ * undo step; an attached note moves with its item.
  */
 
 import {
@@ -21,10 +21,12 @@ import {
   type OnMove,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { Card, Frame, Health, Link, LinkKind, Note, Resource } from "../ipc/generated";
+import { useQueries } from "@tanstack/react-query";
+import type { Card, Connection, Frame, Health, Key, Note, Resource } from "../ipc/generated";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
 import { authorOf } from "../code/text";
+import { engineQueryOptions } from "../ipc/queries";
 import { isTyping } from "../lib/typing";
 import { useAuthor } from "../state/author";
 import {
@@ -38,20 +40,19 @@ import {
   getOpenBoard,
   getPageView,
   itemsFor,
-  keyDisplayName,
   moveFrame,
   moveItems,
   placeNote,
   requestCardFocus,
   select,
   setCamera,
-  setLinking,
   updatePageView,
   useOpenBoard,
   usePageView,
   useWorkingItems,
   type PageTarget,
 } from "../state/boards";
+import { findBlock } from "../state/cards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
 import { portsByCard, type Arrow } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
@@ -61,24 +62,23 @@ import { claimProblem } from "./cards/ReviewBanner";
 import { chipForms, chipText } from "./connections/chip";
 import { ConnectionEdge, type ConnectionData, type ConnectionEdgeType } from "./connections/ConnectionEdge";
 import { linkMenuEntries } from "./connections/linkMenu";
-import { lineHandles, relatedColumns, stepPorts } from "./connections/routing";
+import { lineHandles, relatedColumns, stepPorts, type DrawsStep } from "./connections/routing";
 import { FrameNode, type FrameNodeType } from "./frames/FrameNode";
 import { attachPoint, collapsedPlaces, fallbackItemSize, pageGeometry, type Drag } from "./frames/geometry";
 import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
-import { LinkEdge, type LinkEdgeType } from "./LinkEdge";
 import { NoteNode, type NoteNodeType } from "./notes/NoteNode";
 import { ResourceNode, type ResourceNodeType } from "./resources/ResourceNode";
 import "./canvas.css";
 
 type CanvasNode = CardNodeType | FrameNodeType | ResourceNodeType | NoteNodeType;
-type CanvasEdge = ArrowEdgeType | LinkEdgeType | ConnectionEdgeType;
+type CanvasEdge = ArrowEdgeType | ConnectionEdgeType;
 
 const nodeTypes = { card: CardNode, frame: FrameNode, resource: ResourceNode, note: NoteNode };
-const edgeTypes = { arrow: ArrowEdge, link: LinkEdge, connection: ConnectionEdge };
+const edgeTypes = { arrow: ArrowEdge, connection: ConnectionEdge };
 const NO_PORTS: readonly string[] = [];
-const NO_LINKS: readonly Link[] = [];
+const NO_LINKS: readonly Connection[] = [];
 const NO_FRAMES: readonly Frame[] = [];
 const NO_RESOURCES: readonly Resource[] = [];
 const NO_NOTES: readonly Note[] = [];
@@ -91,8 +91,7 @@ const VISIBLE_ONLY_ABOVE = 40;
 
 /** Everything about an arrow its edge draws, as one string. */
 function arrowSignature(arrow: Arrow): string {
-  const calls = arrow.calls?.map((call) => `${call.source}\u0001${call.seq}\u0001${call.line}`).join("\u0002") ?? "";
-  return [arrow.source, arrow.sourceHandle, arrow.target, arrow.project, arrow.occurrence, arrow.seq, arrow.line ?? "", arrow.kind, arrow.dashed, calls, arrow.merged === true].join("\u0000");
+  return [arrow.source, arrow.sourceHandle, arrow.target, arrow.kind, arrow.dashed, arrow.calls.join("\u0001"), arrow.cards?.from ?? "", arrow.cards?.to ?? "", arrow.merged === true].join("\u0000");
 }
 
 /** React Flow error 008 (an edge whose port isn't measured yet) is expected while cards load. */
@@ -102,31 +101,33 @@ function onFlowError(code: string, message: string): void {
   }
 }
 
-/** What a connection's edge reads besides the line: the page, its health, the selection, and agents' work. */
+/** What a connection's edge reads besides the line: the page, its health, the selection, agents' work, and carried types' names. */
 interface ConnectionContext {
   readonly target: PageTarget;
   readonly page: { readonly resources?: readonly Resource[] | undefined };
   readonly health: Health | undefined;
   readonly selectedLink: string | null;
   readonly working: ReadonlySet<string>;
+  readonly typeName: (key: Key) => string | undefined;
 }
 
 /** What a connection's edge draws: its kind, chip, author, selection, health, ends' marks, and carried type. */
-function connectionData(routed: RoutedLink, kind: LinkKind, context: ConnectionContext): ConnectionData {
-  const { link } = routed;
+function connectionData(routed: RoutedLink, context: ConnectionContext): ConnectionData {
+  const { link, kind } = routed;
   const { target, page } = context;
   const subject = link ? (findResource(page, link.to) ?? findResource(page, link.from))?.name : undefined;
+  const carries = link?.carries !== undefined ? context.typeName(link.carries) : undefined;
   const forms = chipForms({
     kind,
     ...(link?.channel !== undefined ? { channel: link.channel } : {}),
-    ...(link?.carries !== undefined ? { carries: keyDisplayName(link.carries) } : {}),
+    ...(carries !== undefined ? { carries } : {}),
     ...(link?.label ? { label: link.label.text } : {}),
     ...(subject !== undefined ? { subject } : {}),
     ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
     ...(routed.count > 1 ? { count: routed.count } : {}),
   });
-  const writer = link?.author !== undefined ? authorOf(link.author) : null;
-  const issue = link ? itemsFor(context.health, target.page, { link: link.id })[0] : undefined;
+  const writer = link ? authorOf(link.author) : null;
+  const issue = link ? itemsFor(context.health, target.page, { connection: link.id })[0] : undefined;
   return {
     target,
     kind,
@@ -152,9 +153,9 @@ export interface BoardCanvasProps {
   readonly resources?: readonly Resource[] | undefined;
   /** The page's notes. */
   readonly notes?: readonly Note[] | undefined;
-  /** The page's drawn links and connections. */
-  readonly links: readonly Link[] | undefined;
-  /** The arrows and ports derived from the cards' models (`useBoardArrows`, computed by the caller). */
+  /** The page's connections. */
+  readonly links: readonly Connection[] | undefined;
+  /** What the cards drew and the arrows derived from it (`useBoardArrows`, computed by the caller). */
   readonly boardArrows: BoardArrows;
 }
 
@@ -162,7 +163,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const flow = useReactFlow<CanvasNode, CanvasEdge>();
   const sizes = usePageView(target, (view) => view.sizes);
   const focus = usePageView(target, (view) => view.focus);
-  const linking = usePageView(target, (view) => view.linking !== null);
+  const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "compact";
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
   const selectedArrow = usePageView(target, ({ selection }) => (selection.kind === "line" || selection.kind === "calls" ? selection.arrowId : null));
   const working = useWorkingItems(target);
@@ -171,26 +172,41 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const [labelLayout] = useState(() => new LabelLayout());
   const [initialCamera] = useState(() => getPageView(target).camera);
 
-  const { bodies, settled } = boardArrows;
-  const framed = useMemo(() => ({ cards, frames, resources, notes, links }), [cards, frames, resources, notes, links]);
+  const { views, shapes, settled } = boardArrows;
+  const framed = useMemo(() => ({ cards, defaultView, frames, resources, notes, links }), [cards, defaultView, frames, resources, notes, links]);
+  // Where a connection can leave from its step: an expanded card whose drawn flow draws it.
+  const drawsStep: DrawsStep = useCallback(
+    (cardId, step) => {
+      const view = views.get(cardId);
+      return shapes.get(cardId) === "expanded" && view?.type === "definition" && findBlock(view.flow, step) !== undefined;
+    },
+    [views, shapes],
+  );
+  // The names of the types connections carry, from their definitions.
+  const carried = useMemo(() => [...new Set(links.flatMap((link) => (link.carries !== undefined ? [link.carries] : [])))], [links]);
+  const carriedNames = useQueries({
+    queries: carried.map((key) => engineQueryOptions("type_definition", { project: target.board.project, key })),
+    combine: (results) => results.map((result) => result.data?.name),
+  });
+  const typeName = useCallback((key: Key) => carriedNames[carried.indexOf(key)], [carried, carriedNames]);
   // What a collapsed frame hides is drawn as the frame: its arrows and links attach there.
   const shownAs = useMemo(() => collapsedPlaces(framed), [framed]);
   const arrows = useMemo(() => routeArrows(boardArrows.arrows, shownAs), [boardArrows.arrows, shownAs]);
-  // A card's ports: its arrows', and the steps its connections leave from (in Code or Flow).
+  // A card's ports: its arrows', and the steps its connections leave from (on an expanded card).
   const ports = useMemo(() => {
     const merged = portsByCard(arrows);
-    for (const [card, steps] of stepPorts(links, shownAs, (id) => bodies.get(id))) {
+    for (const [card, steps] of stepPorts(links, shownAs, drawsStep)) {
       merged.set(card, [...(merged.get(card) ?? []), ...steps].sort());
     }
     return merged;
-  }, [arrows, links, shownAs, bodies]);
+  }, [arrows, links, shownAs, drawsStep]);
   const columns = useMemo(() => relatedColumns(links, shownAs), [links, shownAs]);
   const paneMenu = useContextMenu("Board actions");
 
   // Positions: saved positions reflowed by measured sizes, frames around what they hold; a dragged
   // card or frame follows the pointer.
   const [drag, setDrag] = useState<Drag | null>(null);
-  const sizeOf = useCallback((id: string) => sizes[id] ?? fallbackItemSize(framed, id, bodies.get(id)), [sizes, framed, bodies]);
+  const sizeOf = useCallback((id: string) => sizes[id] ?? fallbackItemSize(framed, id), [sizes, framed]);
   const geometry = useMemo(() => pageGeometry(framed, sizeOf, drag), [framed, sizeOf, drag]);
   const display = geometry.rects;
   // An expanded frame's size is its box's, never measured: only collapsed frames' nodes are.
@@ -312,7 +328,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const arrowEdges = useMemo(() => {
     const live = new Set<string>();
     const list = arrows.map((arrow) => {
-      const handler = arrow.kind === "handler";
       const selected = arrow.id === selectedArrow;
       // What the edge draws, so an unchanged arrow keeps its edge.
       const signature = [arrowSignature(arrow), String(selected)].join("\u0000");
@@ -322,7 +337,8 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         return cached.edge;
       }
       const ends = arrow.cards ?? { from: arrow.source, to: arrow.target };
-      const selects = !(handler || arrow.kind === "type" || arrow.merged);
+      const [call] = arrow.calls;
+      const selects = arrow.kind === "call" && arrow.merged !== true && call !== undefined;
       const edge: ArrowEdgeType = {
         id: arrow.id,
         type: "arrow",
@@ -337,21 +353,14 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         ...(selects ? { ariaRole: "group" as const } : {}),
         data: {
           dashed: arrow.dashed,
-          handler,
+          start: arrow.kind === "start",
           selected,
           page: target,
           ...(!selects
             ? {}
-            : arrow.calls
-              ? {
-                  calls: {
-                    arrowId: arrow.id,
-                    from: ends.from,
-                    to: ends.to,
-                    calls: arrow.calls.map(({ source, seq, line }) => ({ source, seq, line })),
-                  },
-                }
-              : { line: { arrowId: arrow.id, source: arrow.occurrence, seq: arrow.seq, from: ends.from, to: ends.to, line: arrow.line } }),
+            : arrow.calls.length > 1
+              ? { calls: { arrowId: arrow.id, from: ends.from, to: ends.to, calls: arrow.calls } }
+              : { line: { arrowId: arrow.id, call, from: ends.from, to: ends.to } }),
         },
       };
       edgeCache.set(arrow.id, { signature, edge });
@@ -366,46 +375,25 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     return list;
   }, [arrows, edgeCache, selectedArrow, target]);
 
-  // Drawn links leave and enter by the sides facing each other, so they follow the cards as they move;
-  // a connection leaves from its step or column (`lineHandles`). Lines that join at a collapsed frame
-  // merge into one that counts them.
-  const [linkCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: LinkEdgeType | ConnectionEdgeType }>());
+  // Connections leave from their step or column where they can (`lineHandles`), else by the sides
+  // facing each other, so they follow the cards as they move. Connections of a kind that join at a
+  // collapsed frame merge into one that counts them.
+  const [linkCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: ConnectionEdgeType }>());
   const linkEdges = useMemo(() => {
     const live = new Set<string>();
-    const list = routeLinks(links, shownAs).flatMap((routed): (LinkEdgeType | ConnectionEdgeType)[] => {
+    const list = routeLinks(links, shownAs).flatMap((routed): ConnectionEdgeType[] => {
       const from = display.get(routed.from);
       const to = display.get(routed.to);
       if (!from || !to) {
         return [];
       }
-      const handles = lineHandles(routed.link, routed, from, to, (id) => bodies.get(id));
-      const kind = routed.link?.kind ?? routed.kind;
+      const handles = lineHandles(routed.link, routed, from, to, drawsStep);
       const ends = { id: routed.id, source: routed.from, sourceHandle: handles.source, target: routed.to, targetHandle: handles.target, focusable: false, selectable: false };
-      let made: { readonly signature: string; readonly make: () => LinkEdgeType | ConnectionEdgeType };
-      if (kind === undefined) {
-        const { link } = routed;
-        const label = link ? (link.label?.text ?? null) : `${routed.count} links`;
-        const writer = link?.label ? authorOf(link.label.author) : null;
-        const data = {
-          target,
-          ...(link ? { linkId: link.id } : {}),
-          selected: routed.id === selectedLink,
-          label,
-          author: writer?.name ?? null,
-          agent: writer?.agent ?? false,
-          working: working.has(routed.id),
-        };
-        made = { signature: JSON.stringify([ends, data.selected, label, data.author, data.agent, data.working]), make: () => ({ ...ends, type: "link", className: "board-link-edge", data }) };
-      } else {
-        const data = connectionData(routed, kind, { target, page: framed, health, selectedLink, working });
-        made = {
-          signature: JSON.stringify([ends, kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality]),
-          make: () => ({ ...ends, type: "connection", className: "board-connection-edge", data }),
-        };
-      }
+      const data = connectionData(routed, { target, page: framed, health, selectedLink, working, typeName });
+      const signature = JSON.stringify([ends, routed.kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality]);
       const known = linkCache.get(routed.id);
-      const edge = known?.signature === made.signature ? known.edge : made.make();
-      linkCache.set(routed.id, { signature: made.signature, edge });
+      const edge = known?.signature === signature ? known.edge : { ...ends, type: "connection" as const, className: "board-connection-edge", data };
+      linkCache.set(routed.id, { signature, edge });
       live.add(routed.id);
       return [edge];
     });
@@ -415,7 +403,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [links, shownAs, display, bodies, selectedLink, target, linkCache, working, framed, health]);
+  }, [links, shownAs, display, drawsStep, selectedLink, target, linkCache, working, framed, health, typeName]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards (and collapsed frames) as drawn, which the lines' labels keep clear of.
@@ -427,26 +415,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     labelLayout.setCards(cardRects);
   }, [labelLayout, cardRects]);
 
-  // Escape ends link drawing (before anything else hears it).
-  useEffect(() => {
-    if (!linking) {
-      return undefined;
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setLinking(target, null);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [linking, target]);
-
-  // Escape lets go of a selected arrow, unless a field, a menu, or a dialog had it first. It listens on
-  // the document, so it goes before the peek sheet's (on the window).
+  // Escape lets go of a selected arrow, unless a field, a menu, or a dialog had it first.
   const arrowSelected = selectedArrow !== null;
   useEffect(() => {
     if (!arrowSelected) {
@@ -584,19 +553,15 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         onNodeDragStop={onNodeDragStop}
         onMoveEnd={onMoveEnd}
         onPaneClick={() => {
-          if (getPageView(target).linking) {
-            setLinking(target, null);
-            return;
-          }
           select(target, { kind: "none" });
         }}
         onEdgeClick={(_event, edge) => {
-          if (edge.type !== "arrow" && links.some((link) => link.id === edge.id)) {
+          if (edge.type === "connection" && links.some((link) => link.id === edge.id)) {
             select(target, { kind: "link", linkId: edge.id });
           }
         }}
         onEdgeContextMenu={(event, edge) => {
-          if (edge.type === "arrow" || !links.some((link) => link.id === edge.id)) {
+          if (edge.type !== "connection" || !links.some((link) => link.id === edge.id)) {
             return;
           }
           event.preventDefault();
@@ -626,7 +591,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         panOnScroll
         proOptions={{ hideAttribution: true }}
         aria-label="Board canvas"
-        className={`board-canvas${linking ? " linking" : ""}`}
+        className="board-canvas"
       />
       {paneMenu.element}
     </LabelLayoutContext.Provider>

@@ -1,0 +1,509 @@
+{
+  "header": {
+    "key": "inbox/sync.py#sync_inbox",
+    "kind": "function",
+    "form": "function",
+    "label": "sync_inbox",
+    "signature": "def sync_inbox(account)",
+    "description": "Pull new mail for one account and store it.",
+    "path": "inbox/sync.py",
+    "line": 8,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "inbox/sync.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "inbox/sync.py#sync_inbox/with[0]",
+    "inbox/sync.py#sync_inbox/call:notify_synced",
+    "inbox/sync.py#sync_inbox/return[0]"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "with",
+        "key": "inbox/sync.py#sync_inbox/with[0]",
+        "form": "with",
+        "header": "mailbox_lock(account)",
+        "headerCalls": [
+          {
+            "key": "inbox/sync.py#sync_inbox/with[0]/call:mailbox_lock",
+            "callee": "mailbox_lock",
+            "form": "call",
+            "to": {
+              "outcome": "project",
+              "key": "inbox/locks.py#mailbox_lock"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "calls": [],
+            "callbacks": [],
+            "actions": {
+              "after": false,
+              "start": false,
+              "open": true
+            }
+          }
+        ],
+        "lanes": [
+          {
+            "id": 2,
+            "key": "inbox/sync.py#sync_inbox/with[0]/body",
+            "form": "body",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "inbox/sync.py#sync_inbox/with[0]/body/try[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 3,
+                  "state": "reached",
+                  "kind": "try",
+                  "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]",
+                  "form": "try",
+                  "headerCalls": [],
+                  "lanes": [
+                    {
+                      "id": 4,
+                      "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/body",
+                      "form": "body",
+                      "state": "reached",
+                      "types": [],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "inbox/sync.py#sync_inbox/with[0]/body/try[0]/body/call:fetch_messages"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 5,
+                            "state": "reached",
+                            "kind": "call",
+                            "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/body/call:fetch_messages",
+                            "callee": "fetch_messages",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "inbox/gmail.py#fetch_messages"
+                            },
+                            "binds": "messages",
+                            "awaited": false,
+                            "sometimes": false,
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/body"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": true
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    },
+                    {
+                      "id": 6,
+                      "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]",
+                      "form": "except",
+                      "state": "reached",
+                      "clause": "except RateLimited as error",
+                      "types": [
+                        {
+                          "outcome": "project",
+                          "key": "inbox/gmail.py#RateLimited"
+                        }
+                      ],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/call:schedule_retry",
+                        "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/return[0]"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 7,
+                            "state": "reached",
+                            "kind": "call",
+                            "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/call:schedule_retry",
+                            "callee": "schedule_retry",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "inbox/retry.py#schedule_retry"
+                            },
+                            "awaited": false,
+                            "sometimes": false,
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": true
+                            }
+                          },
+                          {
+                            "id": 8,
+                            "state": "reached",
+                            "kind": "exit",
+                            "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/return[0]",
+                            "form": "return",
+                            "value": {
+                              "kind": "text",
+                              "text": "0"
+                            },
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": false
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    },
+                    {
+                      "id": 9,
+                      "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/else",
+                      "form": "else",
+                      "state": "reached",
+                      "types": [],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "inbox/sync.py#sync_inbox/with[0]/body/try[0]/else/call:store_messages"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 10,
+                            "state": "reached",
+                            "kind": "call",
+                            "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/else/call:store_messages",
+                            "callee": "store_messages",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "inbox/store.py#store_messages"
+                            },
+                            "awaited": false,
+                            "sometimes": false,
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/else"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": true
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    },
+                    {
+                      "id": 11,
+                      "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/finally",
+                      "form": "finally",
+                      "state": "reached",
+                      "types": [],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "inbox/sync.py#sync_inbox/with[0]/body/try[0]/finally/call:record_attempt"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 12,
+                            "state": "reached",
+                            "kind": "call",
+                            "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/finally/call:record_attempt",
+                            "callee": "record_attempt",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "inbox/store.py#record_attempt"
+                            },
+                            "awaited": false,
+                            "sometimes": false,
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "inbox/sync.py#sync_inbox/with[0]/body/try[0]/finally"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": true
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    }
+                  ],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "inbox/sync.py#sync_inbox/with[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "inbox/sync.py#sync_inbox"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 13,
+        "state": "reached",
+        "kind": "call",
+        "key": "inbox/sync.py#sync_inbox/call:notify_synced",
+        "callee": "notify_synced",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "inbox/notify.py#notify_synced"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "inbox/sync.py#sync_inbox"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 14,
+        "state": "reached",
+        "kind": "exit",
+        "key": "inbox/sync.py#sync_inbox/return[0]",
+        "form": "return",
+        "value": {
+          "kind": "call",
+          "key": "inbox/sync.py#sync_inbox/return[0]/call:len",
+          "callee": "len",
+          "form": "call",
+          "to": {
+            "outcome": "builtin",
+            "module": "python:builtins",
+            "note": "python:builtins"
+          },
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "actions": {
+            "after": false,
+            "start": false,
+            "open": false
+          }
+        },
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "inbox/sync.py#sync_inbox"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "on",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "onError",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "on",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "on",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 6,
+      "kind": "on",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "return",
+      "to": "end",
+      "through": [
+        11
+      ]
+    },
+    {
+      "from": 9,
+      "kind": "on",
+      "to": {
+        "step": 10
+      },
+      "through": []
+    },
+    {
+      "from": 10,
+      "kind": "finally",
+      "to": {
+        "step": 11
+      },
+      "through": []
+    },
+    {
+      "from": 11,
+      "kind": "on",
+      "to": {
+        "step": 12
+      },
+      "through": []
+    },
+    {
+      "from": 12,
+      "kind": "on",
+      "to": {
+        "step": 13
+      },
+      "through": []
+    },
+    {
+      "from": 13,
+      "kind": "on",
+      "to": {
+        "step": 14
+      },
+      "through": []
+    },
+    {
+      "from": 14,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

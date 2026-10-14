@@ -1,61 +1,39 @@
 /**
- * Selected for a connection (design §4.7), apart from compiled relations: its kind (changed from a
- * menu, which makes it yours), who drew it, its label and description (edited in place) with what
- * needs review about it (and Review, its repairs), its ends, the step it leaves from (`file:line`,
- * opening the source), a relationship's columns and cardinality, its channel, the type it carries
- * (opening its definition in place), what it cites, and Remove connection.
+ * Selected for a connection, apart from compiled relations: its kind (changed from a menu, which makes
+ * it yours), who drew it, its label and description (edited in place) with what needs review about it
+ * (and Review, its repairs), its ends, the call it leaves from (as written, with its line), a
+ * relationship's columns and cardinality, its channel, the type it carries, what it cites, and Remove
+ * connection.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { useId, useRef } from "react";
 import { Author } from "../../agent";
-import { cardQuery } from "../../canvas";
 import { cardinalityText } from "../../canvas/connections/chip";
-import { LINK_DESCRIPTION_FIELD, MENU_WORDS, kindEntries } from "../../canvas/connections/linkMenu";
+import { LINK_DESCRIPTION_FIELD, LINK_LABEL_FIELD, kindEntries } from "../../canvas/connections/linkMenu";
 import { ReviewButton } from "../../canvas/cards/ReviewBanner";
-import { LINK_LABEL_FIELD } from "../../canvas/cards/select";
-import { portSpot } from "../../code/CodeView";
-import { stepPort } from "../../code/outline";
-import { shortPath } from "../../code/text";
 import { Button, MenuButton } from "../../components";
-import type { Link, Page } from "../../ipc/generated";
+import { useEngineQuery } from "../../ipc";
+import type { Connection } from "../../ipc/generated";
 import { useFocusTarget } from "../../lib/focus-targets";
 import { useAuthor } from "../../state/author";
-import { describeLink, findCard, findPage, itemsFor, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
-import { openPeek } from "../../state/overlays";
+import { CONNECTION_WORDS, describeLink, findPage, itemsFor, removeLink, setLinkLabel, useOpenBoard, type PageTarget } from "../../state/boards";
+import { useCardNames } from "../../state/cards";
 import { AuthoredField } from "./AuthoredField";
 import { AnchorRows, TypeRow, itemName, selectItem } from "./ClaimRows";
 import { RelationRow } from "./Relations";
 
-/** The step a connection leaves from, as `file:line` opening its source (its card's Code model reads where it is). */
-function StepRow({ target, page, link, step }: { readonly target: PageTarget; readonly page: Page; readonly link: Link; readonly step: string }) {
-  const card = findCard(page, link.from);
-  const { project } = target.board;
-  const key = card && "block" in card.ref ? card.ref.block : "";
-  const query = useQuery({ ...cardQuery(project, key), enabled: key.length > 0 });
-  const model = query.data?.type === "block" ? query.data : undefined;
-  const code = model?.code?.source.state === "current" ? model.code.source : undefined;
-  const spot = code ? portSpot(code, stepPort(step)) : undefined;
-  const place = model && spot ? { path: model.header.path, line: spot.line } : null;
+/** The call a connection leaves from: as written, and its line. */
+function StepRow({ target, step }: { readonly target: PageTarget; readonly step: string }) {
+  const contract = useEngineQuery("call_contract", { project: target.board.project, key: step });
   return (
-    <RelationRow
-      label="Step"
-      title={step}
-      {...(place
-        ? {
-            onActivate: () => {
-              openPeek({ project, path: place.path, line: place.line });
-            },
-          }
-        : {})}
-    >
-      <span className="relation-code">{place ? `${shortPath(place.path)}:${place.line}` : step}</span>
+    <RelationRow label="Step" title={step}>
+      <span className="relation-code">{contract.data ? `${contract.data.text} · line ${contract.data.line}` : "…"}</span>
     </RelationRow>
   );
 }
 
 /** The connection's label, edited in place. */
-function LabelRow({ target, link, author }: { readonly target: PageTarget; readonly link: Link; readonly author: string | null }) {
+function LabelRow({ target, link, author }: { readonly target: PageTarget; readonly link: Connection; readonly author: string | null }) {
   const field = useRef<HTMLInputElement>(null);
   const id = useId();
   useFocusTarget(LINK_LABEL_FIELD, field);
@@ -81,14 +59,15 @@ function LabelRow({ target, link, author }: { readonly target: PageTarget; reado
   );
 }
 
-export function SelectedConnection({ target, link }: { readonly target: PageTarget; readonly link: Link & { readonly kind: NonNullable<Link["kind"]> } }) {
+export function SelectedConnection({ target, link }: { readonly target: PageTarget; readonly link: Connection }) {
   const author = useAuthor();
+  const names = useCardNames(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const health = useOpenBoard(target.board, (board) => board.health);
   if (!page) {
     return null;
   }
-  const issues = itemsFor(health, target.page, { link: link.id });
+  const issues = itemsFor(health, target.page, { connection: link.id });
   const end = (label: string, id: string) => (
     <RelationRow
       label={label}
@@ -96,28 +75,26 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
         selectItem(target, page, id);
       }}
     >
-      <span className="relation-code">{itemName(page, id)}</span>
+      <span className="relation-code">{itemName(page, id, names)}</span>
     </RelationRow>
   );
   return (
     <>
       <div className="selected-link-identity">
-        <h3 className="selected-name ui">{MENU_WORDS[link.kind]} connection</h3>
-        {link.author !== undefined ? (
-          <span className="selected-byline">
-            · drawn by <Author author={link.author} />
-          </span>
-        ) : null}
+        <h3 className="selected-name ui">{CONNECTION_WORDS[link.kind]} connection</h3>
+        <span className="selected-byline">
+          · drawn by <Author author={link.author} />
+        </span>
       </div>
       <div className="selected-relations link">
         <div className="relation-row">
           <span className="relation-label">Kind</span>
-          <MenuButton variant="text" size="sm" label={MENU_WORDS[link.kind]} menuLabel="Connection kind" entries={kindEntries(target, link.id, author)} />
+          <MenuButton variant="text" size="sm" label={CONNECTION_WORDS[link.kind]} menuLabel="Connection kind" entries={kindEntries(target, link.id, author)} />
         </div>
         <LabelRow target={target} link={link} author={author} />
         {end("From", link.from)}
         {end("To", link.to)}
-        {link.step !== undefined ? <StepRow target={target} page={page} link={link} step={link.step} /> : null}
+        {link.step !== undefined ? <StepRow target={target} step={link.step} /> : null}
         {link.kind === "relates" && (link.fromColumn !== undefined || link.toColumn !== undefined) ? (
           <RelationRow label="Columns">
             <span className="relation-code">{`${link.fromColumn ?? "?"} → ${link.toColumn ?? "?"}`}</span>
@@ -133,7 +110,7 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
             <span className="relation-code">{link.channel}</span>
           </RelationRow>
         ) : null}
-        {link.carries !== undefined ? <TypeRow label="Carries" typeKey={link.carries} /> : null}
+        {link.carries !== undefined ? <TypeRow project={target.board.project} label="Carries" typeKey={link.carries} /> : null}
         <AnchorRows target={target} anchors={link.anchors ?? []} />
       </div>
       <AuthoredField
@@ -155,7 +132,7 @@ export function SelectedConnection({ target, link }: { readonly target: PageTarg
           }
         }}
       />
-      <p className="selected-note">Drawn, not compiled: Called by, Reached from, and Flow list only what the code proves.</p>
+      <p className="selected-note">Drawn, not compiled: Called by, Reached from, and the cards list only what the code proves.</p>
       <div className="selected-actions">
         <Button
           variant="secondary"

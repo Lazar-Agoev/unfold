@@ -26,7 +26,7 @@
   -webkit-app-region: drag;
 }
 
-/* Positioned flex row: canvas dialogs center on it, and the peek sheet slides over or beside it. */
+/* Positioned flex row: canvas dialogs center on it. */
 #content-area {
   position: relative;
   display: flex;

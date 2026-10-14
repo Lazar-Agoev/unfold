@@ -8,7 +8,7 @@
 import { Author } from "../../agent";
 import { frameDescriptionField } from "../../canvas/frames/frameMenu";
 import { Button, TextButton, showToast } from "../../components";
-import type { Frame, Link, Page } from "../../ipc/generated";
+import type { Connection, Frame, Page } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
 import { useAuthor } from "../../state/author";
 import {
@@ -32,6 +32,7 @@ import {
   type PageTarget,
 } from "../../state/boards";
 import { AuthoredField } from "./AuthoredField";
+import { useCardNames } from "../../state/cards";
 import { itemName } from "./ClaimRows";
 import { RelationRow } from "./Relations";
 
@@ -48,14 +49,15 @@ function showItem(target: PageTarget, page: Page, id: string): void {
   }
 }
 
-/** The links that cross the frame's border: out of it (from inside, to outside) and into it. */
-function crossing(page: Page, frame: Frame): { readonly link: Link; readonly out: boolean }[] {
+/** The connections that cross the frame's border: out of it (from inside, to outside) and into it. */
+function crossing(page: Page, frame: Frame): { readonly link: Connection; readonly out: boolean }[] {
   const inside = new Set([frame.id, ...frameItems(page, frame.id)]);
   return page.links.flatMap((link) => (inside.has(link.from) === inside.has(link.to) ? [] : [{ link, out: inside.has(link.from) }]));
 }
 
 export function SelectedFrame({ target, frame }: { readonly target: PageTarget; readonly frame: Frame }) {
   const author = useAuthor();
+  const names = useCardNames(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const health = useOpenBoard(target.board, (board) => board.health);
   if (!page) {
@@ -140,7 +142,7 @@ export function SelectedFrame({ target, frame }: { readonly target: PageTarget; 
               showItem(target, page, id);
             }}
           >
-            <span className="relation-code">{itemName(page, id)}</span>
+            <span className="relation-code">{itemName(page, id, names)}</span>
           </RelationRow>
         ))}
         {lines.map(({ link, out }, index) => (
@@ -153,7 +155,7 @@ export function SelectedFrame({ target, frame }: { readonly target: PageTarget; 
           >
             <span className="relation-code">
               {out ? "→ " : "← "}
-              {itemName(page, out ? link.to : link.from)}
+              {itemName(page, out ? link.to : link.from, names)}
             </span>
             {link.label ? <span className="relation-path">{` · ${link.label.text}`}</span> : null}
           </RelationRow>

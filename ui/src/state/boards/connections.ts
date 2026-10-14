@@ -1,20 +1,31 @@
 /**
- * Pure edits of a page's connections (design §4.7): links with a `kind` that say how two things talk
- * when the graph can't show it (HTTP, RPC, a queue, an event, reads and writes, a runtime call, a
- * relationship between tables, or something else). A link without a kind is today's drawn link. A
- * connection is an authored claim: the next save signs it over its step and anchors. Each function is
- * an Immer recipe over a draft page; optional fields are deleted rather than set to `undefined`.
+ * Pure edits of a page's connections: how two things talk when the graph can't show it (HTTP, a queue,
+ * reads and writes, a runtime call, a relationship between tables, or something else, which carries a
+ * label). A connection is an authored claim: the next save signs it over its step and anchors. Each
+ * function is an Immer recipe over a draft page; optional fields are deleted rather than set to
+ * `undefined`.
  */
 
-import type { Anchor, Cardinality, Key, Link, LinkKind, Page } from "../../ipc/generated";
+import type { Anchor, Cardinality, Connection, ConnectionKind, Key, Page } from "../../ipc/generated";
 import { description, uniqueId } from "./document";
 
 /** Every connection kind, in the order menus list them. */
-export const CONNECTION_KINDS: readonly LinkKind[] = ["http", "rpc", "queue", "event", "writes", "reads", "calls", "relates", "other"];
+export const CONNECTION_KINDS: readonly ConnectionKind[] = ["http", "queue", "reads", "writes", "calls", "relates", "other"];
+
+/** Each kind in a word, as menus and Selected name it. */
+export const CONNECTION_WORDS: Readonly<Record<ConnectionKind, string>> = {
+  http: "HTTP",
+  queue: "Queue",
+  reads: "Reads",
+  writes: "Writes",
+  calls: "Calls",
+  relates: "Relates",
+  other: "Other",
+};
 
 /** What a connection says: its kind, its ends, where it leaves from, what travels, and what it cites. */
 export interface ConnectionClaim {
-  readonly kind: LinkKind;
+  readonly kind: ConnectionKind;
   readonly from: string;
   readonly to: string;
   readonly step?: Key;
@@ -26,8 +37,8 @@ export interface ConnectionClaim {
   readonly anchors: readonly Anchor[];
 }
 
-/** Writes a claim onto `link`, leaving out what it doesn't have (columns and cardinality only on `relates`). */
-function writeClaim(link: Link, claim: ConnectionClaim): void {
+/** Writes a claim onto connection `link`, leaving out what it doesn't have (columns and cardinality only on `relates`). */
+function writeClaim(link: Connection, claim: ConnectionClaim): void {
   const { kind, from, to, step, fromColumn, toColumn, cardinality, channel, carries, anchors } = claim;
   const relates = kind === "relates";
   delete link.step;
@@ -51,14 +62,14 @@ function writeClaim(link: Link, claim: ConnectionClaim): void {
   });
 }
 
-/** What a link says, in the file's order of meaning: what `saysConnection` compares. */
-function said(link: Link): string {
+/** What a connection says, in the file's order of meaning: what `saysConnection` compares. */
+function said(link: Connection): string {
   return JSON.stringify([link.kind, link.from, link.to, link.step, link.fromColumn, link.toColumn, link.cardinality, link.channel, link.carries, link.anchors ?? []]);
 }
 
-/** Whether a link already says `claim`. */
-export function saysConnection(link: Link, claim: ConnectionClaim): boolean {
-  const next: Link = { ...link };
+/** Whether a connection already says `claim`. */
+export function saysConnection(link: Connection, claim: ConnectionClaim): boolean {
+  const next: Connection = { ...link };
   writeClaim(next, claim);
   return said(next) === said(link);
 }
@@ -66,13 +77,13 @@ export function saysConnection(link: Link, claim: ConnectionClaim): boolean {
 /** Draws a connection and returns its id: `id` when given (a free one, `isFreeId`), else one from its ends and kind. */
 export function addConnection(page: Page, claim: ConnectionClaim & { readonly id?: string; readonly author: string }): string {
   const id = claim.id ?? uniqueId(page, `${claim.from}-${claim.kind}-${claim.to}`);
-  const link: Link = { id, from: claim.from, to: claim.to, author: claim.author };
+  const link: Connection = { id, from: claim.from, to: claim.to, kind: claim.kind, author: claim.author };
   writeClaim(link, claim);
   page.links.push(link);
   return id;
 }
 
-/** Rewrites what a link says, which makes `author` the one who drew it; nothing changes when it already says it. */
+/** Rewrites what a connection says, which makes `author` the one who drew it; nothing changes when it already says it. */
 export function setConnectionClaim(page: Page, linkId: string, claim: ConnectionClaim, author: string): void {
   const link = page.links.find((item) => item.id === linkId);
   if (link && !saysConnection(link, claim)) {
@@ -82,10 +93,10 @@ export function setConnectionClaim(page: Page, linkId: string, claim: Connection
 }
 
 /**
- * Gives a link a kind (a drawn link becomes a connection), which makes `author` the one who drew it.
- * Its ends, step, channel, carried type, and anchors stay; columns and cardinality only on `relates`.
+ * Gives a connection another kind, which makes `author` the one who drew it. Its ends, step, channel,
+ * carried type, and anchors stay; columns and cardinality only on `relates`.
  */
-export function setConnectionKind(page: Page, linkId: string, kind: LinkKind, author: string): void {
+export function setConnectionKind(page: Page, linkId: string, kind: ConnectionKind, author: string): void {
   const link = page.links.find((item) => item.id === linkId);
   if (!link || link.kind === kind) {
     return;
@@ -93,8 +104,8 @@ export function setConnectionKind(page: Page, linkId: string, kind: LinkKind, au
   setConnectionClaim(page, linkId, { ...claimOf(link), kind }, author);
 }
 
-/** What a link says, as a claim to edit (its kind, when it has one, is the caller's to set). */
-export function claimOf(link: Link): Omit<ConnectionClaim, "kind"> {
+/** What a connection says, as a claim to edit (its kind is the caller's to set). */
+export function claimOf(link: Connection): Omit<ConnectionClaim, "kind"> {
   const { id: _id, label: _label, description: _description, author: _author, signature: _signature, kind: _kind, anchors = [], ...said } = link;
   return { ...said, anchors };
 }
@@ -109,5 +120,23 @@ export function setLinkDescription(page: Page, linkId: string, text: string, aut
     delete link.description;
   } else if (link.description?.text !== text) {
     link.description = description(text, author);
+  }
+}
+
+/**
+ * Sets or clears (blank text) a connection's label. An `other` connection says what it is in its label,
+ * so blank text keeps the label it has.
+ */
+export function setLinkLabel(page: Page, linkId: string, text: string, author: string): void {
+  const link = page.links.find((item) => item.id === linkId);
+  if (!link) {
+    return;
+  }
+  if (text.trim().length === 0) {
+    if (link.kind !== "other") {
+      delete link.label;
+    }
+  } else if (link.label?.text !== text) {
+    link.label = description(text, author);
   }
 }

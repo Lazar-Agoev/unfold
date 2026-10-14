@@ -98,7 +98,7 @@ fn absolute_paths_and_the_window_state_need_the_main_process() {
         ("window_state", json!({})),
         (
             "save_window_state",
-            json!({ "state": { "bounds": { "x": 0, "y": 0, "width": 1, "height": 1 }, "maximized": false, "board": null } }),
+            json!({ "state": { "bounds": { "x": 0, "y": 0, "width": 1, "height": 1 }, "maximized": false, "board": null, "showAllCalls": false } }),
         ),
     ] {
         assert_eq!(harness.code(1, command, args.clone()), "untrusted", "{command}");

@@ -6,10 +6,8 @@ import { Toaster } from "../../components";
 import type { BoardSummary, ProblemItem, ProjectRow, ProjectSummary, WorkspaceView } from "../../ipc";
 import { resetBoards } from "../../state/boards/store";
 import { initialLayout, useLayout, type HomeView } from "../../state/layout";
-import { usePeekTarget } from "../../state/overlays";
 import { useShownBoardStore } from "../../state/shownBoard";
 import { useWindowStore } from "../../state/window";
-import { OVERVIEW } from "../../test/entrances";
 import { fixture, installFakeEngine, type EngineHandlers, type FakeEngine, type FakeEngineOptions } from "../../test/engine";
 import { renderWithClient } from "../../test/render";
 import { boardState, projectRow, workspaceView } from "../../test/workspace";
@@ -35,7 +33,6 @@ function start(
       workspace: () => workspace,
       select_project: () => null,
       ...(row ? { project_summary: () => summaryOf(row) } : {}),
-      entrances: ({ project }) => ({ ...OVERVIEW, project }),
       list_boards: ({ project }) => ({ ...fixture("list_boards", "list_boards"), project, boards: fixture("list_boards", "list_boards").boards.map((board) => ({ ...board, project })) }),
       ...handlers,
     },
@@ -44,11 +41,6 @@ function start(
   useLayout.setState({ ...initialLayout, home: { ...initialLayout.home, view } });
   useWindowStore.setState({ info: null, selectedProject: row?.id ?? null });
   return engine;
-}
-
-function PeekProbe() {
-  const peek = usePeekTarget();
-  return <output data-testid="peek">{peek ? `${peek.path}:${peek.line ?? ""}` : ""}</output>;
 }
 
 beforeEach(() => {
@@ -153,7 +145,7 @@ describe("Home's header and state line", () => {
     const state = await line();
     expect(within(state).getByRole("img", { name: "Resting" })).toBeTruthy();
     expect(state.textContent).toBe("Resting· last checked 2 hours ago");
-    expect(await screen.findByRole("region", { name: "How it starts" })).toBeTruthy();
+    expect(await screen.findByText("Order placement")).toBeTruthy();
   });
 
   it("shows only the header and the reason for an unavailable project", async () => {
@@ -162,29 +154,18 @@ describe("Home's header and state line", () => {
     const state = await line();
     expect(state.textContent).toBe("Unavailable· The folder is gone.");
     expect(screen.getByText("This project isn't available")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "How it starts" })).toBeNull();
+    expect(screen.queryByText("Order placement")).toBeNull();
   });
 });
 
 describe("the overview", () => {
-  it("shows How it starts, Boards, and the Health line", async () => {
+  it("shows Boards and the Health line", async () => {
     start(workspaceView([projectRow(P, "shop")]));
     renderWithClient(<HomeMain />);
-    expect(await screen.findByText("4 applications · 5 launches · 14 routes. Hover a row to trace it on a new board.")).toBeTruthy();
-    expect(await screen.findByRole("region", { name: "Invoice HITL API" })).toBeTruthy();
     expect(await screen.findByText("Order placement")).toBeTruthy();
     const health = screen.getByRole("region", { name: "Health" });
     expect(health.textContent).toBe("HealthAll files parse");
     expect(within(health).queryByRole("button")).toBeNull();
-  });
-
-  it("expands an application to its entrances", async () => {
-    const fake = start(workspaceView([projectRow(P, "shop")]));
-    renderWithClient(<HomeMain />);
-    fireEvent.click(await screen.findByRole("button", { name: "Invoice HITL API's entrances" }));
-    await waitFor(() => {
-      expect(fake.callsOf("entrances")).toContainEqual({ project: P, application: "invoice-hitl", limit: 12 });
-    });
   });
 
   it("lists Boards by last edit, each with its folder and when it was edited, as the engine orders them", async () => {
@@ -245,7 +226,7 @@ describe("the Health line", () => {
 
   it("leads to the one board that needs review", async () => {
     const row = projectRow(P, "shop");
-    const fake = start(workspaceView([row]), { ...health(row, { doesntParse: 0, boardsNeedingReview: 1, boards: [board] }), open_board: ({ project, id }) => boardState(project, id) });
+    const fake = start(workspaceView([row]), { ...health(row, { doesntParse: 0, boardsNeedingReview: 1, boards: [board], entrancesNotFound: 0 }), open_board: ({ project, id }) => boardState(project, id) });
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("Health1 board needs reviewAll files parse");
@@ -257,7 +238,7 @@ describe("the Health line", () => {
 
   it("counts boards and files that need a look, and leads to Health", async () => {
     const row = projectRow(P, "shop", { state: { kind: "problems", count: 2 } });
-    start(workspaceView([row]), { ...health(row, { doesntParse: 2, boardsNeedingReview: 3, boards: [board] }), problems: () => [] });
+    start(workspaceView([row]), { ...health(row, { doesntParse: 2, boardsNeedingReview: 3, boards: [board], entrancesNotFound: 0 }), problems: () => [] });
     renderWithClient(<HomeMain />);
     const line = await screen.findByRole("region", { name: "Health" });
     expect(line.textContent).toBe("Health3 boards need review2 files don't parse");
@@ -274,20 +255,18 @@ describe("Health", () => {
 
   it("lists every problem with its action", async () => {
     const fake = start(workspaceView([projectRow(P, "shop", { state: { kind: "problems", count: 2 } })]), { problems: () => PROBLEMS, open_in_editor: () => null }, "health");
-    renderWithClient(
-      <>
-        <HomeMain />
-        <PeekProbe />
-      </>,
-    );
+    renderWithClient(<HomeMain />);
     expect(await screen.findByText("Doesn't parse — line 3: Unexpected token")).toBeTruthy();
     const section = screen.getByRole("region", { name: "Health" });
     expect(within(section).queryByRole("radiogroup")).toBeNull();
-    fireEvent.click(within(section).getByRole("button", { name: "Open" }));
-    expect(screen.getByTestId("peek").textContent).toBe("src/a.ts:3");
-    fireEvent.click(within(section).getByRole("button", { name: "Open in editor" }));
+    for (const button of within(section).getAllByRole("button", { name: "Open in editor" })) {
+      fireEvent.click(button);
+    }
     await waitFor(() => {
-      expect(fake.callsOf("open_in_editor")).toEqual([{ project: P, path: "unfold.toml" }]);
+      expect(fake.callsOf("open_in_editor")).toEqual([
+        { project: P, path: "src/a.ts", line: 3 },
+        { project: P, path: "unfold.toml" },
+      ]);
     });
     fireEvent.click(screen.getByRole("button", { name: "Back to overview" }));
     expect(useLayout.getState().home.view).toBe("overview");

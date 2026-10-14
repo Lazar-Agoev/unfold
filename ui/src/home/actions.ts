@@ -1,12 +1,11 @@
 /**
- * What Home's buttons and rows do with boards: open one, make one, trace an entrance onto a new board,
- * and Review a board's health. Each runs from a click, so failures show as a toast rather than
+ * What Home's buttons and rows do with boards: open one, make one, and Review a board's health. Each runs from a click, so failures show as a toast rather than
  * throwing (the `flows.ts` pattern).
  */
 
 import { showToast } from "../components";
-import { toUnfoldError, type Key, type ProjectId } from "../ipc";
-import { getOpenBoard, newBoard, openBoard, requestCardFocus, select, setActivePage, traceEntrance, type BoardRef } from "../state/boards";
+import { toUnfoldError, type ProjectId } from "../ipc";
+import { getOpenBoard, newBoard, openBoard, requestCardFocus, select, setActivePage, type BoardRef } from "../state/boards";
 
 function failed(title: string, error: unknown): void {
   showToast({ title, body: toUnfoldError(error).message, tone: "danger" });
@@ -25,15 +24,6 @@ export async function newBoardIn(project: ProjectId, options: { readonly folder?
     await newBoard(project, options);
   } catch (error) {
     failed("Couldn't make a board", error);
-  }
-}
-
-/** Opens the entrance on a new board (Trace →). */
-export async function traceFromHome(project: ProjectId, entrance: Key): Promise<void> {
-  try {
-    await traceEntrance(project, entrance);
-  } catch (error) {
-    failed("Couldn't trace the entrance", error);
   }
 }
 

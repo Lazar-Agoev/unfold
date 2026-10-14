@@ -10,7 +10,7 @@ const cards = [
 ];
 
 function drawn(boxes: Record<string, Box>): PageGeometry {
-  return { boxes: new Map(Object.entries(boxes)), lines: [], flows: new Map() };
+  return { boxes: new Map(Object.entries(boxes)), lines: [] };
 }
 
 const frame = (extra: Partial<Frame> = {}): Frame => ({ id: "api", title: "API", members: ["a", "b"], look: "box", author: "agent:claude", ...extra });
@@ -30,9 +30,9 @@ describe("imageBounds", () => {
     expect(imageBounds(page("p", cards, { frames: [frame()] }), drawn({ ...boxes, api: box }), "api")).toEqual({ ok: true, bounds: box });
   });
 
-  it("refuses an item that isn't the page's, a step group, or one a collapsed frame hides", () => {
-    const groups = [{ id: "checks", card: "a", title: "Checks", members: [], collapsed: false }];
-    expect(imageBounds(page("p", cards, { groups }), drawn(boxes), "checks")).toEqual({
+  it("refuses an item that isn't the page's, a combined step, or one a collapsed frame hides", () => {
+    const combined = [{ id: "checks", title: "Checks", members: ["k#function:a/if[0]"], collapsed: false, author: "agent:claude", signature: "" }];
+    expect(imageBounds(page("p", cards, { combined }), drawn(boxes), "checks")).toEqual({
       ok: false,
       code: "item_not_found",
       message: "The page has no card, frame, resource card, or note `checks`.",

@@ -16,7 +16,7 @@ import { getProject, listProjects } from "./projects";
 import { check, getScreenshot } from "./review";
 import { listEntrances, search } from "./search";
 import { addProject, compileProject, updateProjectSettings } from "./setup";
-import { addNotes, addResources, connect, describe, frameCards, groupSteps, labelSteps, propose } from "./shape";
+import { addNotes, addResources, connect, describe, frameCards, propose } from "./shape";
 import { getCurrentView } from "./view";
 
 export const TOOLS: readonly Tool[] = [
@@ -45,13 +45,11 @@ export const TOOLS: readonly Tool[] = [
   setView,
   arrangePage,
   removeItems,
-  groupSteps,
   frameCards,
   addResources,
   connect,
   addNotes,
   describe,
-  labelSteps,
   propose,
   repair,
   finishWork,

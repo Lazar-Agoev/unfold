@@ -14,8 +14,7 @@ describe("a connection's chip", () => {
       "queue",
     ]);
     expect(forms({ kind: "http", channel: "POST /orders" })).toEqual(["HTTP · POST /orders", "HTTP"]);
-    expect(forms({ kind: "event", channel: "order.placed" })[0]).toBe("event · order.placed");
-    expect(forms({ kind: "rpc" })).toEqual(["RPC"]);
+    expect(forms({ kind: "http" })).toEqual(["HTTP"]);
   });
 
   it("names the table reads and writes touch when they name no channel", () => {

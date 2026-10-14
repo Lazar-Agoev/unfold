@@ -1,13 +1,17 @@
 /**
  * Health rows: each problem as a title, an explanation, a location, and the one action that
- * deals with it (show the file, or open the settings file in the editor); and boards with health items.
+ * deals with it (open the file, or the settings file, in the editor); and boards with health items.
  * Unresolved calls are facts about the code, never problems, so they never appear here.
  */
 
 import type { BoardHealthCount, ProblemCategory, ProblemItem } from "../../ipc";
 import { plural } from "../../lib/format";
 
-export type HealthAction = { readonly kind: "open"; readonly path: string; readonly line: number | null } | { readonly kind: "edit"; readonly path: string };
+/** What a row opens in the editor: a file, at a line when it has one. */
+export interface HealthAction {
+  readonly path: string;
+  readonly line: number | null;
+}
 
 export interface HealthRow {
   readonly id: string;
@@ -58,13 +62,13 @@ function explanation(item: ProblemItem): string {
 function action(item: ProblemItem): HealthAction | null {
   switch (item.category) {
     case "settings":
-      return { kind: "edit", path: item.path === "" ? "unfold.toml" : item.path };
+      return { path: item.path === "" ? "unfold.toml" : item.path, line: null };
     case "discovery":
-      return { kind: "edit", path: "unfold.toml" };
+      return { path: "unfold.toml", line: null };
     case "doesnt_parse":
     case "cant_read":
     case "input":
-      return item.path === "" ? null : { kind: "open", path: item.path, line: item.line };
+      return item.path === "" ? null : { path: item.path, line: item.line };
     case "compile_failed":
     case "cache":
     case "board":

@@ -1,0 +1,316 @@
+{
+  "header": {
+    "key": "shop/checkout.py#checkout",
+    "kind": "function",
+    "form": "function",
+    "label": "checkout",
+    "signature": "def checkout(order)",
+    "path": "shop/checkout.py",
+    "line": 13,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "shop/checkout.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "shop/checkout.py#checkout/call:save_order",
+    "shop/checkout.py#checkout/for[0]",
+    "shop/checkout.py#checkout/call:logger.info",
+    "shop/checkout.py#checkout/call:audit.record"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/checkout.py#checkout/call:save_order/call:build_receipt/call:charge_card",
+        "callee": "charge_card",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/payments.py#charge_card"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "feeds": {
+          "key": "shop/checkout.py#checkout/call:save_order/call:build_receipt",
+          "callee": "build_receipt"
+        },
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "after": false,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/checkout.py#checkout/call:save_order/call:build_receipt",
+        "callee": "build_receipt",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/receipts.py#build_receipt"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "feeds": {
+          "key": "shop/checkout.py#checkout/call:save_order",
+          "callee": "save_order"
+        },
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "after": false,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 3,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/checkout.py#checkout/call:save_order",
+        "callee": "save_order",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/store.py#save_order"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/checkout.py#checkout"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 4,
+        "state": "reached",
+        "gap": {
+          "count": 3,
+          "lines": [
+            15,
+            17
+          ],
+          "hidden": [
+            {
+              "key": "shop/checkout.py#checkout/for[0]",
+              "form": "for",
+              "label": "for loop"
+            }
+          ]
+        },
+        "kind": "call",
+        "key": "shop/checkout.py#checkout/call:logger.info/call:order_label",
+        "callee": "order_label",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/format.py#order_label"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "feeds": {
+          "key": "shop/checkout.py#checkout/call:logger.info",
+          "callee": "logger.info"
+        },
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "after": false,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 5,
+        "state": "reached",
+        "kind": "thin",
+        "calls": [
+          {
+            "key": "shop/checkout.py#checkout/call:logger.info",
+            "callee": "logger.info",
+            "form": "call",
+            "to": {
+              "outcome": "unknown",
+              "reason": "unknown_receiver",
+              "note": "receiver type unknown"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/checkout.py#checkout"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          }
+        ],
+        "unknown": 1
+      },
+      {
+        "id": 6,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/checkout.py#checkout/call:audit.record/call:json.dumps/call:summary",
+        "callee": "summary",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/format.py#summary"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "feeds": {
+          "key": "shop/checkout.py#checkout/call:audit.record/call:json.dumps",
+          "callee": "json.dumps"
+        },
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "after": false,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 7,
+        "state": "reached",
+        "kind": "thin",
+        "calls": [
+          {
+            "key": "shop/checkout.py#checkout/call:audit.record",
+            "callee": "audit.record",
+            "form": "call",
+            "to": {
+              "outcome": "unknown",
+              "reason": "unknown_receiver",
+              "note": "receiver type unknown"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "inside": [
+              {
+                "key": "shop/checkout.py#checkout/call:audit.record/call:json.dumps",
+                "callee": "json.dumps",
+                "form": "call",
+                "to": {
+                  "outcome": "library",
+                  "module": "python:json",
+                  "note": "python:json"
+                },
+                "awaited": false,
+                "sometimes": false,
+                "inside": [],
+                "actions": {
+                  "after": false,
+                  "start": false,
+                  "open": false
+                }
+              }
+            ],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/checkout.py#checkout"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          }
+        ],
+        "unknown": 1
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "on",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "on",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "on",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 6,
+      "kind": "on",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "on",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

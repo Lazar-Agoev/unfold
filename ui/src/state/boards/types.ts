@@ -3,7 +3,7 @@
  * goes into the file and lasts only while the app runs.
  */
 
-import type { BoardDocument, Health, Key, ProjectId, View } from "../../ipc/generated";
+import type { BoardDocument, Health, Key, ProjectId } from "../../ipc/generated";
 
 /** A board's id: the folder-relative path of its file. */
 export type BoardId = string;
@@ -37,14 +37,10 @@ export interface CardSize {
 /** What is selected on a page. */
 export type Selection =
   | { readonly kind: "none" }
-  /**
-   * A card, or a Flow node or statement inside it (`key`). `owner` is the block whose Flow holds the
-   * step when it is shown in a call expanded in place (absent: the card's own block); `last` ends a
-   * Shift-selected run of steps that starts at `key`.
-   */
-  | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null; readonly owner?: Key; readonly last?: Key }
-  | { readonly kind: "group"; readonly groupId: string }
-  /** A drawn link or a connection. */
+  /** A card, or a block drawn in it (`key`), in its own flow or in a call it opens in place. */
+  | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
+  | { readonly kind: "combined"; readonly combinedId: string }
+  /** A connection. */
   | { readonly kind: "link"; readonly linkId: string }
   | { readonly kind: "frame"; readonly frameId: string }
   | { readonly kind: "resource"; readonly resourceId: string }
@@ -53,40 +49,27 @@ export type Selection =
   | { readonly kind: "proposal"; readonly proposalId: string }
   /** A call's arrow between cards (Selected shows the call's contract). */
   | ({ readonly kind: "line" } & SelectedLine)
-  /** An arrow from a Diagram node that stands for several calls: Selected lists them. */
+  /** An arrow that stands for several calls to one card: Selected lists them. */
   | ({ readonly kind: "calls" } & SelectedCalls);
 
-/**
- * A selected line: its arrow, the graph edge it draws (`source` occurrence, `seq`), and its two cards.
- * A call chosen from an arrow that stands for several keeps that arrow.
- */
+/** A selected arrow of one call: the call's block key and the two cards it joins. */
 export interface SelectedLine {
   readonly arrowId: string;
-  readonly source: Key;
-  readonly seq: number;
+  readonly call: Key;
   /** The calling card. */
   readonly from: string;
   /** The called card. */
   readonly to: string;
-  /** The calling line, when the occurrence has one. */
-  readonly line: number | null;
 }
 
-/** One call of a selected arrow that stands for several: its occurrence, its edge, and its calling line. */
-interface SelectedCall {
-  readonly source: Key;
-  readonly seq: number;
-  readonly line: number | null;
-}
-
-/** A selected arrow from a Diagram node to a card it calls more than once: the calls it stands for, in source order. */
+/** A selected arrow that stands for several calls to one card: their block keys, in the order they run. */
 export interface SelectedCalls {
   readonly arrowId: string;
   /** The calling card. */
   readonly from: string;
   /** The called card. */
   readonly to: string;
-  readonly calls: readonly SelectedCall[];
+  readonly calls: readonly Key[];
 }
 
 /** A request for the canvas to bring cards into view once they are measured. */
@@ -99,24 +82,11 @@ export interface FocusRequest {
 
 /** View state of one page (created when the page is first shown). Survives unmounting. */
 export interface PageView {
-  /**
-   * The page's lens: null until the person uses the top Diagram | Code switch on this page (`pageLens`
-   * reads it; a Flow lens shows Diagram).
-   */
-  lens: View | null;
   camera: Camera | null;
   selection: Selection;
-  /** Folded outline keys per card, once the person changed them; until then the model's defaults apply. */
-  codeFolds: Record<string, string[]>;
-  /** Callee occurrences expanded inline in Code (⌥-click) per card; Diagram's are saved on the card (`Card.expanded`). */
-  expanded: Record<string, string[]>;
-  /** "▸ N checks" chains opened per card, by the chain head's key. */
-  flowChains: Record<string, string[]>;
   /** Measured card sizes, in canvas units. */
   sizes: Record<string, CardSize>;
   focus: FocusRequest | null;
-  /** Link drawing mode: the next card clicked becomes the link's other end. */
-  linking: { readonly from: string } | null;
 }
 
 /** One undo step: the whole document before it, and the page it changed (undo shows that page). */

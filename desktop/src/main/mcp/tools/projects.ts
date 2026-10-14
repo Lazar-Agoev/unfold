@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import type { ToolContext } from "../context";
-import type { AppRow, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
+import type { AppView, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
 import { count, stateText } from "../format";
 import { textResult } from "../results";
 import { defineTool } from "../tool";
@@ -51,7 +51,7 @@ export const listProjects = defineTool({
       return textResult(context.header(), "The workspace has no projects. Ask the person which folder to add, then call add_project.");
     }
     const lines = await Promise.all(rows.map((row) => projectLine(context, row)));
-    return textResult(context.header(), `${count(rows.length, "project")}:`, ...lines, "Next: get_project for one project's applications, settings, and boards.");
+    return textResult(context.header(), `${count(rows.length, "project")}:`, ...lines, "Next: get_project for one project's apps, settings, and boards.");
   },
 });
 
@@ -60,10 +60,11 @@ function graphText(status: GraphStatus): string {
   return `${status.complete ? "complete" : "incomplete (files that don't parse)"}, ${watching}`;
 }
 
-function applicationLine(application: AppRow): string {
-  const starts = application.launches.find((launch) => launch.starts !== null)?.starts;
-  const where = starts === undefined || starts === null ? (application.launches.length > 0 ? "not read" : "no launch defined") : `${starts.path}, ${starts.kind}`;
-  return `- ${application.name} (id ${application.id}, ${where}): ${count(application.entrances, "entrance")}`;
+function appLine(app: AppView): string {
+  const facts = [app.key !== undefined ? `key ${app.key}` : null, app.run !== undefined ? `run ${app.run}` : null, app.problem !== undefined ? `problem: ${app.problem.message}` : null].filter(
+    (fact) => fact !== null,
+  );
+  return `- ${app.name ?? "(no name)"}${facts.length > 0 ? ` (${facts.join("; ")})` : ""}: ${count(app.entrances.length, "entrance")}`;
 }
 
 function healthText(health: ProjectSummary["health"]): string[] {
@@ -89,12 +90,8 @@ function settingsText(config: ProjectConfig): string[] {
   if (!settings) {
     return ["Settings: no unfold.toml yet: everything is the default."];
   }
-  const entrances = settings.entrances.map(
-    (entrance) => `- manual entrance ${entrance.id}: ${entrance.label ?? entrance.trigger ?? entrance.kind} → ${entrance.handler.join(", ")} (line ${entrance.line})`,
-  );
   return [
-    `Settings (unfold.toml): languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; detectors off ${list(settings.disabledDetectors)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.entrances.length, "manual entrance")}.`,
-    ...entrances,
+    `Settings (unfold.toml): languages ${settings.languages ? languagesText(settings.languages) : "all"}; include ${list(settings.include)}; exclude ${list(settings.exclude)}; Python projects ${list(settings.pythonProjects.map((python) => python.root || "."))}; evidence files ${list(settings.evidence)}; ${count(settings.apps.length, "app")} (list_entrances lists them).`,
   ];
 }
 
@@ -113,7 +110,7 @@ export const getProject = defineTool({
   name: "get_project",
   title: "Get project",
   description:
-    "One project: its state and compile progress, files and languages, applications with their entrance counts, health, settings (scope, detectors, Python projects, manual entrances, evidence files), and boards with their ids. project is a project's id or name (from list_projects) or a link the person pasted. It opens a resting project. Call it again to wait for a compile: the state reads compiling, with its progress, until the project is current.",
+    "One project: its state and compile progress, files and languages, the apps its unfold.toml declares with their entrance counts, health, settings (scope, Python projects, evidence files), and boards with their ids. project is a project's id or name (from list_projects) or a link the person pasted. It opens a resting project. Call it again to wait for a compile: the state reads compiling, with its progress, until the project is current.",
   input: z.object({ project: z.string().min(1).describe("The project's id or name, or a link to one of its boards") }),
   annotations: { readOnlyHint: true },
   async run({ project }, context) {
@@ -124,9 +121,9 @@ export const getProject = defineTool({
       context.engine("list_boards", { project: row.id }),
     ]);
     const compiled = summary.status.state.kind !== "not_compiled";
-    const applications = compiled
+    const apps = compiled
       ? await context.engine("entrances", { project: row.id }).then(
-          (view) => (view.view === "overview" ? view.categories.flatMap((group) => group.applications) : null),
+          (view) => view.apps,
           () => null,
         )
       : null;
@@ -138,10 +135,8 @@ export const getProject = defineTool({
       compiled
         ? `Files: ${summary.files} (${languagesText(summary.languages)}). Graph: ${graphText(summary.status)}. Last committed ${summary.updatedAtMs === null ? "never" : new Date(summary.updatedAtMs).toISOString()}.`
         : "Not compiled yet: compile_project builds its graph (ask the person first, unless they asked you to set things up).",
-      applications === null
-        ? null
-        : `${count(applications.length, "application")}, ${count(applications.reduce((sum, application) => sum + application.entrances, 0), "entrance")} in all:`,
-      ...(applications ?? []).map(applicationLine),
+      apps === null ? null : `${count(apps.length, "app")}, ${count(apps.reduce((sum, app) => sum + app.entrances.length, 0), "entrance")} in all:`,
+      ...(apps ?? []).map(appLine),
       ...healthText(summary.health),
       ...settingsText(config),
       `${count(boards.boards.length, "board")}${shown.length < boards.boards.length ? ` (the first ${shown.length}; list_boards lists them all)` : ""}:`,

@@ -14,7 +14,7 @@ function summary(overrides: Partial<ProjectSummary> = {}, health: Partial<Projec
     updatedAtMs: NOW - 2_000,
     files: 214,
     languages: ["python"],
-    health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], ...health },
+    health: { doesntParse: 0, boardsNeedingReview: 0, boards: [], entrancesNotFound: 0, ...health },
     ...overrides,
   };
 }

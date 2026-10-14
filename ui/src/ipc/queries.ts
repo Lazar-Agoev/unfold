@@ -10,7 +10,7 @@
 
 import { useQuery, type Query, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { call, onEngineEvent } from "./commands";
-import type { CommandArgs, CommandName, CommandResult, EventType, ProjectId, WorkspaceEvent, WorkspaceView } from "./generated";
+import type { CardView, CommandArgs, CommandName, CommandResult, DrawnFlow, EventType, ProjectId, Sequence, WorkspaceEvent, WorkspaceView } from "./generated";
 import type { UnfoldError } from "./unfold";
 
 /** The query key of one command call. */
@@ -68,24 +68,58 @@ function includes(args: Args, project: ProjectId): boolean {
 }
 
 /** Marks stale (and refetches if observed) the engine queries `test` picks, in one pass over the cache. */
-function invalidate(client: QueryClient, test: (command: string, args: Args) => boolean): void {
+function invalidate(client: QueryClient, test: (command: string, args: Args, query: Query) => boolean): void {
   void client.invalidateQueries({
     predicate: (query) => {
       const command = commandOf(query);
-      return command !== null && test(command, argsOf(query));
+      return command !== null && test(command, argsOf(query), query);
     },
   });
 }
 
-const ENTRANCE_PREFIX = "entrance:";
+/** The files the flows of a sequence open in place draw. */
+function sequenceFiles(sequence: Sequence): string[] {
+  return sequence.steps.flatMap((step) => {
+    switch (step.kind) {
+      case "call":
+        return [...(step.inset ? flowFiles(step.inset) : []), ...step.callbacks.flatMap((callback) => (callback.inset ? flowFiles(callback.inset) : []))];
+      case "decision":
+      case "loop":
+      case "try":
+      case "with":
+        return step.lanes.flatMap((lane) => sequenceFiles(lane.steps));
+      case "combined":
+        return step.steps ? sequenceFiles(step.steps) : [];
+      case "thin":
+      case "exit":
+      case "proposed":
+        return [];
+    }
+  });
+}
+
+/** The files a drawn flow draws: its definition's, and those of the calls it opens in place. */
+function flowFiles(flow: DrawnFlow): string[] {
+  return [flow.header.path, ...sequenceFiles(flow.steps)];
+}
+
+/** The files a card draws, as its own data says (a start card: the files of the blocks it starts at). */
+function cardFiles(view: CardView): string[] {
+  return view.type === "definition" ? flowFiles(view.flow) : view.code.flatMap((code) => (code.path !== undefined ? [code.path] : []));
+}
 
 /**
- * The file a block key belongs to (`src/a.ts#function:f` → `src/a.ts`): up to its last `#`, since a
- * path may hold `#` and a step never does. An entrance's key is its own.
+ * Whether a cached card draws something `changed` picks: one of its files, or, until it has data (still
+ * loading, or missing from the graph), anything.
  */
-export function keyFile(key: string): string {
-  const hash = key.startsWith(ENTRANCE_PREFIX) ? -1 : key.lastIndexOf("#");
-  return hash < 0 ? key : key.slice(0, hash);
+function cardTouches(query: Query, changed: (path: string) => boolean): boolean {
+  const view = query.state.data as CardView | undefined;
+  return view === undefined || cardFiles(view).some(changed);
+}
+
+/** Whether a cached card is an app's or entrance's start card (or isn't loaded yet, so may be one). */
+function startCard(query: Query): boolean {
+  return (query.state.data as CardView | undefined)?.type !== "definition";
 }
 
 /** Commands that don't depend on any project; the engine-restart reset leaves them alone. */
@@ -120,12 +154,10 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
         return;
       }
       const files = new Set([...event.changedFiles, ...event.removedFiles]);
-      const keys = new Set([...event.changedKeys, ...event.changedEntrances]);
-      const byKey = (key: string) => keys.has(key) || files.has(keyFile(key));
-      const entrances = event.changedEntrances.length > 0 || event.inputsChanged;
+      const keys = new Set(event.changedKeys);
       // A call's contract and types (`call_contract`, `type_definition`, `type_uses`) read the
       // callee's and the types' files as well as the caller's, so any change refreshes them.
-      invalidate(client, (command, args) => {
+      invalidate(client, (command, args, query) => {
         if (command === "search") {
           return includes(args, project);
         }
@@ -133,22 +165,17 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           return false;
         }
         switch (command) {
-          case "file_view":
-            return files.has(text(args, "path"));
           case "card":
-            // An entrance card also lists the applications it belongs to, which any file can change.
-            return byKey(text(args, "key")) || text(args, "key").startsWith(ENTRANCE_PREFIX);
-          case "peek":
-            return byKey(text(args, "key"));
+            // A start card's code is found, missing, or stale by the compile, wherever it is.
+            return keys.has(text(args, "key")) || startCard(query) || cardTouches(query, (path) => files.has(path));
           case "relations":
           case "callers":
           case "project_summary":
           case "call_contract":
           case "type_definition":
           case "type_uses":
-            return true;
           case "entrances":
-            return entrances;
+            return true;
           default:
             return false;
         }
@@ -158,7 +185,7 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
     case "files_changed": {
       const { project, truncated } = event;
       const paths = new Set(event.paths);
-      invalidate(client, (command, args) => {
+      invalidate(client, (command, args, query) => {
         if (command === "search") {
           // The file list behind file search may have gained or lost files.
           const kinds = args["kinds"];
@@ -167,11 +194,8 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
         if (args["project"] !== project) {
           return false;
         }
-        if (command === "file_view") {
-          return truncated || paths.has(text(args, "path"));
-        }
-        // A card checks its file's bytes before showing them: an edited file shows as changed at once.
-        return command === "card" && (truncated || paths.has(keyFile(text(args, "key"))));
+        // A card checks its files' bytes before showing them: an edited file shows as changed at once.
+        return command === "card" && (truncated || cardTouches(query, (path) => paths.has(path)));
       });
       return;
     }
@@ -180,6 +204,27 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
       return;
     case "problems_changed":
       invalidate(client, (command, args) => args["project"] === event.project && (command === "problems" || command === "project_summary"));
+      return;
+    case "entrances_changed":
+      // `[[app]]` tables re-resolved without a compile: what lists or draws apps and entrances.
+      invalidate(client, (command, args, query) => {
+        if (command === "search") {
+          return includes(args, event.project);
+        }
+        if (args["project"] !== event.project) {
+          return false;
+        }
+        switch (command) {
+          case "card":
+            return startCard(query);
+          case "entrances":
+          case "project_summary":
+          case "relations":
+            return true;
+          default:
+            return false;
+        }
+      });
       return;
     case "config_changed":
     case "compile_progress":
@@ -199,6 +244,7 @@ const CACHE_EVENTS: readonly EventType[] = [
   "files_changed",
   "boards_changed",
   "problems_changed",
+  "entrances_changed",
 ];
 
 /**

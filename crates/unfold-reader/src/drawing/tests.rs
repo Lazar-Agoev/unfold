@@ -1556,3 +1556,70 @@ fn boxes_on_headers_and_tests_carry_their_keys() {
         "{route}"
     );
 }
+
+/// The drawn flows of the nine examples and the shaped `place_order`, as the JSON the IPC sends:
+/// the canvas's layout tests read them from `testdata/goldens/drawn/`.
+#[test]
+fn the_examples_serialize_as_their_drawn_goldens() {
+    let cli_opens: &[&[&str]] = &[
+        &["shop/cli.py#/if[0]/then/call:main"],
+        &[
+            "shop/cli.py#/if[0]/then/call:main",
+            "shop/cli.py#main/call:place_order",
+        ],
+    ];
+    let none = Overlay::default();
+    let flows = [
+        ("01-place-order", drawn(&sample::shop(), PLACE_ORDER)),
+        (
+            "02-place-order-ts",
+            drawn(&examples::place_order_ts(), "src/service.ts#placeOrder"),
+        ),
+        (
+            "03-sync-inbox",
+            drawn(&examples::sync_inbox(), "inbox/sync.py#sync_inbox"),
+        ),
+        (
+            "04-reserve-first-free",
+            drawn(
+                &examples::reserve_first_free(),
+                "booking/slots.py#reserve_first_free",
+            ),
+        ),
+        (
+            "05-route-message",
+            drawn(&examples::route_message(), "mail/route.py#route_message"),
+        ),
+        (
+            "06-checkout",
+            drawn(&examples::checkout(), "shop/checkout.py#checkout"),
+        ),
+        (
+            "07-cli",
+            drawn_with(&examples::cli(), "shop/cli.py#", &none, cli_opens, false),
+        ),
+        ("08-api", drawn(&examples::api(), "shop/api.py#")),
+        (
+            "09-orders-route",
+            drawn(&examples::orders_route(), "src/routes/orders.ts#"),
+        ),
+        (
+            "place-order-shaped",
+            drawn_with(&sample::shop(), PLACE_ORDER, &shaped(), &[], false),
+        ),
+    ];
+    let shaped = serde_json::to_value(&flows[9].1).expect("the flow serializes");
+    assert_eq!(
+        (
+            &shaped["steps"]["steps"][1]["id"],
+            &shaped["steps"]["steps"][1]["item"]
+        ),
+        (&serde_json::json!(2), &serde_json::json!("stop")),
+        "a combined step keeps its id in the flow beside its page item's id"
+    );
+    for (name, flow) in flows {
+        let mut json = serde_json::to_string_pretty(&flow).expect("the flow serializes");
+        json.push('\n');
+        assert_golden(format!("goldens/drawn/{name}.json"), &json);
+    }
+}

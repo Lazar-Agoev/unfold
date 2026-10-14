@@ -44,7 +44,7 @@ describe("frames on a page", () => {
   });
 
   it("sets members: new ones leave their frames, dropped ones go to the frame that holds it, and a frame left empty goes", () => {
-    const start = framed({ frames: [frame("outer", ["inner", "e"]), frame("inner", ["a", "b"]), frame("other", ["c"])], links: [{ id: "to-other", from: "a", to: "other" }] });
+    const start = framed({ frames: [frame("outer", ["inner", "e"]), frame("inner", ["a", "b"]), frame("other", ["c"])], links: [{ id: "to-other", from: "a", to: "other", kind: "calls", author: "person:lazar" }] });
     const result = onPage(start, (draft) => {
       setFrameMembers(draft, "inner", ["a", "c"]);
     });
@@ -92,8 +92,8 @@ describe("frames on a page", () => {
     const start = framed({
       frames: [frame("p", ["h"]), frame("h", ["f"]), frame("f", ["a", "b"])],
       links: [
-        { id: "to-h", from: "c", to: "h" },
-        { id: "to-p", from: "c", to: "p" },
+        { id: "to-h", from: "c", to: "h", kind: "calls", author: "person:lazar" },
+        { id: "to-p", from: "c", to: "p", kind: "calls", author: "person:lazar" },
       ],
     });
     expect(nestingRemoval(start, "f", null)).toEqual(new Set(["h", "to-h", "p", "to-p"]));
@@ -108,7 +108,7 @@ describe("frames on a page", () => {
   it("removes a frame keeping its members in its place; a note attached to it stays where it was", () => {
     const start = framed({
       frames: [frame("server", ["checks", "e"]), frame("checks", ["a", "b"])],
-      links: [{ id: "to-checks", from: "e", to: "checks" }],
+      links: [{ id: "to-checks", from: "e", to: "checks", kind: "calls", author: "person:lazar" }],
       notes: [{ id: "n", text: "Look here.", at: [10, 20], attach: "checks", author: "agent:claude" }],
     });
     let removed: string[] = [];
@@ -125,14 +125,15 @@ describe("frames on a page", () => {
   it("removes a frame with everything in it when asked", () => {
     const start = framed({
       frames: [frame("server", ["checks", "e"]), frame("checks", ["a"])],
-      groups: [{ id: "g", card: "a", title: "G", members: [], collapsed: false }],
-      links: [{ id: "a-to-c", from: "a", to: "c" }],
+      combined: [{ id: "g", title: "G", members: ["k/if[0]"], collapsed: false, author: "agent:claude", signature: "" }],
+      links: [{ id: "a-to-c", from: "a", to: "c", kind: "calls", author: "person:lazar" }],
     });
     const result = onPage(start, (draft) => {
       removeFrame(draft, "server", false);
     });
     expect(result.cards.map((item) => item.id)).toEqual(["b", "c", "d"]);
-    expect(result).toMatchObject({ groups: [], links: [] });
+    // Combined steps apply page-wide, by key: removing a card keeps them.
+    expect(result).toMatchObject({ combined: [{ id: "g" }], links: [] });
     // The file leaves out an empty list of frames.
     expect("frames" in result).toBe(false);
   });
@@ -173,8 +174,8 @@ describe("the removal cascade", () => {
     const start = framed({
       frames: [frame("outer", ["inner"]), frame("inner", ["a"])],
       links: [
-        { id: "to-outer", from: "b", to: "outer" },
-        { id: "a-to-b", from: "a", to: "b" },
+        { id: "to-outer", from: "b", to: "outer", kind: "calls", author: "person:lazar" },
+        { id: "a-to-b", from: "a", to: "b", kind: "calls", author: "person:lazar" },
       ],
       notes: [{ id: "n", text: "Shared.", at: [10, 10], attach: "inner", author: "agent:claude" }],
     });
@@ -195,7 +196,7 @@ describe("the removal cascade", () => {
   it("keeps a frame with members left, and detaches a link's notes at its midpoint", () => {
     const start = framed({
       frames: [frame("server", ["a", "b"])],
-      links: [{ id: "a-to-b", from: "a", to: "b" }],
+      links: [{ id: "a-to-b", from: "a", to: "b", kind: "calls", author: "person:lazar" }],
       notes: [{ id: "n", text: "Halfway.", at: [0, 30], attach: "a-to-b", author: "agent:claude" }],
     });
     const result = onPage(start, (draft) => {

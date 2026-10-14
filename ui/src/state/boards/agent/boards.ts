@@ -24,7 +24,8 @@ import { produce, type Draft } from "immer";
 import type { BoardDocument, BoardState, Page } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
 import { showBoard } from "../../shownBoard";
-import { addPage, deletePage, findCard, findPage, renamePage, setTitle } from "../document";
+import { cardsDrawing } from "../../cards";
+import { addPage, deletePage, findCard, findCombined, findPage, renamePage, setTitle } from "../document";
 import { call } from "../engine";
 import { adoptBoardState, getOpenBoard, requestCardFocus, saveStep, select, setActivePage } from "../store";
 import type { BoardRef, PageTarget, Selection } from "../types";
@@ -111,11 +112,11 @@ function titleOf(text: string, what: string): string {
   return title;
 }
 
-/** Every text on a page and who wrote it (`itemWords`, and the Flow labels), named as a person would find it. */
+/** Every text on a page and who wrote it (`itemWords`, and the names), named as a person would find it. */
 function pageWords(page: Page): Words[] {
-  const items = [page.cards, page.groups, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? []].flatMap((list) => list.map((item) => item.id));
+  const items = [page.cards, page.combined, page.links, page.frames ?? [], page.resources ?? [], page.notes ?? []].flatMap((list) => list.map((item) => item.id));
   return [
-    ...page.labels.map((label): Words => [`the label “${label.text}”`, label.author]),
+    ...page.names.map((name): Words => [`the name “${name.text}”`, name.author]),
     ...items.flatMap((id) => itemWords(page, id, (card) => `card “${card.id}”`)),
   ];
 }
@@ -215,14 +216,13 @@ export async function editBoardForAgent(request: AgentBoardEditRequest): Promise
 // Showing
 
 /** What showing an item selects, and the items the camera brings into view. */
-function itemFocus(page: Page, id: string): { readonly selection: Selection; readonly cards: string[] } | null {
+function itemFocus(target: PageTarget, page: Page, id: string): { readonly selection: Selection; readonly cards: string[] } | null {
   const isCard = (cardId: string) => findCard(page, cardId) !== undefined;
   if (isCard(id)) {
     return { selection: { kind: "card", cardId: id, key: null }, cards: [id] };
   }
-  const group = page.groups.find((item) => item.id === id);
-  if (group) {
-    return { selection: { kind: "group", groupId: id }, cards: [group.card] };
+  if (findCombined(page, id)) {
+    return { selection: { kind: "combined", combinedId: id }, cards: cardsDrawing(target, id) };
   }
   const link = page.links.find((item) => item.id === id);
   if (link) {
@@ -257,11 +257,11 @@ export function showForAgent(request: AgentShowRequest): AgentShowResult {
   if (!page) {
     return failure("page_not_found", `The board has no page with id “${request.page ?? ""}”. Its pages: ${board.document.pages.map((item) => `${item.title} (id ${item.id})`).join(", ")}.`);
   }
-  const focus = request.item === undefined ? null : itemFocus(page, request.item);
+  const target: PageTarget = { board: ref, page: page.id };
+  const focus = request.item === undefined ? null : itemFocus(target, page, request.item);
   if (request.item !== undefined && !focus) {
     return failure("invalid_op", `There is no item with id “${request.item}” on the page “${page.title}”. read_page lists the page's ids.`);
   }
-  const target: PageTarget = { board: ref, page: page.id };
   showBoard(ref);
   setActivePage(ref, page.id);
   if (focus) {

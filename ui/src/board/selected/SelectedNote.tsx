@@ -12,6 +12,7 @@ import type { Note } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { NOTE_MAX, editNote, findPage, noteLength, removeItem, useOpenBoard, type PageTarget } from "../../state/boards";
 import { AuthoredField } from "./AuthoredField";
+import { useCardNames } from "../../state/cards";
 import { itemName, selectItem } from "./ClaimRows";
 
 /** The focus target of a note's text field in Selected. */
@@ -19,6 +20,7 @@ const NOTE_FIELD = "selected.note";
 
 export function SelectedNote({ target, note }: { readonly target: PageTarget; readonly note: Note }) {
   const author = useAuthor();
+  const names = useCardNames(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const [draft, setDraft] = useState<string | null>(null);
   if (!page) {
@@ -41,7 +43,7 @@ export function SelectedNote({ target, note }: { readonly target: PageTarget; re
                   selectItem(target, page, attach);
                 }}
               >
-                {itemName(page, attach)}
+                {itemName(page, attach, names)}
               </button>
               {", moving with it"}
             </>

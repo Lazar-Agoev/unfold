@@ -11,8 +11,8 @@
  *   its undo history starts over, except while it has edits not yet saved or a save is in flight (the
  *   person's version is written over the file then). A file deleted outside is written back by the
  *   next save.
- * - View state (each page's camera, lens, and selection, and the active page) lasts only while the app
- *   runs; view changes are never undo steps.
+ * - View state (each page's camera and selection, and the active page) lasts only while the app runs;
+ *   view changes are never undo steps.
  * - An agent's edit is saved at once (`saveStep`), and a repair is written by the engine itself
  *   (`engineStep`); either becomes an undo step only once the engine accepts it.
  */
@@ -21,7 +21,7 @@ import { replaceEqualDeep } from "@tanstack/react-query";
 import { produce, type Draft } from "immer";
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { BoardDocument, BoardState, Card, Page, View } from "../../ipc/generated";
+import type { BoardDocument, BoardState, Page } from "../../ipc/generated";
 import { UnfoldError, toUnfoldError } from "../../ipc/unfold";
 import { findPage } from "./document";
 import { call } from "./engine";
@@ -102,17 +102,7 @@ export function openBoards(): OpenBoard[] {
 // Page views
 
 function pageView(): PageView {
-  return {
-    lens: null,
-    camera: null,
-    selection: { kind: "none" },
-    codeFolds: {},
-    expanded: {},
-    flowChains: {},
-    sizes: {},
-    focus: null,
-    linking: null,
-  };
+  return { camera: null, selection: { kind: "none" }, sizes: {}, focus: null };
 }
 
 /** What a page that was never shown reads as (frozen: selectors get stable values from it). */
@@ -165,46 +155,6 @@ export function setCamera(target: PageTarget, camera: Camera): void {
   });
 }
 
-/**
- * Sets the page's lens (Diagram or Code; a Flow lens reads as Diagram). View state only: the
- * camera, the selection, and the cards' saved expansions (in the document) stay as they are.
- */
-export function setPageLens(target: PageTarget, lens: View): void {
-  updatePageView(target, (view) => {
-    view.lens = lens;
-  });
-}
-
-/** The page-wide lens: Diagram, or Code (the source-oriented view). */
-export type Lens = "diagram" | "code";
-
-/**
- * The lens a page shows: the one the person picked (a Flow lens is Diagram), else the page's
- * default view, where only a Code default opens Code.
- */
-export function pageLens(lens: View | null, defaultView: View): Lens {
-  return (lens ?? defaultView) === "code" ? "code" : "diagram";
-}
-
-/**
- * Whether a card shows its detail in Diagram (a function's written flow, an entrance's evidence and
- * targets): its own view, else the page's default, is Flow (or a legacy Code).
- */
-export function cardExpanded(card: Pick<Card, "view">, defaultView: View): boolean {
-  return (card.view ?? defaultView) !== "diagram";
-}
-
-/**
- * The view a card shows under a page lens (`null`: none picked, as agents read a page): Code in the
- * Code lens; in Diagram, Flow when the card is expanded and a compact Diagram node otherwise.
- */
-export function shownView(lens: View | null, card: Pick<Card, "view">, defaultView: View): View {
-  if (pageLens(lens, defaultView) === "code") {
-    return "code";
-  }
-  return cardExpanded(card, defaultView) ? "flow" : "diagram";
-}
-
 export function select(target: PageTarget, selection: Selection): void {
   updatePageView(target, (view) => {
     view.selection = selection as Draft<Selection>;
@@ -219,13 +169,6 @@ export function requestCardFocus(target: PageTarget, cardIds: readonly string[],
   const seq = focusSeq;
   updatePageView(target, (view) => {
     view.focus = { seq, cardIds: [...cardIds], mode };
-  });
-}
-
-/** Starts (from a card) or ends (null) link drawing mode on a page. */
-export function setLinking(target: PageTarget, from: string | null): void {
-  updatePageView(target, (view) => {
-    view.linking = from === null ? null : { from };
   });
 }
 

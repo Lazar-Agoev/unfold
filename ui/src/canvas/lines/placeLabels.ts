@@ -1,5 +1,5 @@
 /**
- * Where the labels of a page's lines sit: drawn links' labels and connections' chips. A label never
+ * Where the labels of a page's lines sit: connections' chips. A label never
  * covers a card or another label: it tries points along its own curve (the midpoint, then 0.4 and
  * 0.6, 0.3 and 0.7, …), then small steps above and below them into free canvas, then hanging beside
  * those points (to the right, then the left, level or a step above or below), and takes the first

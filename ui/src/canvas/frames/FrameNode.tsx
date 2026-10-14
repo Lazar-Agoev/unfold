@@ -11,15 +11,15 @@
  */
 
 import { useUpdateNodeInternals, type Node, type NodeProps } from "@xyflow/react";
-import { memo, useLayoutEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { AgentMark } from "../../agent";
 import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
 import type { Frame } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { editFrame, findFrame, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { editFrame, findFrame, findPage, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { usePageCards } from "../../state/cards";
 import { CardHandles, HeaderPorts } from "../cards/parts";
-import { clickFrame } from "../cards/select";
 import type { Size } from "../layout";
 import { useMeasure } from "../measure";
 import { frameNodeWidth } from "../sizing";
@@ -91,10 +91,9 @@ export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNo
     const page = findPage(board.document, target.page);
     return page ? findFrame(page, id) : undefined;
   });
-  const holds = useOpenBoard(target.board, (board) => {
-    const page = findPage(board.document, target.page);
-    return page && box === undefined ? holdsText(page, id) : "";
-  });
+  const page = useOpenBoard(target.board, (board) => (box === undefined ? findPage(board.document, target.page) : undefined));
+  const views = usePageCards(target);
+  const holds = useMemo(() => (page ? holdsText(page, id, views) : ""), [page, id, views]);
   const review = useOpenBoard(target.board, (board) => board.health.items.some((item) => item.page === target.page && "frame" in item.target && item.target.frame === id));
   const selected = usePageView(target, (view) => view.selection.kind === "frame" && view.selection.frameId === id);
   const [editing, setEditing] = useState(false);
@@ -150,7 +149,7 @@ export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNo
   );
   const handlers = {
     onClick: () => {
-      clickFrame(target, id);
+      select(target, { kind: "frame", frameId: id });
     },
     onDoubleClick: () => {
       setEditing(true);

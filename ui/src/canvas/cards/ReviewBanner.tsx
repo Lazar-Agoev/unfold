@@ -2,46 +2,28 @@
  * Health on a card or a resource card: a full-width banner under the header ("Changed since it was
  * described · Review"), and the repair popover its Review opens: each problem with its repairs, every
  * repair explained before it is applied (`repairEffect`), Apply saving it at once as one undo step.
- * Reconnect first asks for the definition (or entrance) the reference became; for a proposed step, the
- * real step of its card it goes after now (an explicit placement repair, never by a similar name).
- * A card's banner also covers its groups and its proposed steps. Selected opens the same popover for a
- * connection's or a proposed step's problems (`ReviewButton`).
+ * Reconnect first asks for the definition (or app or entrance) the reference became, offering the one
+ * the engine found when exactly one fits; for a proposed step, the block of a card drawing it that it
+ * goes after now (an explicit placement repair, never by a similar name). A card's banner also covers
+ * the combined and proposed steps it draws. Selected opens the same popover for a connection's or a
+ * proposed step's problems (`ReviewButton`).
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { PATH_WORDS } from "../../board/proposeStep";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Popover, SearchField, TextButton, showToast } from "../../components";
 import { useEngineQuery } from "../../ipc";
-import type { HealthItem, HealthKind, Key, Page, ProjectId, ProposalPath, RepairKind, Target } from "../../ipc/generated";
+import type { CardView, HealthItem, HealthKind, Key, Page, ProjectId, RepairKind, Target } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
-import {
-  cardKey,
-  editPage,
-  findCard,
-  findPage,
-  findProposal,
-  itemsFor,
-  kindWord,
-  labelTexts,
-  placesAfter,
-  repairBoard,
-  repairEffect,
-  repairLabel,
-  repairSpec,
-  updateProposal,
-  useOpenBoard,
-  type PageTarget,
-} from "../../state/boards";
-import { cardQuery } from "../cardData";
+import { findCard, findPage, itemsFor, kindWord, repairBoard, repairEffect, repairLabel, repairSpec, useOpenBoard, type PageTarget } from "../../state/boards";
+import { cardsDrawing, fetchCard, flowBlocks, overlayIds, type DrawnBlock } from "../../state/cards";
 
 /** What the banner says about a card's first problem. */
 const BANNER_TEXT: Readonly<Record<HealthKind, string>> = {
   review: "Changed since it was described",
   outdated: "Changed since it was described",
   missing: "Missing from the graph",
-  brokenGroup: "A group no longer matches the code",
-  brokenLink: "A link lost its other end",
+  brokenCombined: "A combined step no longer matches the code",
+  brokenLink: "A connection lost its other end",
 };
 
 /** What the banner says about a claim's (a resource card's, a connection's) first problem. */
@@ -49,7 +31,7 @@ const CLAIM_TEXT: Readonly<Record<HealthKind, string>> = {
   review: "Changed since it was drawn",
   outdated: "Changed since it was drawn",
   missing: "Cites code that is gone",
-  brokenGroup: "A group no longer matches the code",
+  brokenCombined: "A combined step no longer matches the code",
   brokenLink: "Lost an end or what it cites",
 };
 
@@ -58,8 +40,8 @@ const PROPOSAL_TEXT: Readonly<Record<HealthKind, string>> = {
   review: "Where a proposed step goes needs review",
   outdated: "Where a proposed step goes needs review",
   missing: "A proposed step lost the step it goes after",
-  brokenGroup: "A group no longer matches the code",
-  brokenLink: "A link lost its other end",
+  brokenCombined: "A combined step no longer matches the code",
+  brokenLink: "A connection lost its other end",
 };
 
 /** What a claim's review mark says about its first problem (a connection's chip, Selected). */
@@ -69,23 +51,20 @@ export function claimProblem(item: HealthItem): string {
 
 const NO_ITEMS: readonly HealthItem[] = [];
 
-/** The health items about a card, the groups inside it, and its proposed steps, on its page. */
-function useCardHealth(target: PageTarget, cardId: string): readonly HealthItem[] {
+/** The health items about a card and the combined and proposed steps it draws (`view`), on its page. */
+function useCardHealth(target: PageTarget, cardId: string, view: CardView | undefined): readonly HealthItem[] {
   const health = useOpenBoard(target.board, (board) => board.health);
-  const groups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
-  const proposals = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.proposals);
   return useMemo(() => {
-    const own = new Set((groups ?? []).filter((group) => group.card === cardId).map((group) => group.id));
-    const proposed = new Set((proposals ?? []).filter((proposal) => proposal.card === cardId).map((proposal) => proposal.id));
+    const drawn = new Set(view ? overlayIds(view) : []);
     const items = (health?.items ?? []).filter(
       (item) =>
         item.page === target.page &&
         (("card" in item.target && item.target.card === cardId) ||
-          ("group" in item.target && own.has(item.target.group)) ||
-          ("proposal" in item.target && proposed.has(item.target.proposal))),
+          ("combined" in item.target && drawn.has(item.target.combined)) ||
+          ("proposal" in item.target && drawn.has(item.target.proposal))),
     );
     return items.length > 0 ? items : NO_ITEMS;
-  }, [health, groups, proposals, target.page, cardId]);
+  }, [health, view, target.page, cardId]);
 }
 
 /** The health items about a claim (a resource card or a link) on its page. */
@@ -134,91 +113,51 @@ function ReconnectPicker({ project, entrance, value, onChange }: { readonly proj
   );
 }
 
-/** One place a proposed step can go: after a real step of its card, on one of that step's paths. */
-interface StepPlace {
-  readonly after: Key;
-  readonly path?: ProposalPath;
-  readonly label: string;
-  readonly line: number | null;
+/** The blocks a proposed step can go after now: those of the cards drawing it that take one, but the one it goes after. */
+function useProposalPlaces(target: PageTarget, proposalId: string, after: Key | undefined): { readonly places: readonly DrawnBlock[]; readonly loading: boolean } {
+  const [state, setState] = useState<{ readonly places: readonly DrawnBlock[]; readonly loading: boolean }>({ places: [], loading: true });
+  useEffect(() => {
+    let live = true;
+    void Promise.all(cardsDrawing(target, proposalId).map((cardId) => fetchCard(target, cardId).catch(() => undefined))).then((views) => {
+      if (!live) {
+        return;
+      }
+      const blocks = views.flatMap((view) => (view?.type === "definition" ? flowBlocks(view.flow) : []));
+      const places = blocks.filter((block, index) => block.actions?.after === true && block.key !== after && blocks.findIndex((other) => other.key === block.key) === index);
+      setState({ places, loading: false });
+    });
+    return () => {
+      live = false;
+    };
+  }, [target, proposalId, after]);
+  return state;
 }
 
-/**
- * Reconnect for a proposed step: the real steps of its card it can go after now (each path of a
- * decision its own choice, by the placement rule `propose` follows), but the one it goes after.
- */
-function StepPicker({ target, item, page, value, onChange }: { readonly target: PageTarget; readonly item: HealthItem; readonly page: Page; readonly value: StepPlace | null; readonly onChange: (place: StepPlace) => void }) {
-  const proposal = "proposal" in item.target ? findProposal(page, item.target.proposal) : undefined;
-  const card = proposal ? findCard(page, proposal.card) : undefined;
-  const query = useQuery({ ...cardQuery(target.board.project, card ? cardKey(card) : ""), enabled: card !== undefined });
-  const flow = query.data?.type === "block" && query.data.flow?.source === "current" ? query.data.flow : null;
-  const labels = labelTexts(page.labels);
-  const places = (flow?.nodes ?? []).flatMap((node): StepPlace[] => {
-    if (node.key === undefined || node.key === proposal?.after) {
-      return [];
-    }
-    const found = placesAfter(flow ?? { nodes: [], routes: [] }, node.key);
-    if ("problem" in found) {
-      return [];
-    }
-    const base = { after: node.key, label: labels[node.key] ?? node.label, line: node.startLine ?? null };
-    return found.paths.length > 0 ? found.paths.map((path) => ({ ...base, path })) : [base];
-  });
+/** Reconnect for a proposed step: the blocks of the cards drawing it it can go after now. */
+function StepPicker({ target, item, value, onChange }: { readonly target: PageTarget; readonly item: HealthItem; readonly value: Key; readonly onChange: (key: Key) => void }) {
+  const proposalId = "proposal" in item.target ? item.target.proposal : "";
+  const { places, loading } = useProposalPlaces(target, proposalId, item.key);
   return (
     <div className="repair-reconnect">
       <div role="listbox" aria-label="Goes after" className="repair-hits">
         {places.map((place) => (
           <button
-            key={`${place.after}>${place.path ?? ""}`}
+            key={place.key}
             type="button"
             role="option"
-            aria-selected={value?.after === place.after && value.path === place.path}
+            aria-selected={value === place.key}
             className="repair-hit"
             onClick={() => {
-              onChange(place);
+              onChange(place.key);
             }}
           >
-            <span className="repair-hit-name">
-              {place.label}
-              {place.path !== undefined ? ` · ${PATH_WORDS[place.path]}` : ""}
-            </span>
-            <span className="repair-hit-path">{place.line !== null ? `line ${place.line}` : ""}</span>
+            <span className="repair-hit-name">{place.name ?? place.label}</span>
           </button>
         ))}
-        {query.isPending && card ? <p className="repair-note">Loading its steps…</p> : null}
-        {!query.isPending && places.length === 0 ? <p className="repair-note">Its card has no other step a proposed step can follow right now.</p> : null}
+        {loading ? <p className="repair-note">Loading its blocks…</p> : null}
+        {!loading && places.length === 0 ? <p className="repair-note">No card on this page draws a block it can follow right now.</p> : null}
       </div>
     </div>
-  );
-}
-
-/** Reconnect for a proposed step: it goes after the step chosen (an edit of the page, one undo step), keeping its words and author. */
-function ProposalReconnectRow({ target, item, page, onDone }: { readonly target: PageTarget; readonly item: HealthItem; readonly page: Page; readonly onDone: () => void }) {
-  const [place, setPlace] = useState<StepPlace | null>(null);
-  const proposalId = "proposal" in item.target ? item.target.proposal : null;
-  const author = proposalId !== null ? findProposal(page, proposalId)?.author : undefined;
-  return (
-    <li className="repair-option">
-      <div className="repair-option-text">
-        <strong>{repairLabel("reconnect").replace(/…$/, "")}</strong>
-        <span>{repairEffect("reconnect", item, page)}</span>
-      </div>
-      <StepPicker target={target} item={item} page={page} value={place} onChange={setPlace} />
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={place === null || proposalId === null || author === undefined}
-        onClick={() => {
-          if (place && proposalId !== null && author !== undefined) {
-            editPage(target, (draft) => {
-              updateProposal(draft, proposalId, { after: place.after, path: place.path ?? null }, author);
-            });
-            onDone();
-          }
-        }}
-      >
-        Apply
-      </Button>
-    </li>
   );
 }
 
@@ -237,7 +176,7 @@ function RepairRow({
   readonly kind: RepairKind;
   readonly onDone: () => void;
 }) {
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState(item.reconnect ?? "");
   const [busy, setBusy] = useState(false);
   const spec = repairSpec(kind, item, page, to);
   const apply = async () => {
@@ -253,15 +192,22 @@ function RepairRow({
       setBusy(false);
     }
   };
-  const about = "card" in item.target ? findCard(page, item.target.card) : undefined;
-  const entrance = (item.key ?? (about ? cardKey(about) : "")).startsWith("entrance:");
+  // A card's own reference is reconnected to one of its kind; anything else names a block.
+  const about = "card" in item.target && item.key === undefined ? findCard(page, item.target.card) : undefined;
+  const entrance = about !== undefined && "entrance" in about.ref;
   return (
     <li className="repair-option">
       <div className="repair-option-text">
         <strong>{repairLabel(kind).replace(/…$/, "")}</strong>
         <span>{repairEffect(kind, item, page)}</span>
       </div>
-      {kind === "reconnect" ? <ReconnectPicker project={project} entrance={entrance} value={to} onChange={setTo} /> : null}
+      {kind === "reconnect" ? (
+        "proposal" in item.target ? (
+          <StepPicker target={target} item={item} value={to} onChange={setTo} />
+        ) : (
+          <ReconnectPicker project={project} entrance={entrance} value={to} onChange={setTo} />
+        )
+      ) : null}
       <Button variant="secondary" size="sm" busy={busy} disabled={!spec} onClick={() => void apply()}>
         Apply
       </Button>
@@ -292,13 +238,9 @@ function RepairPopover({
               <h3 className="repair-title">{kindWord(item.kind)}</h3>
               <p className="repair-message">{item.message}</p>
               <ul className="repair-options">
-                {item.repairs.map((kind) =>
-                  kind === "reconnect" && "proposal" in item.target ? (
-                    <ProposalReconnectRow key={kind} target={target} item={item} page={page} onDone={onClose} />
-                  ) : (
-                    <RepairRow key={kind} target={target} project={project} item={item} page={page} kind={kind} onDone={onClose} />
-                  ),
-                )}
+                {item.repairs.map((kind) => (
+                  <RepairRow key={kind} target={target} project={project} item={item} page={page} kind={kind} onDone={onClose} />
+                ))}
               </ul>
             </section>
           ))
@@ -354,9 +296,10 @@ export function ClaimReviewBanner({ target, project, item }: { readonly target: 
   ) : null;
 }
 
-/** The banner under a card's header while something about it needs review (nothing otherwise). */
-export function ReviewBanner({ target, project, cardId }: { readonly target: PageTarget; readonly project: ProjectId; readonly cardId: string }) {
-  const items = useCardHealth(target, cardId);
+/** The banner under a card's header while something about it, or a step it draws (`view`), needs review (nothing otherwise). */
+export function ReviewBanner({ target, cardId, view }: { readonly target: PageTarget; readonly cardId: string; readonly view: CardView | undefined }) {
+  const project = target.board.project;
+  const items = useCardHealth(target, cardId, view);
   const first = items[0];
   return first ? (
     <div className="card-review nodrag" role="status">

@@ -1,0 +1,194 @@
+{
+  "header": {
+    "key": "shop/api.py#",
+    "kind": "module",
+    "form": "module",
+    "label": "shop/api.py",
+    "path": "shop/api.py",
+    "line": 1,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [
+      {
+        "text": "fastapi",
+        "to": {
+          "outcome": "library",
+          "module": "fastapi",
+          "note": "fastapi"
+        }
+      },
+      {
+        "text": "shop.auth",
+        "to": {
+          "outcome": "project",
+          "key": "shop/auth.py#"
+        }
+      },
+      {
+        "text": "shop.service",
+        "to": {
+          "outcome": "project",
+          "key": "shop/service.py#"
+        }
+      }
+    ],
+    "actions": {
+      "after": false,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "shop/api.py#/call:FastAPI",
+    "shop/api.py#/call:APIRouter",
+    "shop/api.py#/call:router.post",
+    "shop/api.py#/call:Depends",
+    "shop/api.py#create_order",
+    "shop/api.py#/call:app.include_router"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "thin",
+        "calls": [
+          {
+            "key": "shop/api.py#/call:FastAPI",
+            "callee": "FastAPI",
+            "form": "call",
+            "to": {
+              "outcome": "library",
+              "module": "fastapi",
+              "note": "fastapi"
+            },
+            "binds": "app",
+            "awaited": false,
+            "sometimes": false,
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/api.py#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          },
+          {
+            "key": "shop/api.py#/call:APIRouter",
+            "callee": "APIRouter",
+            "form": "call",
+            "to": {
+              "outcome": "library",
+              "module": "fastapi",
+              "note": "fastapi"
+            },
+            "binds": "router",
+            "awaited": false,
+            "sometimes": false,
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/api.py#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          },
+          {
+            "key": "shop/api.py#/call:router.post",
+            "callee": "router.post",
+            "form": "call",
+            "to": {
+              "outcome": "unknown",
+              "reason": "unknown_receiver",
+              "note": "receiver type unknown"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "role": "decorator",
+            "definition": "shop/api.py#create_order",
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/api.py#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          },
+          {
+            "key": "shop/api.py#/call:Depends",
+            "callee": "Depends",
+            "form": "call",
+            "to": {
+              "outcome": "library",
+              "module": "fastapi",
+              "note": "fastapi"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "role": "default",
+            "definition": "shop/api.py#create_order",
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/api.py#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          },
+          {
+            "key": "shop/api.py#/call:app.include_router",
+            "callee": "app.include_router",
+            "form": "call",
+            "to": {
+              "outcome": "unknown",
+              "reason": "unknown_receiver",
+              "note": "receiver type unknown"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "shop/api.py#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          }
+        ],
+        "unknown": 2
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

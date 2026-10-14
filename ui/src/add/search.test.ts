@@ -1,44 +1,43 @@
 import { describe, expect, it } from "vitest";
-import type { FileHit, SearchHit, SearchResults } from "../ipc/generated";
-import { kindText, resultItems, searchArgs } from "./search";
+import type { SearchHit, SearchResults } from "../ipc/generated";
+import { resultItems, searchArgs } from "./search";
 
 function hit(name: string, kind: string, score: number): SearchHit {
-  return { project: "p-a", key: `src/a.ts#${kind}:${name}`, name, qualifiedName: name, path: "src/a.ts", kind, line: 3, application: null, score };
-}
-
-function file(path: string, score: number): FileHit {
-  return { project: "p-a", path, name: path.slice(path.lastIndexOf("/") + 1), definitions: 2, score };
-}
-
-function results(definitions: SearchHit[], entrances: SearchHit[], files: FileHit[]): SearchResults {
-  const group = <T>(hits: T[]) => ({ hits, total: hits.length, truncated: false });
+  const start = kind === "app" || kind === "entrance";
   return {
-    query: "order",
-    definitions: group(definitions),
-    entrances: group(entrances),
-    files: group(files),
+    project: "p-a",
+    key: `key-${name}`,
+    name,
+    qualifiedName: start ? "Shop API · POST /orders" : name,
+    path: start ? "" : "shop/service.py",
+    kind,
+    line: start ? null : 3,
+    app: start ? "Shop API" : null,
+    score,
   };
 }
 
+function results(definitions: SearchHit[], entrances: SearchHit[]): SearchResults {
+  const group = <T>(hits: T[]) => ({ hits, total: hits.length, truncated: false });
+  return { query: "order", definitions: group(definitions), entrances: group(entrances), files: group([]) };
+}
+
 describe("Add's search", () => {
-  it("looks only in the board's project", () => {
-    expect(searchArgs("order", "p-a")).toEqual({ query: "order", projects: ["p-a"] });
+  it("looks for definitions, types, and entrances in the board's project, not files yet", () => {
+    expect(searchArgs("order", "p-a")).toEqual({ query: "order", kinds: ["definitions", "entrances"], projects: ["p-a"] });
   });
 
-  it("ranks entrances and definitions together by score, entrances first on a tie, then files", () => {
-    const items = resultItems(
-      results([hit("place_order", "function", 300), hit("Order", "class", 500)], [hit("Place an order", "http", 300)], [file("tests/test_orders.py", 900)]),
-    );
-    expect(items.map((item) => [item.type, item.hit.name])).toEqual([
-      ["definition", "Order"],
+  it("ranks entrances and definitions together by score, entrances first on a tie", () => {
+    const items = resultItems(results([hit("place_order", "function", 300), hit("Order", "class", 500)], [hit("Place an order", "entrance", 300)]));
+    expect(items.map((item) => [item.hit.kind, item.hit.name])).toEqual([
+      ["class", "Order"],
       ["entrance", "Place an order"],
-      ["definition", "place_order"],
-      ["file", "test_orders.py"],
+      ["function", "place_order"],
     ]);
   });
 
-  it("names each result's kind: entrance, file, or the definition's kind", () => {
-    const items = resultItems(results([hit("save_order", "function", 2), hit("Cart", "interface", 2), hit("Total", "type_alias", 1)], [hit("orders", "worker", 3)], [file("src/orders.ts", 1)]));
-    expect(items.map(kindText)).toEqual(["entrance", "function", "interface", "type", "file"]);
+  it("adds a definition as a block card and an app or entrance as a start card", () => {
+    const items = resultItems(results([hit("Cart", "type", 2)], [hit("Shop API", "app", 3), hit("Place an order", "entrance", 1)]));
+    expect(items.map((item) => item.ref)).toEqual([{ entrance: "key-Shop API" }, { block: "key-Cart" }, { entrance: "key-Place an order" }]);
   });
 });

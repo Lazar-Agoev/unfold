@@ -8,8 +8,7 @@
  * DOM.
  */
 
-import type { CardBody } from "../../code/typeKinds";
-import type { Card, Frame, Link, Note, Resource } from "../../ipc/generated";
+import type { Card, Connection, Frame, Note, Resource, View } from "../../ipc/generated";
 import { boundsOf, fallbackSize, reflow, type Point, type Rect, type Size } from "../layout";
 import { measureText } from "../measure";
 import { tableColumns } from "../resources/columns";
@@ -31,13 +30,13 @@ export function estimatedResourceSize(resource: Resource, columns = tableColumns
 }
 
 /**
- * A size for an item that hasn't been measured: a card's (an entrance or a block shown as `body`), a
- * collapsed frame's node (estimated from its words), a resource card's, or a note's.
+ * A size for an item that hasn't been measured: a card's (in its view, else the page's), a collapsed
+ * frame's node (estimated from its words), a resource card's, or a note's.
  */
-export function fallbackItemSize(page: FramedPage, id: string, body?: CardBody): Size {
+export function fallbackItemSize(page: FramedPage, id: string): Size {
   const card = page.cards.find((item) => item.id === id);
   if (card) {
-    return fallbackSize("entrance" in card.ref, body);
+    return fallbackSize(card.view ?? page.defaultView);
   }
   const frame = (page.frames ?? []).find((item) => item.id === id);
   if (frame) {
@@ -48,7 +47,7 @@ export function fallbackItemSize(page: FramedPage, id: string, body?: CardBody):
     return noteSize(note.text, measureText);
   }
   const resource = (page.resources ?? []).find((item) => item.id === id);
-  return resource ? estimatedResourceSize(resource) : fallbackSize(false);
+  return resource ? estimatedResourceSize(resource) : fallbackSize();
 }
 
 /** The room a frame leaves around what it holds: its title band on top, then each side. */
@@ -86,11 +85,13 @@ function padded(rect: Rect, padding: FramePadding): Rect {
 /** The items of a page geometry reads: cards, resource cards, and notes have positions, frames hold them, notes attach to them. */
 export interface FramedPage {
   readonly cards: readonly Card[];
+  /** The view of cards without their own. */
+  readonly defaultView?: View;
   readonly frames?: readonly Frame[] | undefined;
   readonly resources?: readonly Resource[] | undefined;
   readonly notes?: readonly Note[] | undefined;
-  /** The links a note can be attached to. */
-  readonly links?: readonly Link[] | undefined;
+  /** The connections a note can be attached to. */
+  readonly links?: readonly Connection[] | undefined;
 }
 
 /** A frame as drawn: its box (or, collapsed, its node), and how many frames hold it. */

@@ -1,39 +1,29 @@
 /**
- * Selected for a proposed step: "PROPOSED STEP", its title
- * (required, one line, edited in place) and optional Why, who wrote them (editing either makes them
- * yours; typing in one field merges into one undo step), and Where it would go: after which real step
- * (and on which path), with that step's `file:line` as View placement code, since a proposal has no code
- * of its own. What needs review about where it goes shows with Review (Reconnect to another step,
- * Accept, Remove). Copy link and Remove proposal close it; removing never edits code.
+ * Selected for a proposed step: "PROPOSED STEP", its title (required, one line, edited in place) and
+ * optional Why, who wrote them (editing either makes them yours; typing in one field merges into one
+ * undo step), and Where it would go: after which block, or at the start of which body. A proposal has
+ * no code of its own. What needs review about where it goes shows with Review (Reconnect to another
+ * block, Accept, Remove). Copy link and Remove proposal close it; removing never edits code.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Author, copyLink } from "../../agent";
-import { cardQuery } from "../../canvas";
 import { ReviewButton } from "../../canvas/cards/ReviewBanner";
 import { Button } from "../../components";
-import type { Card, Proposal } from "../../ipc/generated";
-import { useFocusTarget } from "../../lib/focus-targets";
+import type { Proposal } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import {
   PROPOSAL_REASON_MAX,
   PROPOSAL_TITLE_MAX,
-  cardKey,
   editPage,
-  findCard,
-  findPage,
   itemsFor,
-  keyDisplayName,
-  labelTexts,
   proposalTitle,
   removeProposal,
   updateProposal,
   useOpenBoard,
   type PageTarget,
 } from "../../state/boards";
-import { PATH_WORDS, PROPOSAL_TITLE_FIELD } from "../proposeStep";
-import { sourceLines, sourceOf, viewCode } from "../viewCode";
+import { usePageBlock } from "../../state/cards";
 import { RelationRow } from "./Relations";
 
 /** Rewords a proposed step as `author`; typing in one field merges into one undo step. */
@@ -47,60 +37,30 @@ function reword(target: PageTarget, proposalId: string, change: { readonly title
   );
 }
 
-/** Where it would go: after which step (and path), and that step's lines as View placement code. */
-function Where({ target, proposal, card }: { readonly target: PageTarget; readonly proposal: Proposal; readonly card: Card }) {
-  const query = useQuery(cardQuery(target.board.project, cardKey(card)));
-  const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
-  const model = query.data?.type === "block" ? query.data : undefined;
-  const node = model?.flow?.nodes.find((item) => item.key === proposal.after);
-  const label = labelTexts(labels ?? [])[proposal.after] ?? node?.label;
-  const path = proposal.path !== undefined ? ` · ${PATH_WORDS[proposal.path]}` : "";
-  const selection = { kind: "proposal", proposalId: proposal.id } as const;
-  // Read through the resolver once the card's model is in (`query.data` keeps this current).
-  const placement = query.data ? sourceOf(target, selection) : null;
+/** Where it would go: after which block, or at the start of which body, as the page's cards draw it. */
+function Where({ target, proposal }: { readonly target: PageTarget; readonly proposal: Proposal }) {
+  const after = "after" in proposal;
+  const key = after ? proposal.after : proposal.start;
+  const drawn = usePageBlock(target, key);
+  const label = drawn ? (drawn.block.name ?? drawn.block.label) : after ? "a block" : "a body";
   return (
     <div className="selected-relations">
-      <RelationRow label="Where" title={proposal.after} wrap>
-        <span className="relation-path">{label !== undefined ? `after ${label}${path}` : `after ${keyDisplayName(proposal.after)} (missing)${path}`}</span>
+      <RelationRow label="Where" title={key} wrap>
+        <span className="relation-path">{after ? `after ${label}` : `at the start of ${label}`}</span>
       </RelationRow>
-      {placement?.target ? (
-        <>
-          <RelationRow
-            title="View placement code: the step it goes after"
-            onActivate={() => {
-              viewCode(target, selection);
-            }}
-          >
-            <span className="relation-code" aria-label={`View placement code, ${sourceLines(placement.target)}`}>
-              {sourceLines(placement.target)}
-            </span>
-          </RelationRow>
-          <p className="selected-note">A proposal has no code of its own: this opens the code of the step it would follow.</p>
-        </>
-      ) : (
-        <RelationRow wrap>
-          <span className="relation-path">{query.isPending ? "Loading…" : (placement?.reason ?? "The step it goes after isn't available.")}</span>
-        </RelationRow>
-      )}
     </div>
   );
 }
 
 export function SelectedProposal({ target, proposal }: { readonly target: PageTarget; readonly proposal: Proposal }) {
   const author = useAuthor();
-  const card = useOpenBoard(target.board, (board) => {
-    const page = findPage(board.document, target.page);
-    return page ? findCard(page, proposal.card) : undefined;
-  });
   const health = useOpenBoard(target.board, (board) => board.health);
   const issues = itemsFor(health, target.page, { proposal: proposal.id });
   const { project } = target.board;
   // What's typed shows while typing (a blank title isn't saved); leaving a field shows what is saved.
   const [title, setTitle] = useState<string | null>(null);
   const [reason, setReason] = useState<string | null>(null);
-  const titleField = useRef<HTMLInputElement>(null);
   const whyId = useId();
-  useFocusTarget(PROPOSAL_TITLE_FIELD, titleField);
   const shownTitle = title ?? proposal.title;
   const blank = proposalTitle(shownTitle) === null;
   return (
@@ -111,7 +71,6 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
           PROPOSED STEP
         </p>
         <input
-          ref={titleField}
           className="selected-name ui selected-title-input"
           aria-label="Proposed step title"
           aria-invalid={blank}
@@ -160,7 +119,7 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
           }}
         />
       </div>
-      {card ? <Where target={target} proposal={proposal} card={card} /> : null}
+      <Where target={target} proposal={proposal} />
       {issues.length > 0 ? (
         <p className="selected-note proposal-review">
           {issues.map((item) => item.message).join(" ")} <ReviewButton target={target} project={project} items={issues} />

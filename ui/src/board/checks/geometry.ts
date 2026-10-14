@@ -1,6 +1,6 @@
 /**
- * The drawn page the checks read (boxes, lines, and Flow cards as the canvas laid them out), and the
- * plane geometry they need: overlaps, crossing segments, and a segment meeting a box. Pure.
+ * The drawn page the checks read (boxes and lines as the canvas laid them out), and the plane geometry
+ * they need: overlaps, crossing segments, and a segment meeting a box. Pure.
  */
 
 /** A point on the canvas, in canvas units. */
@@ -17,9 +17,9 @@ export interface Box {
   readonly height: number;
 }
 
-/** A drawn line between two items: a compiled arrow, a drawn link, or a connection. */
+/** A drawn line between two items: a compiled arrow, or a connection. */
 export interface DrawnLine {
-  /** The line's id on the canvas: a link's id, or an arrow's (which is no page item). */
+  /** The line's id on the canvas: a connection's id, or an arrow's (which is no page item). */
   readonly id: string;
   /** The items it joins: cards, or frames and resource cards where the canvas draws lines to them. */
   readonly from: string;
@@ -28,18 +28,11 @@ export interface DrawnLine {
   readonly points: readonly Point[];
 }
 
-/** A card drawn in Flow: its visible steps. */
-export interface DrawnFlow {
-  readonly steps: number;
-}
-
 /** The page as the canvas laid it out. */
 export interface PageGeometry {
   /** Each drawn item's box by id: cards, and frames, resource cards, and notes where the canvas draws them. */
   readonly boxes: ReadonlyMap<string, Box>;
   readonly lines: readonly DrawnLine[];
-  /** The cards drawn in Flow, by id. */
-  readonly flows: ReadonlyMap<string, DrawnFlow>;
 }
 
 /** How far two boxes overlap along each axis (zero or less where they don't). */

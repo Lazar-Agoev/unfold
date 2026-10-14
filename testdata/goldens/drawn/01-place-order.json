@@ -1,0 +1,640 @@
+{
+  "header": {
+    "key": "shop/service.py#place_order",
+    "kind": "function",
+    "form": "function",
+    "label": "place_order",
+    "signature": "def place_order(order_id)",
+    "description": "Charge an order and save it.",
+    "path": "shop/service.py",
+    "line": 9,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "shop/service.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "shop/service.py#place_order/call:load_order",
+    "shop/service.py#place_order/if[0]",
+    "shop/service.py#place_order/call:sum",
+    "shop/service.py#place_order/try[0]",
+    "shop/service.py#place_order/call:save_order",
+    "shop/service.py#place_order/for[0]",
+    "shop/service.py#place_order/return[0]"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/service.py#place_order/call:load_order",
+        "callee": "load_order",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/store.py#load_order"
+        },
+        "binds": "order",
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "decision",
+        "key": "shop/service.py#place_order/if[0]",
+        "form": "if",
+        "headerCalls": [],
+        "lanes": [
+          {
+            "id": 3,
+            "key": "shop/service.py#place_order/if[0]/then",
+            "form": "then",
+            "state": "reached",
+            "test": {
+              "text": "order is None",
+              "calls": []
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/if[0]/then/raise[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 4,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "shop/service.py#place_order/if[0]/then/raise[0]",
+                  "form": "raise",
+                  "value": {
+                    "kind": "call",
+                    "key": "shop/service.py#place_order/if[0]/then/raise[0]/call:ValueError",
+                    "callee": "ValueError",
+                    "form": "call",
+                    "to": {
+                      "outcome": "builtin",
+                      "module": "python:builtins",
+                      "note": "python:builtins"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "calls": [],
+                    "callbacks": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": false
+                    }
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/if[0]/then"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 5,
+            "key": "shop/service.py#place_order/if[0]/elif[0]",
+            "form": "elif",
+            "state": "reached",
+            "test": {
+              "text": "order[\"paid\"]",
+              "calls": []
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/if[0]/elif[0]/return[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 6,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "shop/service.py#place_order/if[0]/elif[0]/return[0]",
+                  "form": "return",
+                  "value": {
+                    "kind": "text",
+                    "text": "order"
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/if[0]/elif[0]"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 7,
+        "state": "reached",
+        "gap": {
+          "count": 1,
+          "lines": [
+            17,
+            17
+          ],
+          "hidden": []
+        },
+        "kind": "try",
+        "key": "shop/service.py#place_order/try[0]",
+        "form": "try",
+        "headerCalls": [],
+        "lanes": [
+          {
+            "id": 8,
+            "key": "shop/service.py#place_order/try[0]/body",
+            "form": "body",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/try[0]/body/call:charge_card"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 9,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "shop/service.py#place_order/try[0]/body/call:charge_card",
+                  "callee": "charge_card",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "shop/payments.py#charge_card"
+                  },
+                  "binds": "receipt",
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/try[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 10,
+            "key": "shop/service.py#place_order/try[0]/except[0]",
+            "form": "except",
+            "state": "reached",
+            "clause": "except PaymentDeclined as error",
+            "types": [
+              {
+                "outcome": "project",
+                "key": "shop/payments.py#PaymentDeclined"
+              }
+            ],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
+              "shop/service.py#place_order/try[0]/except[0]/return[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 11,
+                  "state": "reached",
+                  "kind": "thin",
+                  "calls": [
+                    {
+                      "key": "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
+                      "callee": "logger.warning",
+                      "form": "call",
+                      "to": {
+                        "outcome": "unknown",
+                        "reason": "unknown_receiver",
+                        "note": "receiver type unknown"
+                      },
+                      "awaited": false,
+                      "sometimes": false,
+                      "inside": [],
+                      "actions": {
+                        "combine": {
+                          "with": "steps",
+                          "body": "shop/service.py#place_order/try[0]/except[0]"
+                        },
+                        "after": true,
+                        "start": false,
+                        "open": false
+                      }
+                    }
+                  ],
+                  "unknown": 1
+                },
+                {
+                  "id": 12,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "shop/service.py#place_order/try[0]/except[0]/return[0]",
+                  "form": "return",
+                  "value": {
+                    "kind": "call",
+                    "key": "shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed",
+                    "callee": "mark_failed",
+                    "form": "call",
+                    "to": {
+                      "outcome": "project",
+                      "key": "shop/store.py#mark_failed"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "calls": [],
+                    "callbacks": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": true
+                    }
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/try[0]/except[0]"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 13,
+        "state": "reached",
+        "gap": {
+          "count": 1,
+          "lines": [
+            24,
+            24
+          ],
+          "hidden": []
+        },
+        "kind": "call",
+        "key": "shop/service.py#place_order/call:save_order",
+        "callee": "save_order",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/store.py#save_order"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 14,
+        "state": "reached",
+        "kind": "loop",
+        "key": "shop/service.py#place_order/for[0]",
+        "form": "for",
+        "header": "for item in order[\"items\"]",
+        "headerCalls": [],
+        "lanes": [
+          {
+            "id": 15,
+            "key": "shop/service.py#place_order/for[0]/body",
+            "form": "body",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/for[0]/body/call:reserve_stock"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 16,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "shop/service.py#place_order/for[0]/body/call:reserve_stock",
+                  "callee": "reserve_stock",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "shop/store.py#reserve_stock"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/for[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 17,
+        "state": "reached",
+        "kind": "exit",
+        "key": "shop/service.py#place_order/return[0]",
+        "form": "return",
+        "value": {
+          "kind": "text",
+          "text": "order"
+        },
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "yes",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "no",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "raise",
+      "to": "caller",
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "yes",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "no",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 6,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "onError",
+      "to": {
+        "step": 10
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "on",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "on",
+      "to": {
+        "step": 13
+      },
+      "through": []
+    },
+    {
+      "from": 10,
+      "kind": "on",
+      "to": {
+        "step": 11
+      },
+      "through": []
+    },
+    {
+      "from": 11,
+      "kind": "on",
+      "to": {
+        "step": 12
+      },
+      "through": []
+    },
+    {
+      "from": 12,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    },
+    {
+      "from": 13,
+      "kind": "on",
+      "to": {
+        "step": 14
+      },
+      "through": []
+    },
+    {
+      "from": 14,
+      "kind": "each",
+      "to": {
+        "step": 15
+      },
+      "through": []
+    },
+    {
+      "from": 14,
+      "kind": "done",
+      "to": {
+        "step": 17
+      },
+      "through": []
+    },
+    {
+      "from": 15,
+      "kind": "on",
+      "to": {
+        "step": 16
+      },
+      "through": []
+    },
+    {
+      "from": 16,
+      "kind": "next",
+      "to": {
+        "step": 14
+      },
+      "through": []
+    },
+    {
+      "from": 17,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

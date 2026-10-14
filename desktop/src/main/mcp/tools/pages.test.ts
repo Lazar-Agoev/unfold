@@ -1,35 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 import cardCreateOrder from "../../../../../testdata/workspace/commands/card_create_order.json";
+import cardPlaceAnOrder from "../../../../../testdata/workspace/commands/card_place_an_order.json";
+import flowTextCreateOrder from "../../../../../testdata/workspace/commands/flow_text_create_order.json";
 import type { AgentPage, AgentShellEvent } from "../../../shared/agent-api";
 import { pageRevision } from "../../agents/revision";
-import type { BoardSummary, CardView, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
+import type { BoardSummary, CardView, FlowText, NodeKind, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
 import { listBoards, readPage } from "./pages";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
 vi.mock("electron", async () => (await import("../../fake-electron")).electronModule);
 
-const CREATE_ORDER = "src/routes/orders.ts#function:createOrder";
-const PLACE = "src/services/order-service.ts#class:OrderService/method:place";
-const ENTRANCE = 'entrance:["express.route","http","POST","/orders","src/routes/orders.ts"]';
-const CART = "src/cart.ts#interface:Cart";
-const CART_ITEM = "src/cart.ts#interface:CartItem";
-const BASKET = "src/cart.ts#class:Basket";
+const CREATE_ORDER = "src/routes/orders.ts#createOrder";
+const PLACE = "src/services/order-service.ts#OrderService.place";
+const ENTRANCE = "entrance:server/place-an-order";
+const CART = "src/cart.ts#Cart";
+const CART_ITEM = "src/cart.ts#CartItem";
+const BASKET = "src/cart.ts#Basket";
+const PLACE_CALL = `${CREATE_ORDER}/call:orderService.place`;
 const BOARD = { project: PROJECT, id: ".unfold/boards/order-placement.json" };
 const BOARD_INFO = { title: "Order placement", revision: "r1" } as const;
 
 const PAGE: AgentPage = {
   id: "page-1",
   title: "Placing an order",
-  defaultView: "diagram",
+  defaultView: "compact",
   cards: [
     { id: "post-orders", ref: { entrance: ENTRANCE }, at: [0, 0] },
-    { id: "create-order", ref: { block: CREATE_ORDER }, at: [320, 0], view: "flow", description: { text: "Places the order now, or queues it.", author: "agent:claude", signature: "s" } },
+    { id: "create-order", ref: { block: CREATE_ORDER }, at: [320, 0], view: "expanded", description: { text: "Places the order now, or queues it.", author: "agent:claude", signature: "s" } },
     { id: "place", ref: { block: PLACE }, at: [800, 0] },
     { id: "cart", ref: { block: CART }, at: [0, 400] },
     { id: "cart-item", ref: { block: CART_ITEM }, at: [400, 400] },
   ],
-  groups: [{ id: "queue-it", card: "create-order", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]/variable:job`, `${CREATE_ORDER}/if[0]/return[0]`], collapsed: true, author: "agent:claude" }],
-  labels: [{ key: `${CREATE_ORDER}/variable:draft`, text: "Read the order draft", author: "person:lazar", signature: "s" }],
+  names: [{ key: `${CREATE_ORDER}/if[0]`, text: "Asked to queue it?", author: "person:lazar", signature: "s" }],
+  combined: [{ id: "queue-it", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]`], collapsed: true, author: "agent:claude", signature: "s" }],
   guards: [],
   links: [
     {
@@ -37,12 +40,11 @@ const PAGE: AgentPage = {
       from: "create-order",
       to: "orders",
       kind: "writes",
-      step: `${CREATE_ORDER}/variable:order/call[0]`,
-      anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }],
+      step: PLACE_CALL,
+      anchors: [{ key: "src/db/repository.ts#OrderRepository" }],
       author: "agent:codex",
       label: { text: "the order", author: "agent:codex", signature: "s" },
     },
-    { id: "talks", from: "place", to: "orders", label: { text: "calls over HTTP", author: "person:lazar", signature: "s" } },
   ],
   frames: [
     { id: "server", title: "server", members: ["post-orders", "create-order", "checks"], look: "box", icon: "api", author: "agent:claude" },
@@ -62,21 +64,17 @@ const PAGE: AgentPage = {
   notes: [{ id: "note-1", text: "The client gets a job id, not the order.", at: [0, -40], attach: "create-order", author: "agent:claude" }],
 };
 
-const ENTRANCE_CARD: CardView = {
-  type: "entrance",
-  header: { key: ENTRANCE, kind: "http", title: "POST /orders", label: null, method: "POST", trigger: "/orders", triggerStatus: "exact", detector: "express.route", language: "typescript" },
-  evidence: { path: "src/routes/orders.ts", startLine: 40, endLine: 40, source: "current", code: null, text: null, pointer: null },
-  targets: [{ position: 0, role: "handler", text: "createOrder", resolution: "resolved", target: CREATE_ORDER, name: "createOrder", path: "src/routes/orders.ts", line: 25, note: null, reason: null, module: null }],
-  applications: ["server"],
-} as unknown as CardView;
-
-function blockCard(key: string, kind: string, qualifiedName: string, line: number): CardView {
+/** A definition's card that draws nothing but its header. */
+function definitionCard(key: string, kind: NodeKind, form: "method" | "interface" | "class", label: string, line: number): CardView {
   return {
-    type: "block",
-    header: { key, kind, name: qualifiedName, qualifiedName, path: key.slice(0, key.indexOf("#")), startLine: line, endLine: line + 5, language: "typescript", fileState: "current", source: "current", owner: "" },
-    code: null,
-    flow: null,
-  } as unknown as CardView;
+    type: "definition",
+    flow: {
+      header: { key, kind, form, label, path: key.slice(0, key.indexOf("#")), line, async: false, generator: false, definedWith: [], imports: [], actions: { after: false, start: true, open: false } },
+      combinable: [],
+      steps: { steps: [] },
+      routes: [],
+    },
+  };
 }
 
 const CART_DEFINITION: TypeDefinition = {
@@ -87,8 +85,8 @@ const CART_DEFINITION: TypeDefinition = {
   line: 12,
   language: "typescript",
   members: [
-    { name: "items", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem[]", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } },
-    { name: "owner", kind: "property", optional: false, readonly: false, default: false, type: { text: "string", spans: [{ start: 0, end: 6, style: "builtin" }] } },
+    { name: "items", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem[]", spans: [{ start: 0, end: 8, to: { outcome: "project", key: CART_ITEM } }] } },
+    { name: "owner", kind: "property", optional: false, readonly: false, default: false, type: { text: "string", spans: [{ start: 0, end: 6, to: { outcome: "builtin" } }] } },
   ],
   inherited: [],
   uses: 3,
@@ -102,12 +100,20 @@ const DEFINITIONS: Readonly<Record<string, TypeDefinition>> = {
 
 const CARDS: Readonly<Record<string, () => CardView>> = {
   [CREATE_ORDER]: () => recorded<CardView>(cardCreateOrder),
-  [ENTRANCE]: () => ENTRANCE_CARD,
-  [PLACE]: () => blockCard(PLACE, "method", "OrderService.place", 13),
-  [CART]: () => blockCard(CART, "interface", "Cart", 12),
-  [CART_ITEM]: () => blockCard(CART_ITEM, "interface", "CartItem", 6),
-  [BASKET]: () => blockCard(BASKET, "class", "Basket", 20),
+  [ENTRANCE]: () => recorded<CardView>(cardPlaceAnOrder),
+  [PLACE]: () => definitionCard(PLACE, "function", "method", "OrderService.place", 13),
+  [CART]: () => definitionCard(CART, "type", "interface", "Cart", 12),
+  [CART_ITEM]: () => definitionCard(CART_ITEM, "type", "interface", "CartItem", 6),
+  [BASKET]: () => definitionCard(BASKET, "class", "class", "Basket", 20),
 };
+
+function card(args: Readonly<Record<string, unknown>>): CardView {
+  const answer = CARDS[String(args["key"])];
+  if (!answer) {
+    throw new Error(`no card ${String(args["key"])}`);
+  }
+  return answer();
+}
 
 function file(page: AgentPage = PAGE): ReadBoardResult {
   return {
@@ -122,13 +128,8 @@ function file(page: AgentPage = PAGE): ReadBoardResult {
 function app(window?: (request: AgentShellEvent) => unknown) {
   return harness({
     engine: {
-      card: (args) => {
-        const answer = CARDS[String(args["key"])];
-        if (!answer) {
-          throw new Error(`no card ${String(args["key"])}`);
-        }
-        return answer();
-      },
+      card,
+      flow_text: () => recorded<FlowText>(flowTextCreateOrder),
       type_definition: (args) => DEFINITIONS[String(args["key"])],
       read_board: () => file(),
     },
@@ -148,97 +149,103 @@ describe("read_page", () => {
     const lines = text.split("\n");
     expect(lines.slice(0, 2)).toEqual([
       `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
-      `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1. The page opens in Diagram; cards without their own setting are compact. The window has edits it hasn't saved yet; they're included.`,
+      `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1. Cards without their own setting are compact. The window has edits it hasn't saved yet; they're included.`,
     ]);
     expect(lines).toContain("Cards (5):");
-    expect(lines).toContain(`- POST /orders (card id post-orders): http entrance; key ${ENTRANCE}; compact (the page's default); at [0, 0]; in frame server`);
-    expect(lines).toContain(
+    expect(lines).toContain(`- Place an order (card id post-orders): entrance of Server; key ${ENTRANCE}; compact (the page's default); at [0, 0]; in frame server`);
+    const createOrder = lines.indexOf(
       `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
     );
+    expect(createOrder).toBeGreaterThan(0);
+    // An expanded card's drawn flow, as flow_text prints it, shaped by the page's overlay and the card's open paths.
+    expect(lines[createOrder + 1]).toBe(`    ( createOrder )   key=${CREATE_ORDER}`);
+    expect(test.engineCalls.find(([command]) => command === "flow_text")?.[1]).toEqual({
+      project: PROJECT,
+      key: CREATE_ORDER,
+      overlay: { names: [{ key: `${CREATE_ORDER}/if[0]`, text: "Asked to queue it?" }], combined: [{ id: "queue-it", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]`], collapsed: true }], proposed: [] },
+      open: [],
+    });
+    expect(test.engineCalls.filter(([command]) => command === "flow_text")).toHaveLength(1);
     expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); at [800, 0]; in frame checks`);
     expect(lines).toContain(`- Cart (card id cart): interface at src/cart.ts:12; key ${CART}; fields; at [0, 400]`);
-    expect(lines).toContain("- “Queue it for a worker” (step group id queue-it) in card create-order: 2 statements, lines 28–30; collapsed; titled by you");
+    expect(lines).toContain(`- “Asked to queue it?” on ${CREATE_ORDER}/if[0], by Lazar (a person)`);
+    expect(lines).toContain(`- “Queue it for a worker” (combined step id queue-it): combines ${CREATE_ORDER}/if[0]; collapsed; titled by you`);
     expect(lines).toContain("Frames (2), nested as they are:");
-    expect(lines).toContain("- server (frame id server; box, api; by you): holds POST /orders (post-orders), createOrder (create-order)");
+    expect(lines).toContain("- server (frame id server; box, api; by you): holds Place an order (post-orders), createOrder (create-order)");
     expect(lines).toContain("  - Shared (frame id checks; box, collapsed; by Lazar (a person)): holds OrderService.place (place); description by Lazar (a person): “Code both services call.”");
     expect(lines).toContain(
       "- table “orders” (resource id orders): at [800, 200]; columns id (primary), customer_id text (foreign → customers.id); anchors db/schema.sql:3–9; by you",
     );
     expect(lines).toContain(
-      `- writes connection createOrder (create-order) → orders (orders) (link id save-order): from step at src/routes/orders.ts:32 (key ${CREATE_ORDER}/variable:order/call[0]); anchors OrderRepository (key src/db/repository.ts#class:OrderRepository); by Codex (an agent); label by Codex (an agent): “the order”`,
+      `- writes connection createOrder (create-order) → orders (orders) (link id save-order): from the call ${PLACE_CALL}; anchors OrderRepository (key src/db/repository.ts#OrderRepository); by Codex (an agent); label by Codex (an agent): “the order”`,
     );
-    expect(lines).toContain("- link OrderService.place (place) → orders (orders) (link id talks): label by Lazar (a person): “calls over HTTP”");
     expect(lines).toContain("- note note-1, attached to createOrder (create-order) at offset [0, -40], by you: “The client gets a job id, not the order.”");
-    expect(lines).toContain("- POST /orders (post-orders) → createOrder (create-order): handler createOrder");
-    expect(lines).toContain(
-      `- createOrder (create-order) → OrderService.place (place): calls orderService.place at line 32; source ${CREATE_ORDER}/variable:order/call[0], seq 0`,
-    );
+    expect(lines).toContain("- Place an order (post-orders) → createOrder (create-order): starts at createOrder");
+    expect(lines).toContain(`- createOrder (create-order) → OrderService.place (place): calls orderService.place (call key ${PLACE_CALL})`);
     expect(lines).toContain(`- Cart (cart) → CartItem (cart-item): field items: CartItem[] (CartItem: ${CART_ITEM})`);
     expect(test.commands()).not.toContain("read_board");
   });
 
   it("draws type arrows only from type cards showing their fields, and to the first card of a key, as the canvas does", async () => {
-    const BASE = "src/cart.ts#interface:Base";
+    const BASE = "src/cart.ts#Base";
     const withBase: TypeDefinition = {
       ...CART_DEFINITION,
       inherited: [
         {
-          from: { text: "Base<CartItem>", spans: [{ start: 0, end: 4, style: "declared", target: BASE }, { start: 5, end: 13, style: "declared", target: CART_ITEM }] },
-          members: [{ name: "extra", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem", spans: [{ start: 0, end: 8, style: "declared", target: CART_ITEM }] } }],
+          from: { text: "Base<CartItem>", spans: [{ start: 0, end: 4, to: { outcome: "project", key: BASE } }, { start: 5, end: 13, to: { outcome: "project", key: CART_ITEM } }] },
+          members: [{ name: "extra", kind: "property", optional: false, readonly: false, default: false, type: { text: "CartItem", spans: [{ start: 0, end: 8, to: { outcome: "project", key: CART_ITEM } }] } }],
         },
       ],
     };
     const typeLines = async (cards: AgentPage["cards"]) => {
-      const page: AgentPage = { ...PAGE, cards, groups: [], links: [], frames: [], resources: [], notes: [] };
-      const test = harness({ engine: { card: (args) => CARDS[String(args["key"])]?.() ?? null, type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), read_board: () => file(page) } });
+      const page: AgentPage = { ...PAGE, cards, names: [], combined: [], links: [], frames: [], resources: [], notes: [] };
+      const test = harness({ engine: { card, flow_text: () => ({ text: "", labels: [] }), type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), read_board: () => file(page) } });
       const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
       return { lines: text.split("\n").filter((line) => line.includes(": field ")), definitions: test.commands().filter((command) => command === "type_definition").length };
     };
+    const fields = [
+      `- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: ${CART_ITEM})`,
+      `- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: ${CART_ITEM})`,
+    ];
     // Base has no card, so Cart lists the fields it inherits, with their arrows; the second CartItem card gets none.
     expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0] }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0] }, { id: "item-2", ref: { block: CART_ITEM }, at: [800, 0] }])).toEqual({
-      lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
+      lines: fields,
       definitions: 3,
     });
     // A type card keeps its fields, and their arrows, in every view.
-    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0], view: "code" }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0], view: "code" }])).toEqual({
-      lines: ["- Cart (cart) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)", "- Cart (cart) → CartItem (item): field from Base<CartItem>: extra: CartItem (CartItem: src/cart.ts#interface:CartItem)"],
-      definitions: 2,
-    });
-    // A class shows its fields only while compact: expanded (a saved Flow, or a legacy Code view), it shows its detail.
-    const basket = async (view: "diagram" | "flow" | "code") => typeLines([{ id: "basket", ref: { block: BASKET }, at: [0, 0], view }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0] }]);
-    expect(await basket("diagram")).toEqual({ lines: ["- Basket (basket) → CartItem (item): field items: CartItem[] (CartItem: src/cart.ts#interface:CartItem)"], definitions: 2 });
-    expect(await basket("flow")).toEqual({ lines: [], definitions: 1 });
-    expect(await basket("code")).toEqual({ lines: [], definitions: 1 });
+    expect(await typeLines([{ id: "cart", ref: { block: CART }, at: [0, 0], view: "expanded" }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0], view: "expanded" }])).toEqual({ lines: fields, definitions: 2 });
+    // A class shows its fields only while compact: expanded, it shows its class-level code.
+    const basket = async (view: "compact" | "expanded") => typeLines([{ id: "basket", ref: { block: BASKET }, at: [0, 0], view }, { id: "item", ref: { block: CART_ITEM }, at: [400, 0] }]);
+    expect(await basket("compact")).toEqual({ lines: [`- Basket (basket) → CartItem (item): field items: CartItem[] (CartItem: ${CART_ITEM})`], definitions: 2 });
+    expect(await basket("expanded")).toEqual({ lines: [], definitions: 1 });
   });
 
-  it("lists each card's expansion and calls expanded in place, and proposed steps under their cards with their anchors' health", async () => {
-    const CALL = `${CREATE_ORDER}/variable:order/call[0]`;
+  it("lists each card's view and calls open in place, and proposed steps with their anchors' health", async () => {
     const page: AgentPage = {
       ...PAGE,
-      defaultView: "code",
+      defaultView: "expanded",
       cards: [
-        { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0], view: "flow", expanded: [[CALL], [CALL, `${PLACE}/call[0]`]] },
-        { id: "place", ref: { block: PLACE }, at: [400, 0], view: "diagram" },
+        { id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0], open: [[PLACE_CALL], [PLACE_CALL, `${PLACE}/call:validateOrder`]] },
+        { id: "place", ref: { block: PLACE }, at: [400, 0], view: "compact" },
       ],
-      groups: [],
+      names: [],
+      combined: [],
       links: [],
       frames: [],
       resources: [],
       notes: [],
-      labels: [{ key: `${CREATE_ORDER}/variable:order`, text: "Place the order now", author: "agent:claude", signature: "s" }],
       proposals: [
-        { id: "email", card: "create-order", after: `${CREATE_ORDER}/variable:order`, title: "Email a confirmation", reason: "The queued path sends one.", author: "person:maya" },
-        { id: "notify", card: "create-order", after: `${CREATE_ORDER}/if[0]`, path: "yes", title: "Notify the customer", author: "agent:claude" },
-        { id: "retry", card: "create-order", after: `${CREATE_ORDER}/if[1]`, title: "Retry", author: "agent:claude" },
-        { id: "audit", card: "place", after: `${PLACE}/call[0]`, title: "Audit the order", author: "agent:claude" },
+        { id: "email", after: PLACE_CALL, title: "Email a confirmation", reason: "The queued path sends one.", author: "person:maya" },
+        { id: "audit", start: PLACE, title: "Audit the order", author: "agent:claude" },
       ],
     };
-    const review = "The step this proposal goes after changed kind or owner; check where it goes, then accept the current code, reconnect it to another step, or remove the proposal";
+    const review = "The block this proposal goes after changed kind or owner; check where it goes, then accept the current code, reconnect it, or remove the proposal";
     const test = harness({
       engine: {
-        card: (args) => CARDS[String(args["key"])]?.() ?? null,
+        card,
+        flow_text: () => recorded<FlowText>(flowTextCreateOrder),
         board_health: () => ({
-          health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "removeProposal"] }], missing: 0, outdated: 0, brokenGroups: 0, review: 1, brokenLinks: 0 },
+          health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "remove"] }], missing: 0, outdated: 0, review: 1, brokenCombined: 0, brokenLinks: 0 },
           label: null,
         }),
       },
@@ -246,17 +253,19 @@ describe("read_page", () => {
     });
     test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const lines = (await test.call(readPage)).text.split("\n");
-    expect(lines[1]).toContain("The page opens in Code, every card's source; in Diagram, cards without their own setting are expanded.");
-    expect(lines).toContain(`- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded, calls expanded in place [${CALL}], [${CALL} › ${PLACE}/call[0]]; at [0, 0]`);
+    expect(lines[1]).toContain("Cards without their own setting are expanded.");
+    expect(lines).toContain(
+      `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded (the page's default), calls open in place [${PLACE_CALL}], [${PLACE_CALL} › ${PLACE}/call:validateOrder]; at [0, 0]`,
+    );
     expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact; at [400, 0]`);
-    const at = lines.indexOf("Proposed steps (4), by card: intentions, not code:");
-    expect(lines.slice(at + 1, at + 7)).toEqual([
-      "- createOrder (create-order):",
-      `  - “Email a confirmation” (proposal id email): after the step “Place the order now” (call; line 32; key ${CREATE_ORDER}/variable:order); by Maya (a person); reason “The queued path sends one.”`,
-      `  - “Notify the customer” (proposal id notify): after the step “req.header?” (condition; line 27; key ${CREATE_ORDER}/if[0]), on its “yes” path; by you`,
-      `  - “Retry” (proposal id retry): after the step ${CREATE_ORDER}/if[1]; by you; anchor missing: no step of its card's code has this key now (propose with its id and a new after moves it; remove_items takes it off)`,
-      "- OrderService.place (place):",
-      `  - “Audit the order” (proposal id audit): after the step ${PLACE}/call[0]; by you; anchor held for review: ${review} (propose with its id and a new after moves it; remove_items takes it off)`,
+    expect(test.engineCalls.find(([command]) => command === "card")?.[1]).toMatchObject({
+      overlay: { proposed: [{ id: "email", title: "Email a confirmation", after: PLACE_CALL }, { id: "audit", title: "Audit the order", start: PLACE }] },
+      open: [[PLACE_CALL], [PLACE_CALL, `${PLACE}/call:validateOrder`]],
+    });
+    const at = lines.indexOf("Proposed steps, intentions, not code (2):");
+    expect(lines.slice(at + 1, at + 3)).toEqual([
+      `- “Email a confirmation” (proposal id email): after ${PLACE_CALL}; by Maya (a person); reason “The queued path sends one.”`,
+      `- “Audit the order” (proposal id audit): at the start of ${PLACE}; by you; anchor held for review: ${review} (propose with its id and a new spot moves it; remove_items takes it off)`,
     ]);
     expect(test.windowCalls).toEqual([[1, "board_health", { project: PROJECT, id: BOARD.id }]]);
   });
@@ -269,8 +278,8 @@ describe("read_page", () => {
     const second = await test.call(readPage, { page: `unfold://ts-orders/${BOARD.id}?page=page-2` });
     expect(second.text.split("\n")[0]).toContain("› Async path ·");
 
-    const many: AgentPage = { ...PAGE, cards: Array.from({ length: 130 }, (_, index) => ({ id: `c${index}`, ref: { block: CART_ITEM }, at: [index, 0] })), groups: [], links: [], frames: [], resources: [], notes: [] };
-    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
+    const many: AgentPage = { ...PAGE, cards: Array.from({ length: 130 }, (_, index) => ({ id: `c${index}`, ref: { block: CART_ITEM }, at: [index, 0] })), names: [], combined: [], links: [], frames: [], resources: [], notes: [] };
+    const paged = harness({ engine: { card, type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
     const first = await paged.call(readPage, { board: BOARD.id, project: "ts-orders" });
     expect(first.text).toContain('Showing 120 of 131. Next page: read_page with cursor "120".');
     expect(first.text).not.toContain("Next: check");
@@ -283,8 +292,8 @@ describe("read_page", () => {
   it("pages a page of long lines before the size guard would cut it, so every line stays reachable", async () => {
     const description = { text: "d".repeat(300), author: "agent:claude", signature: "s" };
     const ids = Array.from({ length: 130 }, (_, index) => `c${index}`);
-    const many: AgentPage = { ...PAGE, cards: ids.map((id, index) => ({ id, ref: { block: CART_ITEM }, at: [index, 0], description })), groups: [], links: [], frames: [], resources: [], notes: [] };
-    const paged = harness({ engine: { card: CARDS[CART_ITEM] ?? (() => null), type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
+    const many: AgentPage = { ...PAGE, cards: ids.map((id, index) => ({ id, ref: { block: CART_ITEM }, at: [index, 0], description })), names: [], combined: [], links: [], frames: [], resources: [], notes: [] };
+    const paged = harness({ engine: { card, type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(many) } });
     const seen: string[] = [];
     let cursor: string | undefined;
     do {

@@ -19,7 +19,7 @@ const EDIT: AgentEditInput = {
   page: "page-1",
   agent: { author: "agent:claude", name: "Claude" },
   title: "Add cards",
-  ops: [{ op: "add_cards", cards: [{ key: "src/a.ts#function:a" }] }],
+  ops: [{ op: "add_cards", cards: [{ ref: { block: "src/a.ts#a" } }] }],
 };
 const SAVED: AgentEditSuccess = { ok: true, page: PAGE, board: BOARD_INFO, items: [], warnings: [] };
 

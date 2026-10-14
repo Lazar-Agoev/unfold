@@ -1,12 +1,11 @@
 /**
- * What the window shows (design §5.6): it reports its board, page, selection, lens, the items in
- * view, and the boards whose sessions it holds (`report_view`) when any of them changes and when it
+ * What the window shows (design §5.6): it reports its board, page, selection, the items in view, and the boards whose sessions it holds (`report_view`) when any of them changes and when it
  * gains focus. The main process keeps the last report, so tools default to the window's view and
  * edits know whether it holds a board. Reports are kept by window id: each opening of the window gets
  * a new one.
  */
 
-import type { AgentBoardRef, AgentLens, ViewReport, ViewSelection } from "../../shared/agent-api";
+import type { AgentBoardRef, ViewReport, ViewSelection } from "../../shared/agent-api";
 
 /** The most ids a report's lists may hold (far more boards or items in view than a window has). */
 const MAX_IDS = 5_000;
@@ -19,33 +18,20 @@ function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function isLens(value: unknown): value is AgentLens {
-  return value === "diagram" || value === "code";
-}
-
 function boardRef(value: unknown): AgentBoardRef | null {
   return isRecord(value) && isString(value["project"]) && isString(value["id"]) ? { project: value["project"], id: value["id"] } : null;
-}
-
-/** One call of a `calls` selection: its occurrence, its edge, and its line. */
-function call(value: unknown): { source: string; seq: number; line: number | null } | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const { source, seq, line } = value;
-  return isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line)) ? { source, seq: seq as number, line: line as number | null } : null;
 }
 
 function selection(value: unknown): ViewSelection | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { kind, id, card, key, owner, from, to, source, seq, line, calls } = value;
+  const { kind, id, card, key, owner, from, to, calls } = value;
   switch (kind) {
     case "none":
       return { kind };
     case "card":
-    case "group":
+    case "combined":
     case "link":
     case "frame":
     case "resource":
@@ -57,14 +43,9 @@ function selection(value: unknown): ViewSelection | null {
         return null;
       }
       return isString(card) && isString(key) ? { kind, card, key, ...(owner !== undefined ? { owner } : {}) } : null;
-    case "line":
-      return isString(from) && isString(to) && isString(source) && Number.isInteger(seq) && (line === null || Number.isInteger(line))
-        ? { kind, from, to, source, seq: seq as number, line: line as number | null }
-        : null;
-    case "calls": {
-      const listed = Array.isArray(calls) && calls.length <= MAX_IDS ? calls.map(call) : [null];
-      const valid = listed.filter((item) => item !== null);
-      return isString(from) && isString(to) && valid.length === listed.length ? { kind, from, to, calls: valid } : null;
+    case "arrow": {
+      const keys = ids(calls);
+      return isString(from) && isString(to) && keys !== null && keys.length > 0 ? { kind, from, to, calls: keys } : null;
     }
     default:
       return null;
@@ -82,14 +63,12 @@ export function parseViewReport(value: unknown): ViewReport | null {
   }
   const board = value["board"] === undefined ? undefined : boardRef(value["board"]);
   const page = value["page"];
-  const lens = value["lens"];
   const chosen = selection(value["selection"]);
   const visible = ids(value["visible"]);
   const held = Array.isArray(value["held"]) && value["held"].length <= MAX_IDS ? value["held"].map(boardRef) : null;
   if (
     board === null ||
     (page !== undefined && !isString(page)) ||
-    (lens !== undefined && !isLens(lens)) ||
     !chosen ||
     !visible ||
     !held ||
@@ -100,7 +79,6 @@ export function parseViewReport(value: unknown): ViewReport | null {
   return {
     ...(board ? { board } : {}),
     ...(page !== undefined ? { page } : {}),
-    ...(isLens(lens) ? { lens } : {}),
     selection: chosen,
     visible,
     held: held as AgentBoardRef[],

@@ -1,0 +1,348 @@
+{
+  "header": {
+    "key": "src/service.ts#placeOrder",
+    "kind": "function",
+    "form": "function",
+    "label": "placeOrder",
+    "signature": "async function placeOrder(id: string)",
+    "path": "src/service.ts",
+    "line": 3,
+    "async": true,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "src/service.ts#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "src/service.ts#placeOrder/call:loadOrder",
+    "src/service.ts#placeOrder/switch[0]",
+    "src/service.ts#placeOrder/call:chargeCard",
+    "src/service.ts#placeOrder/call:saveOrder",
+    "src/service.ts#placeOrder/return[0]"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "call",
+        "key": "src/service.ts#placeOrder/call:loadOrder",
+        "callee": "loadOrder",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "src/store.ts#loadOrder"
+        },
+        "binds": "order",
+        "awaited": true,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/service.ts#placeOrder"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "decision",
+        "key": "src/service.ts#placeOrder/switch[0]",
+        "form": "switch",
+        "header": "order.status",
+        "headerCalls": [],
+        "lanes": [
+          {
+            "id": 3,
+            "key": "src/service.ts#placeOrder/switch[0]/case[0]",
+            "form": "case",
+            "state": "reached",
+            "test": {
+              "text": "\"paid\"",
+              "calls": []
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "src/service.ts#placeOrder/switch[0]/case[0]/return[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 4,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "src/service.ts#placeOrder/switch[0]/case[0]/return[0]",
+                  "form": "return",
+                  "value": {
+                    "kind": "text",
+                    "text": "order"
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "src/service.ts#placeOrder/switch[0]/case[0]"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 5,
+            "key": "src/service.ts#placeOrder/switch[0]/case[1]",
+            "form": "case",
+            "state": "reached",
+            "test": {
+              "text": "\"cancelled\"",
+              "calls": []
+            },
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "src/service.ts#placeOrder/switch[0]/case[1]/throw[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 6,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "src/service.ts#placeOrder/switch[0]/case[1]/throw[0]",
+                  "form": "throw",
+                  "value": {
+                    "kind": "call",
+                    "key": "src/service.ts#placeOrder/switch[0]/case[1]/throw[0]/call:Error",
+                    "callee": "Error",
+                    "form": "new",
+                    "to": {
+                      "outcome": "builtin",
+                      "module": "ecmascript",
+                      "note": "ecmascript"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "calls": [],
+                    "callbacks": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": false
+                    }
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "src/service.ts#placeOrder/switch[0]/case[1]"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/service.ts#placeOrder"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 7,
+        "state": "reached",
+        "kind": "call",
+        "key": "src/service.ts#placeOrder/call:chargeCard",
+        "callee": "chargeCard",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "src/store.ts#chargeCard"
+        },
+        "binds": "order.receipt",
+        "awaited": true,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/service.ts#placeOrder"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 8,
+        "state": "reached",
+        "kind": "call",
+        "key": "src/service.ts#placeOrder/call:saveOrder",
+        "callee": "saveOrder",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "src/store.ts#saveOrder"
+        },
+        "awaited": true,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/service.ts#placeOrder"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 9,
+        "state": "reached",
+        "kind": "exit",
+        "key": "src/service.ts#placeOrder/return[0]",
+        "form": "return",
+        "value": {
+          "kind": "text",
+          "text": "order"
+        },
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/service.ts#placeOrder"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "case",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "case",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "default",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "on",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "on",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 6,
+      "kind": "raise",
+      "to": "caller",
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "on",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

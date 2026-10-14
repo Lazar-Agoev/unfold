@@ -1,13 +1,14 @@
 /**
- * A written type (`TypeText`, docs/reader.md): its text with one span per type name
- * in it. A `declared` name reads as a name; an `external` one has a dotted underline whose tooltip
- * names its package; a `builtin` one reads like punctuation; an `unresolved` one has a dashed
- * underline whose tooltip says why. Between names, words read as text and punctuation (`[]`, `<>`,
+ * A written type (`TypeText`, docs/reader.md): its text with one span per type name in it, by where the
+ * name goes. A project name reads as a name; a library one has a dotted underline whose tooltip names
+ * its package; a builtin one reads like punctuation; an unknown one has a dashed underline whose
+ * tooltip says why. Between names, words read as text and punctuation (`[]`, `<>`,
  * `|`) in the contour gray.
  */
 
 import { Tooltip } from "../components";
 import type { TypeSpan, TypeText as TypeTextModel } from "../ipc/generated";
+import { reasonText } from "./text";
 import "./types.css";
 
 type TypeSegment =
@@ -40,20 +41,21 @@ export function typeSegments(type: TypeTextModel): TypeSegment[] {
 
 function SpanText({ segment }: { readonly segment: Extract<TypeSegment, { kind: "span" }> }) {
   const { span, text } = segment;
-  switch (span.style) {
-    case "declared":
+  const { to } = span;
+  switch (to.outcome) {
+    case "project":
       return <span className="type-name">{text}</span>;
-    case "external":
+    case "library":
       return (
-        <Tooltip content={`From ${span.module ?? span.note ?? "a package"}`} side="bottom" align="start">
+        <Tooltip content={`From ${to.module ?? to.note ?? "a package"}`} side="bottom" align="start">
           <span className="type-external" tabIndex={0}>
             {text}
           </span>
         </Tooltip>
       );
-    case "unresolved":
+    case "unknown":
       return (
-        <Tooltip content={span.note ?? "Not resolved"} side="bottom" align="start">
+        <Tooltip content={to.note ?? reasonText(to.reason)} side="bottom" align="start">
           <span className="type-unresolved" tabIndex={0}>
             {text}
           </span>

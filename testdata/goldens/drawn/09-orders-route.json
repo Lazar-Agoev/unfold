@@ -1,0 +1,135 @@
+{
+  "header": {
+    "key": "src/routes/orders.ts#",
+    "kind": "module",
+    "form": "module",
+    "label": "src/routes/orders.ts",
+    "path": "src/routes/orders.ts",
+    "line": 1,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [
+      {
+        "text": "express",
+        "to": {
+          "outcome": "library",
+          "module": "express",
+          "note": "express"
+        }
+      },
+      {
+        "text": "../service",
+        "to": {
+          "outcome": "project",
+          "key": "src/service.ts#"
+        }
+      }
+    ],
+    "actions": {
+      "after": false,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "src/routes/orders.ts#/call:Router",
+    "src/routes/orders.ts#/call:ordersRouter.post(\"/orders/:id\")"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "thin",
+        "calls": [
+          {
+            "key": "src/routes/orders.ts#/call:Router",
+            "callee": "Router",
+            "form": "call",
+            "to": {
+              "outcome": "library",
+              "module": "express",
+              "note": "express"
+            },
+            "binds": "ordersRouter",
+            "awaited": false,
+            "sometimes": false,
+            "inside": [],
+            "actions": {
+              "combine": {
+                "with": "steps",
+                "body": "src/routes/orders.ts#"
+              },
+              "after": true,
+              "start": false,
+              "open": false
+            }
+          }
+        ],
+        "unknown": 0
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "call",
+        "key": "src/routes/orders.ts#/call:ordersRouter.post(\"/orders/:id\")",
+        "callee": "ordersRouter.post",
+        "form": "call",
+        "to": {
+          "outcome": "unknown",
+          "reason": "unknown_receiver",
+          "note": "receiver type unknown"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [
+          {
+            "key": "src/routes/orders.ts#/call:ordersRouter.post(\"/orders/:id\")/callback[0]",
+            "label": "callback to ordersRouter.post",
+            "signature": "async (req, res) =>",
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": true
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "src/routes/orders.ts#"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

@@ -1,47 +1,8 @@
-/** Helpers for the reader journeys on the board: the saved board, dragging a card, and clicks on the canvas. */
+/** Pointer work on the canvas: clicks that wait for the camera to hold still. */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { shownBoardRef, cameraSettled, panUntilHittable, readBoard, type BoardFile } from "./board";
-
-/** Waits until the shown board's saved file satisfies `check` (autosave runs after a short pause). */
-export async function expectSaved(page: Page, folder: string, check: (board: BoardFile) => boolean, message: string): Promise<BoardFile> {
-  const { id } = await shownBoardRef(page);
-  let saved: BoardFile | undefined;
-  await expect
-    .poll(
-      () => {
-        try {
-          saved = readBoard(folder, id);
-          return check(saved);
-        } catch {
-          return false;
-        }
-      },
-      { message },
-    )
-    .toBe(true);
-  if (!saved) {
-    throw new Error(message);
-  }
-  return saved;
-}
-
-/** Drags a card by its header by `dx`, `dy` screen pixels. */
-export async function dragCard(page: Page, card: Locator, dx: number, dy: number): Promise<void> {
-  await cameraSettled(page);
-  await panUntilHittable(page, card.locator(".card-header .card-title"));
-  const header = await card.locator(".card-header .card-title").boundingBox();
-  if (!header) {
-    throw new Error("the card's header isn't on screen");
-  }
-  const x = header.x + header.width / 2;
-  const y = header.y + header.height / 2;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + dx, y + dy, { steps: 10 });
-  await page.mouse.up();
-}
+import { cameraSettled, panUntilHittable } from "./board";
 
 /**
  * Clicks something on the canvas once the camera holds still: a focus move (Show callers, a follow)

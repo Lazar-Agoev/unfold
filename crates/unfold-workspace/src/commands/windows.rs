@@ -21,12 +21,12 @@ pub fn window_state(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Option<Window
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct SaveWindowStateArgs {
-    /// The window's position and size, and the board it shows.
+    /// The window's position and size, the board it shows, and the Show all calls switch.
     pub state: WindowState,
 }
 
-/// `save_window_state`: remembers the window's position and size and the board it shows (main
-/// process only).
+/// `save_window_state`: remembers the window's position and size, the board it shows, and the
+/// Show all calls switch (main process only).
 pub fn save_window_state(ctx: &Ctx<'_>, args: SaveWindowStateArgs) -> CommandResult<()> {
     ctx.require_trusted("save_window_state")?;
     ctx.projects().app().set_window(&args.state)?;

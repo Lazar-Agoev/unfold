@@ -1,12 +1,12 @@
 /**
- * One arrow between cards: a curve from the calling row at the card's right edge into the target's
- * header, with a filled head. Arrows to opened calls are `--color-arrow`; an entrance's arrow to its
- * handler is the gray contour. Imports and passed references are dashed. Memoized.
+ * One arrow between cards: a curve from the call at the card's right edge (or the card's edge) into
+ * the target's header, with a filled head. Call arrows are `--color-arrow`; an app's or entrance's
+ * arrow to its code is the gray contour, dashed to stale code. Memoized.
  *
- * A call or reference arrow takes the click on a wide invisible stroke over its curve: it selects the
- * line, and Selected shows the call's contract. An arrow from a Diagram node that stands for several
- * calls selects them (Selected lists them). Handler arrows, type arrows (from a type card's field to
- * the type it names), and arrows that join several at a collapsed frame select nothing.
+ * A call's arrow takes the click on a wide invisible stroke over its curve: it selects the call, and
+ * Selected shows its contract. An arrow from a compact card that stands for several calls selects them
+ * (Selected lists them). Start arrows, type arrows (from a type card's field to the type it names),
+ * and arrows that join several at a collapsed frame select nothing.
  */
 
 import { getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
@@ -15,11 +15,11 @@ import { select, type PageTarget, type SelectedCalls, type SelectedLine } from "
 
 interface ArrowData extends Record<string, unknown> {
   readonly dashed: boolean;
-  /** An entrance's arrow to one of its handlers. */
-  readonly handler: boolean;
+  /** An app's or entrance's arrow to its code. */
+  readonly start: boolean;
   /** The page, for an arrow that selects something. */
   readonly page?: PageTarget;
-  /** The line it draws. */
+  /** The call it draws. */
   readonly line?: SelectedLine;
   /** The calls an arrow that stands for several selects (Selected lists them). */
   readonly calls?: SelectedCalls;
@@ -51,7 +51,7 @@ function selectionOf(data: ArrowData | undefined): { readonly name: string; read
   }
   if (line && page) {
     return {
-      name: line.seq === 0 ? "Call" : "Passed function",
+      name: "Call",
       onSelect: () => {
         select(page, { kind: "line", ...line });
       },
@@ -62,7 +62,7 @@ function selectionOf(data: ArrowData | undefined): { readonly name: string; read
 
 export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<ArrowEdgeType>) {
   const [path] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX: targetX - HEAD_LENGTH, targetY, targetPosition });
-  const tone = data?.handler ? " handler" : "";
+  const tone = data?.start ? " start" : "";
   const selected = data?.selected === true ? " selected" : "";
   const selection = selectionOf(data);
   return (

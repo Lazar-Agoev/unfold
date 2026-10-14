@@ -1,5 +1,5 @@
 /**
- * The marks at the ends of drawn links and connections: a filled arrowhead where the data goes, and a
+ * The marks at the ends of connections: a filled arrowhead where the data goes, and a
  * relationship's crow's-foot ends (a bar for one, a crow's foot for many). Pure SVG path data.
  */
 

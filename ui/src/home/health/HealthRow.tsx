@@ -5,15 +5,10 @@ import { Button } from "../../components";
 import { Icon, type IconName } from "../../icons";
 import type { ProjectId } from "../../ipc";
 import { openInEditor } from "../../lib/files";
-import { openPeek } from "../../state/overlays";
 import type { HealthAction, HealthRow } from "./problems";
 
 export function runHealthAction(project: ProjectId, action: HealthAction): void {
-  if (action.kind === "open") {
-    openPeek({ project, path: action.path, ...(action.line === null ? {} : { line: action.line }) });
-  } else {
-    void openInEditor(project, action.path);
-  }
+  void openInEditor(project, action.path, action.line);
 }
 
 export interface HealthRowViewProps {
@@ -48,6 +43,4 @@ export function HealthRowView({ row, icon = "warning-circle", inline = false, ac
 }
 
 /** The label of a row's action. */
-export function actionLabel(action: HealthAction): string {
-  return action.kind === "open" ? "Open" : "Open in editor";
-}
+export const ACTION_LABEL = "Open in editor";

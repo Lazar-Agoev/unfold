@@ -6,12 +6,11 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { newCardView } from "../code/typeKinds";
 import { Icon } from "../icons";
 import { engineQueryOptions } from "../ipc";
 import type { PageTarget } from "../state/boards";
 import { closeAdd } from "../state/overlays";
-import { activateChoice, type AddChoice } from "./activate";
+import { addResult } from "./activate";
 import { optionId, ResultList } from "./ResultList";
 import { ResultRow, resultText } from "./Rows";
 import { resultItems, searchArgs, type ResultItem } from "./search";
@@ -59,20 +58,6 @@ function useModalLayer(): void {
   }, []);
 }
 
-/** The choice a result stands for. */
-function choiceOf(item: ResultItem): AddChoice {
-  switch (item.type) {
-    case "entrance":
-      return { kind: "entrance", key: item.hit.key };
-    case "definition": {
-      const view = newCardView(item.hit.kind);
-      return { kind: "definition", key: item.hit.key, ...(view ? { view } : {}) };
-    }
-    case "file":
-      return { kind: "file", path: item.hit.path };
-  }
-}
-
 export function AddLayer({ page }: { readonly page: PageTarget }) {
   useModalLayer();
   const listId = useId();
@@ -106,7 +91,9 @@ export function AddLayer({ page }: { readonly page: PageTarget }) {
     [],
   );
   const choose = (item: ResultItem) => {
-    runAfterClose.current = () => void activateChoice(choiceOf(item), page);
+    runAfterClose.current = () => {
+      addResult(item, page);
+    };
     closeAdd();
   };
 
@@ -197,7 +184,7 @@ export function AddLayer({ page }: { readonly page: PageTarget }) {
             aria-autocomplete="list"
             aria-activedescendant={selected && typed !== "" ? optionId(listId, selectedIndex) : undefined}
             aria-label="Find"
-            placeholder="Find entrances, functions, types, and files"
+            placeholder="Find functions, types, and entrances"
             spellCheck={false}
             autoComplete="off"
             value={query}

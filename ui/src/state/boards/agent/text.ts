@@ -1,19 +1,18 @@
 /**
- * What agents write: `describe` (descriptions of cards, step groups, frames, resource cards, and
- * connections, and labels of drawn links) and
- * `label_steps` (Flow labels of a card's steps). Every text is signed with the agent's identity and
- * signed against the code at the next save. Replacing a person's text is refused unless the call says
- * the person asked for it; text that doesn't change is kept as it is, whoever wrote it.
+ * What agents write with `describe`: descriptions of cards, combined steps, frames, resource cards, and
+ * connections. Every text is signed with the agent's identity and signed against the code at the next
+ * save. Replacing a person's text is refused unless the call says the person asked for it; text that
+ * doesn't change is kept as it is, whoever wrote it.
  */
 
-import type { AgentItemResult, AgentItemStatus, DescribeOp, LabelStepsOp } from "@unfold/desktop/agent-api";
+import type { AgentItemResult, AgentItemStatus, DescribeOp } from "@unfold/desktop/agent-api";
 import type { Page } from "../../../ipc/generated";
-import { cardKey, findCard, setCardDescription, setLabel, setLinkLabel, updateGroup } from "../document";
+import { findCard, findCombined, setCardDescription, updateCombined } from "../document";
 import { setLinkDescription } from "../connections";
 import { findFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource, setResourceDescription } from "../resources";
-import { AgentRefusal, cardName, cardOf, cardResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
+import { cardName, cardResult, combinedResult, guardPeopleText, invalid, resourceName, type OpContext } from "./context";
 import { linkResult } from "./connections";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
@@ -45,14 +44,14 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       setCardDescription(page, card.id, text, author);
       return cardResult(ctx, card, statusOf(before?.text, text));
     }
-    const group = page.groups.find((entry) => entry.id === item.id);
-    if (group) {
-      const before = group.description;
+    const combined = findCombined(page, item.id);
+    if (combined) {
+      const before = combined.description;
       if (before && before.text !== text) {
-        guardPeopleText(`the description of the step group “${group.title}”`, before.author, op.replacePeopleText);
+        guardPeopleText(`the description of the combined step “${combined.title}”`, before.author, op.replacePeopleText);
       }
-      updateGroup(page, group.id, { description: { text, author } });
-      return { kind: "group", id: group.id, status: statusOf(before?.text, text), card: group.card, name: group.title };
+      updateCombined(page, combined.id, { description: { text, author } });
+      return combinedResult(combined, statusOf(before?.text, text));
     }
     const frame = findFrame(page, item.id);
     if (frame) {
@@ -73,7 +72,7 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       return resourceResult(ctx, page, resource, statusOf(before?.text, text));
     }
     const link = page.links.find((entry) => entry.id === item.id);
-    if (link?.kind !== undefined) {
+    if (link) {
       // A connection's description gives its evidence in words; its label says what travels (connect).
       const before = link.description;
       if (before && before.text !== text) {
@@ -82,46 +81,9 @@ export function applyDescribe(page: Page, op: DescribeOp, ctx: OpContext): Agent
       setLinkDescription(page, link.id, text, author);
       return linkResult(link, statusOf(before?.text, text));
     }
-    if (link) {
-      const before = link.label;
-      if (before && before.text !== text) {
-        guardPeopleText(`the label “${before.text}”`, before.author, op.replacePeopleText);
-      }
-      setLinkLabel(page, link.id, text, author);
-      return { kind: "link", id: link.id, status: statusOf(before?.text, text), from: link.from, to: link.to, name: text };
-    }
     if (findNote(page, item.id)) {
       throw invalid(`“${item.id}” is a note: its text is what it says. add_notes with its id rewrites it.`);
     }
-    throw invalid(`There is no card, step group, frame, resource card, or link with id “${item.id}” on this page. read_page lists the page's ids.`);
-  });
-}
-
-export function applyLabelSteps(page: Page, op: LabelStepsOp, ctx: OpContext): AgentItemResult[] {
-  const card = cardOf(page, op.card);
-  const name = cardName(ctx, card);
-  if (!("block" in card.ref)) {
-    throw invalid(`${name} is an entrance card; Flow labels go on a function's steps.`);
-  }
-  const model = ctx.data.model(ctx.board.project, cardKey(card));
-  const flow = model?.type === "block" ? model.flow : null;
-  if (!flow) {
-    throw new AgentRefusal(
-      "code_unavailable",
-      `${name}'s Flow isn't available right now (its file changed since the last compile). Compile the project, then try again.`,
-    );
-  }
-  const steps = new Set(flow.nodes.flatMap((node) => (node.key !== undefined ? [node.key] : [])));
-  return op.labels.map(({ step, text: written }): AgentItemResult => {
-    const text = textOf(written, `the step “${step}”`);
-    if (!steps.has(step)) {
-      throw invalid(`“${step}” isn't a Flow step of ${name}. read_code lists its steps and their keys.`);
-    }
-    const before = page.labels.find((label) => label.key === step);
-    if (before && before.text !== text) {
-      guardPeopleText(`the Flow label “${before.text}”`, before.author, op.replacePeopleText);
-    }
-    setLabel(page, step, text, ctx.agent.author);
-    return { kind: "label", status: statusOf(before?.text, text), card: card.id, step, name: text };
+    throw invalid(`There is no card, combined step, frame, resource card, or connection with id “${item.id}” on this page. read_page lists the page's ids.`);
   });
 }

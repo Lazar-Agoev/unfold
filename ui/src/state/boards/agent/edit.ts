@@ -22,7 +22,6 @@ import type {
   AgentReadResult,
 } from "@unfold/desktop/agent-api";
 import { produce } from "immer";
-import { isTypeKind, keyBlockKind } from "../../../code/typeKinds";
 import { showToast } from "../../../components/Toast";
 import type { Page } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
@@ -35,13 +34,12 @@ import { applyConnect } from "./connections";
 import { AgentRefusal, boardInfo, failure, type ApplyOp, type OpContext } from "./context";
 import { AgentData } from "./data";
 import { applyFrameCards } from "./frames";
-import { applyGroupSteps } from "./groups";
-import { applyArrange, prepareSetView } from "./layout";
+import { applyArrange, applySetView } from "./layout";
 import { applyAddNotes } from "./notes";
 import { applyPropose } from "./proposals";
 import { applyRemoveItems } from "./remove";
 import { prepareAddResources } from "./resources";
-import { applyDescribe, applyLabelSteps } from "./text";
+import { applyDescribe } from "./text";
 import { finishWorking, markWorking } from "./working";
 
 /** The board a request names, as this window's store keys it. */
@@ -49,27 +47,19 @@ function refOf(request: { readonly board: { readonly project: string; readonly i
   return { project: request.board.project, id: request.board.id };
 }
 
-/**
- * An operation ready to apply: `add_cards` loads its cards and follows calls first, `set_view` loads
- * the callees and callbacks of the calls it expands in place (as `held`, the page now, holds the cards);
- * the rest apply as they are.
- */
-async function prepare(op: AgentOp, held: Page, ctx: OpContext): Promise<ApplyOp> {
+/** An operation ready to apply: `add_cards` loads its cards and follows calls first, `add_resources` loads the types of its tables; the rest apply as they are. */
+async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
   switch (op.op) {
     case "add_cards":
       return prepareAddCards(op, ctx);
     case "set_view":
-      return prepareSetView(op, held, ctx);
+      return (page, run) => applySetView(page, op, run);
     case "arrange":
       return (page, run) => applyArrange(page, op, run);
     case "remove_items":
       return (page, run) => applyRemoveItems(page, op, run);
-    case "group_steps":
-      return (page, run) => applyGroupSteps(page, op, run);
     case "describe":
       return (page, run) => applyDescribe(page, op, run);
-    case "label_steps":
-      return (page, run) => applyLabelSteps(page, op, run);
     case "frame_cards":
       return (page, run) => applyFrameCards(page, op, run);
     case "add_resources":
@@ -84,8 +74,8 @@ async function prepare(op: AgentOp, held: Page, ctx: OpContext): Promise<ApplyOp
 }
 
 /**
- * The items an edit changed, as its working marks outline them: cards, groups and their cards, links,
- * a label's card, frames, resource cards, notes, and proposed steps and their cards.
+ * The items an edit changed, as its working marks outline them: cards, combined steps, connections,
+ * frames, resource cards, notes, and proposed steps.
  */
 function changedItems(items: readonly AgentItemResult[]): string[] {
   return items.flatMap((item) => {
@@ -94,16 +84,13 @@ function changedItems(items: readonly AgentItemResult[]): string[] {
     }
     switch (item.kind) {
       case "card":
+      case "combined":
       case "link":
       case "frame":
       case "resource":
       case "note":
-        return [item.id];
-      case "group":
       case "proposal":
-        return [item.id, item.card];
-      case "label":
-        return [item.card];
+        return [item.id];
     }
   });
 }
@@ -137,18 +124,20 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       data: new AgentData(),
       measured: board.pages[request.page]?.sizes ?? {},
     };
-    // Every card's model (its size, its calls, its outline and Flow steps), each type card's definition
+    // Every card's model (its size, its calls, its drawn blocks), each class's and type's definition
     // (its fields and type arrows), and the type of each table backed by one (its columns).
     await Promise.all([
       ...page.cards.map(async (card) => {
         const key = cardKey(card);
-        return Promise.all([base.data.loadModel(ref.project, key), isTypeKind(keyBlockKind(key) ?? "") ? base.data.loadDefinition(ref.project, key) : null]);
+        const model = await base.data.loadModel(ref.project, key);
+        const kind = model?.type === "definition" ? model.flow.header.kind : undefined;
+        return kind === "class" || kind === "type" ? base.data.loadDefinition(ref.project, key) : null;
       }),
       ...(page.resources ?? []).map((resource) => (resource.type !== undefined ? base.data.loadDefinition(ref.project, resource.type) : null)),
     ]);
     const applies: ApplyOp[] = [];
     for (const op of request.ops) {
-      applies.push(await prepare(op, page, { ...base, warnings: [] }));
+      applies.push(await prepare(op, { ...base, warnings: [] }));
     }
     const outcome = await saveStep(ref, request.page, `${request.agent.name} · ${request.title}`, (document) => {
       const ctx: OpContext = { ...base, warnings: [] };

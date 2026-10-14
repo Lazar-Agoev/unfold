@@ -1,0 +1,368 @@
+{
+  "header": {
+    "key": "shop/service.py#place_order",
+    "kind": "function",
+    "form": "function",
+    "label": "place_order",
+    "name": "Place an order",
+    "signature": "def place_order(order_id)",
+    "description": "Charge an order and save it.",
+    "path": "shop/service.py",
+    "line": 9,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "shop/service.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "shop/service.py#place_order/call:load_order",
+    "shop/service.py#place_order/if[0]",
+    "shop/service.py#place_order/call:sum",
+    "shop/service.py#place_order/try[0]",
+    "shop/service.py#place_order/call:save_order",
+    "shop/service.py#place_order/for[0]",
+    "shop/service.py#place_order/return[0]"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "call",
+        "key": "shop/service.py#place_order/call:load_order",
+        "callee": "load_order",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "shop/store.py#load_order"
+        },
+        "binds": "order",
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      },
+      {
+        "id": 2,
+        "state": "reached",
+        "kind": "combined",
+        "item": "stop",
+        "title": "Stop if it's missing or already paid",
+        "members": [
+          "shop/service.py#place_order/if[0]"
+        ],
+        "collapsed": true,
+        "lines": [
+          12,
+          15
+        ],
+        "conditions": 2,
+        "loops": 0,
+        "calls": [],
+        "library": 0,
+        "unknown": 0
+      },
+      {
+        "id": 8,
+        "state": "reached",
+        "gap": {
+          "count": 1,
+          "lines": [
+            17,
+            17
+          ],
+          "hidden": []
+        },
+        "kind": "try",
+        "key": "shop/service.py#place_order/try[0]",
+        "form": "try",
+        "headerCalls": [],
+        "lanes": [
+          {
+            "id": 9,
+            "key": "shop/service.py#place_order/try[0]/body",
+            "form": "body",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/try[0]/body/call:charge_card"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 10,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "shop/service.py#place_order/try[0]/body/call:charge_card",
+                  "callee": "charge_card",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "shop/payments.py#charge_card"
+                  },
+                  "binds": "receipt",
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "shop/service.py#place_order/try[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 11,
+            "key": "shop/service.py#place_order/try[0]/except[0]",
+            "form": "except",
+            "state": "reached",
+            "name": "Card declined",
+            "clause": "except PaymentDeclined as error",
+            "types": [
+              {
+                "outcome": "project",
+                "key": "shop/payments.py#PaymentDeclined"
+              }
+            ],
+            "fallsThrough": false,
+            "combinable": [
+              "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
+              "shop/service.py#place_order/try[0]/except[0]/return[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 12,
+                  "state": "reached",
+                  "kind": "combined",
+                  "item": "failed",
+                  "title": "Mark the order failed",
+                  "members": [
+                    "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
+                    "shop/service.py#place_order/try[0]/except[0]/return[0]"
+                  ],
+                  "collapsed": true,
+                  "lines": [
+                    21,
+                    22
+                  ],
+                  "conditions": 0,
+                  "loops": 0,
+                  "calls": [
+                    {
+                      "key": "shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed",
+                      "callee": "mark_failed"
+                    }
+                  ],
+                  "library": 0,
+                  "unknown": 1
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 15,
+        "state": "reached",
+        "gap": {
+          "count": 1,
+          "lines": [
+            24,
+            24
+          ],
+          "hidden": []
+        },
+        "kind": "combined",
+        "item": "save",
+        "title": "Save it and reserve stock",
+        "members": [
+          "shop/service.py#place_order/call:save_order",
+          "shop/service.py#place_order/for[0]"
+        ],
+        "collapsed": true,
+        "lines": [
+          25,
+          27
+        ],
+        "conditions": 0,
+        "loops": 1,
+        "calls": [
+          {
+            "key": "shop/service.py#place_order/call:save_order",
+            "callee": "save_order"
+          },
+          {
+            "key": "shop/service.py#place_order/for[0]/body/call:reserve_stock",
+            "callee": "reserve_stock"
+          }
+        ],
+        "library": 0,
+        "unknown": 0
+      },
+      {
+        "id": 20,
+        "state": "reached",
+        "kind": "exit",
+        "key": "shop/service.py#place_order/return[0]",
+        "form": "return",
+        "value": {
+          "kind": "text",
+          "text": "order"
+        },
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "shop/service.py#place_order"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "on",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "raise",
+      "to": "caller",
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "on",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "onError",
+      "to": {
+        "step": 11
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "on",
+      "to": {
+        "step": 10
+      },
+      "through": []
+    },
+    {
+      "from": 10,
+      "kind": "on",
+      "to": {
+        "step": 15
+      },
+      "through": []
+    },
+    {
+      "from": 11,
+      "kind": "on",
+      "to": {
+        "step": 12
+      },
+      "through": []
+    },
+    {
+      "from": 12,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    },
+    {
+      "from": 15,
+      "kind": "on",
+      "to": {
+        "step": 20
+      },
+      "through": []
+    },
+    {
+      "from": 20,
+      "kind": "return",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { lastVerifiedCode } from "../../canvas/cardData";
 import { queryClient } from "../../ipc/client";
 import { engineKey } from "../../ipc/queries";
-import { fixture, installFakeEngine, type FakeEngine } from "../../test/engine";
+import { installFakeEngine, type FakeEngine } from "../../test/engine";
 import { HEALTHY, boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
 import { HEALTH_DELAY_MS, installBoardEvents } from "./events";
 import * as store from "./store";
@@ -12,7 +11,6 @@ const P = "p-orders0000";
 const Q = "p-payments00";
 const R = "p-billing000";
 const REF = { project: P, id: ".unfold/boards/a.json" };
-const KEY = "src/routes/orders.ts#function:createOrder";
 
 let engine: FakeEngine;
 let uninstall: () => void;
@@ -27,8 +25,7 @@ beforeEach(() => {
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders"), projectRow(Q, "payments"), projectRow(R, "billing")]));
   engine = installFakeEngine({
     handlers: {
-      board_health: () => ({ health: { ...HEALTHY, missing: 1 }, outlines: [], label: "1 missing" }),
-      card: () => fixture("card", "card_create_order"),
+      board_health: () => ({ health: { ...HEALTHY, missing: 1 }, label: "1 missing" }),
       save_board: (args) => {
         if (saveFailure !== null) {
           // Rejections are plain {code, message} data, as from the real preload.
@@ -103,13 +100,6 @@ describe("board events", () => {
     await store.saveBoard(REF);
     expect(engine.callsOf("save_board").at(-1)).toMatchObject({ project: P, id: REF.id, board: { title: "Mine" } });
     expect(store.getOpenBoard(REF)?.saveError).toBeNull();
-  });
-
-  it("forgets a reset project's remembered renders", async () => {
-    await queryClient.query((await import("../../canvas/cardData")).cardQuery(Q, KEY));
-    expect(lastVerifiedCode(Q, KEY)).toBeDefined();
-    engine.emit({ type: "project_reset", project: Q });
-    expect(lastVerifiedCode(Q, KEY)).toBeUndefined();
   });
 
   it("sends unsaved edits when the page goes away", () => {

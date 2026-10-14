@@ -1,45 +1,51 @@
 /**
- * Selected for an arrow from a Diagram node that stands for several calls to one card: its two cards,
- * then each call as written in the caller, with its line, in source order. Choosing one shows its
- * contract here.
+ * Selected for an arrow that stands for several calls to one card: its two cards, then each call as
+ * written, with its line, in the order they run. Choosing one shows its contract here.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { cardQuery } from "../../canvas";
+import { useQueries } from "@tanstack/react-query";
+import { engineQueryOptions } from "../../ipc/queries";
 import { plural } from "../../lib/format";
-import { cardKey, findCard, findPage, keyDisplayName, select, useOpenBoard, type PageTarget, type SelectedCalls as Calls } from "../../state/boards";
+import { focusCard, select, type PageTarget, type SelectedCalls as Calls } from "../../state/boards";
+import { useCardNames } from "../../state/cards";
 import { RelationRow } from "./Relations";
-import { End, writtenCallee } from "./SelectedLine";
 
 export function SelectedCalls({ target, calls }: { readonly target: PageTarget; readonly calls: Calls }) {
-  const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
-  const from = page ? findCard(page, calls.from) : undefined;
-  const to = page ? findCard(page, calls.to) : undefined;
-  const model = useQuery({ ...cardQuery(target.board.project, from ? cardKey(from) : ""), enabled: from !== undefined });
-  const callee = to ? keyDisplayName(cardKey(to)) : "the callee";
+  const names = useCardNames(target);
+  const contracts = useQueries({ queries: calls.calls.map((key) => engineQueryOptions("call_contract", { project: target.board.project, key })) });
+  const end = (label: string, cardId: string) => (
+    <RelationRow
+      label={label}
+      onActivate={() => {
+        focusCard(target, cardId);
+      }}
+    >
+      <span className="relation-code">{names(cardId)}</span>
+    </RelationRow>
+  );
   return (
     <>
       <div className="selected-identity">
         <h3 className="selected-name">{plural(calls.calls.length, "call")}</h3>
-        <span className="selected-location">To {callee}</span>
+        <span className="selected-location">To {names(calls.to)}</span>
       </div>
       <div className="selected-relations link">
-        <End target={target} label="From" card={from} />
-        <End target={target} label="To" card={to} />
+        {end("From", calls.from)}
+        {end("To", calls.to)}
       </div>
       <div className="selected-relations">
         {calls.calls.map((call, index) => {
-          const written = writtenCallee(model.data, call.source, call.seq) ?? callee;
+          const contract = contracts[index]?.data;
           return (
             <RelationRow
-              key={`${call.source}:${call.seq}`}
+              key={call}
               {...(index === 0 ? { label: "Calls" } : {})}
               onActivate={() => {
-                select(target, { kind: "line", arrowId: calls.arrowId, source: call.source, seq: call.seq, from: calls.from, to: calls.to, line: call.line });
+                select(target, { kind: "line", arrowId: calls.arrowId, call, from: calls.from, to: calls.to });
               }}
             >
-              <span className="relation-code">{call.seq === 0 ? `${written}(…)` : written}</span>
-              {call.line !== null ? <span className="relation-path">{` · line ${call.line}`}</span> : null}
+              <span className="relation-code">{contract?.text ?? "…"}</span>
+              {contract ? <span className="relation-path">{` · line ${contract.line}`}</span> : null}
             </RelationRow>
           );
         })}

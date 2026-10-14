@@ -169,7 +169,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   });
 
   it("detaches windows, waiting for their closing writes", async () => {
-    const state = { bounds: { x: 0, y: 0, width: 1200, height: 800 }, maximized: false, board: null };
+    const state = { bounds: { x: 0, y: 0, width: 1200, height: 800 }, maximized: false, board: null, showAllCalls: false };
     const saving = trusted("save_window_state", { state }, 1);
     assert.equal(await addon.detachWindow(1), undefined);
     assert.equal(await saving, null);

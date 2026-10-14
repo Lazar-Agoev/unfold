@@ -105,13 +105,15 @@ describe("sizes before anything is measured", () => {
       author: "agent:claude",
     };
     const page: FramedPage = {
-      cards: [{ id: "route", ref: { entrance: "entrance:[]" }, at: [0, 0] }, card("a", [0, 0])],
+      defaultView: "expanded",
+      cards: [{ id: "route", ref: { entrance: "entrance:shop/place" }, at: [0, 0], view: "compact" }, card("a", [0, 0])],
       frames: [frame("server", ["a"], { collapsed: true })],
       resources: [orders, { ...orders, id: "queue", kind: "queue", name: "orders" }],
       notes: [{ id: "n", text: "The client gets a job id, not the order.", at: [0, 0], author: "agent:claude" }],
     };
-    expect(fallbackItemSize(page, "route")).toEqual(fallbackSize(true));
-    expect(fallbackItemSize(page, "a", "node")).toEqual(fallbackSize(false, "node"));
+    // A card in its own view, else the page's.
+    expect(fallbackItemSize(page, "route")).toEqual(fallbackSize("compact"));
+    expect(fallbackItemSize(page, "a")).toEqual(fallbackSize("expanded"));
     const estimated = frameNodeSize(frame("server", ["a"]), estimateText);
     expect(estimated.width).toBeGreaterThanOrEqual(240);
     const table = fallbackItemSize(page, "orders");
@@ -141,7 +143,7 @@ describe("notes", () => {
       cards: [card("a", [0, 0]), card("b", [400, 200])],
       resources: [resource],
       frames: [frame("server", ["b"])],
-      links: [{ id: "l", from: "a", to: "b" }],
+      links: [{ id: "l", from: "a", to: "b", kind: "calls", author: "agent:claude" }],
       notes: [note("on-card", [0, 120], { attach: "a" }), note("on-table", [10, -50], { attach: "orders" }), note("on-frame", [0, -100], { attach: "server" }), note("on-link", [0, 30], { attach: "l" })],
     };
     const sizes = (id: string) => (id === "orders" ? NODE : sized(page)(id));

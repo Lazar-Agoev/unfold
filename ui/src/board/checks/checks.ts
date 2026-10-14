@@ -7,48 +7,49 @@
  *   or on a line from or to what it holds);
  * - **Crossings**: lines crossing each other more than a few times, crossing a frame they neither
  *   start nor end in, or passing under a card they neither start nor end at;
- * - **Density**: too many visible items on the page or in a frame, or steps in an expanded function card;
- * - **Missing words**: frames, step groups, and resource cards without a description;
+ * - **Density**: too many visible items on the page or in a frame, or steps in an expanded card;
+ * - **Missing words**: frames, combined steps, and resource cards without a description;
  * - **Evidence**: resource cards and connections that cite no code (an agent's are refused at save, a
  *   person's may lack them);
  * - **Strays**: cards and resource cards with no line, connection, or frame.
  *
- * A function card counts as expanded detail when the page presents it so (`shownView` with no lens
- * picked is Flow: expanded in Diagram, a legacy Code card included); the Code lens and compact cards
- * show no steps to count.
+ * A card's steps are counted from its drawn flow (`cards`, as the canvas drew them) when the card is
+ * expanded; a compact card shows no steps to count. Cards are named by what they draw.
  *
  * Pure and deterministic: findings come in that order, items in page order. The limits are in
  * `thresholds.ts`.
  */
 
 import type { PageCheck } from "@unfold/desktop/render-api";
-import type { Link, Page } from "../../ipc/generated";
-import { cardBody } from "../../code/typeKinds";
-import { cardKey, keyDisplayName, shownView } from "../../state/boards";
+import type { CardView, Connection, ConnectionKind, Page, Sequence } from "../../ipc/generated";
+import { cardView } from "../../state/boards";
+import { cardName } from "../../state/cards";
 import { frameBox, frameTree, type FrameTree } from "./frames";
-import { crossingOf, distance, overlapOf, segmentMeetsBox, type Box, type DrawnFlow, type DrawnLine, type PageGeometry, type Point } from "./geometry";
+import { crossingOf, distance, overlapOf, segmentMeetsBox, type Box, type DrawnLine, type PageGeometry, type Point } from "./geometry";
 import { THRESHOLDS } from "./thresholds";
 
 /** Connection kinds that must cite code even when they have a step (the engine's rule for agents). */
-const ANCHORED_KINDS: ReadonlySet<string> = new Set(["http", "rpc", "queue", "event", "calls"]);
+const ANCHORED_KINDS: ReadonlySet<ConnectionKind> = new Set(["http", "queue", "calls"]);
 
 /** What every check reads. */
 interface Context {
   readonly page: Page;
   readonly geometry: PageGeometry;
+  /** The cards as drawn, by card id. */
+  readonly cards: ReadonlyMap<string, CardView>;
   readonly tree: FrameTree;
-  /** Each item's position in the page's lists (cards, frames, resource cards, notes, links, step groups). */
+  /** Each item's position in the page's lists (cards, frames, resource cards, notes, connections, combined steps). */
   readonly order: ReadonlyMap<string, number>;
   /** The visible cards, frames, resource cards, and notes (none hidden in a collapsed frame), in page order. */
   readonly visible: readonly string[];
 }
 
-/** Runs every check on a laid-out page. */
-export function pageChecks(page: Page, geometry: PageGeometry): PageCheck[] {
+/** Runs every check on a laid-out page whose cards drew `cards` (by card id). */
+export function pageChecks(page: Page, geometry: PageGeometry, cards: ReadonlyMap<string, CardView>): PageCheck[] {
   const tree = frameTree(page);
   const items = [...page.cards, ...(page.frames ?? []), ...(page.resources ?? []), ...(page.notes ?? [])].map((item) => item.id);
-  const order = new Map([...items, ...page.links.map((link) => link.id), ...page.groups.map((group) => group.id)].map((id, index) => [id, index]));
-  const context: Context = { page, geometry, tree, order, visible: items.filter((id) => tree.hiddenBy(id) === undefined) };
+  const order = new Map([...items, ...page.links.map((link) => link.id), ...page.combined.map((combined) => combined.id)].map((id, index) => [id, index]));
+  const context: Context = { page, geometry, cards, tree, order, visible: items.filter((id) => tree.hiddenBy(id) === undefined) };
   return [overlap, crossings, density, missingWords, evidence, strays].flatMap((check) => check(context));
 }
 
@@ -59,11 +60,12 @@ function quoted(text: string): string {
   return `"${text}"`;
 }
 
-/** An item's name for a message: a card's name, `the frame "API"`, `the table "orders"`, … */
-function nameOf(page: Page, id: string): string {
-  const card = page.cards.find((item) => item.id === id);
-  if (card) {
-    return keyDisplayName(cardKey(card));
+/** An item's name for a message: a card's name (its id until it is drawn), `the frame "API"`, `the table "orders"`, … */
+function nameOf(context: Pick<Context, "page" | "cards">, id: string): string {
+  const { page } = context;
+  if (page.cards.some((item) => item.id === id)) {
+    const view = context.cards.get(id);
+    return view ? cardName(view) : id;
   }
   const frame = page.frames?.find((item) => item.id === id);
   if (frame) {
@@ -73,26 +75,26 @@ function nameOf(page: Page, id: string): string {
   if (resource) {
     return `the ${resource.kind} ${quoted(resource.name)}`;
   }
-  const group = page.groups.find((item) => item.id === id);
-  if (group) {
-    return `the step group ${quoted(group.title)}`;
+  const combined = page.combined.find((item) => item.id === id);
+  if (combined) {
+    return `the combined step ${quoted(combined.title)}`;
   }
   const link = page.links.find((item) => item.id === id);
   if (link) {
-    return linkName(page, link);
+    return linkName(context, link);
   }
   return page.notes?.some((item) => item.id === id) === true ? "a note" : id;
 }
 
-function linkName(page: Page, link: Link): string {
-  const what = link.kind !== undefined && link.kind !== "other" ? `${link.kind} connection` : "line";
-  return `the ${what} from ${nameOf(page, link.from)} to ${nameOf(page, link.to)}`;
+function linkName(context: Pick<Context, "page" | "cards">, link: Connection): string {
+  const what = link.kind !== "other" ? `${link.kind} connection` : "line";
+  return `the ${what} from ${nameOf(context, link.from)} to ${nameOf(context, link.to)}`;
 }
 
-/** A drawn line's name: its link's, or the arrow's between its two items. */
-function lineName(page: Page, line: DrawnLine): string {
-  const link = page.links.find((item) => item.id === line.id);
-  return link ? linkName(page, link) : `the line from ${nameOf(page, line.from)} to ${nameOf(page, line.to)}`;
+/** A drawn line's name: its connection's, or the arrow's between its two items. */
+function lineName(context: Pick<Context, "page" | "cards">, line: DrawnLine): string {
+  const link = context.page.links.find((item) => item.id === line.id);
+  return link ? linkName(context, link) : `the line from ${nameOf(context, line.from)} to ${nameOf(context, line.to)}`;
 }
 
 /** The page items a line stands for: its link, or the two items an arrow joins. */
@@ -165,7 +167,7 @@ function overlap(context: Context): PageCheck[] {
   if (pairs.length === 0) {
     return [];
   }
-  const names = pairs.map(([a, b]) => `${nameOf(context.page, a)} and ${nameOf(context.page, b)}`);
+  const names = pairs.map(([a, b]) => `${nameOf(context, a)} and ${nameOf(context, b)}`);
   return [
     {
       kind: "overlap",
@@ -226,7 +228,7 @@ function crossings(context: Context): PageCheck[] {
     findings.push({
       kind: "crossings",
       items: inOrder(context, crossed.flatMap(({ a, b }) => [...lineItems(page, a), ...lineItems(page, b)])),
-      message: `Lines cross ${plural(total, "time")}: ${listed(crossed.map(({ a, b }) => `${lineName(page, a)} crosses ${lineName(page, b)}`))}.`,
+      message: `Lines cross ${plural(total, "time")}: ${listed(crossed.map(({ a, b }) => `${lineName(context, a)} crosses ${lineName(context, b)}`))}.`,
       suggestion: "Call arrange_page, or change a frame's direction with frame_cards, so most lines run one way without crossing.",
     });
   }
@@ -240,7 +242,7 @@ function crossings(context: Context): PageCheck[] {
       findings.push({
         kind: "crossings",
         items: inOrder(context, [frame, ...through.flatMap((line) => lineItems(page, line))]),
-        message: `${plural(through.length, "line")} cross${through.length === 1 ? "es" : ""} ${nameOf(page, frame)} without starting or ending in it: ${listed(through.map((line) => lineName(page, line)))}.`,
+        message: `${plural(through.length, "line")} cross${through.length === 1 ? "es" : ""} ${nameOf(context, frame)} without starting or ending in it: ${listed(through.map((line) => lineName(context, line)))}.`,
         suggestion: "Call arrange_page, or move the frame or the cards so the lines go around it.",
       });
     }
@@ -261,7 +263,7 @@ function crossings(context: Context): PageCheck[] {
     findings.push({
       kind: "crossings",
       items: inOrder(context, under.flatMap(({ line, covering }) => [...lineItems(page, line), ...covering])),
-      message: `${plural(under.length, "line")} ${under.length === 1 ? "passes under a card it doesn't" : "pass under cards they don't"} start or end at: ${listed(under.map(({ line, covering }) => `${lineName(page, line)} passes under ${listed(covering.map((id) => nameOf(page, id)))}`))}.`,
+      message: `${plural(under.length, "line")} ${under.length === 1 ? "passes under a card it doesn't" : "pass under cards they don't"} start or end at: ${listed(under.map(({ line, covering }) => `${lineName(context, line)} passes under ${listed(covering.map((id) => nameOf(context, id)))}`))}.`,
       suggestion: "Call arrange_page, or move the cards off the line with its moves (rightOf, below), so the line can be seen end to end.",
     });
   }
@@ -277,19 +279,32 @@ function countable(context: Context, id: string): boolean {
   return frame ? frame.collapsed === true : context.page.cards.some((card) => card.id === id) || context.page.resources?.some((item) => item.id === id) === true;
 }
 
-/** Whether a card shows its expanded function detail (its written flow) as the page presents it. */
-function expandedFunction(page: Page, id: string): boolean {
-  const card = page.cards.find((item) => item.id === id);
-  return card !== undefined && cardBody(cardKey(card), shownView(null, card, page.defaultView)) === "flow";
+/** The steps a sequence draws, its frames' parts and open combined steps included; the calls opened in place are their own flows. */
+function drawnSteps(sequence: Sequence): number {
+  return sequence.steps.reduce((count, step) => {
+    switch (step.kind) {
+      case "decision":
+      case "loop":
+      case "try":
+      case "with":
+        return count + 1 + step.lanes.reduce((inner, lane) => inner + drawnSteps(lane.steps), 0);
+      case "combined":
+        return count + 1 + (step.steps ? drawnSteps(step.steps) : 0);
+      default:
+        return count + 1;
+    }
+  }, 0);
 }
 
-/** The steps an expanded function card shows as drawn, by id; none for any other card. */
-function drawnFlow(context: Context, id: string): DrawnFlow | undefined {
-  return expandedFunction(context.page, id) ? context.geometry.flows.get(id) : undefined;
+/** The steps an expanded card draws, by id; none for a compact card or a start card. */
+function expandedSteps(context: Context, id: string): number | undefined {
+  const card = context.page.cards.find((item) => item.id === id);
+  const view = context.cards.get(id);
+  return card && view?.type === "definition" && cardView(card, context.page.defaultView) === "expanded" ? drawnSteps(view.flow.steps) : undefined;
 }
 
 function density(context: Context): PageCheck[] {
-  const { page, tree, visible } = context;
+  const { tree, visible } = context;
   const findings: PageCheck[] = [];
   const shown = visible.filter((id) => countable(context, id));
   if (shown.length > THRESHOLDS.pageItems) {
@@ -306,19 +321,19 @@ function density(context: Context): PageCheck[] {
       findings.push({
         kind: "density",
         items: [frame],
-        message: `${opening(nameOf(page, frame))} shows ${plural(held.length, "item")}; about ${THRESHOLDS.frameItems} is the most a frame reads well with.`,
+        message: `${opening(nameOf(context, frame))} shows ${plural(held.length, "item")}; about ${THRESHOLDS.frameItems} is the most a frame reads well with.`,
         suggestion: "Nest frames inside it and collapse some (frame_cards, set_view), or move part of it to another page.",
       });
     }
   }
   for (const card of visible) {
-    const flow = drawnFlow(context, card);
-    if (flow && flow.steps > THRESHOLDS.flowSteps) {
+    const steps = expandedSteps(context, card);
+    if (steps !== undefined && steps > THRESHOLDS.flowSteps) {
       findings.push({
         kind: "density",
         items: [card],
-        message: `${opening(nameOf(page, card))} shows ${plural(flow.steps, "step")} expanded; about ${THRESHOLDS.flowSteps} is the most an expanded card reads well with.`,
-        suggestion: "Combine with group_steps: 3 to 7 combined steps, collapsed: true for the ones the page isn't about; or set_view expanded: false.",
+        message: `${opening(nameOf(context, card))} shows ${plural(steps, "step")} expanded; about ${THRESHOLDS.flowSteps} is the most an expanded card reads well with.`,
+        suggestion: "Combine its steps: 3 to 7 combined steps, collapsed for the ones the page isn't about; or set_view to compact.",
       });
     }
   }
@@ -329,7 +344,7 @@ function missingWords(context: Context): PageCheck[] {
   const { page } = context;
   const bare = [
     ...(page.frames ?? []).filter((frame) => frame.description === undefined).map((frame) => frame.id),
-    ...page.groups.filter((group) => group.description === undefined).map((group) => group.id),
+    ...page.combined.filter((combined) => combined.description === undefined).map((combined) => combined.id),
     ...(page.resources ?? []).filter((resource) => resource.description === undefined).map((resource) => resource.id),
   ];
   if (bare.length === 0) {
@@ -340,22 +355,22 @@ function missingWords(context: Context): PageCheck[] {
     {
       kind: "missingWords",
       items,
-      message: `No description on ${listed(items.map((id) => nameOf(page, id)))}.`,
+      message: `No description on ${listed(items.map((id) => nameOf(context, id)))}.`,
       suggestion: "describe each in one sentence: what it is and why, not how.",
     },
   ];
 }
 
 /** Whether a connection cites code: anchors, or a step for the kinds a step grounds. */
-function connectionGrounded(link: Link): boolean {
-  return (link.anchors ?? []).length > 0 || (link.step !== undefined && !ANCHORED_KINDS.has(link.kind ?? "other"));
+function connectionGrounded(link: Connection): boolean {
+  return (link.anchors ?? []).length > 0 || (link.step !== undefined && !ANCHORED_KINDS.has(link.kind));
 }
 
 function evidence(context: Context): PageCheck[] {
   const { page } = context;
   const bare = [
     ...(page.resources ?? []).filter((resource) => resource.kind !== "actor" && resource.anchors.length === 0).map((resource) => resource.id),
-    ...page.links.filter((link) => link.kind !== undefined && !connectionGrounded(link)).map((link) => link.id),
+    ...page.links.filter((link) => !connectionGrounded(link)).map((link) => link.id),
   ];
   if (bare.length === 0) {
     return [];
@@ -365,7 +380,7 @@ function evidence(context: Context): PageCheck[] {
     {
       kind: "evidence",
       items,
-      message: `${opening(listed(items.map((id) => nameOf(page, id))))} cite${items.length === 1 ? "s" : ""} no code: nothing shows ${items.length === 1 ? "it is" : "they are"} true, and nothing says when ${items.length === 1 ? "it goes" : "they go"} out of date.`,
+      message: `${opening(listed(items.map((id) => nameOf(context, id))))} cite${items.length === 1 ? "s" : ""} no code: nothing shows ${items.length === 1 ? "it is" : "they are"} true, and nothing says when ${items.length === 1 ? "it goes" : "they go"} out of date.`,
       suggestion: "Give each anchors (add_resources or connect with the same id, citing a block or an evidence file's lines); a person's are theirs to change, so ask first.",
     },
   ];
@@ -386,7 +401,7 @@ function strays(context: Context): PageCheck[] {
     {
       kind: "strays",
       items: alone,
-      message: `${opening(listed(alone.map((id) => nameOf(page, id))))} ${alone.length === 1 ? "has" : "have"} no line, connection, or frame to the rest of the page.`,
+      message: `${opening(listed(alone.map((id) => nameOf(context, id))))} ${alone.length === 1 ? "has" : "have"} no line, connection, or frame to the rest of the page.`,
       suggestion: "connect them, put them in a frame (frame_cards), or take them off the page (remove_items).",
     },
   ];

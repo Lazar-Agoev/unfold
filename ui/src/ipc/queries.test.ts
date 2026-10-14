@@ -1,22 +1,47 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectRow, workspaceView } from "../test/workspace";
-import type { CommandArgs, CommandName, Events, WorkspaceView } from "./generated";
-import { applyEngineEvent, engineKey, engineQueryOptions, keyFile, resetEngineQueries } from "./queries";
+import type { CardView, CommandArgs, CommandName, DrawnFlow, Events, Header, Step, WorkspaceView } from "./generated";
+import { applyEngineEvent, engineKey, engineQueryOptions, resetEngineQueries } from "./queries";
 
 const P = "p-orders0000";
 const Q = "p-payments00";
 const ORDERS = "src/routes/orders.ts";
-const CREATE = `${ORDERS}#function:createOrder`;
-const LIST = `${ORDERS}#function:listOrders`;
-const OTHER = "src/other.ts#function:x";
-const ENTRANCE = 'entrance:["express.route","http","GET","/orders"]';
+const PAY = "src/pay.ts";
+// Keys are opaque: nothing here takes them apart.
+const CREATE = "key-create";
+const LIST = "key-list";
+const OTHER = "key-other";
+const OPENS = "key-opens";
+const MISSING = "key-missing";
+const ENTRANCE = "key-entrance";
 
 let client: QueryClient;
 
-function seed<C extends CommandName>(command: C, args: CommandArgs<C>): void {
-  client.setQueryData(engineKey(command, args), {});
+function seed<C extends CommandName>(command: C, args: CommandArgs<C>, data: unknown = {}): void {
+  client.setQueryData(engineKey(command, args), data);
 }
+
+/** A query with no data yet (still loading, or answered with an error). */
+function seedEmpty<C extends CommandName>(command: C, args: CommandArgs<C>): void {
+  client.getQueryCache().build(client, { queryKey: engineKey(command, args) });
+}
+
+/** A drawn flow of a definition in `path`, opening `inset` in place when given. */
+function flow(key: string, path: string, inset?: DrawnFlow): DrawnFlow {
+  const actions = { after: false, start: false, open: false };
+  const header: Header = { key, kind: "function", form: "function", label: key, path, line: 1, async: false, generator: false, definedWith: [], imports: [], actions };
+  const steps: Step[] = inset
+    ? [{ id: 0, state: "reached", kind: "call", key: `${key}-call`, callee: "pay", form: "call", to: { outcome: "project" }, awaited: false, sometimes: false, calls: [], callbacks: [], inset, actions }]
+    : [];
+  return { header, combinable: [], steps: { steps }, routes: [] };
+}
+
+function definition(key: string, path: string, inset?: DrawnFlow): CardView {
+  return { type: "definition", flow: flow(key, path, inset) };
+}
+
+const START: CardView = { type: "start", key: ENTRANCE, kind: "entrance", app: "Shop API", name: "List orders", on: "GET /orders", code: [{ key: LIST, state: "found", label: "listOrders", path: ORDERS, line: 4 }] };
 
 /** Which seeded queries are now stale, as `command:project:detail`. */
 function stale(): string[] {
@@ -47,14 +72,12 @@ function label(key: readonly unknown[]): string {
 /** The same per-project queries in P and Q, plus the app-wide ones. */
 function seedAll(): void {
   for (const project of [P, Q]) {
-    seed("file_view", { project, path: ORDERS });
-    seed("file_view", { project, path: "src/other.ts" });
-    seed("card", { project, key: CREATE });
-    seed("card", { project, key: LIST });
-    seed("card", { project, key: OTHER });
-    seed("card", { project, key: ENTRANCE });
-    seed("peek", { project, key: OTHER });
-    seed("peek", { project, key: LIST });
+    seed("card", { project, key: CREATE }, definition(CREATE, ORDERS));
+    seed("card", { project, key: LIST }, definition(LIST, ORDERS));
+    seed("card", { project, key: OTHER }, definition(OTHER, "src/other.ts"));
+    seed("card", { project, key: OPENS, open: [[`${OPENS}-call`]] }, definition(OPENS, "src/opens.ts", flow("key-pay", PAY)));
+    seedEmpty("card", { project, key: MISSING });
+    seed("card", { project, key: ENTRANCE }, START);
     seed("relations", { project, key: OTHER });
     seed("callers", { project, key: OTHER });
     seed("entrances", { project });
@@ -62,7 +85,7 @@ function seedAll(): void {
     seed("problems", { project });
     seed("list_boards", { project });
     seed("board_refs", { project, key: CREATE });
-    seed("call_contract", { project, source: OTHER, seq: 0 });
+    seed("call_contract", { project, key: OTHER });
     seed("type_definition", { project, key: OTHER });
     seed("type_uses", { project, key: OTHER });
   }
@@ -80,7 +103,6 @@ const UPDATED: Events["graph_updated"] = {
   changedFiles: [ORDERS],
   removedFiles: [],
   changedKeys: [CREATE],
-  changedEntrances: [],
   inputsChanged: false,
   everything: false,
   complete: true,
@@ -95,12 +117,6 @@ describe("engine keys", () => {
   it("key every call by command and arguments", () => {
     expect(engineKey("card", { project: P, key: CREATE })).toEqual(["engine", "card", { project: P, key: CREATE }]);
     expect(engineQueryOptions("list_boards", { project: P })).not.toHaveProperty("staleTime");
-    expect(keyFile(CREATE)).toBe(ORDERS);
-    expect(keyFile(ENTRANCE)).toBe(ENTRANCE);
-    expect(keyFile(`${ENTRANCE}#1`)).toBe(`${ENTRANCE}#1`);
-    // A path may hold `#`; a step never does.
-    expect(keyFile("src/c#/orders.ts#class:Orders/method:place")).toBe("src/c#/orders.ts");
-    expect(keyFile("src/c#/orders.ts#")).toBe("src/c#/orders.ts");
   });
 });
 
@@ -165,18 +181,18 @@ describe("invalidation by event", () => {
     expect(stale()).toEqual([]);
   });
 
-  it("graph_updated refreshes the changed files, keys, and the project's derived reads, in that project only", () => {
+  it("graph_updated refreshes the cards that draw a changed file or key, and the project's derived reads, in that project only", () => {
     applyEngineEvent(client, UPDATED);
     expect(stale()).toEqual(
       [
-        `call_contract:${P}:`,
+        `call_contract:${P}:${OTHER}`,
         `callers:${P}:${OTHER}`,
-        // The changed key, another block of the changed file, and every entrance card.
+        // The changed key, another card of the changed file, a card not loaded yet, and every start card.
         `card:${P}:${CREATE}`,
         `card:${P}:${ENTRANCE}`,
         `card:${P}:${LIST}`,
-        `file_view:${P}:${ORDERS}`,
-        `peek:${P}:${LIST}`,
+        `card:${P}:${MISSING}`,
+        `entrances:${P}:`,
         `project_summary:${P}:`,
         `relations:${P}:${OTHER}`,
         `type_definition:${P}:${OTHER}`,
@@ -189,14 +205,16 @@ describe("invalidation by event", () => {
     );
   });
 
-  it("graph_updated refreshes the entrance map when entrances or inputs changed", () => {
-    applyEngineEvent(client, { ...UPDATED, changedFiles: [], changedKeys: [], changedEntrances: [ENTRANCE] });
-    expect(stale()).toContain(`entrances:${P}:`);
-    expect(stale()).not.toContain(`entrances:${Q}:`);
-    client = new QueryClient();
-    seedAll();
-    applyEngineEvent(client, { ...UPDATED, changedFiles: [], changedKeys: [], inputsChanged: true });
-    expect(stale()).toContain(`entrances:${P}:`);
+  it("graph_updated refreshes a card whose call opened in place draws a changed file", () => {
+    applyEngineEvent(client, { ...UPDATED, changedFiles: [PAY], changedKeys: [] });
+    expect(stale().filter((entry) => entry.startsWith("card:"))).toEqual([`card:${P}:${ENTRANCE}`, `card:${P}:${MISSING}`, `card:${P}:${OPENS}`]);
+  });
+
+  it("entrances_changed refreshes what lists or draws the project's apps and entrances", () => {
+    applyEngineEvent(client, { type: "entrances_changed", project: P });
+    expect(stale()).toEqual(
+      [`card:${P}:${ENTRANCE}`, `card:${P}:${MISSING}`, `entrances:${P}:`, `project_summary:${P}:`, `relations:${P}:${OTHER}`, "search::all", "search::defs", "search::only-p"].sort(),
+    );
   });
 
   it("graph_updated with everything refreshes every query of the project, its searches, and the workspace", () => {
@@ -211,22 +229,15 @@ describe("invalidation by event", () => {
     expect(refreshed).not.toContain("get_settings::");
   });
 
-  it("files_changed refreshes the changed files and their cards, and file search", () => {
+  it("files_changed refreshes the cards that draw a changed file (and those not loaded yet), and file search", () => {
     applyEngineEvent(client, { type: "files_changed", project: P, paths: [ORDERS], truncated: false });
-    expect(stale()).toEqual([`card:${P}:${CREATE}`, `card:${P}:${LIST}`, `file_view:${P}:${ORDERS}`, "search::all", "search::only-p"].sort());
+    expect(stale()).toEqual([`card:${P}:${CREATE}`, `card:${P}:${ENTRANCE}`, `card:${P}:${LIST}`, `card:${P}:${MISSING}`, "search::all", "search::only-p"].sort());
   });
 
-  it("files_changed truncated refreshes every file view and card of the project", () => {
+  it("files_changed truncated refreshes every card of the project", () => {
     applyEngineEvent(client, { type: "files_changed", project: P, paths: [], truncated: true });
     expect(stale().filter((entry) => !entry.startsWith("search"))).toEqual(
-      [
-        `card:${P}:${CREATE}`,
-        `card:${P}:${ENTRANCE}`,
-        `card:${P}:${LIST}`,
-        `card:${P}:${OTHER}`,
-        `file_view:${P}:${ORDERS}`,
-        `file_view:${P}:src/other.ts`,
-      ].sort(),
+      [`card:${P}:${CREATE}`, `card:${P}:${ENTRANCE}`, `card:${P}:${LIST}`, `card:${P}:${MISSING}`, `card:${P}:${OPENS}`, `card:${P}:${OTHER}`].sort(),
     );
   });
 

@@ -12,9 +12,9 @@ import { showCallers } from "./showCallers";
 const P = "p-orders0000";
 const REF = { project: P, id: ".unfold/boards/b.json" };
 const PAGE = { board: REF, page: "page-1" };
-const KEY = "src/routes/orders.ts#function:createOrder";
-const CALLER = "src/routes/index.ts#function:routes";
-const ON_PAGE = "src/server.ts#function:start";
+const KEY = "src/routes/orders.ts#createOrder";
+const CALLER = "src/routes/index.ts#routes";
+const ON_PAGE = "src/server.ts#start";
 
 let engine: FakeEngine;
 let callers: Callers;
@@ -35,7 +35,11 @@ beforeEach(() => {
   engine = installFakeEngine({
     handlers: {
       callers: () => callers,
-      card: () => fixture("card", "card_create_order"),
+      card: ({ key }) => {
+        const view = fixture("card", "card_create_order");
+        // A caller's card is named from what the reader draws for it.
+        return key === CALLER && view.type === "definition" ? { ...view, flow: { ...view.flow, header: { ...view.flow.header, key, label: "routes", name: "Mount the routes" } } } : view;
+      },
       save_board: () => boardState(P, REF.id),
     },
   });
@@ -62,7 +66,7 @@ describe("Show callers", () => {
   it("adds the callers not on the page to the card's left, as one undo step", async () => {
     await showCallers(PAGE, "create-order");
     const cards = store.getOpenBoard(REF)?.document.pages[0]?.cards ?? [];
-    expect(cards.map((card) => card.id)).toEqual(["create-order", "start", "routes"]);
+    expect(cards.map((card) => card.id)).toEqual(["create-order", "start", "mount-the-routes"]);
     const added = cards[2];
     expect(added?.ref).toEqual({ block: CALLER });
     expect(added?.at[1]).toBe(200);

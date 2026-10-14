@@ -9,7 +9,7 @@ import { useEngineQuery, type ProjectId, type ProjectSummary } from "../../ipc";
 import { setHomeView } from "../../state/layout";
 import { reviewBoard } from "../actions";
 import { useWindowed } from "../windowed";
-import { HealthRowView, actionLabel, runHealthAction } from "./HealthRow";
+import { ACTION_LABEL, HealthRowView, runHealthAction } from "./HealthRow";
 import { boardHealthRows, healthRows } from "./problems";
 import "./health.css";
 
@@ -39,7 +39,7 @@ function HealthList({ project, summary }: { readonly project: ProjectId; readonl
       <HealthRowView
         key={row.id}
         row={row}
-        action={action ? { label: actionLabel(action), run: () => { runHealthAction(project, action); } } : null}
+        action={action ? { label: ACTION_LABEL, run: () => { runHealthAction(project, action); } } : null}
         {...(style ? { style } : {})}
       />
     );

@@ -381,7 +381,7 @@ impl<'a> Builder<'_, 'a> {
         let overlay = self.drawer.overlay;
         for proposal in overlay.proposed.iter().filter(|proposal| &proposal.spot == spot) {
             let step = self.step(Shape::Proposed(ProposedStep {
-                id: proposal.id.clone(),
+                item: proposal.id.clone(),
                 title: proposal.title.clone(),
             }));
             let item = Item { step, span: None };
@@ -439,7 +439,7 @@ impl<'a> Builder<'_, 'a> {
             state: RouteState::Reached,
             gap: None,
             shape: Shape::Combined(CombinedStep {
-                id: group.id.clone(),
+                item: group.id.clone(),
                 title: group.title.clone(),
                 members: group.members.clone(),
                 collapsed: group.collapsed,

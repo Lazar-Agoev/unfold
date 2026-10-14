@@ -15,10 +15,12 @@ import type { Resource } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { describeResource, findPage, itemsFor, removeItem, useOpenBoard, type PageTarget } from "../../state/boards";
 import { AuthoredField } from "./AuthoredField";
+import { useCardNames } from "../../state/cards";
 import { AnchorRows, LineRows, TypeRow } from "./ClaimRows";
 
 export function SelectedResource({ target, resource }: { readonly target: PageTarget; readonly resource: Resource }) {
   const author = useAuthor();
+  const names = useCardNames(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const health = useOpenBoard(target.board, (board) => board.health);
   if (!page) {
@@ -57,9 +59,9 @@ export function SelectedResource({ target, resource }: { readonly target: PageTa
         }}
       />
       <div className="selected-relations">
-        {resource.type !== undefined ? <TypeRow label="Type" typeKey={resource.type} /> : null}
+        {resource.type !== undefined ? <TypeRow project={project} label="Type" typeKey={resource.type} /> : null}
         <AnchorRows target={target} anchors={resource.anchors} />
-        <LineRows target={target} page={page} id={resource.id} />
+        <LineRows target={target} page={page} id={resource.id} cardNames={names} />
       </div>
       <div className="selected-actions">
         <Button

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../ipc/client";
-import type { BoardDocument, Card, CardView } from "../../ipc/generated";
+import type { BoardDocument, Card } from "../../ipc/generated";
 import { engineKey } from "../../ipc/queries";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
 
@@ -13,11 +13,9 @@ vi.mock("./engine", () => engine);
 
 const store = await import("./store");
 const { followCall } = await import("./navigation");
-const { addBlock, addLink, entranceCardText, focusFrame, labelNode, openEntrance, removeCard, traceEntrance } = await import("./api");
-const { arrangeBoard } = await import("../../canvas/arrangeBoard");
-const { FOLLOW_GAP, HEADER_PORT, STACK_GAP, fallbackSize } = await import("../../canvas/layout");
-const { estimateText } = await import("../../canvas/measure");
-const { entranceCardWidth, entranceHandlerRows } = await import("../../canvas/sizing");
+const { addBlock, addRef, focusFrame, nameBlock, removeCard } = await import("./api");
+const { addConnection } = await import("./connections");
+const { FOLLOW_GAP, HEADER_PORT } = await import("../../canvas/layout");
 const { getShownBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
@@ -33,18 +31,6 @@ function open(cards: Card[] = [], document?: BoardDocument): void {
 function cards(): readonly Card[] {
   return store.getOpenBoard(REF)?.document.pages[0]?.cards ?? [];
 }
-
-const entrance: CardView = {
-  type: "entrance",
-  header: { key: "entrance:x", kind: "http", title: "POST /orders", label: null, method: "POST", trigger: "/orders", triggerStatus: "exact", detector: "express.route", language: "typescript" },
-  evidence: { path: "src/server.ts", startLine: 3, endLine: 3, pointer: null, source: "current", code: null, text: null },
-  targets: [
-    { position: 0, role: "handler", text: "requireUser", resolution: "resolved", target: "src/m.ts#function:requireUser", name: "requireUser", path: "src/m.ts", line: 1, note: null, reason: null, module: null },
-    { position: 1, role: "handler", text: "audit", resolution: "external", target: null, name: null, path: null, line: null, note: "audit-lib", reason: null, module: "audit-lib" },
-    { position: 2, role: "handler", text: "createOrder", resolution: "resolved", target: "src/o.ts#function:createOrder", name: "createOrder", path: "src/o.ts", line: 5, note: null, reason: null, module: null },
-  ],
-  applications: [],
-};
 
 beforeEach(() => {
   engine.call.mockReset();
@@ -66,8 +52,10 @@ describe("following a call", () => {
       target: PAGE,
       fromCardId: "create-order",
       targetKey: "src/services/order-service.ts#class:OrderService/method:place",
+      name: "OrderService.place",
       lineOffset,
     });
+    expect(id).toBe("order-service-place");
     const card = cards().find((item) => item.id === id);
     expect(card?.at).toEqual([100 + 520 + FOLLOW_GAP, 50 + lineOffset - HEADER_PORT]);
     expect(card?.ref).toEqual({ block: "src/services/order-service.ts#class:OrderService/method:place" });
@@ -79,7 +67,7 @@ describe("following a call", () => {
       { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
       { id: "b", ref: { block: "src/b.ts#function:b" }, at: [700, 0] },
     ]);
-    const id = followCall({ target: PAGE, fromCardId: "a", targetKey: "src/b.ts#function:b" });
+    const id = followCall({ target: PAGE, fromCardId: "a", targetKey: "src/b.ts#function:b", name: "b" });
     expect(id).toBe("b");
     expect(cards()).toHaveLength(2);
     expect(store.getPageView(PAGE).focus?.cardIds).toEqual(["b"]);
@@ -87,74 +75,45 @@ describe("following a call", () => {
 });
 
 describe("adding cards of the board's project", () => {
-  it("adds a definition once, shows its board and page, and focuses it the second time", () => {
+  it("adds a definition once, named by what it shows, shows its board and page, and focuses it the second time", () => {
     open([], boardDocument([page("page-1"), page("page-2")]));
     const second = { board: REF, page: "page-2" };
-    const id = addBlock(second, "src/a.ts#function:a");
-    expect(id).toBe("a");
+    const id = addBlock(second, "key-a", "placeOrder");
+    expect(id).toBe("place-order");
     expect(store.getOpenBoard(REF)?.activePage).toBe("page-2");
     expect(getShownBoard()).toEqual(REF);
-    expect(addBlock(second, "src/a.ts#function:a")).toBe("a");
+    expect(addBlock(second, "key-a", "placeOrder")).toBe("place-order");
     expect(store.getOpenBoard(REF)?.document.pages[1]?.cards).toHaveLength(1);
-    expect(store.getPageView(second).focus?.cardIds).toEqual(["a"]);
+    expect(store.getPageView(second).focus?.cardIds).toEqual(["place-order"]);
   });
 
-  it("labels a node by its key", () => {
+  it("adds an app or entrance as a start card", () => {
     open();
-    labelNode(PAGE, "src/a.ts#function:a/if[0]", "Valid?", "person:a");
-    expect(store.getOpenBoard(REF)?.document.pages[0]?.labels).toEqual([{ key: "src/a.ts#function:a/if[0]", text: "Valid?", author: "person:a", signature: "" }]);
+    const id = addRef(PAGE, { entrance: "key-place" }, "Place an order");
+    expect(cards()).toEqual([{ id: "place-an-order", ref: { entrance: "key-place" }, at: [0, 0] }]);
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: id, key: null });
   });
 
-  it("draws links between two cards and removes them with either card", () => {
+  it("names a block page-wide, by its key, in key order", () => {
+    open();
+    nameBlock(PAGE, "key-b", "Is it paid?", "person:a");
+    nameBlock(PAGE, "key-a", "Load it", "person:a");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.names).toEqual([
+      { key: "key-a", text: "Load it", author: "person:a", signature: "" },
+      { key: "key-b", text: "Is it paid?", author: "person:a", signature: "" },
+    ]);
+    nameBlock(PAGE, "key-b", " ", "person:a");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.names.map((name) => name.key)).toEqual(["key-a"]);
+  });
+
+  it("removes a card with the connections to it", () => {
     open([
       { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
       { id: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] },
     ]);
-    expect(addLink(PAGE, "a", "a")).toBeUndefined();
-    expect(addLink(PAGE, "a", "b")).toBe("a-to-b");
+    store.editPage(PAGE, (draft) => addConnection(draft, { kind: "http", from: "a", to: "b", anchors: [], author: "person:a" }));
     removeCard(PAGE, "b");
     expect(store.getOpenBoard(REF)?.document.pages[0]?.links).toEqual([]);
-  });
-
-  it("opens an entrance card and one full card per resolved handler, in the board's project", async () => {
-    open();
-    engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
-    await openEntrance(PAGE, "entrance:x");
-    expect(engine.call).toHaveBeenCalledWith("card", { project: P, key: "entrance:x" });
-    expect(cards().map((card) => card.ref)).toEqual([{ entrance: "entrance:x" }, { block: "src/m.ts#function:requireUser" }, { block: "src/o.ts#function:createOrder" }]);
-    expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: cards()[0]?.id, key: null });
-  });
-
-  it("places the handlers beside the entrance, level with their rows, in the step that opens them", async () => {
-    open();
-    engine.call.mockImplementation((command: string) => Promise.resolve(command === "card" ? entrance : null));
-    await openEntrance(PAGE, "entrance:x");
-    const text = entranceCardText(entrance);
-    const width = entranceCardWidth(text, estimateText);
-    const rows = entranceHandlerRows(text, width, estimateText);
-    const [first, second] = [rows[0] ?? 0, rows[2] ?? 0];
-    const top = first - HEADER_PORT;
-    expect(cards().map((card) => card.at)).toEqual([
-      [0, 0],
-      [width + FOLLOW_GAP, top],
-      // createOrder's row (after the external audit) is above requireUser's bottom, so it stacks below it.
-      [width + FOLLOW_GAP, Math.max(second - HEADER_PORT, top + fallbackSize(false).height + STACK_GAP)],
-    ]);
-    expect(store.getPageView(PAGE).focus?.cardIds).toEqual(cards().map((card) => card.id));
-    // One undo step; nothing is left to move the cards later.
-    store.undo(REF);
-    expect(cards()).toEqual([]);
-  });
-
-  it("traces an entrance into a new board titled after it", async () => {
-    const draft = { project: Q, id: ".unfold/boards/post-orders.json" };
-    engine.call.mockImplementation((command: string) =>
-      Promise.resolve(command === "card" ? entrance : command === "new_board" ? boardState(Q, draft.id, boardDocument([page("page-1")], { title: "POST /orders" })) : null),
-    );
-    await expect(traceEntrance(Q, "entrance:x")).resolves.toEqual(draft);
-    expect(engine.call).toHaveBeenCalledWith("new_board", { project: Q, title: "POST /orders" });
-    expect(store.getOpenBoard(draft)?.document.pages[0]?.cards).toHaveLength(3);
-    expect(getShownBoard()).toEqual(draft);
   });
 });
 
@@ -178,48 +137,5 @@ describe("bringing a frame into view", () => {
     expect(store.getPageView(PAGE)).toMatchObject({ selection: { kind: "frame", frameId: "inner" }, focus: { cardIds: ["inner"], mode: "fit" } });
     store.undo(REF);
     expect(collapsed()).toEqual([true, true]);
-  });
-});
-
-describe("Arrange", () => {
-  it("lays a page out by call depth in one undoable step", () => {
-    open([
-      { id: "c", ref: { block: "src/c.ts#function:c" }, at: [0, 900] },
-      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [50, 500] },
-      { id: "e", ref: { entrance: "entrance:e" }, at: [900, 0] },
-    ]);
-    const before = cards().map((card) => card.at);
-    const arrows = [
-      { id: "1", source: "e", sourceHandle: "target:0", target: "b", project: "p", occurrence: "target:0", seq: 0, kind: "handler" as const, dashed: false, order: 0, line: null },
-      { id: "2", source: "b", sourceHandle: "src/b.ts#function:b/call[0]", target: "c", project: "p", occurrence: "src/b.ts#function:b/call[0]", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: 3 },
-    ];
-    expect(arrangeBoard(PAGE, arrows, new Map(), () => undefined)).toBe(3);
-    const at = Object.fromEntries(cards().map((card) => [card.id, card.at]));
-    expect(at["e"]?.[0]).toBeLessThan(at["b"]?.[0] ?? 0);
-    expect(at["b"]?.[0]).toBeLessThan(at["c"]?.[0] ?? 0);
-    // Arranging again changes nothing.
-    expect(arrangeBoard(PAGE, arrows, new Map(), () => undefined)).toBe(0);
-    store.undo(REF);
-    expect(cards().map((card) => card.at)).toEqual(before);
-  });
-
-  it("arranges a page of resource cards alone (a data model of tables)", () => {
-    const table = (id: string, at: [number, number]) => ({ id, kind: "table" as const, name: id, anchors: [], at, author: "agent:claude" });
-    open([], boardDocument([page("page-1", [], { resources: [table("orders", [0, 2000]), table("customers", [5000, 0])] })]));
-    expect(arrangeBoard(PAGE, [], new Map(), () => undefined)).toBeGreaterThan(0);
-  });
-
-  it("sizes cards it hasn't measured by what their bodies show", () => {
-    open([
-      { id: "b", ref: { block: "src/b.ts#function:b" }, at: [0, 0], view: "diagram" },
-      { id: "c", ref: { block: "src/c.ts#function:c" }, at: [900, 0], view: "diagram" },
-    ]);
-    const arrows = [
-      { id: "1", source: "b", sourceHandle: "node", target: "c", project: "p", occurrence: "node", seq: 0, kind: "calls" as const, dashed: false, order: 0, line: null },
-    ];
-    arrangeBoard(PAGE, arrows, new Map([["b", "node" as const], ["c", "node" as const]]), () => undefined);
-    const [b, c] = cards();
-    // A Diagram node's column is a node's width, not a Code card's.
-    expect((c?.at[0] ?? 0) - (b?.at[0] ?? 0)).toBeLessThan(fallbackSize(false).width);
   });
 });

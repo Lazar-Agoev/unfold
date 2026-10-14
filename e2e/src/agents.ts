@@ -2,11 +2,9 @@
  * Agents (docs/ipc.md): the app's MCP server, which listens on a fixed local port while the app runs,
  * Settings (where an agent's command is copied and its connection shown), and an MCP client that
  * talks to the server over HTTP the way Claude Code does (the official SDK's client, named
- * `claude-code`, so the app signs its edits as Claude). Raw requests check the server's guards, which
- * a client never trips.
+ * `claude-code`, so the app signs its edits as Claude).
  */
 
-import { request } from "node:http";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
@@ -21,29 +19,6 @@ export async function openSettings(page: Page): Promise<Locator> {
   const settings = dialog(page, "Settings");
   await expect(settings).toBeVisible();
   return settings;
-}
-
-/** The status of a POST to the server with `headers` added to a well-formed MCP request. */
-export function rawStatus(address: string, headers: Readonly<Record<string, string>>): Promise<number> {
-  const url = new URL(address);
-  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
-  return new Promise((resolve, reject) => {
-    const sent = request(
-      {
-        host: url.hostname,
-        port: url.port,
-        path: url.pathname,
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "content-length": Buffer.byteLength(body), ...headers },
-      },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode ?? 0);
-      },
-    );
-    sent.once("error", reject);
-    sent.end(body);
-  });
 }
 
 /** What a tool answered: its text blocks joined, its images, and whether it is an error. */

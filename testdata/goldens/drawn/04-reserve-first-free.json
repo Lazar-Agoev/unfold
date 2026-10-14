@@ -1,0 +1,472 @@
+{
+  "header": {
+    "key": "booking/slots.py#reserve_first_free",
+    "kind": "function",
+    "form": "function",
+    "label": "reserve_first_free",
+    "signature": "def reserve_first_free(calendar, day)",
+    "path": "booking/slots.py",
+    "line": 6,
+    "async": false,
+    "generator": false,
+    "definedWith": [],
+    "imports": [],
+    "actions": {
+      "combine": {
+        "with": "steps",
+        "body": "booking/slots.py#"
+      },
+      "after": true,
+      "start": true,
+      "open": false
+    }
+  },
+  "combinable": [
+    "booking/slots.py#reserve_first_free/for[0]",
+    "booking/slots.py#reserve_first_free/call:notify_reserved"
+  ],
+  "steps": {
+    "steps": [
+      {
+        "id": 1,
+        "state": "reached",
+        "kind": "loop",
+        "key": "booking/slots.py#reserve_first_free/for[0]",
+        "form": "for",
+        "header": "for slot in list_slots(calendar, day)",
+        "headerCalls": [
+          {
+            "key": "booking/slots.py#reserve_first_free/for[0]/call:list_slots",
+            "callee": "list_slots",
+            "form": "call",
+            "to": {
+              "outcome": "project",
+              "key": "booking/calendar.py#list_slots"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "calls": [],
+            "callbacks": [],
+            "actions": {
+              "after": false,
+              "start": false,
+              "open": true
+            }
+          }
+        ],
+        "lanes": [
+          {
+            "id": 2,
+            "key": "booking/slots.py#reserve_first_free/for[0]/body",
+            "form": "body",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "booking/slots.py#reserve_first_free/for[0]/body/if[0]",
+              "booking/slots.py#reserve_first_free/for[0]/body/if[1]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 3,
+                  "state": "reached",
+                  "kind": "decision",
+                  "key": "booking/slots.py#reserve_first_free/for[0]/body/if[0]",
+                  "form": "if",
+                  "headerCalls": [],
+                  "lanes": [
+                    {
+                      "id": 4,
+                      "key": "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then",
+                      "form": "then",
+                      "state": "reached",
+                      "test": {
+                        "text": "slot.blocked",
+                        "calls": []
+                      },
+                      "types": [],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then/continue[0]"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 5,
+                            "state": "reached",
+                            "kind": "exit",
+                            "key": "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then/continue[0]",
+                            "form": "continue",
+                            "target": {
+                              "key": "booking/slots.py#reserve_first_free/for[0]",
+                              "form": "for"
+                            },
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": false
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    }
+                  ],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "booking/slots.py#reserve_first_free/for[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                },
+                {
+                  "id": 6,
+                  "state": "reached",
+                  "kind": "decision",
+                  "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]",
+                  "form": "if",
+                  "headerCalls": [],
+                  "lanes": [
+                    {
+                      "id": 7,
+                      "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then",
+                      "form": "then",
+                      "state": "reached",
+                      "test": {
+                        "text": "is_free(slot)",
+                        "calls": [
+                          {
+                            "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/call:is_free",
+                            "callee": "is_free",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "booking/calendar.py#is_free"
+                            },
+                            "awaited": false,
+                            "sometimes": false,
+                            "role": "test",
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "after": false,
+                              "start": false,
+                              "open": true
+                            }
+                          }
+                        ]
+                      },
+                      "types": [],
+                      "fallsThrough": false,
+                      "combinable": [
+                        "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/call:reserve",
+                        "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/break[0]"
+                      ],
+                      "steps": {
+                        "steps": [
+                          {
+                            "id": 8,
+                            "state": "reached",
+                            "kind": "call",
+                            "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/call:reserve",
+                            "callee": "reserve",
+                            "form": "call",
+                            "to": {
+                              "outcome": "project",
+                              "key": "booking/calendar.py#reserve"
+                            },
+                            "awaited": false,
+                            "sometimes": false,
+                            "calls": [],
+                            "callbacks": [],
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": true
+                            }
+                          },
+                          {
+                            "id": 9,
+                            "state": "reached",
+                            "kind": "exit",
+                            "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/break[0]",
+                            "form": "break",
+                            "target": {
+                              "key": "booking/slots.py#reserve_first_free/for[0]",
+                              "form": "for"
+                            },
+                            "actions": {
+                              "combine": {
+                                "with": "steps",
+                                "body": "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then"
+                              },
+                              "after": true,
+                              "start": false,
+                              "open": false
+                            }
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "after": false,
+                        "start": true,
+                        "open": false
+                      }
+                    }
+                  ],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "booking/slots.py#reserve_first_free/for[0]/body"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          },
+          {
+            "id": 10,
+            "key": "booking/slots.py#reserve_first_free/for[0]/else",
+            "form": "else",
+            "state": "reached",
+            "types": [],
+            "fallsThrough": false,
+            "combinable": [
+              "booking/slots.py#reserve_first_free/for[0]/else/raise[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 11,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "booking/slots.py#reserve_first_free/for[0]/else/raise[0]",
+                  "form": "raise",
+                  "value": {
+                    "kind": "call",
+                    "key": "booking/slots.py#reserve_first_free/for[0]/else/raise[0]/call:NoFreeSlot",
+                    "callee": "NoFreeSlot",
+                    "form": "new",
+                    "to": {
+                      "outcome": "project",
+                      "key": "booking/errors.py#NoFreeSlot"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "calls": [],
+                    "callbacks": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": true
+                    }
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "booking/slots.py#reserve_first_free/for[0]/else"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "actions": {
+              "after": false,
+              "start": true,
+              "open": false
+            }
+          }
+        ],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "booking/slots.py#reserve_first_free"
+          },
+          "after": true,
+          "start": false,
+          "open": false
+        }
+      },
+      {
+        "id": 12,
+        "state": "reached",
+        "kind": "call",
+        "key": "booking/slots.py#reserve_first_free/call:notify_reserved",
+        "callee": "notify_reserved",
+        "form": "call",
+        "to": {
+          "outcome": "project",
+          "key": "booking/notify.py#notify_reserved"
+        },
+        "awaited": false,
+        "sometimes": false,
+        "calls": [],
+        "callbacks": [],
+        "actions": {
+          "combine": {
+            "with": "steps",
+            "body": "booking/slots.py#reserve_first_free"
+          },
+          "after": true,
+          "start": false,
+          "open": true
+        }
+      }
+    ]
+  },
+  "routes": [
+    {
+      "from": 0,
+      "kind": "on",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "each",
+      "to": {
+        "step": 2
+      },
+      "through": []
+    },
+    {
+      "from": 1,
+      "kind": "done",
+      "to": {
+        "step": 10
+      },
+      "through": []
+    },
+    {
+      "from": 2,
+      "kind": "on",
+      "to": {
+        "step": 3
+      },
+      "through": []
+    },
+    {
+      "from": 3,
+      "kind": "on",
+      "to": {
+        "step": 4
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "yes",
+      "to": {
+        "step": 5
+      },
+      "through": []
+    },
+    {
+      "from": 4,
+      "kind": "no",
+      "to": {
+        "step": 6
+      },
+      "through": []
+    },
+    {
+      "from": 5,
+      "kind": "continue",
+      "to": {
+        "step": 1
+      },
+      "through": [],
+      "leaves": "for"
+    },
+    {
+      "from": 6,
+      "kind": "on",
+      "to": {
+        "step": 7
+      },
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "yes",
+      "to": {
+        "step": 8
+      },
+      "through": []
+    },
+    {
+      "from": 7,
+      "kind": "no",
+      "to": {
+        "step": 1
+      },
+      "through": []
+    },
+    {
+      "from": 8,
+      "kind": "on",
+      "to": {
+        "step": 9
+      },
+      "through": []
+    },
+    {
+      "from": 9,
+      "kind": "break",
+      "to": {
+        "step": 12
+      },
+      "through": [],
+      "leaves": "for"
+    },
+    {
+      "from": 10,
+      "kind": "on",
+      "to": {
+        "step": 11
+      },
+      "through": []
+    },
+    {
+      "from": 11,
+      "kind": "raise",
+      "to": "caller",
+      "through": []
+    },
+    {
+      "from": 12,
+      "kind": "on",
+      "to": "end",
+      "through": []
+    }
+  ]
+}

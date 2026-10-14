@@ -33,53 +33,27 @@ export function stateText(state: ProjectState): string {
   }
 }
 
-/** The file a block key is in (`src/routes/orders.ts`); undefined for an entrance key. */
-export function keyFile(key: string): string | undefined {
+/**
+ * A readable name for a key, as boards show one: `OrderService.place`, `createOrder.if`, an app's or
+ * entrance's slugs (`server/place-an-order`), the path for a module.
+ */
+export function keyName(key: string): string {
   if (key.startsWith("entrance:")) {
-    return undefined;
+    return key.slice("entrance:".length);
   }
   // Names escape `#` (`%23`), so the last one ends the path, which may hold one.
   const hash = key.lastIndexOf("#");
-  return hash < 0 ? key : key.slice(0, hash);
-}
-
-/**
- * A readable name for a key, as boards show one: `OrderService.place`, `createOrder`, `POST /orders`
- * for an HTTP entrance, a configured entrance's id, the path for a file.
- */
-export function keyName(key: string): string {
-  if (key.startsWith("entrance:configured:")) {
-    return key.slice("entrance:configured:".length);
-  }
-  if (key.startsWith("entrance:")) {
-    try {
-      const parts: unknown = JSON.parse(key.slice("entrance:".length));
-      const words = Array.isArray(parts) ? parts.slice(2, 4).filter((part): part is string => typeof part === "string" && part.length > 0) : [];
-      return words.length > 0 ? words.join(" ") : "entrance";
-    } catch {
-      return "entrance";
-    }
-  }
-  const local = key.slice(key.lastIndexOf("#") + 1);
-  const names = local
+  const names = key
+    .slice(hash + 1)
     .split("/")
     .map((step) => step.slice(step.indexOf(":") + 1).replace(/\[\d+\]$/, ""))
     .filter((name) => name.length > 0);
-  return names.slice(-2).join(".") || (keyFile(key) ?? key);
-}
-
-/** The block kind a key ends in (`function`, `if`, `interface`); `entrance` for an entrance key. */
-export function keyKind(key: string): string {
-  if (key.startsWith("entrance:")) {
-    return "entrance";
-  }
-  const step = key.slice(key.lastIndexOf("#") + 1).split("/").at(-1) ?? "";
-  return step.replace(/[:[].*$/, "");
+  return names.slice(-2).join(".") || (hash < 0 ? key : key.slice(0, hash));
 }
 
 /**
  * Who wrote something, for the agent: `you` (the calling agent), `Codex (an agent)`, `Lazar (a
- * person)`, or `a person` when no author is recorded (a step group titled before titles were signed).
+ * person)`, or `a person` when no author is recorded.
  */
 export function authorText(author: string | undefined, agent: AgentIdentity): string {
   if (author === undefined) {
@@ -112,19 +86,19 @@ export function clip(text: string, max = 120): string {
 }
 
 /**
- * A written type with what each name in it links to: `CartItem[] (CartItem: src/cart.ts#interface:CartItem)`,
+ * A written type with what each name in it links to: `CartItem[] (CartItem: src/cart.ts#CartItem)`,
  * `Money (Money: unresolved, a variable, not a type)`. Builtin names read as written.
  */
 export function typeText(type: TypeText): string {
-  const links = type.spans.flatMap((span) => {
-    const name = type.text.slice(span.start, span.end);
-    switch (span.style) {
-      case "declared":
-        return span.target === undefined ? [] : [`${name}: ${span.target}`];
-      case "external":
-        return [`${name}: from ${span.note ?? span.module ?? "a library"}`];
-      case "unresolved":
-        return [`${name}: unresolved, ${span.note ?? "not found"}`];
+  const links = type.spans.flatMap(({ start, end, to }) => {
+    const name = type.text.slice(start, end);
+    switch (to.outcome) {
+      case "project":
+        return to.key === undefined ? [] : [`${name}: ${to.key}`];
+      case "library":
+        return [`${name}: from ${to.note ?? to.module ?? "a library"}`];
+      case "unknown":
+        return [`${name}: unresolved, ${to.note ?? to.reason ?? "not found"}`];
       case "builtin":
         return [];
     }
@@ -149,18 +123,18 @@ function stopText(stop: NonNullable<AgentCardResult["stops"]>[number]): string {
   }
 }
 
-/** A call path expanded in place, as results write it: its keys, outermost first, joined with › . */
+/** A call path opened in place, as results write it: its keys, outermost first, joined with › . */
 export function callPathText(path: readonly string[]): string {
   return `[${path.join(" › ")}]`;
 }
 
-/** A card's expansion, as `set_view` reports it: `expanded, calls expanded in place [a], [a › b]`, or `compact`. */
+/** A card's view, as `set_view` reports it: `expanded, calls open in place [a], [a › b]`, or `compact`. */
 function expansionText(card: AgentCardResult): string | null {
-  if (card.expanded === undefined) {
+  if (card.view === undefined) {
     return null;
   }
-  const calls = card.expandedCalls ?? [];
-  return `${card.expanded ? "expanded" : "compact"}${calls.length > 0 ? `, calls expanded in place ${calls.map(callPathText).join(", ")}` : ""}`;
+  const open = card.open ?? [];
+  return `${card.view}${open.length > 0 ? `, calls open in place ${open.map(callPathText).join(", ")}` : ""}`;
 }
 
 /**

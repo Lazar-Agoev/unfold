@@ -3,8 +3,8 @@
  * commands never come here: they travel over the window's port to the engine host. `add_project`
  * ends in an engine request the main process sends itself, with `"trusted": true`, because it takes a
  * path only the main process may choose.
- * `window_info` and `report_shown_board` hand the window's shown board to and from the workspace,
- * which saves it with the window's bounds. The agent channel's commands (`report_view` and the
+ * `window_info`, `report_shown_board`, and `report_show_all_calls` hand the window's shown board and
+ * its Show all calls switch to and from the workspace, which saves them with the window's bounds. The agent channel's commands (`report_view` and the
  * answers to agent requests) go to the agent bridge; `agent_server_status` reads the MCP server's
  * state for Settings. The render window may send only `render_ready`, its answers; `export_png` has
  * it draw a page for the person.
@@ -49,7 +49,7 @@ function invalid(message: string): CommandError {
 
 export interface WindowCommandServices {
   readonly window: Pick<AppWindow, "forWebContents">;
-  readonly workspace: Pick<Workspace, "add" | "shownBoard" | "showBoard">;
+  readonly workspace: Pick<Workspace, "add" | "shownBoard" | "showBoard" | "showAllCalls" | "setShowAllCalls">;
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
   readonly mcp: Pick<McpService, "status">;
@@ -94,7 +94,7 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
       await clipboard.writeText(text);
       return null;
     },
-    window_info: (entry): WindowInfo => ({ windowId: entry.id, board: workspace.shownBoard() }),
+    window_info: (entry): WindowInfo => ({ windowId: entry.id, board: workspace.shownBoard(), showAllCalls: workspace.showAllCalls() }),
     report_shown_board: (_entry, args) => {
       const { board } = args;
       const shown = shownBoard(board);
@@ -104,10 +104,18 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
       workspace.showBoard(shown);
       return null;
     },
+    report_show_all_calls: (_entry, args) => {
+      const { on } = args;
+      if (typeof on !== "boolean") {
+        throw invalid("report_show_all_calls: on must be true or false.");
+      }
+      workspace.setShowAllCalls(on);
+      return null;
+    },
     report_view: (entry, args) => {
       const report = parseViewReport(args);
       if (!report) {
-        throw invalid("report_view: pass {board?, page?, selection, lens?, visible, held}.");
+        throw invalid("report_view: pass {board?, page?, selection, visible, held}.");
       }
       agents.views.report(entry.id, report);
       return null;

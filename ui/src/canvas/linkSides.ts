@@ -1,6 +1,7 @@
 /**
- * Which sides a drawn link leaves and enters by: sideways when the cards sit side by side, from the
- * bottom into the top when one is below the other (as "queues a receipt" is drawn).
+ * Which sides a connection leaves and enters by when no step or column says otherwise: sideways when
+ * the cards sit side by side, from the bottom into the top when one is below the other (as "queues a
+ * receipt" is drawn).
  */
 
 import type { Rect } from "./layout";

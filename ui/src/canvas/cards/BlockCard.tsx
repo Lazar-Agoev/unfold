@@ -1,480 +1,228 @@
 /**
- * A block card: one definition (or another indexed block) of a project in Code (the Code lens) or Flow
- * (expanded in the Diagram lens, where its header starts with the chevron that makes it compact again).
- * The header shows `ƒ`, the name, and the file; a review banner and the description follow. The body
- * never scrolls: the card sizes itself to its content.
- * Flow shows the page's labels and the card's groups as step groups (a group's
- * one `collapsed` field folds it in both views), and the calls the card expands in place
- * (`CallInsets`): an inset under the call, while the call's own arrow keeps leaving from its step and
- * the calls the inset shows leave from theirs (`placeFlowPorts`).
- * In Flow, Shift-click selects a run of its own steps (Combine), `</>` on a step or a combined block
- * opens its source (View code), and right-click opens a step's menu. Its proposed steps show in its
- * own Flow only (never in Code, nor in another card's inset), with the missing or held treatment
- * their health gives them.
+ * A definition's card (a module, class, or function, an inline function too), as the reader drew it
+ * (core-scope.html's board window). Its header is the chevron that makes it compact or expanded, its
+ * mark (`ƒ`, `λ`, `M`, or `class`), its name (the page's, else its code name: `callback to …` for an
+ * inline function), and where it is; the review banner and the description follow.
+ *
+ * Compact, that is all: its arrows leave from its edge. Expanded, it says what it has from its code
+ * (the signature, the doc as a description from code, a module's imports, and what runs when it is
+ * defined: decorators, bases, Python defaults), then its drawn flow (`FlowView`, laid out by
+ * `layoutFlow`): a class's flow is its class-level code. Each arrow leaves the card's edge level with
+ * the call that makes it (`CallAnchor`), in the calls it opens in place too, and so does a connection
+ * from its step. The body never scrolls: the card sizes itself to its content.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { useUpdateNodeInternals } from "@xyflow/react";
-import { useLayoutEffect, useMemo, type ReactNode } from "react";
-import { stepRun } from "../../board/combine";
-import { viewCode } from "../../board/viewCode";
-import { CodeView, portSpot } from "../../code/CodeView";
-import { defaultFolds } from "../../code/outline";
-import { shortPath } from "../../code/text";
-import { FlowView, type FlowProposals, type ProposalMark } from "../../flow/FlowView";
-import { stepGroups } from "../../flow/groups";
-import { useEngineQuery } from "../../ipc/queries";
-import { insetRoom } from "../../flow/insets";
-import { layoutFlow, type ProposalSpec } from "../../flow/layout";
-import type { CallLink, Card, CodeText, CodeView as CodeViewModel, HealthItem, Key, ProjectId, Proposal, View } from "../../ipc/generated";
-import {
-  editGroup,
-  editPage,
-  findPage,
-  followCall,
-  getPageView,
-  keyDisplayName,
-  labelTexts,
-  lineOffsetIn,
-  select,
-  updateGroup,
-  updatePageView,
-  useOpenBoard,
-  usePageView,
-  type PageTarget,
-  type Selection,
-} from "../../state/boards";
-import { cardQuery, isMissing, lastVerifiedCode } from "../cardData";
-import { CARD_MAX_WIDTH } from "../layout";
+import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { flowActions, flowSelection } from "../../flow/actions";
+import { linkNote } from "../../code/text";
+import { FlowView } from "../../flow/FlowView";
+import { layoutFlow, type FlowGeometry } from "../../flow/layout";
+import type { Card, CardView, Header, Key, LinkEnd } from "../../ipc/generated";
+import type { UnfoldError } from "../../ipc/unfold";
+import { cardKey, select, usePageView, type PageTarget } from "../../state/boards";
+import { isMissing } from "../../state/cards";
+import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";
-import { blockCardWidth, codeContentWidth } from "../sizing";
+import { compactCardWidth, expandedCardWidth, headerText } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { flowExpansion, placeFlowPorts, useCallInsets, type InsetContext } from "./CallInsets";
-import { InlineCallee } from "./InlineCallee";
-import { CardGlyph, CardHandles, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
+import { CardHandles, CardMark, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
-import { clickCard } from "./select";
-
-const NO_FOLDS: readonly string[] = [];
-const NO_KEYS: readonly string[] = [];
-const NO_PROPOSALS: readonly Proposal[] = [];
-const NO_INSET_PORTS: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>> = new Map();
-
-/** Why where a proposed step goes needs review: its step is missing, or held. */
-const PROPOSAL_NOTES = {
-  missing: "The step it went after is missing.",
-  held: "The step it goes after is held for review.",
-} as const;
-
-/** The health of each proposed step of a page, by id: missing or held. */
-function proposalStates(items: readonly HealthItem[] | undefined, page: string): Map<string, "missing" | "held"> {
-  const states = new Map<string, "missing" | "held">();
-  for (const item of items ?? []) {
-    if (item.page === page && "proposal" in item.target && (item.kind === "missing" || item.kind === "review")) {
-      states.set(item.target.proposal, item.kind === "missing" ? "missing" : "held");
-    }
-  }
-  return states;
-}
-/** The widest a card's own Flow may be: the card's widest less its border. */
-const FLOW_MAX_WIDTH = CARD_MAX_WIDTH - 2;
 
 export interface BlockCardProps {
   readonly target: PageTarget;
-  /** The project the card resolves to. */
-  readonly project: ProjectId;
-  readonly card: Card & { readonly ref: { readonly block: string } };
-  /** Code or Flow: a Diagram node and a type card's fields are their own cards. */
-  readonly view: Exclude<View, "diagram">;
+  readonly card: Card;
+  readonly expanded: boolean;
+  /** What the reader drew for it (an app's or entrance's start card draws as `EntranceCard` once loaded). */
+  readonly query: UseQueryResult<CardView, UnfoldError>;
   readonly ports: readonly string[];
   readonly selected: boolean;
 }
 
-function toggled(list: readonly string[], key: string): string[] {
-  return list.includes(key) ? list.filter((item) => item !== key) : [...list, key];
+const NO_ROWS: ReadonlySet<Key> = new Set();
+
+/** How a link from the header's code reads: accent for the project's, muted otherwise (its tooltip says why: `linkNote`). */
+function linkClass(to: LinkEnd): string {
+  return `card-link ${to.outcome}`;
 }
 
-export function BlockCard({ target, project, card, view, ports, selected }: BlockCardProps) {
-  const key = card.ref.block;
-  const query = useQuery(cardQuery(project, key));
-  const model = query.data?.type === "block" ? query.data : undefined;
+/** What an expanded card says from its code: its signature, its doc, its imports, and what runs when it is defined. */
+function FromCode({ header }: { readonly header: Header }) {
+  const { signature, description, imports, definedWith } = header;
+  if (signature === undefined && description === undefined && imports.length === 0 && definedWith.length === 0) {
+    return null;
+  }
+  return (
+    <div className="card-code">
+      {signature !== undefined ? <p className="card-signature">{signature}</p> : null}
+      {description !== undefined ? (
+        <p className="card-doc">
+          <span className="card-source-tag">From code</span>
+          {description}
+        </p>
+      ) : null}
+      {imports.length > 0 ? (
+        <p className="card-links">
+          <span className="card-links-label">Imports</span>
+          {imports.map((item, index) => (
+            <span key={index} className={linkClass(item.to)} title={linkNote(item.to) ?? undefined}>
+              {item.text}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {definedWith.length > 0 ? (
+        <p className="card-links">
+          <span className="card-links-label">Runs when defined</span>
+          {definedWith.map((call) => (
+            <span key={call.key} className={linkClass(call.to)} title={linkNote(call.to) ?? undefined}>
+              {call.role === "decorator" ? "@" : ""}
+              {call.callee}
+              {call.role !== undefined ? <i> {call.role}</i> : null}
+            </span>
+          ))}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Where an expanded card's body places each of `ports` (its calls', and connections' steps): level
+ * with the call's box, else (a connection's step that isn't a call) the block's. Ports it can't place
+ * stay at the header.
+ */
+function placePorts(geometry: FlowGeometry, ports: readonly string[]): { readonly placed: Map<string, number>; readonly header: string[] } {
+  const spots = new Map<string, number>();
+  for (const anchor of geometry.anchors) {
+    for (const port of [callPort(anchor.call), stepPort(anchor.call)]) {
+      if (!spots.has(port)) {
+        spots.set(port, anchor.at.y);
+      }
+    }
+  }
+  for (const [key, rect] of geometry.blocks) {
+    if (!spots.has(stepPort(key))) {
+      spots.set(stepPort(key), rect.y + Math.min(rect.height / 2, 13));
+    }
+  }
+  const placed = new Map<string, number>();
+  const header: string[] = [];
+  for (const port of ports) {
+    const y = spots.get(port);
+    if (y === undefined) {
+      header.push(port);
+    } else {
+      placed.set(port, y);
+    }
+  }
+  return { placed, header };
+}
+
+/** An expanded card's drawn flow, with its ports where its calls are. */
+function ExpandedBody({
+  target,
+  card,
+  geometry,
+  ports,
+  onToggleRow,
+}: {
+  readonly target: PageTarget;
+  readonly card: Card;
+  readonly geometry: FlowGeometry;
+  readonly ports: ReadonlyMap<string, number>;
+  readonly onToggleRow: (key: Key) => void;
+}) {
+  const selection = usePageView(target, (view) => view.selection);
+  const selected = useMemo(() => flowSelection(selection, card.id), [selection, card.id]);
+  const actions = useMemo(() => flowActions(target, card.id), [target, card.id]);
+  return (
+    <>
+      <FlowView geometry={geometry} selected={selected} {...actions} onToggleRow={onToggleRow} />
+      {renderPorts([...ports.keys()], ports)}
+    </>
+  );
+}
+
+export function BlockCard({ target, card, expanded, query, ports, selected }: BlockCardProps) {
+  const key = cardKey(card);
+  const flow = query.data?.type === "definition" ? query.data.flow : undefined;
   const measure = useMeasure();
   const updateNodeInternals = useUpdateNodeInternals();
-  const header = model?.header;
-  const menu = useCardMenu(target, card.id, true, header?.qualifiedName ?? keyDisplayName(key));
-
-  const codeFolds = usePageView(target, (pageView) => pageView.codeFolds[card.id]);
-  const expandedKeys = usePageView(target, (pageView) => pageView.expanded[card.id] ?? NO_KEYS);
-  const openChains = usePageView(target, (pageView) => pageView.flowChains[card.id] ?? NO_KEYS);
-  // A step of the card's own Flow, or (with its owner) one shown in a call expanded in place.
-  const selectedKey = usePageView(target, ({ selection }) =>
-    selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? selection.key : null,
-  );
-  const insetKey = usePageView(target, ({ selection }) =>
-    selection.kind === "card" && selection.cardId === card.id && selection.owner !== undefined ? selection.key : null,
-  );
-  const insetOwner = usePageView(target, ({ selection }) => (selection.kind === "card" && selection.cardId === card.id ? selection.owner : undefined));
-  // The last step of a Shift-selected run of the card's own steps, which starts at `selectedKey`.
-  const runLast = usePageView(target, ({ selection }) =>
-    selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? (selection.last ?? null) : null,
-  );
-  // A selected line from or to this card: the caller's line keeps the selection fill, the callee
-  // marks the lines the contract reads (the contract's query, shared with the contract itself).
-  const line = usePageView(target, ({ selection }) => (selection.kind === "line" && (selection.from === card.id || selection.to === card.id) ? selection : null));
-  const calleeOf = line !== null && line.to === card.id ? line : null;
-  const contract = useEngineQuery(
-    "call_contract",
-    { project, source: calleeOf?.source ?? "", seq: calleeOf?.seq ?? 0 },
-    { enabled: calleeOf !== null },
-  );
-  const calleeLines = calleeOf !== null ? contract.data?.calleeLines : undefined;
-  const marked = useMemo(() => (calleeLines ? new Set(calleeLines) : undefined), [calleeLines]);
-  const callerLine = line !== null && line.from === card.id ? line.line : null;
-  const allGroups = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.groups);
-  const labels = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.labels);
-  const health = useOpenBoard(target.board, (board) => board.health);
-  const broken = useMemo(
-    () =>
-      new Set(
-        (health?.items ?? []).flatMap((item) => (item.page === target.page && item.kind === "brokenGroup" && "group" in item.target ? [item.target.group] : [])),
-      ),
-    [health, target.page],
-  );
-  const cardGroups = useMemo(() => (allGroups ?? []).filter((group) => group.card === card.id), [allGroups, card.id]);
-  const allProposals = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.proposals) ?? NO_PROPOSALS;
-  const selectedProposal = usePageView(target, ({ selection }) => (selection.kind === "proposal" ? selection.proposalId : null));
-  // The card's proposed steps: what the layout keeps room for, and how each is marked.
-  const proposed = useMemo(() => {
-    const states = proposalStates(health?.items, target.page);
-    const own = allProposals.filter((proposal) => proposal.card === card.id);
-    const specs: ProposalSpec[] = own.map((proposal) => {
-      const state = states.get(proposal.id);
-      return {
-        id: proposal.id,
-        after: proposal.after,
-        ...(proposal.path !== undefined ? { path: proposal.path } : {}),
-        title: proposal.title,
-        ...(state !== undefined ? { note: PROPOSAL_NOTES[state] } : {}),
-      };
-    });
-    const marks = new Map<string, ProposalMark>(
-      own.map((proposal) => {
-        const state = states.get(proposal.id);
-        return [proposal.id, { author: proposal.author, ...(state !== undefined ? { state } : {}) }];
-      }),
-    );
-    return { specs, marks };
-  }, [allProposals, card.id, health, target.page]);
-  const groups = useMemo(() => cardGroups.filter((group) => !broken.has(group.id)), [cardGroups, broken]);
-  // A run's steps, each drawn selected (its statements' steps when it can be combined).
-  const runKeys = useMemo(() => {
-    const run = runLast !== null && selectedKey !== null && model ? stepRun(model, selectedKey, runLast, cardGroups) : null;
-    return run ? new Set(run.steps.flatMap((step) => (step.key !== undefined ? [step.key] : []))) : undefined;
-  }, [runLast, selectedKey, model, cardGroups]);
-
-  // Code: the verified source, or the last verified render kept in memory while the file changed.
-  const codeModel: CodeViewModel | null = model?.code ?? null;
-  const stale = codeModel?.source.state === "changed" ? lastVerifiedCode(project, key) : undefined;
-  const shown: CodeText | null =
-    codeModel?.source.state === "current" ? codeModel.source : stale?.source.state === "current" ? stale.source : null;
-  const folds = useMemo(() => new Set(codeFolds ?? (shown ? defaultFolds(shown.outline) : NO_FOLDS)), [codeFolds, shown]);
-  const portSet = useMemo(() => new Set(ports), [ports]);
-  // The page's labels, by key.
-  const labelText = useMemo(() => labelTexts(labels ?? []), [labels]);
-  const chainSet = useMemo(() => new Set(openChains), [openChains]);
-
-  // Laid out only while the card shows Flow: measuring and placing nodes is the costly part of a card.
-  const flowModel = view === "flow" ? (model?.flow ?? null) : null;
-  const flowGroups = useMemo(() => (flowModel && shown ? stepGroups(groups, shown.outline) : []), [flowModel, groups, shown]);
-  const insets = useCallInsets({
-    target,
-    project,
-    card,
-    flow: flowModel?.source === "current" ? flowModel : null,
-    labels: labelText,
-    openChains: chainSet,
-    groups: allGroups,
-    broken,
-    measure,
-    maxWidth: FLOW_MAX_WIDTH,
-  });
-  const flowLayout = useMemo(
-    () =>
-      flowModel
-        ? layoutFlow(flowModel, {
-            labels: labelText,
-            openChains: chainSet,
-            groups: flowGroups,
-            measure,
-            maxWidth: FLOW_MAX_WIDTH,
-            insets: insetRoom(insets),
-            proposals: proposed.specs,
-          })
-        : null,
-    [flowModel, labelText, chainSet, flowGroups, measure, insets, proposed.specs],
-  );
-  const flowProposals: FlowProposals = {
-    marks: proposed.marks,
-    selected: selectedProposal,
-    onSelect: (proposalId) => {
-      if (getPageView(target).linking) {
-        clickCard(target, card.id, null);
-      } else {
-        select(target, { kind: "proposal", proposalId });
-      }
-    },
-  };
-  const selectedGroup = usePageView(target, ({ selection }) => (selection.kind === "group" ? selection.groupId : null));
-
-  const name = model?.header.qualifiedName ?? keyDisplayName(key);
-  const location = model ? shortPath(model.header.path) : "";
-  const bodyWidth = view === "flow" && flowLayout ? flowLayout.width + 2 : shown ? codeContentWidth(shown, measure) : null;
-  // A call expanded in place may need more than a card's usual widest; the card grows rather than clip it.
-  const insetWidth = flowLayout && flowLayout.insets.length > 0 ? flowLayout.width + 2 : 0;
-  // `measure` changes when the bundled fonts load, so widths come from the real fonts.
-  const width = useMemo(
-    () => Math.max(insetWidth, blockCardWidth({ name, location, chevron: view === "flow", body: bodyWidth }, measure)),
-    [name, location, view, bodyWidth, insetWidth, measure],
-  );
-
-  // Which ports the body places (its own Flow's steps, or an inset's); the rest sit on the header.
-  const flowPorts = useMemo(() => {
-    if (view !== "flow" || !flowLayout) {
-      return null;
+  const menu = useCardMenu(target, card.id, flow !== undefined && flow.header.kind !== "type");
+  // Thin rows listed one call per row (a view of this card only, never saved).
+  const [listed, setListed] = useState<ReadonlySet<Key>>(NO_ROWS);
+  const geometry = useMemo(() => (expanded && flow ? layoutFlow(flow, { measure, listed }) : null), [expanded, flow, measure, listed]);
+  const text = useMemo(() => (flow ? headerText(flow.header, true) : null), [flow]);
+  const name = text?.name ?? key;
+  const width = useMemo(() => {
+    if (!flow || !text) {
+      return undefined;
     }
-    return placeFlowPorts(key, flowLayout, insets, ports, (id) => shown?.links.find((link) => link.source === id)?.owner ?? "");
-  }, [view, flowLayout, insets, ports, shown, key]);
-  const headerPorts =
-    view === "flow" && flowPorts ? flowPorts.unplaced : shown ? ports.filter((id) => portSpot(shown, id) === undefined) : ports;
+    return geometry ? expandedCardWidth(flow.header, geometry, measure) : compactCardWidth(text, measure);
+  }, [flow, text, geometry, measure]);
+  const placement = useMemo(() => (geometry ? placePorts(geometry, ports) : { placed: new Map<string, number>(), header: [...ports] }), [geometry, ports]);
 
   const portsKey = ports.join("\u0000");
-  const foldsKey = [...folds].join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
-  }, [updateNodeInternals, card.id, portsKey, foldsKey, view, width, model, expandedKeys, openChains, groups, flowLayout]);
+  }, [updateNodeInternals, card.id, portsKey, width, geometry]);
 
-  const selectKey = (blockKey: string) => {
-    clickCard(target, card.id, blockKey);
-  };
-  // Shift-click: a run from the selected step of the card's own Flow to this one (else a plain click).
-  const extend = (blockKey: Key) => {
-    const { selection, linking } = getPageView(target);
-    const first = selection.kind === "card" && selection.cardId === card.id && selection.owner === undefined ? selection.key : null;
-    if (linking || first === null || first === key || first === blockKey) {
-      selectKey(blockKey);
-      return;
-    }
-    select(target, { kind: "card", cardId: card.id, key: first, last: blockKey });
-  };
-  // `</>`: selects what it is on and opens its source; the sheet then follows the selection.
-  const showCode = (selection: Selection) => {
-    select(target, selection);
-    viewCode(target, selection);
-  };
-  // A step group in Flow selects the group, unless a link is being drawn to this card.
-  const selectGroup = (groupId: string) => {
-    if (getPageView(target).linking) {
-      clickCard(target, card.id, null);
-    } else {
-      select(target, { kind: "group", groupId });
-    }
-  };
-  const follow = (targetKey: string, anchor: HTMLElement) => {
-    const offset = lineOffsetIn(anchor);
-    followCall({
-      target,
-      fromCardId: card.id,
-      targetKey,
-      ...(offset !== undefined ? { lineOffset: offset } : {}),
-    });
-  };
-  const onFollowLink = (link: CallLink, anchor: HTMLElement) => {
-    if (link.target !== undefined) {
-      follow(link.target, anchor);
-    }
-  };
-  const onExpand = (link: CallLink) => {
-    updatePageView(target, (draft) => {
-      draft.expanded[card.id] = toggled(draft.expanded[card.id] ?? [], link.source);
-    });
-  };
-  const expanded = useMemo(() => {
-    const map = new Map<string, ReactNode>();
-    for (const occurrence of expandedKeys) {
-      const callee = shown?.links.find((link) => link.source === occurrence)?.target;
-      if (callee !== undefined) {
-        map.set(
-          occurrence,
-          <InlineCallee
-            project={project}
-            targetKey={callee}
-            onClose={() => {
-              updatePageView(target, (draft) => {
-                draft.expanded[card.id] = (draft.expanded[card.id] ?? []).filter((item) => item !== occurrence);
-              });
-            }}
-          />,
-        );
+  const toggleRow = (rowKey: Key) => {
+    setListed((current) => {
+      const next = new Set(current);
+      if (!next.delete(rowKey)) {
+        next.add(rowKey);
       }
-    }
-    return map;
-  }, [expandedKeys, shown, target, project, card.id]);
-
-  const toggleChain = (chainKey: string) => {
-    updatePageView(target, (draft) => {
-      draft.flowChains[card.id] = toggled(draft.flowChains[card.id] ?? [], chainKey);
+      return next;
     });
   };
-  const toggleGroup = (groupId: string) => {
-    const group = (allGroups ?? []).find((item) => item.id === groupId);
-    if (group) {
-      editGroup(target, groupId, { collapsed: !group.collapsed });
-    }
-  };
-  const insetContext: InsetContext = {
-    target,
-    project,
-    cardId: card.id,
-    paths: card.expanded ?? [],
-    selected: insetKey !== null && insetOwner !== undefined ? { key: insetKey, owner: insetOwner } : null,
-    selectedGroup,
-    follow: (targetKey, anchor) => {
-      follow(targetKey, anchor);
-    },
-    onToggleChain: toggleChain,
-    onSelectGroup: selectGroup,
-    onToggleGroup: toggleGroup,
-    onViewStep: (stepKey, owner) => {
-      showCode({ kind: "card", cardId: card.id, key: stepKey, owner });
-    },
-    onViewGroup: (groupId) => {
-      showCode({ kind: "group", groupId });
-    },
-    onStepMenu: menu.openStepMenu,
-    ports: flowPorts?.insets ?? NO_INSET_PORTS,
-  };
-
-  let body: ReactNode;
+  const missing = query.isError && isMissing(query.error);
+  let body: ReactNode = null;
   if (query.isPending) {
     body = <CardNote>Loading…</CardNote>;
   } else if (query.isError) {
-    body = <CardNote warn>{isMissing(query.error) ? "This reference is missing from the graph." : query.error.message}</CardNote>;
-  } else if (view === "flow" && model?.flow && flowLayout && flowPorts) {
+    body = <CardNote warn>{missing ? `This ${"entrance" in card.ref ? "entrance" : "reference"} is missing from the graph.` : query.error.message}</CardNote>;
+  } else if (geometry) {
     body = (
-      <FlowView
-        model={model.flow}
-        layout={flowLayout}
-        width={width - 2}
-        selectedKey={selectedKey ?? null}
-        onSelect={selectKey}
-        onFollow={(_node, target, anchor) => {
-          follow(target, anchor);
-        }}
-        onOpenCallback={(callback, anchor) => {
-          follow(callback.key, anchor);
-        }}
-        onToggleChain={toggleChain}
-        selectedGroup={selectedGroup}
-        onSelectGroup={selectGroup}
-        onToggleGroup={toggleGroup}
-        onGroupMenu={menu.openGroupMenu}
-        onExtend={extend}
-        {...(runKeys ? { runKeys } : {})}
-        onViewCode={(stepKey) => {
-          showCode({ kind: "card", cardId: card.id, key: stepKey });
-        }}
-        onViewGroupCode={(groupId) => {
-          showCode({ kind: "group", groupId });
-        }}
-        onStepMenu={(_key, at) => {
-          menu.openStepMenu(at);
-        }}
-        ports={flowPorts.byNode}
-        renderPorts={renderPorts}
-        expansion={flowExpansion(insetContext, [], [key], insets, { width: Math.max(flowLayout.width, width - 2), reach: 0 })}
-        proposals={flowProposals}
-      />
+      <div className="card-body nodrag nopan">
+        <ExpandedBody target={target} card={card} geometry={geometry} ports={placement.placed} onToggleRow={toggleRow} />
+      </div>
     );
-  } else if (shown && model) {
-    body = (
-      <>
-        {stale ? (
-          <CardNote warn>
-            {model.header.fileState === "last_good" ? "Doesn't parse right now · showing the last verified code" : "Updating · showing the last verified code"}
-          </CardNote>
-        ) : null}
-        <CodeView
-          project={project}
-          code={shown}
-          language={model.header.language}
-          label={name}
-          folds={folds}
-          onToggleFold={(foldKey) => {
-            updatePageView(target, (draft) => {
-              draft.codeFolds[card.id] = toggled(draft.codeFolds[card.id] ?? [...folds], foldKey);
-            });
-          }}
-          groups={groups}
-          onToggleGroup={(groupId) => {
-            const group = groups.find((item) => item.id === groupId);
-            editPage(target, (page) => {
-              updateGroup(page, groupId, { collapsed: !(group?.collapsed ?? false) });
-            });
-          }}
-          onRenameGroup={(groupId, title) => {
-            editPage(target, (page) => {
-              updateGroup(page, groupId, { title });
-            });
-          }}
-          onGroupMenu={menu.openGroupMenu}
-          ports={portSet}
-          renderPorts={renderPorts}
-          selectedKey={selectedKey ?? null}
-          onSelect={selectKey}
-          onFollow={onFollowLink}
-          onExpand={onExpand}
-          expanded={expanded}
-          dimmed={stale !== undefined}
-          {...(marked ? { marked } : {})}
-          callerLine={callerLine}
-        />
-      </>
-    );
-  } else if (codeModel?.source.state === "changed") {
-    body = <CardNote warn>{model?.header.fileState === "last_good" ? "This file doesn't parse right now." : "The source changed · updating."}</CardNote>;
-  } else {
-    body = <CardNote warn>Source unavailable.</CardNote>;
   }
 
-  const missing = query.isError && isMissing(query.error);
   return (
     <article
-      className={`board-card block-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
+      className={`board-card block-card${expanded ? " expanded" : " compact"}${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
-      style={{ width }}
+      style={width !== undefined ? { width } : undefined}
       aria-label={name}
       onClick={() => {
-        selectKey(key);
+        select(target, { kind: "card", cardId: card.id, key: null });
       }}
       onContextMenu={menu.onContextMenu}
     >
       <CardHandles />
       <header className="card-header card-drag">
-        {view === "flow" ? <ExpandToggle target={target} cardId={card.id} expanded name={name} /> : null}
-        <CardGlyph kind={model?.header.kind ?? null} />
-        <h3 className="card-title" title={model?.header.qualifiedName ?? key}>
+        <ExpandToggle target={target} cardId={card.id} expanded={expanded} name={name} />
+        {text ? <CardMark mark={text.mark} /> : null}
+        <h3 className="card-title" title={name}>
           {name}
         </h3>
-        <span className="card-location" title={model ? `${model.header.path}:${model.header.startLine}` : undefined}>
-          {location}
-        </span>
-        <HeaderPorts ids={headerPorts} />
+        {text ? (
+          <span className="card-location" title={flow ? `${flow.header.path}:${flow.header.line}` : undefined}>
+            {text.location}
+          </span>
+        ) : null}
+        <HeaderPorts ids={placement.header} />
       </header>
-      <ReviewBanner target={target} project={project} cardId={card.id} />
-      <DescriptionStrip target={target} cardId={card.id} description={card.description} />
-      <div className="card-body nodrag nopan">{body}</div>
+      <ReviewBanner target={target} cardId={card.id} view={query.data} />
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap={!expanded} />
+      {expanded && flow ? <FromCode header={flow.header} /> : null}
+      {body}
       {menu.element}
     </article>
   );
