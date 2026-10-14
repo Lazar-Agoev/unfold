@@ -1,307 +1,287 @@
-# Engine, scope, and entrances
+# Engine, settings, and entrances
 
-Read the relevant section for updates, discovery, settings, or detectors. This guide owns
-shared pipeline and project rules; graph semantics belong to [graph model](graph-model.md),
-and language-specific extraction/binding to [TypeScript](languages/typescript.md) and
-[Python](languages/python.md).
+Read the section for updates, the facts cache, `unfold.toml`, entrances, discovery, or the project lifecycle. Graph
+semantics belong to [Graph model](graph-model.md); language extraction and binding to
+[TypeScript](languages/typescript.md) and [Python](languages/python.md).
 
 | Task | Code entry point |
 | --- | --- |
 | Update pipeline | [update/mod.rs](../crates/unfold-engine/src/update/mod.rs) |
-| Discovery/classification | [discovery/mod.rs](../crates/unfold-engine/src/discovery/mod.rs) |
-| Settings and hashes | [settings/mod.rs](../crates/unfold-engine/src/settings/mod.rs) |
-| Launch-command parsing | [launch/mod.rs](../crates/unfold-engine/src/launch/mod.rs) |
-| Manual declarations/locators | [entrances/mod.rs](../crates/unfold-engine/src/entrances/mod.rs), [locator.rs](../crates/unfold-engine/src/locator.rs) |
-| Workspace/watcher | [workspace.rs](../crates/unfold-workspace/src/workspace.rs), [watcher.rs](../crates/unfold-workspace/src/watcher.rs) |
-| Store commit/version handling | [store entry point](../crates/unfold-store/src/lib.rs), [schema.rs](../crates/unfold-store/src/schema.rs) |
+| Facts cache | [update/cache.rs](../crates/unfold-engine/src/update/cache.rs), [facts/mod.rs](../crates/unfold-engine/src/facts/mod.rs) |
+| Settings parsing and hashes | [settings/mod.rs](../crates/unfold-engine/src/settings/mod.rs), [settings/apps.rs](../crates/unfold-engine/src/settings/apps.rs) |
+| Settings edits | [settings/edit/mod.rs](../crates/unfold-engine/src/settings/edit/mod.rs) |
+| Resolving entrances | [entrances.rs](../crates/unfold-engine/src/entrances.rs) |
+| Discovery and scope | [discovery/mod.rs](../crates/unfold-engine/src/discovery/mod.rs), [settings/scope.rs](../crates/unfold-engine/src/settings/scope.rs) |
+| Resolution policy, labels, pairing | [resolve/](../crates/unfold-engine/src/resolve/mod.rs), [labels.rs](../crates/unfold-engine/src/labels.rs), [pairing.rs](../crates/unfold-engine/src/pairing.rs) |
+| Projects, engine thread, watcher | [lib.rs](../crates/unfold-workspace/src/lib.rs), [projects.rs](../crates/unfold-workspace/src/projects.rs), [engine_thread.rs](../crates/unfold-workspace/src/engine_thread.rs), [watcher.rs](../crates/unfold-workspace/src/watcher.rs) |
+| Store commits | [commit.rs](../crates/unfold-workspace/src/commit.rs), [store entry point](../crates/unfold-store/src/lib.rs), [schema.rs](../crates/unfold-store/src/schema.rs) |
 
 ## Updates
 
-`Engine::update` is the single path for Compile, background changes, reopen checks, and
-Rebuild. It discovers inputs, snapshots bytes, extracts per-file facts, links each language's
-whole program, resolves/pairs/types, detects entrances, and validates the result.
+`Engine::update` is the single path that keeps one folder's graph current. Each language implements two traits
+([language.rs](../crates/unfold-engine/src/language.rs)): `Language` for per-file extraction (lowering to nodes,
+unresolved links, typed records, and an opaque binder payload), and `Linked` for the questions the shared backend
+asks about the whole program. A language answers narrow questions; the backend owns the policy.
 
-| Action | Reads / cache behavior |
-| --- | --- |
-| Compile | Full discovery and content hashes; reuse facts with equal cache keys |
-| Background | Apply changed paths; check size/mtime before hashing |
-| Reopen | Restore stored graph and link basis, then check disk state in the background |
-| Rebuild | Full discovery and hashes, ignoring caches and last-good facts |
+| Action | Request | What it reads |
+| --- | --- | --- |
+| Compile (first or later) | `UpdateRequest::compile` | Full discovery; every file re-read and re-hashed; only changed bytes extracted |
+| Background update | `UpdateRequest::background(paths)` | The watcher's paths, checked by size and modification time first |
+| Reopen check | `Engine::restore`, then `UpdateRequest::reopen` | Every file by size and modification time; hashes only those that differ |
+| Entrance edit | `Engine::resolve_entrances` | Only the `[[app]]` tables, resolved again against the current graph |
 
-A changed folder, ignore file, symlink, unreadable path, or changed settings can require full
-discovery. Ignore `.unfold/` changes except shared config. Per-file extraction is cached;
-linking, resolution, pairings, and type links are recomputed from the whole program. Avoid
-promising dependency-level incremental relinking that the implementation does not provide.
+An update runs its stages in order: **discover** (settings, then a full discovery or the changed paths),
+**snapshot** (read and hash changed files once), **extract** (per-file facts through the facts cache, in parallel),
+**link** (each language over the whole program), **resolve** (every link's outcome and every argument's pairing),
+and **validate** (the core validator and each language's census). After a successful update the apps of
+`unfold.toml` are resolved against the new graph ([Resolving `code`](#resolving-code)).
 
-`prepare` computes a candidate without replacing engine state. Workspace commits it first,
-then `adopt` installs it. Adoption rejects a candidate prepared against an older generation.
-A failure or cancellation retains the previous engine/store/reader state. Publish events
-only for committed/adopted results; readers must not observe a partial transaction.
-
-Parallel extraction preserves input order; graph assembly sorts deterministically. Long loops
-check cancellation. Compile uses foreground capacity; background work has its own limited
-pool. Progress, changes, problems, and completeness are separate outputs, not inferred from
-the fact that a command returned.
+- **Full discovery** runs for a Compile, the first update, a settings change, or a changed path that can't be applied
+  on its own: an ignore file, a folder, or a symlink.
+- **Relinking.** A Compile always relinks the whole program. A background update relinks unless the files' facts
+  and everything else linking reads are unchanged: the effective settings, the configuration inputs, and the
+  unindexed and context files. The bytes of `unfold.toml`, its comments, its `[[app]]` tables, and evidence files
+  are not among them, so editing those never relinks. Per-file extraction is cached; linking, resolution, pairing,
+  and typed links are always recomputed from the whole program, never per dependency.
+- **Prepare, commit, adopt.** `Engine::prepare` computes a candidate beside the engine's state; the workspace commits
+  it to the store in one transaction, then `Engine::adopt` installs it. Adoption refuses a candidate prepared against
+  an older state. A failure or cancellation keeps the previous engine, store, and reader state. Events go out only
+  for committed results.
+- **Determinism.** Parallel extraction keeps input order and assembly sorts, so thread scheduling never changes the
+  graph. An incremental update must equal a fresh compile.
+- **Threads.** A Compile uses every core but one; background work has its own small pool. Long loops check
+  cancellation. Progress, changes, problems, and completeness are separate outputs.
 
 ## Facts cache and failures
 
-The facts cache key includes path, content hash, engine version, and extraction settings.
-Language payload versions participate in producer compatibility. Version constants live in
-code; do not copy current numbers into guides.
+Facts are cached per file by path, content hash, `ENGINE_VERSION`, and the file's settings hash (only the settings
+that affect that file, such as its Python project). Language payload versions are part of the producer version and
+so of the key. Version constants live in code; never copy their values into docs.
 
-Keep each file's current and last-good facts. A syntax/read failure may retain last-good facts
-and report `last_good`; a file without usable facts is `failed`. The graph is incomplete,
-and displayed source must still verify against the facts hash. Rebuild deliberately removes
-last-good fallback. A failed update never advances the committed graph.
+Each path keeps at most a current and a last good entry. A file that stops parsing keeps its last good facts and
+is `last_good`; a file with no usable facts is `failed`, and the graph is incomplete. Last-good facts refer to their
+own hash, and displayed source must still verify against it. A failed update never advances the committed graph.
+The cache is an accelerator: a read error or an entry that doesn't decode is a miss, and a failed write is a
+problem, never a failed update.
 
-The SQLite cache is rebuilt when schema/engine compatibility fails or it is damaged; there
-are no migrations. Deltas commit atomically, including projections and metadata. A writer
-owns key/file-ID mirrors that must roll back with failed transactions. WAL readers see
-committed snapshots; multi-query reads use a read transaction.
+The store is a cache too ([schema.rs](../crates/unfold-store/src/schema.rs)): a database with another schema or
+engine version, or a damaged one, is discarded and rebuilt on open. There are no migrations. Deltas commit in one
+transaction; one writer per folder, on the engine thread; readers see committed snapshots through write-ahead
+logging.
 
 ## Shared config
 
-`unfold.toml`, at the project's root, is strict, UTF-8 TOML. Reject unknown keys, wrong types,
-invalid globs, unsupported values, bad or duplicate IDs, unknown application IDs, illegal field
-combinations, and invalid manual declarations with source positions; never apply a partly valid
-config. A BOM is accepted while source spans retain its bytes.
+`unfold.toml` at the project's root is the project's one settings file, shared through git and edited by people and
+by the app. It is strict UTF-8 TOML: unknown tables and keys, wrong types, and invalid values are errors with a line,
+column, and span. A BOM is accepted, and spans still count it. An absent file means the defaults.
 
 ```toml
 languages = ["typescript", "python"]
-
-[project]
-name = "orders"
 
 [scope]
 include = ["src"]
 exclude = ["**/generated/**"]
 
-[evidence]
-files = ["schema.sql", "prisma/**"]
-
-[detectors]
-disabled = ["node-cron.schedule"]
-
 [[python.project]]
 root = "."
 source_roots = ["src"]
+version = "3.13"
 
-[[application]]
-id = "recipe-cost"
-name = "Recipe cost API"
-description = "Interactive recipe costing."
+[evidence]
+files = ["schema.sql", "prisma/**"]
 
-[[entrance]]
-id = "recipe-cost-start"
-kind = "process"
-application = "recipe-cost"
-label = "Start API"
-cwd = "data-pipelines"
-command = "python3 -m uvicorn api:app --app-dir food-cost --port $PORT"
-python_paths = ["data-pipelines/food-cost", "data-pipelines"]
-env = { PYTHONPATH = "." }
-schedule = "30 7 * * *"
-
-[[entrance]]
-id = "report"
-kind = "command"
-trigger = "report"
-handler = "src/cli.ts#report"
-
-[[entrance_override]]
-match = { detector = "package.script", path = "apps/api/package.json", pointer = "/scripts/start" }
-application = "recipe-cost"
-label = "Start API"
+[[app]]
+name = "Shop API"
+run  = "uvicorn shop.api:app --port 8000"
+code = "shop/api.py#"
+entrances = [
+  { name = "Place an order", on = "POST /orders/{order_id}", code = "shop/api.py#create_order" },
+]
 ```
 
-Omitted config uses defaults: TypeScript/Python enabled, all discovered sources in scope,
-all available detectors enabled, no applications, manual entrances, overrides, or evidence
-patterns. An explicit empty language list is invalid. Known detector IDs only; `manual` cannot
-be disabled.
+| Table | Fields | Default |
+| --- | --- | --- |
+| `languages` | `typescript`, `python` | Both; an empty list is invalid |
+| `[scope]` | `include`, `exclude` glob lists | Everything discovered |
+| `[[python.project]]` | `root`, `source_roots`, `version` (`3.12`, `3.13`, `3.14`) | None; roots must be distinct |
+| `[evidence]` | `files` glob list | None |
+| `[[app]]` | `name`, `run`, `code`, `about`, `entrances` | None: no entrances |
 
-`[[application]]` groups launches under a declared `id` and a nonblank `name` (at most 120
-characters), with an optional `description`. IDs of applications and of entrances are 1–64 ASCII
-letters/digits/`.`/`_`/`-`, starting with a letter/digit, and unique among their own tables.
-Descriptions are nonblank, at most 2,000 characters, and keep their line breaks.
+The compile settings (`languages`, `[scope]`, `[[python.project]]`, `[evidence]`) must all be valid, or the file is
+invalid. **A file that doesn't parse keeps the last good settings and apps** in effect, shows the error, and marks
+the graph incomplete; the text of the last good file is stored with the graph, so reopening keeps it too.
 
-`[[entrance_override]]` adds metadata to a detected launch (`package.script`, `package.bin`, or
-`pyproject.script`), matched by its evidence: `match = { detector, path, pointer }`. It may set
-`application`, `label`, `description`, and `schedule`. Two overrides with the same match are an
-error; an override that matches nothing is a problem scoped to it, not an invalid file.
+`[[python.project]]` picks the grammar and source roots; the deepest project containing a file owns it. Source roots
+join onto `root`, and one may lie outside `[scope]`: its modules then resolve as `not_indexed`. Defaults are in
+[Python › Imports and source roots](languages/python.md#imports-and-source-roots).
 
-Shared project names are 1–64 ASCII letters/digits/`.`/`_`/`-`, starting with a letter/digit.
-They identify cross-project board references. The default is derived from the main worktree's
-folder; renaming a project does not re-extract source.
+`[evidence] files` names files boards may cite, such as SQL migrations or a Prisma schema. They are hashed as
+`evidence` inputs, never parsed or linked; ignore files and the default exclusions apply to them, `[scope]` doesn't.
+A changed evidence file updates its hash without relinking code.
 
-Python projects choose grammar and source roots; the deepest containing project owns a file.
-Absent explicit roots, use `src/` for a src layout, otherwise the pyproject folder. A source
-root can be excluded from indexing and still identify imports as `not_indexed`.
+`Settings::hash` covers the compile settings' values, not comments, order, positions, or `[[app]]` tables.
+Extraction hashes only the settings that affect each file.
 
-`update_project_config` applies edits together, preserves formatting/comments, validates
-before writing, and refuses conflicts. It names applications and entrances by ID and overrides
-by their match, never by position; writing to a missing file creates `unfold.toml`. Settings UI stages changes until Save. Background
-update preferences are local state, not shared config.
+## Entrances
+
+Entrances are declared in `[[app]]` tables, never detected. No `[[app]]` tables means no entrances. Unfold never runs
+or parses `run` or `on`, and entrances never change how code compiles.
+
+### The `[[app]]` tables
+
+An **app** is something a person runs: a service, a worker, a command-line tool.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `name` | yes | Its heading on Home; its key is unique in the file |
+| `run` | no | The command that starts it, shown as written |
+| `code` | no | Where that command starts, usually a module: `shop/api.py#` |
+| `about` | no | One sentence for its card |
+| `entrances` | no | What it handles, in order: a list of inline tables |
+
+An **entrance** is something an app handles: a route, a queue, a schedule, a signal.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `name` | yes | What a person calls it; its key is unique within its app |
+| `on` | no | What starts it, as written: `POST /orders/{order_id}`, `queue emails`, `every 5 minutes`, `SIGTERM` |
+| `code` | yes | The block key it starts at, or a list of keys in the order they run |
+| `about` | no | One sentence for its card |
+
+An app can be only a heading (no `run` or `code`) or only a start (no `entrances`). There are no kinds: `on` says
+what starts an entrance. `code` is any block key a board could use that names a start: a module (`shop/cli.py#`), a
+definition (`src/repo.ts#Repo.save`), or an inline handler
+(`src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0]`). To start at one branch of a dispatcher,
+name the function that branch calls. A key that contains `"` is written as a single-quoted TOML string. The
+playgrounds' `unfold.toml` files are full examples (`testdata/playgrounds/`).
+
+### App and entrance keys
+
+| Points at | Key |
+| --- | --- |
+| An app's start | `entrance:shop-api` |
+| An entrance | `entrance:shop-api/place-an-order` |
+
+Each name is lowercased, every run of characters other than letters and digits becomes `-`, and leading and
+trailing `-` are dropped: `"1. Collect incoming email"` is `1-collect-incoming-email`. A name with no letters or
+digits makes no key. Boards and agents use these keys; renaming an entrance or moving it to another app makes a
+board's reference missing, and the board then offers the entrance with the same `code`.
+
+### Entry problems
+
+One bad app or entrance marks only itself, with its span, and stays out of the graph; the rest of the file works.
+An app's problem keeps its entrances out too. The problems are an unknown field, a wrong type, a missing `name`, an
+entrance with no `code` (or an empty list), a name that makes no key or an empty `code` key, and a duplicate key.
+The first entry without a problem claims a key; a later one with the same key is the duplicate, and an entry that
+already has a problem claims nothing, so it never knocks out a valid one. The `entrances` command lists every entry
+as written, with its problem.
+
+### Resolving `code`
+
+After every update, and when only the `[[app]]` tables change, each `code` key is looked up in the graph:
+
+| State | When |
+| --- | --- |
+| `found` | The key names a module, definition, or inline function |
+| `missing` | No block has the key, or it isn't a block key |
+| `not_analyzed` | The key's file exists but isn't compiled: scope or ignore rules exclude it, or Unfold doesn't index its kind of file |
+| `not_a_start` | The key names a call, exit, control block, or part |
+| `stale` | The key names a start in a file that stopped parsing: its last good block |
+
+**Fixes are offered, never applied,** and only when exactly one candidate fits a `missing` key:
+
+| Fix | Candidate |
+| --- | --- |
+| Moved definition | The one definition in another file with the same qualified name |
+| Edited route | For an inline handler of a call, the one other call under the same parent to the same callee, with a handler in the same place, that no entrance names |
+| Moved module | The one module in another file with the same file name and the same top-level definitions the missing module had when last seen |
+
+Otherwise the person chooses the code again. An entrance never silently opens something else.
+
+When only `[[app]]` tables change, `Engine::resolve_entrances` re-reads `unfold.toml` and resolves the apps against
+the current graph without extracting or linking; the workspace then sends only `entrances_changed`, when anything
+changed. If the compile
+settings changed too, it refuses (`CompileNeeded`) and an update runs instead.
+
+## Settings edits
+
+[settings/edit/](../crates/unfold-engine/src/settings/edit/mod.rs) changes `unfold.toml` through `toml_edit`, so
+everything an edit doesn't touch (comments, blank lines, key order, quoting, a BOM) stays byte for byte, and **a
+write changes only its own lines**. The result is parsed with the strict parser; an edit that would make the file
+invalid, or leave the entry it sets with an empty key, is refused with the parser's message and position, and so is
+any edit of a file that doesn't parse. `apply_edits` writes nothing: it returns the new text, what it holds, a
+unified diff, and what each app and entrance edit did (added, changed, or removed).
+
+| Edit | Effect |
+| --- | --- |
+| Exclude from graph, include in graph, graph only this folder, remove a scope pattern | Change `[scope]`; a broader `exclude` than the path is a conflict, reported, never rewritten |
+| Set or remove a Python project | Adds or replaces the `[[python.project]]` table with that root, or removes it |
+| Add or remove an evidence pattern | Changes `[evidence] files`; an emptied list's key goes, and so does an emptied table |
+| `set_app` | Adds an `[[app]]` table, or sets or removes an existing app's `run`, `code`, and `about`; its entrances stay |
+| `set_entrance` | Adds one line to an app's `entrances`, creating the app when it is new, or changes the entrance addressed |
+| `add_entrance` | Adds one line, refusing when the app already has an entrance with that key |
+| `remove_entrance` | Removes one entrance's line, or a whole app |
+
+Apps and entrances are addressed by key, or by a name that makes that key: `"shop api"` addresses the app named
+`"Shop API"`. An edit never renames: a changed entry keeps its name, and a new one takes the name given. A field left
+out keeps what the file says; null removes it.
+
+The workspace applies edits under one lock and writes the file atomically when it changes, never creating a file
+that would hold only defaults. An edit that leaves the compile settings as they were resolves the entrances again
+without compiling; any other edit is picked up by the next background update.
 
 ## Discovery and scope
 
-Discovery uses the `ignore` walker, without running Git. Respect nested `.gitignore`, `.ignore`,
-Git excludes, and applicable parent rules. Hidden files are ordinary candidates. Always skip
-`node_modules`, virtualenvs, Python tool caches, `.git`, and `.unfold`; generated directories
-such as `dist` need ignore/scope rules. The exact excluded set is owned by discovery code.
+Discovery walks the folder with the `ignore` crate, without running Git and whether or not it is a repository:
+nested `.gitignore`, `.ignore`, `.git/info/exclude`, the global Git excludes file, and applicable parent rules apply.
+Hidden files are ordinary candidates. Folders named `node_modules`, `.venv`, `venv`, `__pycache__`, the Python tool
+caches, `.git`, and `.unfold` are never entered ([classify.rs](../crates/unfold-engine/src/discovery/classify.rs));
+generated folders such as `dist` need ignore or scope rules.
 
-Never follow directory symlinks. A file symlink is usable only when it resolves inside the
-project. Invalid UTF-8 paths, unreadable entries, and malformed ignore rules are reported;
-the walk continues. Results use normalized project-relative paths and deterministic order.
+Directory symlinks are never followed; a file symlink counts only when it resolves to a file inside the project.
+Invalid UTF-8 paths, unreadable entries, and malformed ignore rules are reported, and the walk continues. Results
+are normalized project-relative paths in sorted order.
 
-Scope applies on top of ignore rules. A pattern names a file, a containing folder, or a
-`/`-aware glob; `*` stays within a component and `**` crosses components. An empty include
-list means all; any exclude wins. Reject empty, absolute, dot-component, and invalid patterns.
+Classification is by path alone:
 
-Classification distinguishes indexed source, context/declaration files, configuration inputs,
-evidence, unindexed source-like files, and irrelevant files. Scope changes indexing, not
-existence: an excluded target is `not_indexed`, a missing target `not_found`. Skipped-file
-reports explain classification without implying every discovered file is compiled.
-
-Evidence patterns select files that are not already source/context/config inputs. They obey
-ignore/always-excluded rules but not source scope. Hash them as `evidence` inputs without
-parsing or executing them. Changed evidence bytes update anchors without relinking code.
-
-Settings hashes depend on canonical values, not comments/order/positions. Extraction hashes
-include only settings affecting that file; project names and manual entrances need no source
-re-extraction. The config file is also fingerprinted by its actual bytes as an input.
-
-## Launch-command grammar
-
-Package scripts are interpreted statically, never executed. The accepted subset handles
-literal words/quotes, supported sequential shell steps, assignments, `cd`, and script
-references. Refuse expansions, substitutions, unsupported operators, shell control constructs,
-and execution wrappers rather than guessing their effect. Preparatory commands do not supply
-proven code targets; the final launch step decides the process entrance.
-
-Recognize supported Node/TypeScript/Python file launchers and package script references.
-Resolve a written emitted TypeScript path through the emit map before output exists. Guard
-script-reference recursion, working directories, ignored lifecycle hooks, and project bounds.
-A launch outside the project or through `node_modules` supplies no entrance. Exact grammar,
-launcher flags, recursion limits, and examples are covered by the launch module and its tests.
-
-Configured process commands share the tokenizer, refusals, and package lookup (a configured
-`npm run start` selects `cwd/package.json`), with one stricter rule: exactly one launching step,
-the last. Preparatory steps may precede it; `node a.js && node b.js` is unsupported. They also
-read Python: `python`/`python3`/`python3.N` with only `-u`, `-B`, `-O`, `-OO`, then a script
-(file target, script mode) or `-m module`; and Uvicorn, as `uvicorn module:attr` or
-`python -m uvicorn module:attr`, with `--app-dir`, `--factory`, and pinned server options.
-Unknown options are unsupported. Expansions are allowed only in server option values and in
-program arguments after the target. `sh -c "…"`/`bash -c` is unsupported ("Can't read sh -c"),
-but its plan suggests the quoted command's target and import path.
-
-Each Python launch's import path, in order: the script's folder (script); the working folder
-(`-m`); the app dir, default the working folder (`uvicorn`); the app dir then the working folder
-(`python -m uvicorn`). Then `PYTHONPATH` entries: a leading `PYTHONPATH=…` assignment, else the
-declared `env`, resolved from the working folder (empty entry = working folder; expansions are
-unsupported). Explicit `python_paths` replace the whole list. An explicit `target` is used as
-written; with a readable command, the two must agree or the launch reports a problem and has no
-target. The plan also lists the command's parts with plain meanings for the launch editor.
-
-## Manual entrances and locators
-
-`[[entrance]]` supports `process`, `command`, `http`, `worker`, `schedule`, and `event`. Every
-table has an `id`, and may name a declared `application`, a `label`, and a `description`.
-Every kind but `process` requires a locator or nonempty ordered `handler` list; handler lists
-cannot mix languages. Only HTTP may have a supported uppercase `method`; an omitted trigger is
-unknown, an empty trigger invalid. Unknown keys are errors.
-
-A process needs at least one of `command`, `startup`, and `target`, and takes the other process
-fields; no other kind may set them:
-
-| Key | Meaning |
+| Class | Files |
 | --- | --- |
-| `cwd` | The folder the command runs in, relative to the project; `.` when omitted |
-| `command` | The command line as written; never run |
-| `startup` | A locator for what the process starts; exclusive with `target` |
-| `target` | `{ type = "file", path }`, `{ type = "python_module", module }`, `{ type = "python_callable", module, attribute }`, or `{ type = "python_asgi", module, attribute, factory = false }`; module and attribute are literal dotted names |
-| `python_paths` | Project-relative folders, in order, that replace the inferred import path |
-| `env` | Declared environment strings by variable name; the host environment is never read |
-| `schedule` | Nonblank text, at most 200 characters, shown as written |
+| Source | `.ts`, `.tsx`, `.mts`, `.cts`, `.py` in scope, for an enabled language |
+| Context | TypeScript declaration files (`.d.ts`, `.d.mts`, `.d.cts`): read for names, never given nodes |
+| Configuration input | `unfold.toml` (at the root), `package.json`, `pyproject.toml`, `tsconfig*.json`, whatever the scope says |
+| Evidence input | A file matching `[evidence] files` that is nothing else |
+| Unindexed | A source-like file that exists but isn't indexed: excluded, not included, its language off, or JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx`) |
 
-A manual entrance's key is `entrance:configured:<id>`, so it survives edits to its label,
-command, targets, and position.
-
-| Locator | Meaning |
-| --- | --- |
-| `path` | File root for a startup; unsupported as a handler |
-| `path#name`, `path#default` | Runtime export/re-export first, otherwise supported top-level declaration |
-| `path#Owner.member` | Direct member of a named class or constant object; no inherited lookup |
-| `path:line` | Outermost permitted block starting on the one-based line |
-
-A locator has at most one selector, confined path syntax, valid identifier names, and canonical
-positive decimal lines. Parsing checks syntax; each compile resolves it again. Keep unresolved
-entrances rather than silently deleting them. Missing/unindexed/ambiguous/external targets
-remain explicit. Class handlers and external startups are unsupported.
-
-Constant object-literal function members agree with ordinary call resolution where that call
-has evidence. Annotated or mutable object cases may differ deliberately: a manual locator
-selects a written direct member, while a call must prove its runtime binding. Line locators
-follow line numbers after edits; prefer names. Evidence is the config table's exact range and
-`/entrance/<index>` pointer.
-
-A process without a `startup` is planned before linking, and each Python plan's entry and import
-path become one of the linker's launch contexts. After linking, its one startup target resolves:
-a file like a package script's launch path, a Python target through the Python linker with that
-launch's context (a module, a package's `__main__`, or a top-level binding). A launch Unfold can't
-read keeps one unsupported target, its command as written. Beside the graph, the engine keeps a
-record per launch: its presentation (label, description, schedule, application), folder and
-command, import path with origins, problem, whether its target was set by hand, and the blocks it
-runs first (the packages a module initializes, the module of a callable or application). A
-detected launch's record takes the presentation of the `[[entrance_override]]` matching its
-detector, file, and pointer; an override that matches nothing is a problem.
-
-## Entrance detectors
-
-Detection requires proven framework identity, not lookalike names. Follow supported stable
-origins through imports/aliases/factories/annotations. An uncertain trigger or handler keeps
-its declared entrance with explicit status; hidden mutations/registrations may invalidate
-handler body proof. `exact`, `partial`, and `unknown` describe written trigger knowledge.
-
-| Detector | Recognizes | Key limits |
-| --- | --- | --- |
-| `package.script` | Supported launch in the final step of a package script | Ignore lifecycle hooks; literal launches, emit-map resolution, bounded script references |
-| `package.bin` | String/object bins in strict package JSON | Named nonempty paths; package-relative startup resolution |
-| `express.route` | HTTP method registrations on proven Express app/router | Supported literal mounts; handler order preserved; incomplete mount paths are partial |
-| `bullmq.worker` | Proven Worker construction | Written queue and processor; unsupported options/wrappers may prevent body proof |
-| `node-cron.schedule` | Proven cron schedule registration | Literal schedule text; shared handler policy |
-| `pyproject.script` | Python project console-script declarations | Static module/member resolution through configured roots |
-| `fastapi.route` | Supported decorators/applied factories on proven app/router | Declared dependencies before endpoint; uncertain Depends/mounts stay explicit; each branch records the application binding it reaches |
-| `celery.task` | Supported task decorators/applied factories on proven Celery app | Queue is trigger, not task name; shared registry/configuration uncertainty refuses body proof |
-| `apscheduler.job` | APScheduler 3 BlockingScheduler `add_job` | Exact cron only from proven five-field `from_crontab`; mutation/hidden registration invalidates body proof |
-| `manual` | Valid shared declarations | Never disabled; resolve locators on every compile |
-
-Express/FastAPI mount traversal is bounded (five levels; FastAPI also limits branch expansion).
-Cycles, uncertain prefixes, and unmounted routers retain partial local paths rather than
-inventing complete routes. Framework-specific dependency, mutation, and argument rules live
-with each detector, alongside its entrance tests and `testdata/detectors/<detector>/` cases.
-
-Inspect [TypeScript detectors](../crates/unfold-lang-typescript/src/detect/mod.rs) or
-[Python detectors](../crates/unfold-lang-python/src/detect/mod.rs) when changing a detector;
-read only the relevant implementation and fixtures. Mixed projects compile languages
-independently; a detector never resolves a handler by guessing across language boundaries.
+Scope applies on top of ignore rules. A pattern names a file, a folder that contains it, or a `/`-aware glob (`*`
+and `?` stay within one component, `**` crosses components). No `include` patterns means everything; any `exclude`
+wins. Empty, absolute, `.`/`..`, and invalid patterns are rejected. Scope changes indexing, not existence: a call
+into an excluded file is `not_indexed`, into a missing one `not_found`.
 
 ## Project lifecycle
 
-[Projects](../crates/unfold-workspace/src/projects.rs) owns the machine-wide workspace.
-A connected project starts resting. Listing/searching resting projects reads committed data
-without starting an engine or watcher. Using graph content wakes the project and extends its
-interest lease. Window selection/open boards and active requests contribute interest.
+[Projects](../crates/unfold-workspace/src/projects.rs) owns the machine-wide workspace (`workspace.json` in app
+data); a live [Workspace](../crates/unfold-workspace/src/workspace.rs) owns one project's lock, engine thread, store
+writer, reader cache, watcher, and update scheduling.
 
-A live [Workspace](../crates/unfold-workspace/src/workspace.rs) owns its lock, engine thread,
-writer, reader cache, watcher, update scheduling, status, and local layout. First Compile
-creates local files; merely connecting a never-compiled folder writes nothing there.
+1. **Added.** `add_project` records the folder and compiles it at once. A folder Unfold can't write `.unfold/` into
+   is refused: read-only, on a network volume (where SQLite's write-ahead log is unsafe), or with `.unfold/` behind a
+   symlink.
+2. **Woken.** A command that uses the project's engine, selecting it on Home, or opening one of its boards opens its
+   Workspace. A folder compiled before takes its lock (a second copy of Unfold gets `open_elsewhere`), opens its
+   store, and is readable at once; the engine thread restores the stored graph and runs the reopen check in the
+   background. When nothing the graph was linked from changed while the folder was closed, the check neither
+   relinks nor commits. Opening writes nothing into a folder that was never compiled.
+3. **First Compile** creates `.unfold/local/` (with its `.gitignore`), takes the lock, opens the store, compiles, and
+   commits.
+4. **Background updates.** The watcher feeds changed paths to the scheduler; an update starts after a short quiet
+   period, and a newer change cancels and restarts it. Without usable file-system events the folder is scanned
+   periodically. If `local/cache/` disappears, the next piece of work recreates it and compiles everything again.
+5. **Commits** write only what changed, in one transaction, install a new reader index, and send `graph_updated`,
+   `problems_changed`, `project_state`, and `entrances_changed` when the apps changed.
+6. **Rest.** Once nothing keeps the project live (no open board, no Home selection, no running compile) and its
+   lease runs out, it remembers its row state and closes: no watcher, engine thread, or lock. Commands that read
+   from disk serve it from its stored graph, read-only, without waking it.
 
-The watcher batches changes, cancels superseded work, and supports pause/resume. Unsupported
-watching falls back to scans; locks prevent conflicting writers. Rest releases engines,
-watchers, locks, and in-memory programs after interest expires. Reopen restores committed
-facts before checking disk. Source verification still protects reads while checks run.
-
-Read-only folders and unsafe network volumes use the OS-cache fallback. Shared config and
-published board writes still require a writable project. Crash/cancel paths retain the last
-committed graph and expose current state/problems; they must not disguise stale source as
-fresh. IPC distinguishes commands that wake projects from resting reads.
+Crash and cancel paths keep the last committed graph and show current state and problems; stale source is never
+shown as fresh, because reads verify source against the facts hash. IPC tells commands that wake a project from
+resting reads ([IPC](ipc.md)).

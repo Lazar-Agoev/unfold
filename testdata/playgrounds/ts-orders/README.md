@@ -1,27 +1,27 @@
-# TypeScript orders fixture
+# TypeScript orders playground
 
-A static-analysis corpus with Express routes, BullMQ workers, node-cron schedules, package
-scripts/bins, a CLI, and mixed module/launch shapes. Orders are in-memory per process; queue,
-payment, and email adapters provide recognizable declarations for compiler/reader tests.
+An orders service written to exercise the compiler: Express routes and middleware, BullMQ workers, node-cron
+schedules, a CLI behind a package `bin`, package scripts, and ordinary services and classes. Queue, payment, and email
+adapters give recognizable declarations to call.
 
-This is test data, not a second workspace application. Tests analyze temporary copies without
-starting the API/workers, connecting Redis, installing packages, or executing launch scripts.
-Package metadata and written source are the inputs; generated output is not required.
+This is test data. Tests compile temporary copies; nothing is installed, started, or run. `package.json` and
+`tsconfig.json` are analyzed inputs, and the two JavaScript files (`report-processor.js`, `scripts/export.js`) are
+there so entrances can point at code Unfold doesn't analyze.
 
-## Expectations
+## What it pins
 
-`expected-entrances.txt` records entrance expectations. `testdata/reference/` contains frozen
-canonical/reader and oracle answers. Relevant fixtures exercise imports/exports, emitted paths,
-annotations, callbacks, constructors, scopes, detectors, and conservative unresolved cases.
-Do not remove difficult examples or bless changed output without explaining the change.
+- **`unfold.toml`**: 7 apps and 18 entrances, one per process the package starts and what each handles. "Admin
+  stats" deliberately names a definition that moved, so the missing state and its one fix stay covered.
+- **Goldens** in `testdata/goldens/`: `ts-orders.jsonl` (the canonical export), `ts-orders.entrances.txt` (each
+  `code` key's state), `ts-orders.flows.txt` (every definition drawn); the command results in
+  `testdata/workspace/commands/`; and the two boards in `testdata/boards/`.
+- **Oracles**: the corpora `ts-orders` and `mixed-playground` in `testdata/reference/oracles/`.
 
-## Working on a case
+Keep the difficult cases: they are what the goldens and oracles check. To change one, edit one behavior, run the
+TypeScript crate's tests, read the golden diff before blessing, and run `cargo xtask oracles check ts-orders
+mixed-playground` when a call's outcome can change.
 
-Find the relevant source and its language/detector test, edit one behavior, and run that focused
-check. Larger changes may need oracle checks for `ts-orders` or `mixed-playground`.
-Runtime scripts in `package.json` are analyzed examples, not prerequisites for compiler tests.
-
-- [Test-data conventions](../../README.md)
-- [TypeScript rules](../../../docs/languages/typescript.md)
-- [Entrances](../../../docs/engine.md#entrance-detectors)
-- [Validation policy](../../../docs/testing.md#precision-and-recall-gates)
+- [Test data](../../README.md)
+- [TypeScript front end](../../../docs/languages/typescript.md)
+- [Testing](../../../docs/testing.md#precision-and-recall-gates)
+- [Python counterpart](../py-orders/README.md)

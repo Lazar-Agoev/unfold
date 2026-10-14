@@ -1,226 +1,126 @@
 # Unfold
 
-**Understand your code through connected diagrams.**
+**See how your code works, as connected diagrams of the code itself.**
 
-Unfold is a desktop app that turns TypeScript and Python source into diagrams you can
-explore. Start at an HTTP route, worker, scheduled job, or script, follow its calls,
-expand functions into steps and decisions, and inspect the actual source behind each
-block.
+Unfold is a macOS app that compiles TypeScript and Python into diagrams. Start where a system starts (an HTTP
+route, a worker, a schedule, a command), follow its calls, expand functions into their steps, branches, and loops,
+and open the source behind any block.
 
-Build explanations yourself, or connect Claude Code, Codex, or another MCP client to
-create them with you. Boards can include architectural connections, tables and ERDs,
-descriptions, and proposed changes. Save them alongside your code so your team can
-read and maintain them.
+Explain a page yourself, or have Claude Code or Codex do it with you over MCP: name and combine steps, describe
+cards, frame services, add tables and queues, connect them, and propose changes. Boards are files in your
+repository, so your team reads the same diagrams.
 
-Unfold analyzes source locally without executing the projects it reads. Its graph
-updates as files change, and calls whose targets cannot be proven stay visibly
-unresolved.
-
-[Run the app](#run-from-source) · [Open a project](#open-your-first-project) ·
-[Set up MCP](#connect-an-agent-with-mcp) · [Save and share](#save-and-share)
+Unfold reads code without running it. A call is drawn as resolved only when Unfold can prove its one target; the
+rest stay visibly unknown. The graph updates as you edit.
 
 ## Run from source
 
-Install these prerequisites:
-
-| Tool | Requirement |
+| Tool | Version |
 | --- | --- |
-| Node.js | 24 or newer, as specified in [package.json](package.json) |
-| pnpm | The version pinned in [package.json](package.json), currently `11.9.0` |
-| Rust | Install through rustup; [rust-toolchain.toml](rust-toolchain.toml) selects the toolchain |
-| just | The command runner used by the [justfile](justfile) |
-| Native build tools | Xcode Command Line Tools on macOS; Visual Studio C++ Build Tools on Windows; a C/C++ compiler and `make` on Linux |
-
-You can install the pinned pnpm version with:
-
-```sh
-npm install --global pnpm@11.9.0
-```
-
-From this repository's root, install dependencies, build the engine and app, and launch:
+| macOS | With the Xcode Command Line Tools |
+| Node.js | 24 or newer |
+| pnpm | `11.9.0`, pinned in [package.json](package.json) (`npm install --global pnpm@11.9.0`) |
+| Rust | Through rustup; [rust-toolchain.toml](rust-toolchain.toml) picks the toolchain |
+| just | The command runner for the [justfile](justfile) |
 
 ```sh
 pnpm install
-just addon
-just js-build
+just addon        # the Rust engine, as a Node addon
+just js-build     # the UI and the Electron shell
 pnpm --filter @unfold/desktop start
 ```
 
-To open a project at launch, pass its folder:
+`just dev` runs the app with hot reload instead.
 
-```sh
-pnpm --filter @unfold/desktop start -- /absolute/path/to/your/project
+## Open a project
+
+1. Click **Add project** (or **File › Add Project…**) and pick a code folder. Unfold compiles it at once and keeps it
+   current. It writes only inside the folder's `.unfold/`.
+2. **Home** shows the project: its state, **How it starts**, its **Boards**, and its **Health**.
+3. Click an entrance under How it starts. Unfold makes a board with the entrance and its code, expanded in run order.
+
+To try it, add [testdata/playgrounds/ts-orders](testdata/playgrounds/ts-orders) or
+[testdata/playgrounds/py-orders](testdata/playgrounds/py-orders). Nothing needs installing.
+
+### Say where your system starts
+
+How it starts comes from `[[app]]` tables in `unfold.toml` at the folder's root. An app is a process you run, and
+its entrances are what it handles. `code` names a function or module; `run` and `on` are shown as written.
+
+```toml
+[[app]]
+name = "Server"
+run = "npm run start"
+code = "src/server.ts#"
+entrances = [
+  { name = "List orders", on = "GET /orders", code = "src/routes/orders.ts#listOrders" },
+  { name = "Place an order", on = "POST /orders", code = ["src/routes/middleware.ts#requireUser", "src/routes/orders.ts#createOrder"] },
+]
 ```
 
-For development with hot reload, use `just dev` after `pnpm install`. This recipe uses
-Bash and Unix process utilities; the build-and-start commands above avoid that recipe
-on Windows.
+With no apps yet, Home offers **Add entrance** and **Copy agent prompt**, which asks an agent to write the tables.
+A card's menu also has **Add as entrance…**. When code moves, the entrance shows an amber dot and, where it can,
+a one-click fix.
 
-## Open your first project
+## Read and explain
 
-1. Launch Unfold and click **Add project…**, choose **File → Add Project…**, or press
-   **Cmd/Ctrl+O**. Select the folder containing your code. You can also drop a folder
-   onto the window.
-2. Review the files Unfold will read. It respects ignore files and skips folders such
-   as `node_modules` and `.venv`. Exclude additional folders, such as build output,
-   if needed.
-3. Click **Compile**. This analyzes the code and creates `.unfold/` inside the project
-   for its cache and boards. Adding the folder alone writes nothing to it.
-4. On Home, find an entry point under **How it starts** and click **Trace** to open a
-   board. Unfold detects launch scripts, Express and FastAPI routes, BullMQ and Celery
-   workers, and node-cron and APScheduler schedules.
-5. Follow calls and expand cards to explore the path. Background updates keep the
-   graph current when you edit your code.
-
-A **project** is a code folder. A **board** explains part of a system, and its
-**pages** hold individual diagrams. Add more projects with the **+** beside Projects
-in the sidebar; a page can contain code from several connected projects.
-
-For a quick example, open [testdata/playgrounds/ts-orders](testdata/playgrounds/ts-orders)
-or [testdata/playgrounds/py-orders](testdata/playgrounds/py-orders) and compile it.
-These sample projects can be analyzed without installing their dependencies or
-starting their services.
-
-## Read and explain code
-
-| What you want to do | How |
+| To | Do |
 | --- | --- |
-| Find a function, type, file, or entry point | Use **Add** on a board, or press **Cmd/Ctrl+K** |
-| Follow a call | Click its link to open the called function beside it |
-| Read a function's flow | Use the card's chevron to expand its steps, branches, and loops |
-| Inspect the source behind a block | Select it and press **C**, or use **View code** / the `</>` button |
-| Read the page as source | Switch the page lens from **Diagram** to **Code** |
-| Simplify a long flow | Select consecutive steps with click and Shift-click, then right-click → **Combine…** |
-| Explain a card or step | Add its description or label in the **Selected** sidebar |
-| Clean up the layout | Click **Arrange**, then use **Fit** (**Shift+1**) |
+| Put code on a page | **Add** at the bottom of the board, then type a name |
+| Read a function | Expand its card; a call with a known target draws an arrow to its card |
+| Follow a call in place | **Open in place** in the call's menu |
+| See who calls a function | **Show callers** in the card menu |
+| See builtin calls too | **Show all calls** in the top bar |
+| Read the source | Select a block and click `</>`: the code panel shows its lines beside the canvas |
+| Open it in your editor | **Open in editor** in the code panel; set the command in **Settings** |
+| Name, describe, or combine steps | The block's menu: **Name…**, **Describe…**, **Combine…** |
+| Propose a change | **Add proposed step after…** in the block's menu |
+| Add a table, queue, or service | **Add resource…** in the canvas menu, then **Draw link…** |
 
-Combined blocks retain their original steps and source. Hover a dashed call to see
-why its target is unresolved. Types show their fields and written type information.
+When code under an explanation changes, the card asks for review. The [user guide](docs/user-guide.md) covers
+everything in detail.
 
-An MCP agent can also add frames around services, tables with columns and key markers,
-ERD relationships, queues, notes, and connections between services. Authored
-explanations and connections are visually distinct from compiled facts. When the code
-behind an explanation changes, Unfold marks it for review.
+## Connect an agent
 
-If an entry point is missing, use **Add entrance…** in the project menu. Project
-**Settings** controls analysis scope, detectors, Python import roots, and evidence
-files such as SQL or Prisma schemas. The [user guide](docs/user-guide.md) covers the
-full workflow.
+The app runs a local [Model Context Protocol](https://modelcontextprotocol.io/) server while it's open, at
+`http://127.0.0.1:29180/mcp` (Streamable HTTP). It answers only programs on this machine. Run one command, once:
 
-## Connect an agent with MCP
+```sh
+claude mcp add --transport http --scope user unfold http://127.0.0.1:29180/mcp   # Claude Code
+codex mcp add unfold --url http://127.0.0.1:29180/mcp                            # Codex
+```
 
-Unfold includes a local [Model Context Protocol](https://modelcontextprotocol.io/)
-server inside the desktop app. It lets an agent read compiled code, search projects,
-and create or edit diagrams while you watch them update.
-
-### 1. Enable the server
-
-Open **Preferences** using the gear at the bottom of Home's sidebar. Under **Agents**,
-turn on **Let agents connect** and click **Save**. Wait for **Listening**.
-
-The default address is:
+**Settings › Agents** shows these commands and whether an agent is connected. Then ask in your own words:
 
 ```text
-http://127.0.0.1:29180/mcp
+Use Unfold to explain POST /orders in my orders project, end to end.
 ```
 
-The transport is **Streamable HTTP**. Keep Unfold running while using MCP. The server
-is off by default and accepts connections from programs on the same computer.
+To point an agent at a page, choose **Copy link** in the page's menu and paste the `unfold://…` link into the chat.
+You watch the page change as the agent works, and each of its edits is one Edit › Undo. Agents never edit your
+source; they change `unfold.toml` only when asked.
 
-### 2. Configure your client
+## What to commit
 
-With your chosen agent's CLI installed, run its command once.
-
-**Claude Code** — available across your repositories:
-
-```sh
-claude mcp add --transport http --scope user unfold http://127.0.0.1:29180/mcp
-```
-
-**Codex:**
-
-```sh
-codex mcp add unfold --url http://127.0.0.1:29180/mcp
-```
-
-In Codex, `codex mcp list` lists configured servers, and `/mcp` shows active servers
-inside a session. See the [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp#configure-with-the-cli)
-for client configuration details.
-
-For another MCP client, add a server named `unfold` using **Streamable HTTP** and the
-address above. If you change the port in Preferences, use the updated address and
-connection command shown there.
-
-Start a new agent session after configuring it. If a Claude Code session was already
-running, use `/mcp` to reconnect. **Preferences → Agents → Connected agents** shows
-clients that have connected.
-
-### 3. Ask for a diagram
-
-Open and compile your project, then ask the agent in your own words. Replace the
-project, route, and function names in these examples with yours:
-
-```text
-Use Unfold to create an onboarding board for my payments project.
-Show how it starts and add a page for each main request path.
-
-Use Unfold to explain POST /orders end to end, including the worker
-that processes the order and the tables it writes to.
-
-On the current Unfold page, combine createOrder's steps into named
-blocks and label them so a new developer can follow the flow.
-```
-
-To target a specific page, open its **⋯** menu in the sidebar, choose **Copy link**,
-and paste the resulting `unfold://…` link into the agent's chat with your request.
-These links identify items for the MCP tools.
-
-The agent can read source, trace calls, build boards, arrange cards, add explanations,
-and check diagrams. Its edits save as it works and can be undone in Unfold. An agent
-adding a new project folder asks for confirmation in the app. Review the result and
-press **Publish** yourself; agents cannot publish boards or edit your source through
-Unfold's MCP tools.
-
-Claude Code also exposes these built-in recipes:
-
-| Command | Result |
-| --- | --- |
-| `/unfold:explain-entrance POST /orders` | Explain an entry point end to end |
-| `/unfold:simplify-function createOrder` | Combine and label a function's flow |
-| `/unfold:service-map payments` | Map services and their connections |
-| `/unfold:data-model` | Show tables or types, relationships, and readers/writers |
-| `/unfold:tour` | Create an onboarding board |
-| `/unfold:fix-boards` | Review and repair diagrams after a refactor |
-
-## Save and share
-
-New boards are **drafts** and save automatically on your machine. Click **Publish**
-to write a board to `.unfold/boards/<name>.json` in the project. Include that file in
-your repository so teammates can open the same board in Unfold. Further edits remain
-local until you publish again.
-
-Use **Share → Export Mermaid…** or **Copy Mermaid** for a diagram you can embed in
-GitHub Markdown, or **Share → Export PNG…** for an image.
-
-| Path in the project | Purpose | Share in the repository? |
+| Path | Holds | Commit it? |
 | --- | --- | --- |
-| `unfold.toml` | Shared project settings; created when settings change | Yes |
-| `.unfold/boards/` | Published boards | Yes |
-| `.unfold/local/` | Graph cache, drafts, unpublished changes, and view state | No; automatically ignored |
+| `unfold.toml` | Settings, apps, and entrances | Yes |
+| `.unfold/boards/` | Boards, saved as you edit | Yes |
+| `.unfold/local/` | The graph cache and the lock | No; it ignores itself |
+
+**Export PNG…** in a board's menu saves an image of the page.
 
 ## Troubleshooting
 
-| Problem | What to check |
+| Problem | Check |
 | --- | --- |
-| The agent cannot connect | Keep Unfold open, enable **Let agents connect**, save, and check that Preferences says **Listening**. Start a new agent session or reconnect. |
-| The MCP port is occupied | Choose another port in Preferences, save, and update the client's server URL to match. |
-| An entry point is missing | Check project scope and detectors in **Settings**, or declare it with **Add entrance…**. |
-| Code has changed since analysis | Let background updates finish, or click **Compile**. Check **Health and activity** for parse errors or update failures. |
+| An agent can't connect | Unfold is open, and Settings › Agents shows no error. Another program on port 29180 stops the server |
+| An entrance is missing or marked | Hover its amber dot on Home for what happened and its fix |
+| The diagram looks out of date | Home's state line; **Compile again** in the project menu; files that don't parse are listed under Health |
 
-## Further reading
+## More
 
-- [User guide](docs/user-guide.md): navigation, shortcuts, editing, settings, and agent workflows.
-- [Documentation map](docs/README.md): focused references for contributing to Unfold.
-- [Architecture](docs/architecture.md): the Rust engine, Electron shell, and React UI.
-- [Testing](docs/testing.md#choose-checks-for-a-local-change): choose checks for a change.
-- [Desktop packaging](desktop/README.md#packaging): build the unpacked macOS app with `just bundle-dir`.
+- [User guide](docs/user-guide.md): the whole app.
+- [Documentation map](docs/README.md): references for working on Unfold, starting with [AGENTS.md](AGENTS.md).
+- [Testing](docs/testing.md#choose-checks-for-a-local-change): which checks to run.
+- [Desktop](desktop/README.md#packaging): building the unpacked app with `just bundle-dir`.

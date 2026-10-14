@@ -1,75 +1,85 @@
 # Desktop shell
 
-Electron main owns the window, menus, dialogs, and the agent MCP server. The engine host
-utility process owns the Node addon/Rust host; the renderer has no filesystem or Node access.
-See [architecture](../docs/architecture.md#processes) and [IPC](../docs/ipc.md).
+The Electron main process owns the one window, the menu, native dialogs, the MCP server, and the render window. An
+Electron utility process, the engine host, loads the Rust addon. The renderer has no filesystem or Node access. See
+[architecture](../docs/architecture.md) and [IPC](../docs/ipc.md).
 
 ## Code map
 
-| Area | Entry point |
+| Area | Files (`src/`) |
 | --- | --- |
-| Startup/windows/OS integration | `src/main/index.ts`, `windows.ts`, `menu.ts`, `dialogs.ts` |
-| Hardening/protocol | `src/main/security.ts`, `protocol.ts`, `app-url.ts` |
-| Engine supervision and routing | `src/main/engine-host.ts`, `src/engine-host/router.ts`, `binding.ts` |
-| Renderer API | `src/preload/index.ts`, `src/shared/unfold-api.ts`, `transport.ts` |
-| Agent bridge/rendering | `src/main/agents/`, `src/shared/{agent,render}-api.ts` |
-| MCP | `src/main/mcp/`; tools, teaching assets, listener and server |
-| Restore/location/updates | `src/main/workspace.ts`, `window-placement.ts`, `app-paths.ts`, `updater.ts`, `update-policy.ts` |
-| Build/package | `electron.vite.config.ts`, `electron-builder.yml` |
+| Lifecycle, the window, menu, dialogs | `main/index.ts`, `windows.ts`, `menu.ts`, `dialogs.ts` |
+| Window commands (the only IPC main answers) | `main/ipc.ts` |
+| Window state and adding projects | `main/workspace.ts`, `window-placement.ts`, `app-paths.ts` |
+| Hardening, the `app://` origin | `main/security.ts`, `protocol.ts`, `app-url.ts` |
+| Engine host supervision and routing | `main/engine-host.ts`; `engine-host/index.ts`, `router.ts`, `binding.ts` |
+| The renderer's API | `preload/index.ts`; `shared/unfold-api.ts`, `transport.ts` |
+| Agent bridge, links, view reports, page images | `main/agents/`; `shared/agent-api.ts`, `render-api.ts` |
+| MCP server, tools, guide | `main/mcp/`; tools in `main/mcp/tools/`, guide topics in `main/mcp/guide/` |
+| Build and packaging | `electron.vite.config.ts`, `electron-builder.yml` |
 
 ## Transport and windows
 
-Preload exposes only typed `window.unfold` operations. Engine requests use the window's
-MessagePort; main-origin requests use the utility-process parent port. The router filters
-untrusted requests, routes streams/events/results, and coordinates detach/closing writes.
-The host adapter must keep sink delivery and promise completion ordered. Ordinary command
-additions change Rust types/table, not each transport hop.
+The preload exposes only `window.unfold`. Engine commands travel over the window's MessagePort to the engine host,
+which hands them to the addon; window commands (`window_info`, `export_png`, `report_view`, …) go to main over IPC.
+Main's own trusted requests, such as adding a project from the folder picker and the window's state, use the utility
+process's parent port. Adding an engine command changes the Rust command table, not each hop.
 
-Main restarts crashed engine hosts and reconnects windows. Keep renderer board edits and
-sessions available during reconnect. Do not block main with graph work.
+Main restarts a crashed engine host and hands the window fresh ports; the window reconnects with its board and
+unsaved edits. Main does no graph work and never waits on the engine.
 
-The one window comes back with its remembered bounds and the last board shown, placed on a
-current display. The closing-write wait is owned by the Rust host plus renderer sessions, not a
-second main-process board store.
+There is one window, with no title bar: the macOS window buttons sit over the sidebar and the top bar moves the
+window. Closing it keeps the app running; the Dock, a second launch, File › Add Project…, or an agent that needs it
+opens it again. It comes back with its bounds, the last board shown, and the Show all calls switch, saved in the app
+data's `window.json` (through the engine) and placed on a display that still exists.
 
 ## Agents
 
-The MCP server runs while the app is open, only on `127.0.0.1:29180`, and lives in main. The listener checks local/HTTP request constraints;
-its tests own exact refusals. Rust reads use untrusted command routing. Tool schemas,
-identity, formatting, results, prompts, and guides live under `src/main/mcp/`.
+The MCP server lives in main and listens on `127.0.0.1:29180` at `/mcp` from launch until quit, with no fallback
+port; Settings › Agents says when another program holds the port. It is stateless Streamable HTTP and offers tools and
+instructions only. The listener refuses requests with an `Origin` header, a `Host` other than this port on
+`127.0.0.1` or `localhost`, or an oversized body. Each request names its client: Claude Code signs its edits as
+`agent:claude`, Codex as `agent:codex`.
 
-`AgentBridge` opens/locates the holding window and sends typed requests to its renderer.
-It preserves unsaved state, optimistic page revisions, single-step undo, and author marks.
-A delivered edit may outlive its response timeout; re-read after `unconfirmed` before retrying.
-Requests/answers from the wrong window or revision cannot substitute for the holder's result.
-See [agent IPC](../docs/ipc.md#agents) and [UI agent edits](../docs/ui-shell.md#agents-in-the-window).
-
-`unfold://` links are parsed by the server to locate project/board/page/item. They are not
-registered as an OS handler. Product guides/prompts teach agents using Unfold; edit them only
-when that product behavior changes, not as repository onboarding.
+- **Tools** are `defineTool`s in `main/mcp/tools/`, listed in order in `tools/index.ts`. Results stay under about
+  6,000 tokens, and refusals say what to call instead. Tools read through the engine with untrusted requests, as a
+  window does.
+- **The guide** (`main/mcp/guide/*.md`) and the server instructions (`instructions.ts`) teach agents that use
+  Unfold. `teaching.test.ts` checks their size limits and that they name only tools, arguments, and topics that
+  exist. `tasks.md` is the manual task suite for the person tuning that teaching; agents never see it. Edit them when
+  product behavior changes, not as repository onboarding.
+- **The agent bridge** (`main/agents/bridge.ts`) has the window make an agent's edits as it makes the person's: one
+  undo step each, signed with the agent's name, refused when the page changed since the agent's `expectRevision`.
+  An edit to a board the window doesn't hold loads that board's session in the background without changing what the
+  person sees; if the window is closed, the bridge opens it (after the launch restore). A request that times out is
+  `unconfirmed` and may still land, so re-read before retrying.
+- **Links** are `unfold://<folder name>/<board id>?page=<page id>&item=<item id>`. Only main parses them, resolving
+  the folder name against the workspace. They aren't registered with the OS.
+- **The view** (`main/agents/views.ts`) is the window's last report: its board, page, selection, what the code panel
+  shows, and the boards it holds. Tools default to it.
 
 ## The render window
 
-`PageRenderer` queues screenshot/page-check requests through a hidden offscreen hardened
-window using `render.html` and `src/shared/render-api.ts`. It has an engine connection for
-card data but never opens or claims a board. Wait for fonts and measured content before
-capture; bound canvas size, PNG bytes, deadlines, and queued work. Close idle/unresponsive
-renderers. UI handling is in [render window](../docs/ui-shell.md#the-render-window).
+`PageRenderer` (`main/agents/render.ts`) draws one page read-only in a hidden, hardened window (`render.html`) for
+`get_screenshot`, the board menu's Export PNG…, and `check`. The page comes from the window when it holds the board,
+unsaved edits included, else from the engine. The render window reads card data from the engine but holds no
+board session. Rendering waits for fonts and measured content and bounds the canvas size, image bytes, deadlines,
+and queued work.
 
 ## Packaging
 
-`electron-builder.yml` configures the unpacked macOS app, which `just bundle-dir` creates. The
-release addon, built renderer/shell, assets/fonts, and third-party notices must be included.
+`just bundle-dir` builds the release addon, the UI, and the shell, checks the notices, and runs electron-builder for
+the unpacked macOS app (`dist/mac*/Unfold.app`). The app holds the built UI and shell in `app.asar`, and the addon
+and `THIRD_PARTY_NOTICES.md` beside it in its resources.
 
-Hardening includes sandbox/context isolation, no renderer Node integration, protocol/CSP
-checks, denied navigation/permissions, and package-time Electron fuses.
-
-Signing is enabled only with explicit certificate configuration. Updater traffic is optional.
+Hardening: sandboxed windows with context isolation and no Node integration, a strict content security policy on
+`app://`, no navigation, new windows, webviews, or permissions, and Electron fuses flipped at packaging. The app is
+signed only with a certificate named in `CSC_LINK` or `CSC_NAME`; otherwise it is signed ad hoc.
 
 ## Running and checks
 
-`just dev` builds the debug addon and starts renderer/shell development servers. `just js-build`
-builds UI/shell. Desktop tests use fake Electron for focused rules; typecheck with
-`pnpm --filter @unfold/desktop typecheck` and test with `pnpm --filter @unfold/desktop test <file>`.
-Use [check selection](../docs/testing.md#choose-checks-for-a-local-change) for actual process,
-restore, agent, packaging, or screenshot changes. Do not build/package the whole app for shell docs.
+`just dev` builds the debug addon and runs the UI's dev server and the shell with hot reload. `just js-build` builds
+the UI and the shell; `pnpm --filter @unfold/desktop start` runs them. Unit tests use a fake Electron
+(`src/main/fake-electron.ts`): `pnpm --filter @unfold/desktop test <file>` and `pnpm --filter @unfold/desktop
+typecheck`. See [choosing checks](../docs/testing.md#choose-checks-for-a-local-change) before building the app for a
+shell change.

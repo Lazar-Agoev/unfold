@@ -1,51 +1,52 @@
 # Documentation
 
-Start with [AGENTS.md](../AGENTS.md) for working rules and code ownership. Choose one reference
-below, search its headings, then read the owning code and a nearby test. There is no required
-sequence through the docs.
+Start with [AGENTS.md](../AGENTS.md) for working rules and code owners. Pick the reference for your task, find its
+headings, then read the owning code and a nearby test. There is no required reading order.
 
-For product behavior and UX, read [the fixed product vision](product-vision.md). Proposals, designs, and
-implementation must follow it; only an explicit user request to change the vision authorizes editing it.
+For product behavior and UX, read [the product vision](product-vision.md). It is fixed: designs and code follow it,
+and only the owner changes it.
 
-## Find the context for your task
+## References
 
-| Task | Reference | Implementation entry point |
+| Task | Reference | Code |
 | --- | --- | --- |
-| System/process boundary | [Architecture](architecture.md) | Crate `src/lib.rs` overviews; `desktop/src/main/` |
-| Record, key, range, validation, export | [Graph model](graph-model.md) | `crates/unfold-core/src/{model,typed,vocab,key}.rs`, `validate/`, `canonical/` |
-| Compile, cache, watcher, project lifecycle | [Engine](engine.md#updates) | `crates/unfold-engine/src/update/`, `crates/unfold-workspace/src/` |
-| Shared settings or discovery | [Config/scope](engine.md#shared-config) | `crates/unfold-engine/src/settings/`, `discovery/`, workspace `settings_edit.rs` |
-| Entrance or launch command | [Entrances](engine.md#entrance-detectors) | Language `src/detect/`; engine `launch/`, `entrances/`, `locator.rs` |
-| TypeScript/Python extraction or resolution | [TypeScript](languages/typescript.md), [Python](languages/python.md) | The relevant language crate's `src/lib.rs` and module |
-| Code, Flow, types, boards, Publish/repair | [Reader](reader.md) | `crates/unfold-reader/src/`; workspace `commands/boards/` |
-| New command, transport, event, invalidation | [IPC](ipc.md#adding-a-command) | Workspace `commands/`, `ipc/table.rs`; `ui/src/ipc/queries.ts` |
-| UI state, interaction, keyboard, theme | [UI shell](ui-shell.md) | `ui/src/<feature>/`, `state/`, `keyboard/`, `theme/` |
-| Electron, MCP, windows, packaged runtime | [Desktop](../desktop/README.md) | `desktop/src/main/`, `engine-host/`, `preload/`, `shared/` |
-| Choose checks | [Testing](testing.md#choose-checks-for-a-local-change) | Nearby tests, then the relevant crate/journey |
-| Using the product | [User guide](user-guide.md) | User-facing behavior; optional for development |
+| Processes, ownership, guarantees, storage, security | [Architecture](architecture.md) | Each crate's `src/lib.rs`; `desktop/src/main/` |
+| Blocks, links, what a call's value is, typed records, keys, validation, the canonical export | [Graph model](graph-model.md) | `crates/unfold-core/src/` |
+| `unfold.toml`, entrances, discovery, the update pipeline, the caches, project lifecycle | [Engine](engine.md) | `crates/unfold-engine/src/`, `crates/unfold-store/src/`, `crates/unfold-workspace/src/` |
+| TypeScript or Python lowering, binding, and resolution | [TypeScript](languages/typescript.md), [Python](languages/python.md) | `crates/unfold-lang-typescript/src/`, `crates/unfold-lang-python/src/` |
+| The drawn flow, the overlay, the code panel's model, boards and their health | [Reader](reader.md) | `crates/unfold-reader/src/` |
+| Commands, events, transport, adding a command | [IPC](ipc.md) | `crates/unfold-workspace/src/commands/`, `ipc/table.rs`; `ui/src/ipc/` |
+| Screens, state, the canvas, the code panel, agents in the window | [UI shell](ui-shell.md) | `ui/src/` |
+| Electron, the MCP server, the render window, packaging | [Desktop](../desktop/README.md) | `desktop/src/` |
+| Choosing checks, goldens, oracles, journeys, CI | [Testing](testing.md) | Nearby tests; `e2e/` |
+| Using the app | [User guide](user-guide.md) | |
 
-## Ownership
+## Contracts
 
-References explain current semantics and constraints. Code owns exact fields, enum lists,
-version numbers, SQL, command names, numeric caps, and generated types. Link to those definitions
-instead of copying them into another guide. If implementation and a semantic requirement
-disagree, identify the discrepancy rather than silently inventing a new requirement.
+- The [board JSON Schema](schemas/unfold-board.schema.json) is the shared board-file contract. It is a copy of
+  `crates/unfold-reader/schema/unfold-board.schema.json`, which the reader embeds;
+  `tools/oracles/check-board-schema.mjs` checks the two are identical.
+- `unfold.toml` is the shared settings contract ([Engine](engine.md)).
+- The SQLite cache is private and rebuildable.
 
-The [board JSON Schema](schemas/unfold-board.schema.json) remains the shared file-format
-contract, paired with the reader's model and parsing tests. SQL is a rebuildable private cache.
+References explain rules and meaning. The code owns exact fields, enum lists, versions, SQL, command names, caps, and
+generated types: link to them rather than copying them. When code and a reference disagree, say so instead of
+picking one silently.
 
-## Design documents
+## Design records
 
-When requested, save a scoped design under `docs/designs/<topic>.md`, mark its status, name
-its affected contracts, and record assumptions/open questions. Read only the relevant current
-reference and implementation. After implementation, fold lasting requirements into the owning
-reference instead of keeping a second description of current behavior.
+- `designs/` holds the design documents and build records: core scope, diagram blocks, entrance definitions,
+  viewing code, MCP capabilities, the core rebuild plan and its build log, with their HTML pages.
+- `analysis/` holds an analysis of the compiler.
 
-## Local reference material
+The references above hold the rules that stay true; these records keep the reasoning and the history. A new design
+goes in `designs/<topic>.md` with a status line, the contracts it touches, and its open questions. Once it is built,
+fold its lasting rules into the reference that owns the subject.
 
-These are optional for their specific tasks:
+## Other material
 
-- [Test-data conventions](../testdata/README.md) and [oracles](../testdata/reference/README.md).
-- [Oracle tools](../tools/oracles/README.md).
-- `desktop/src/main/mcp/guide/` and `tasks.md`: product teaching assets for agents using
-  Unfold, not onboarding material for agents developing this repository.
+- [Test data](../testdata/README.md), [oracles](../testdata/reference/README.md), and
+  [oracle tools](../tools/oracles/README.md).
+- `desktop/src/main/mcp/guide/` teaches agents that use Unfold through MCP, and `desktop/src/main/mcp/tasks.md` is
+  the manual suite for tuning that teaching. Both are product content, not onboarding for working in this
+  repository.

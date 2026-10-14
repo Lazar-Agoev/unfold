@@ -1,115 +1,205 @@
 # UI shell
 
-Read this for renderer ownership, state, interactions, layout, keyboard, and theme. Start
-with the feature folder in `ui/src/`; graph/board rules belong to [reader](reader.md), command
-contracts to [IPC](ipc.md), and Electron ownership to [desktop](../desktop/README.md).
+Read this for renderer ownership, state, screens, interactions, and theme. Start with the feature folder in
+`ui/src/`. Graph and board rules belong to [reader](reader.md), command contracts to [IPC](ipc.md), and Electron to
+[desktop](../desktop/README.md). The [user guide](user-guide.md) owns click-by-click behavior.
 
 ## Modules
 
 | Concern | Module |
 | --- | --- |
-| Window frame, Home, navigation | `app/`, `home/`, `state/tabs.ts`, `state/window.ts` |
-| Board documents, sessions, undo, actions | `state/boards/`, `state/session.ts`, `state/actions.ts` |
-| Canvas/cards/arrows/frames/resources/notes | `canvas/` and its feature subfolders |
-| Code/Flow/types | `code/`, `flow/`, `canvas/lines/` |
-| Add and source peek | `add/`, `peek/` |
-| Settings/preferences | `settings/`, `preferences/` |
-| Typed engine data | `ipc/commands.ts`, `queries.ts`, `stream.ts` |
-| Keyboard/menus/focus | `keyboard/` |
-| Shared components/theme | `components/`, `icons/`, `theme/` |
-| Agent edit operations | `state/boards/agent/`, `agent/` |
-| Hidden render page | `render/` |
+| The window: sidebar, content, session | `app/`, `state/session.ts`, `state/shownBoard.ts`, `state/window.ts` |
+| Home: overview, How it starts, Boards, Health | `home/` |
+| Writing entrances: Add as entrance, the code search | `entrances/` |
+| Board screen: header, Pages, Selected, top bar, dock | `board/` |
+| Board documents, sessions, undo, autosave, agent operations | `state/boards/`, `state/boards/agent/` |
+| Cards from the engine | `state/cards.ts` |
+| Canvas: cards, arrows, connections, frames, resources, notes | `canvas/` |
+| Drawn flow layout and rendering | `flow/` |
+| The code panel | `code/`, `state/codePanel.ts` |
+| Explaining by hand: Combine…, proposals, Add resource… | `explain/`, `state/boards/explain.ts` |
+| Add | `add/` |
+| Menus and dialogs | `menus/`, `dialogs/` |
+| Settings | `settings/` |
+| Agents in the window: marks, links, view reports | `agent/` |
+| Page checks, hidden render page | `board/checks/`, `render/` |
+| Typed engine data | `ipc/` |
+| Kit and theme | `components/`, `icons/`, `theme/` |
 
-Module comments and nearby tests own local behavior. Search the needed generated type;
-never read the entire IPC mirror just to change a component.
+Module comments and nearby tests own local behavior. Search for the one generated type you need; never read the whole
+IPC mirror to change a component.
+
+## The window
+
+There is one window. The sidebar (264 px, fixed) sits on the left with the macOS window buttons over its top; there
+is no title bar, and the board's top bar moves the window too. Beside it, the content area shows Home or one board.
+Closing the window keeps the app running.
+
+- **The shown board.** Every board opened while the app runs keeps its session and undo history; `shownBoard` says
+  which one is in front. The window reports it (`report_shown_board`) and comes back to it at launch.
+- **Session** (`state/session.ts`). At launch the Show all calls switch and the shown board come back from
+  `window_info`; only then are agents' requests answered. When the engine host restarts, a toast shows; once it is
+  back, the selection is sent again, every open board reopens and saves its unsaved edits, and the query cache resets,
+  in that order.
+- **Nothing in browser storage.** What the window remembers lives in Rust's app-data files; view state (cameras,
+  selection, the active page, Selected's collapse) lasts only while the app runs.
 
 ## State and engine data
 
-Zustand stores keep workspace/project selection, per-window tabs/layout/overlays, sessions,
-and board documents/undo. TanStack Query owns engine-derived data. Keep transient navigation,
-local views, shared document edits, and committed graph data distinct.
+Zustand stores hold the workspace selection, the shown board, open boards with their undo history, overlays, and the
+code panel. TanStack Query holds engine data under `["engine", command, args]`. Keep navigation, view state, document
+edits, and compiled data apart.
 
-Project IDs scope command arguments and query keys. Engine events invalidate the relevant
-project's affected queries and any cross-project result that can include it. Host restart
-resets/reconnects data through session code; unrelated projects should not refetch wholesale.
+Every project command's arguments carry `project`, so an engine event invalidates only that project's queries (and a
+`search` that includes it). Cards refresh when a file they draw changes.
 
-Pure document edits are Immer recipes; one user/agent operation batch is one undo step.
-Preserve page/item ID rules, remove dangling uses when deleting items, and omit optional
-fields rather than writing `undefined` into a persisted document. Save failures retain work.
-Publish/Discard/restore/conflict behavior comes from reader/workspace, not ad-hoc UI copies.
+Document edits are pure functions applied with Immer. Every edit is one undo step (typing bursts merge), one history per board
+across its pages; undo shows the page a step changed. Optional fields are deleted, never set to `undefined`. Removing
+an item takes what would dangle with it.
 
-## Screens
+**Autosave** (`state/boards/store.ts`): edits save a moment later through `save_board`, written over the file; saves
+never overlap. A failed save keeps the edits and shows "Not saved · Retry". An outside change (`board_reloaded`)
+replaces the board and starts its undo history over, except while it has unsaved edits, a save or agent step in
+flight, or a failing save: then the person's version is written over the file. Remove from workspace and Rename stop
+when a board can't be saved (`unsaved_edits`).
 
-Home lists a project's entrances, boards, and health; a never-compiled project stages scope
-until its first Compile. Add searches projects by kind/text and exposes commands. Peek shows
-a verified source file with folds/call links. Windows share projects but keep their own tabs
-and board sessions. The [user guide](user-guide.md) owns click-by-click instructions.
+## Home
 
-Cards use exact Code, written Flow, or Diagram/type data from the engine. The page lens
-(Diagram | Code) is local view state; a legacy saved Flow lens reads as Diagram. In Diagram, a
-function or entrance card's saved view says whether it is compact or expanded (its chevron), and
-calls expanded in place are saved on the card; type declaration and resource cards keep their fields
-in both lenses, and a class's card shows its fields compact and its detail expanded. Loading, missing, held, changed-source, and unresolved states are deliberate states, not
-empty-success fallbacks.
+`home/` shows the project selected in the sidebar: the header (path, name, project menu, New board), the state line,
+then the overview.
 
-Canvas geometry, measurement, arrange, label placement, and hit targets are TypeScript-owned.
-Keep measured sizes separate from document positions. Auto-layout should not erase deliberate
-placements or authored contents. Fonts must be ready before stable measurement.
+- **How it starts** (`home/starts/`): one bordered list in two columns, names left and `run` or `on` right in mono.
+  Apps are bold rows with their entrances indented under them, in file order; there are no badges at rest. Hover
+  shows a chevron, and a copy icon on an app's `run`. A problem is an amber dot; on hover the right column says what
+  happened ("Moved to …", "Route edited", "Not found", "Not analyzed", "Not a start", or the entry's own problem) with
+  Fix, Choose code…, or Open `unfold.toml`. Fixes are offered, never applied unasked; Fix rewrites one `code` line.
+  Search appears above 15 entrances. Empty: "No entrances yet" with Add entrance and Copy agent prompt.
+- **Tracing** (`trace.ts`): clicking an app or entrance makes a new board named after it: the start's card, compact,
+  and its code's cards expanded in a column to its right, in run order. A row the graph left out opens its lines in
+  `unfold.toml`.
+- **Boards**: one list, most recently edited first, with folders.
+- **Health line**: files that don't parse, boards that need review, and entrances whose code isn't found, in amber;
+  each leads to what needs a look. Health is also a view of Home.
 
-Typed line labels use occurrence identity; the selected line replaces its compact label with
-a contract. Declared types open inline, preserving written type text and explicit uncertainty.
-Avoid overlap with cards/call sites; geometry helpers have focused tests. Connections/resources
-and frames use the same page identity/undo model, with Rust grounding and health validation.
+Everything comes from `entrances`, `project_summary`, and `list_boards`; no key is read.
+
+## The board screen
+
+The board sidebar shows the board's header (back to Home, the project and folder, the title, the board menu), Pages,
+and Selected pinned to the bottom. The content area holds the top bar (the page's name, "Claude is working…" while an
+agent works, and the Show all calls switch), the canvas with its banners and the dock (Add, Arrange, zoom, Fit), and
+the code panel beside both when open.
+
+**Selected** (`board/selected/`) shows what is selected: a card (description, Called by, Reached from), a block (its
+name, its part's lines), a combined step, a connection (kind, label, a relationship's columns and cardinality), a
+frame, a resource card, a note, a proposed step, or an arrow (the call's contract: what it sends, returns, and
+raises, with "caught" when a handler around it catches). A type name opens its definition in the code panel.
+
+## The canvas
+
+`canvas/` draws a page with React Flow. Cards come from `card` (`state/cards.ts`), asked for with the page's overlay,
+the card's open paths, and the Show all calls switch.
+
+- **The canvas computes geometry only.** `flow/layout.ts` turns a drawn flow into `FlowGeometry` (pieces, wires,
+  every block's rect, page items, call anchors), pure and deterministic; `FlowView` renders it and decides nothing.
+  What a block allows comes from its drawn-flow `actions`; there is no TypeScript copy of the overlay rules, and no
+  UI code reads keys.
+- **Cards**: modules, classes, functions, and inline functions (compact, or expanded to their drawn flow), type cards
+  (fields and inherited fields from `type_definition`), and app and entrance cards in the authored style. Code a
+  start names that isn't found is its own dashed card with its fix.
+- **Arrows** come from call boxes whose callee has a card on the page: from the call on an expanded card (insets and
+  collapsed combined steps included), from the edge on a compact card (one per target, carrying its calls). Start
+  cards point at their code in order; type fields point at their types. The board file holds no arrows.
+- **Connections, frames, resource cards, and notes** share the page's id space and undo history.
+- **Sizes** are measured with the bundled fonts before anything renders; measured sizes stay apart from document
+  positions, and Arrange never erases authored contents.
+
+## Explaining by hand
+
+People make what agents make, under the same rules (`state/boards/explain.ts`), except frames and notes, which only
+agents create and people rename, describe, move, collapse, and remove.
+
+- **A block's menu** (`canvas/cards/blockMenu.ts`): View code, Open/Close in place, Name…, Describe…, Combine…, Add
+  proposed step after… or at the start…. Each item shows only when the block's actions allow it.
+- **Combine…** lists the body's drawn steps and ticks a consecutive run; a title is required; it starts collapsed.
+- **Add resource…** (the canvas menu), **Draw link…** (card, resource, and frame menus; an `other` connection with a
+  label), **Kind ▸** on a connection, and the relationship editor in Selected.
+- **Review** (`ReviewBanner.tsx`): Accept, Reconnect… (a name search), and Remove from page.
+
+Each structural edit saves at once as one undo step (`saveStep`); the board's save decides, and a refusal comes back
+inline or as a toast with the page unchanged.
+
+## The code panel
+
+`code/CodePanel.tsx` sits right of the board, 392 px, full height beside the top bar; source is shown nowhere else
+(the [model](reader.md#the-code-panels-model) is the reader's).
+
+- **Opening:** `</>` on a hovered or selected block and on card headers, View code in a block's menu, a gap tick, a
+  file from Add, and a type name in Selected. App and entrance cards open their lines in `unfold.toml`.
+- **Following:** while open, the panel follows the selection; something without source leaves it where it is. A
+  selection the panel makes itself (a line click, `⊕`) is quiet, so the panel doesn't move. Lines opened from a
+  combined step, thin row, or gap tick are rebuilt from the card as drawn now.
+- **Outline:** the selected block is outlined on the canvas on its own shape, or on what holds it (a collapsed
+  combined step, a thin row, a gap tick). Hovering a line lights its block (a call's name lights that call); a line no
+  drawn block covers lights its gap tick.
+- **Path:** each step widens the view; the selection stays marked and selected.
+- **States** show as a banner, and nothing is marked unless the lines are current.
+- **Actions:** Open in editor (errors as a toast) and `⊕` on definitions with no card on the page. × or Escape
+  closes it; it closes when the window shows another board or Home. Long files render in pages of 200 lines.
+
+## Add
+
+`add/` is one box over the board: a name search in the board's project (modules, definitions, types, apps, and
+entrances as one ranked list, then files), each row with its kind. Enter adds a card (or focuses the one already
+there) or opens a file in the code panel, once the list answers what was typed. Home has no Add.
 
 ## Agents in the window
 
-Main sends typed requests to the holding renderer. `state/boards/agent/` validates/applies
-operations, checks expected revisions/people-text options, saves through the normal board
-path, and returns the resulting page. Never mutate a different window's stale copy.
+The main process sends agent requests to the window ([IPC › Agents](ipc.md#agents)). `state/boards/agent/` applies
+them with the same pure edits people's actions use, as one undo step named "<agent> · <title>", every new text signed
+with the agent's identity, saved at once through the normal board path. A refused edit leaves the document and its
+undo history unchanged.
 
-Agent batches are atomic undo steps with persistent author marks. Descriptions/labels retain
-unchanged authorship; agent-only re-signing cannot make a person's explanation reviewed.
-Working outlines are transient and clear at finish. Rejected claims must leave document and
-undo history unchanged. Keep stale revisions, disconnected projects, held references, and
-unsupported claims as actionable failures. See [grounding](reader.md#grounding).
+- The window checks shapes and refusal texts; for example, `connect` refuses a connection that repeats a compiled
+  call. The save checks keys, the overlay rules, and grounding.
+- People's words stay theirs unless the request says the person asked (`replacePeopleText`); unchanged text keeps
+  its author.
+- **Working marks** (`working.ts`): while an agent works on a page, the top bar says "Claude is working…" and the items
+  it changed have a soft outline. `finish_work` clears them and shows a "Claude finished" toast with the summary.
+  They are never saved and never undo steps.
+- **View reports** (`agent/viewReport.ts`): the shown board and page, the selection, the code panel's block and
+  lines, the items in view, and the held boards, about 150 ms after a change and at once on focus.
+- The agent mark (a spark and the word "agent"; bylines read "Claude · agent") shows wherever an agent's words show.
 
 ## The render window
 
-`render/` is a separate entry point used by desktop's hidden page renderer. It subscribes
-to engine data for cards without claiming/opening a board. Wait for fonts, data, and geometry;
-report completeness/issues rather than silently omitting failed items. Preserve scale/bounds,
-PNG limits, and request deadlines from the shared render contract.
+`render/` is a separate entry the desktop's hidden render window loads. It draws one page read-only, exactly as the
+board view does, adopting it as a session that is never saved. Once every card is measured, every query has loaded,
+the fonts are in, and nothing moves, it answers with the image's bounds or the page checks (`board/checks/`:
+overlap, crossings, density, missing descriptions, connections and resources that cite nothing, and strays).
 
-## Overlays
+## Overlays and focus
 
-Keyboard/focus dispatch follows the active layer. Dialogs block window shortcuts; typing
-blocks plain canvas keys. Menus/popovers/sheets must close/restore focus through the shared
-components and keyboard scopes, not document-level listeners scattered through features.
-Use theme layer tokens and respect Escape/click-outside behavior. Preserve the Add/peek/menu
-layer rules in the existing tests when changing overlay interaction.
-
-## Keyboard
-
-The action registry and dispatcher own runtime bindings and focus scopes. Preserve action IDs
-when updating shortcuts.
-
-Preferences can replace action defaults, including an empty binding. Parse/ignore invalid
-hand-edited bindings conservatively. `preferences_changed` updates registry, menus/tooltips,
-and Add commands in every window. Application-menu accelerators retain their specific OS rules.
+Keys stay standard: Escape closes, Enter confirms, and the Edit menu gives undo, redo, cut, copy, paste, and select
+all. Edit › Undo and Redo reach the board as `menu_command` (a focused text field
+keeps its own undo, and a modal dialog blocks them). Menus, popovers, and dialogs come from `components/`: they trap
+or return focus, close on Escape and outside clicks, and a field that took Escape keeps it.
 
 ## Theme and components
 
-`theme/tokens.css` owns light, system-dark, and explicit-dark tokens. Components consume
-those tokens rather than new hardcoded values. Bundled Inter and JetBrains Mono fonts support
-stable text measurement; code disables ligatures. Reduced motion and OS theme preferences
-flow through the shared theme helpers.
+### Theme
 
-Use the kit in `components/` for dialogs, buttons, fields, sheets, menus, tooltips, trees,
-state indicators, and toasts. Virtualize long lists. `theme/contrast.test.ts` checks contrast;
-keep exceptions explicit and justified. Local styling changes need visual inspection and
-focused checks, not automatic full app E2E.
+`theme/tokens.css` holds the tokens; Unfold is light only. Components use the tokens, never new hard-coded values.
+Inter and JetBrains Mono ship with the app (`@fontsource-variable`), so text measures the same everywhere; code turns
+ligatures off. Reduced motion is respected everywhere. `theme/contrast.test.ts` checks contrast; keep any exception
+explicit.
+
+### Components
+
+Use the kit in `components/` for buttons, dialogs, fields, menus, popovers, tooltips, toasts, switches, list rows,
+and state indicators. Virtualize long lists. Screens compose the kit and never restyle it from outside.
 
 ## Checks
 
-Run the affected Vitest files and UI typecheck. Use a focused Electron journey only when
-integrated interactions need the running app.
+Run the affected Vitest files and `pnpm --filter @unfold/ui typecheck`. Use a journey only when an interaction needs
+the running app ([testing](testing.md)).

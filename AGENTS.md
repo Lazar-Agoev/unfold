@@ -9,73 +9,83 @@
 
 ## Product vision
 
-Read [the fixed product vision](docs/product-vision.md) before proposing or changing product behavior or UX.
-Proposals and designs must follow it. Do not edit it unless the user explicitly requests a vision change.
+Read [the product vision](docs/product-vision.md) before proposing or changing product behavior or UX. Designs and
+code follow it. Do not edit it unless the user explicitly asks for a vision change.
 
 ## Start with the task
 
-Unfold statically reads TypeScript/Python using a Rust engine, Electron shell, and React UI.
-Choose the owning area below; [docs/README.md](docs/README.md) links its focused reference.
-The architecture is an optional overview, not mandatory onboarding.
+Unfold reads TypeScript and Python statically with a Rust engine, and shows the result in an Electron shell with a
+React UI. Find the owning area below; [docs/README.md](docs/README.md) links its reference.
 
-1. Find files with `rg --files <area>`; search symbols with `rg -n '<symbol>' <area>`.
-2. Read the entry point, relevant module comment, and a nearby example/test. For a long
-   reference, find headings first: `rg -n '^#{1,3} ' docs/<document>.md`.
-3. Expand only for an affected dependency, caller, invariant, or contract. Once behavior,
-   constraints, and affected files are clear, implement; do not audit the entire repo.
-4. For a design, inspect the affected reference/code, state assumptions/open questions,
-   and write the document. Unresolved choices do not require a build or exhaustive research.
+1. Find files with `rg --files <area>` and symbols with `rg -n '<symbol>' <area>`.
+2. Read the entry point, its module comment, and a nearby test. In a long reference, list the headings first:
+   `rg -n '^#{1,3} ' docs/<document>.md`.
+3. Widen only for an affected caller, dependency, invariant, or contract. Once the behavior and the files are clear,
+   implement; don't audit the whole repository.
+4. For a design, read the affected reference and code, state assumptions and open questions, and write the document.
 
 ## Code owners
 
-| Area | Entry point |
+| Area | Entry points |
 | --- | --- |
-| React | `ui/src/<feature>/`, `state/`, `ipc/`, `theme/` |
-| Electron/MCP | `desktop/src/main/`, `preload/`, `engine-host/`, `shared/`; `main/mcp/tools/` |
-| Commands/project lifecycle | `crates/unfold-workspace/src/lib.rs`, `commands/`, `ipc/table.rs`, `projects.rs` |
-| Reader/boards | `crates/unfold-reader/src/lib.rs`, `code/`, `flow/`, `contracts/`, `board/` |
-| Graph contracts | `crates/unfold-core/src/lib.rs`, `model.rs`, `typed.rs`, `vocab.rs`, `validate/`, `canonical/` |
-| Compiler | `crates/unfold-engine/src/lib.rs`, `facts/`, `update/`, `resolve/`, `settings/`, `discovery/` |
-| Language extraction/linking | `crates/unfold-lang-{typescript,python}/src/lib.rs` |
-| SQLite cache | `crates/unfold-store/src/lib.rs`, `schema.rs`, `writer/`, `read/` |
-| Addon/tools/journeys | `crates/unfold-node/`, `tools/xtask/`, `e2e/` |
+| Graph model: nodes, links, typed records, keys, validation, canonical export | `crates/unfold-core/src/`: `lib.rs`, `model.rs`, `vocab.rs`, `typed.rs`, `key.rs`, `validate/`, `canonical/` |
+| Compiler: settings and entrances, discovery, update pipeline, resolution | `crates/unfold-engine/src/`: `lib.rs`, `settings/`, `entrances.rs`, `discovery/`, `update/`, `facts/`, `resolve/`, `links.rs` |
+| Language front ends: lowering, binding, linking | `crates/unfold-lang-{typescript,python}/src/`: `lib.rs`, `lower/`, `bind/`, `link` |
+| SQLite cache | `crates/unfold-store/src/`: `lib.rs`, `schema.rs`, `writer/`, `read/` |
+| Reader: drawn flow, overlay, code panel model, contracts, boards | `crates/unfold-reader/src/`: `lib.rs`, `tree.rs`, `catalog.rs`, `drawing/`, `overlay/`, `code_view/`, `contracts/`, `board/` |
+| Projects, commands, events, watcher | `crates/unfold-workspace/src/`: `lib.rs`, `projects.rs`, `open_boards.rs`, `commands/`, `ipc/table.rs`, `watcher.rs` |
+| React UI | `ui/src/`: `<feature>/` (`home/`, `canvas/`, `flow/`, `code/`, `add/`, `explain/`, `entrances/`), `state/`, `ipc/`, `theme/` |
+| Electron shell and MCP server | `desktop/src/`: `main/`, `engine-host/`, `preload/`, `shared/`; tools in `main/mcp/tools/` |
+| Addon, developer tasks, journeys | `crates/unfold-node/`, `tools/xtask/`, `tools/oracles/`, `e2e/` |
 
-## Preserve these boundaries
+## Keep these guarantees
 
-- Resolve calls/type names only with proof of one permitted target; retain uncertainty.
-- Record written structure/types, preserve deterministic output, and never execute analyzed code.
-- Engine ranges are UTF-8 bytes; rendered ranges are UTF-16. Keys cross files; local IDs do not.
-- Verify source against the facts hash before displaying or signing it.
-- SQLite is a rebuildable cache; published boards/shared config are contracts.
-- Project commands name their project, confine paths, and bound payloads.
+- A call or type name resolves only with proof of exactly one target; otherwise it stays unknown, with its reason.
+- Only written facts are recorded, never inferred ones. Analyzed code never runs.
+- Output is deterministic: the same code and settings give the same graph, byte for byte.
+- Source is verified against its hash before it is shown or signed. Files that stop parsing keep their last good
+  facts.
+- Engine ranges are UTF-8 bytes; rendered ranges are UTF-16.
+- Only `unfold-core`'s key module parses keys. Everything else treats a key as an opaque string and gets kinds,
+  parents, and files from records.
+- Writes into a project stay inside its `.unfold/`, plus `unfold.toml` when its settings change. Project commands name their
+  project, confine paths, and bound payloads. The MCP server answers only this machine.
+- The board file and `unfold.toml` are shared contracts; the SQLite cache is rebuildable. When a cache shape changes,
+  bump the store's `SCHEMA_VERSION` or the facts payload versions and the cache rebuilds.
 
-Source owns exact fields/enums/versions/SQL/command names. References own semantic rules.
-If they disagree, identify the discrepancy. Rust command types/table generate
-`ui/src/ipc/generated/index.ts` via `cargo xtask gen-ipc`; never edit the mirror manually.
+## Keep the code small
+
+- **One way to do each thing.** No adapters, second paths, or wrappers kept for old callers.
+- **Formats have one version.** No converters, aliases, or readers for older shapes; an old file fails like any
+  invalid file.
+- **Delete means delete:** code, tests, fixtures, docs, CSS, settings, commands, generated types, tools, and
+  dependencies together. No stubs, commented-out code, or `allow(dead_code)`. `pnpm knip` and `cargo machete` find
+  leftovers.
+- **Generated files:** the Rust command types generate `ui/src/ipc/generated/index.ts` through
+  `cargo xtask gen-ipc`. Never edit it by hand.
+- The code owns exact fields, enums, versions, SQL, and command names; references own the rules. When they
+  disagree, say so.
 
 ## Keep context focused
 
-Search the owning directory first. Include fixtures/goldens for the relevant behavior;
-avoid enumerating all test data. Read lockfiles, generated files, license notices, and
-build outputs only for their specific tasks. Search one generated type rather than loading
-its entire file. Sibling PoC code and product MCP teaching assets are optional task-specific context.
+Search the owning folder first. Open only the fixtures and goldens of the behavior you're changing. Read lockfiles,
+generated files, notices, and build output only for a task about them, and search a generated file rather than
+loading it. The MCP guide in `desktop/src/main/mcp/guide/` teaches agents that use Unfold; it isn't onboarding for
+this repository.
 
 ## Validate the affected behavior
 
-Choose the smallest checks that verify the changed contract, then stop when they pass.
-Repeat/broaden only after another edit, failure, or specific unresolved risk.
+Pick the smallest checks that verify the changed contract, and stop when they pass.
 
-- Docs/design: verify links, paths, semantics; no app build.
-- Rust: `cargo test -p <crate> <filter>`; broaden for affected shared contracts.
-- UI/desktop: `pnpm --filter @unfold/<package> test <file>` and that package's `typecheck`.
-- IPC types: regenerate, `cargo xtask gen-ipc --check`, and affected Rust/UI checks.
+- Docs: links, paths, and what the code does; no build.
+- Rust: `cargo test -p <crate> <filter>`; widen for shared contracts. Run `source "$HOME/.cargo/env"` first if
+  `cargo` isn't on `PATH`.
+- UI or desktop: `pnpm --filter @unfold/<package> test <file>` and that package's `typecheck`.
+- IPC types: regenerate, then `cargo xtask gen-ipc --check` and the affected Rust and UI checks.
+- Goldens: `UNFOLD_BLESS=1` rewrites them; read the diff before keeping it.
 
-**App E2E is conditional:** run a matching journey when a changed integrated workflow needs
-the running app, an Electron/rendered-interaction regression cannot be reproduced in focused
-tests, or the user requests it. Docs, isolated logic, and styling without interaction changes
-do not trigger E2E. Full suites require an explicit request or broad app changes that cannot
-be covered by a bounded set of journeys.
-
-`just e2e` invokes all app builds. Repeat selected tests with
-`pnpm --filter @unfold/e2e test <spec>` only while those outputs match current sources.
-Use [testing](docs/testing.md#choose-checks-for-a-local-change) for details and report actual checks.
+**E2E is conditional.** Run a matching journey when a changed workflow needs the running app, when a regression needs
+Electron or rendered interaction that focused tests can't reach, or when asked. Run every journey only when asked or
+for a broad app change. `just e2e` builds the app first; `pnpm --filter @unfold/e2e test <spec>` repeats a journey
+while the builds match the sources. [Testing](docs/testing.md#choose-checks-for-a-local-change) has the details;
+report the checks you actually ran.

@@ -1,199 +1,318 @@
 # Reader and boards
 
-Read this for derived graph views, Code/Flow/types, board persistence, health, or repairs.
-Start at [reader lib.rs](../crates/unfold-reader/src/lib.rs). Exact board shapes are owned by
+Read this for what people and agents see of a compiled graph: owners and relations, the drawn flow, agent text, the
+code panel's model, contracts, and boards with their signatures, guards, health, and files. Start at
+[reader lib.rs](../crates/unfold-reader/src/lib.rs). Exact board shapes belong to
 [board/model.rs](../crates/unfold-reader/src/board/model.rs) and the
-[board JSON Schema](schemas/unfold-board.schema.json); engine command shapes belong to [IPC](ipc.md).
+[board JSON Schema](schemas/unfold-board.schema.json); command shapes belong to [IPC](ipc.md).
+
+The reader computes everything from stored records and verified source. It never parses source and never reads key
+text: kinds, parents, and files come from the records, and only `unfold-core`'s key module takes a key apart.
 
 ## Derived views
 
-| View | Rule / code owner |
+| View | Rule | Code |
+| --- | --- | --- |
+| Tree | One file's nodes with their structure; blocks found by key across files | `tree.rs` |
+| Owner | A block belongs to the nearest definition above it (`unfold_core::owner`, the one implementation) | `tree.rs`, `index.rs` |
+| Catalog | Every module, class, function (inline ones too), and type can be a card. Labels: a definition's name, a module's path, an inline function's property name (`onSuccess`), else `callback to <callee>`, else `anonymous function`. Qualified names join enclosing named definitions with `.` (`OrderService.place`) | `catalog.rs` |
+| Closure | What a definition reaches: its `calls`, `passes`, and `imports` links, plus the classes and inline functions written in it. A lower bound, never a runtime order | `closure.rs` |
+| Reached from | The entrances whose closures hold a definition, seeded from `code` targets that are `found` or `stale`. An app's own start is left out: it reaches nearly everything | `reader_index.rs` |
+| Relations | Callers (the `calls` and `passes` links that reach a definition, a page at a time from the store's reverse index) and a definition's outgoing calls in source order | `relations.rs` |
+
+The catalog is computed per file after each commit and stored for search. Graph-wide answers (owners across files,
+closures, Reached from) come from one `ReaderIndex` per graph version, shared through `ReaderCache` until the next
+commit; closures are cached per seed. Library and unknown calls stay visible in every view.
+
+## Verified source
+
+[source.rs](../crates/unfold-reader/src/source.rs): before any stored range is shown or signed, the file's bytes are
+hashed and compared with the hash its facts came from. Only matching bytes are decoded (strict UTF-8) and sliced.
+Otherwise the view says the source changed or is missing, without text: old ranges are never applied to new bytes.
+Stored ranges are UTF-8 bytes; everything rendered uses UTF-16 offsets.
+
+## The drawn flow
+
+[drawing/](../crates/unfold-reader/src/drawing/mod.rs) holds the one drawing function. `draw` turns four inputs into a
+definition's `DrawnFlow`, the same way for every language:
+
+- the definition's tree and links;
+- the page's overlay: names, combined steps, and proposed steps, applied page-wide by key (inside insets too);
+- the card's open paths: calls and callbacks opened in place, up to 3 levels;
+- whether Show all calls is on.
+
+Routes aren't stored; they are drawn each time. The canvas only lays the flow out, and agent text prints the same
+flow. Nothing else decides what is drawn.
+
+| Part | Carries |
 | --- | --- |
-| Owner | Nearest activating file/class/function body context; `index.rs` and `file_owners` |
-| Definition catalog | Display names and selectable definitions, not every syntax block; `catalog.rs` |
-| Closure | Conservative static reachability from seeds; `closure.rs`, `reader_index.rs` |
-| Applications | Declared `[[application]]` groups and launches grouped by resolved startup, with membership (proven or declared) and category; `applications.rs` |
-| Launch wording | Launch state, folder label, what a launch starts, schedule gloss; `launches.rs` |
-| Relations | Callers/reached-from and outgoing relationships; `relations.rs` |
+| Header | Key, kind, form, label, the page's name, signature, the doc as a description from code, path and line, `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
+| Steps | In the order they run: call boxes, thin rows, decision/loop/try/with frames whose parts are lanes, exits, combined steps, proposed steps. Each has an id and a route state |
+| Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks, its inset when opened, its actions |
+| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written and the project calls in it), the classes a handler catches, `fallsThrough`, its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
+| Exit | Form, the call that is its value or its value as written (`RETURN mark_failed`, `RETURN order`), a `break`/`continue` target |
+| Combined step | The page's id, title, members, collapsed, the blocks it `holds` while collapsed, its lines, counts of conditions, loops, library and unknown calls, and its project calls with their targets (arrows leave a collapsed step from its box) |
+| Gap tick | On the route into a step, or after a body's last step: how many lines, which lines, and the hidden control blocks that start in it |
+| Routes | `from` an id `to` a step, End, or the caller, `through` any `finally` lanes, and what a `break`/`continue` leaves |
 
-Occurrences own edges; definitions own activation. Python class headers and nested function
-bodies require the existing owner rules. Reachability is a lower bound, not a runtime order
-or a promise that every dependency is known. External/unresolved relationships remain visible.
+### What is drawn
 
-A launch activates its startup plus its record's seeds (packages a module initializes, the
-module of a callable or ASGI application). An ASGI launch owns exactly the routes bound to its
-application, mounts included; other routes belong to launches whose closure holds their
-application's module, and other entrances to launches whose closure holds their anchor. A
-configured entrance naming an application is a declared member. Categories, in display order:
-needs a look (a launch that can't be read and has no target set by hand), services (routes or an
-ASGI launch), scheduled, workers. The catalog counts unique declarations (evidence, method, and
-trigger), so a router two applications mount at one path counts once and shows "also in".
+1. **Project calls are boxes, in the order they run,** with `→ binds` and a chevron to open in place. A project call
+   written inside another call is its own box, drawn before the call it feeds; so is a ternary or comprehension
+   written inside a call or an exit. A named library or unknown call, or one that takes a callback, is a box too.
+2. **Thin rows.** Consecutive library and unknown calls of one body fold into one row that lists them and counts its
+   unknowns; each unknown keeps its `?`.
+3. **Builtin calls are hidden.** With Show all calls they join the thin rows.
+4. **Callbacks** are rows under the call they are passed to, and open in place like a call.
+5. **Frames.** A decision draws a diamond per test, its parts as lanes; a loop is a frame titled by its header; a try
+   is TRY with EXCEPT (or CATCH) sections titled by their clause, then ELSE and FINALLY; a with is a frame titled by
+   its header. Project calls written in a test, a header, or a handler's clause are drawn on it (a clause's as chips
+   in its section title), not as steps.
+6. **A control block with nothing drawn inside is hidden.** Its code stays in the code panel and in any combined step
+   that spans it, and its gap tick names it (`⋯ 3 lines · for loop`).
+7. **Gap ticks** count the lines between steps that no drawn step's statement covers, skipping blank and comment
+   lines. A tick sits on a route and takes no layout of its own.
+8. **Exits** are terminals labeled by their value.
 
-`project(&graph, &launches)` computes definitions/applications/memberships for the store after
-updates, from the graph and the launch records the engine keeps beside it.
-`ReaderCache` holds an index for one committed graph version and caches closures by seed.
-Per-file view requests read stored facts and verified source; do not parse source in the reader
-or leak a whole graph into a UI response.
+Without the verified source of a file, its steps have no texts (tests, headers, values, signatures, docs) and no gap
+ticks.
 
-## Code view
+### Routes
 
-[code/](../crates/unfold-reader/src/code/mod.rs) builds rendered source, outlines, folds,
-groups, highlighting, and occurrence links. [source.rs](../crates/unfold-reader/src/source.rs)
-checks bytes against the facts hash before returning code. Changed/unavailable source gives
-an explicit state, never current disk text labeled as old facts.
+| Block | Routes |
+| --- | --- |
+| A body or part | Each step goes `on` to the next; the last goes wherever the body goes |
+| `if`, ternary | Each test in order: `yes` into its part, `no` to the next test, then `else`, then after the decision |
+| `switch`, `match` | `case` from the header to each case in order; a case ends after the decision, or falls into the next. `default` when no case matches |
+| Loop | `each` into the body (through a comprehension's filter); `next` back to the header from the body's end and `continue`; `break` after the loop; `done` to `else`, then after |
+| `try` | Dashed `onError` routes from the body to each handler, a possibility rather than a claim. The body's end goes to `else`, then `finally`, then after |
+| `with` | Header, body, then after |
+| Exits | `return` to End and `raise` to the nearest handlers or the caller, each through every enclosing `finally`; `break`/`continue` to their target |
+| Combined step | Wherever its blocks went: a collapsed step takes over the routes that leave it, so combining never makes a dead end |
 
-Render offsets are UTF-16, converted from graph byte ranges. A card uses the exact verified
-slice; outlines/folds derive from written structure. Do not fabricate code with AST printing.
-Highlighting comes through the language's `Highlighter` trait.
+Every step and lane has a **route state**: `reached`; `unreachable`, drawn dimmed and marked "never runs" (code after
+an early `return`, or after an always-exiting `finally`); or `truncated`, drawn with a dashed "may continue" route
+(nesting past the depth limit, a TypeScript labeled plain block). Both are facts about the code: validation never
+checks routes, so legal code never fails a compile.
 
-Links occur at written call/new/import ranges. Resolved links point to their permitted target;
-external/unresolved links retain module/reason text. Keep occurrence identity distinct from
-its target, especially when several calls reach the same card. Pagination and file limits
-belong to command implementations.
+## Overlay rules
 
-## Typed lines
+[overlay/](../crates/unfold-reader/src/overlay/mod.rs) holds the only copy of these rules. The drawing reports what
+each block allows (its `actions`), and saving a board checks them again.
 
-[contracts/](../crates/unfold-reader/src/contracts/mod.rs) derives line labels, call contracts,
-type definitions, uses, and direct throws from stored written records and verified bytes.
-It adds presentation, not inferred types or new argument-binding evidence.
+| Overlay | Rule |
+| --- | --- |
+| Name | Any block. A name replaces the code name, which stays beside it. Naming a library or unknown call lifts it out of its thin row; an unknown call keeps its `?` |
+| Combine | Consecutive steps of one body, or exactly one whole control block. A page's combined steps never overlap or nest. A combined step covers its blocks' statements and the code between them |
+| Propose | After a step of a body, or at the start of a definition's or part's body |
+| Open in place | A project call or a callback; a path of 1 to 3 such blocks, each inside what the previous one opens; at most 64 paths per card |
 
-- A line label shows written parameter/return types, with bounded text and declared/external/
-  builtin/unresolved type spans. The selected line can open its detailed contract.
-- A call contract uses the occurrence's proven argument pairings and bound count. Keep spread,
-  missing signature, unknown receiver, and excess arguments explicit. Report unfilled
-  parameters only when ambiguous arguments cannot have filled them; omit bound/`this` takers.
-- Direct throws are owned construction throws outside a catching try body. Nested callables,
-  rethrows, arbitrary thrown variables, and transitive callee exceptions are not added.
-- Type definitions show written fields, aliases, and inherited groups. Uses come from the
-  store's reverse type-link index; order and paginate them by source location.
+A **body** is a module's, class's, or function's code, or one part's. Its **steps** are the calls, exits, control
+blocks, and definitions that run in it, except what is written in a part's test. Decorators, class bases, and Python
+defaults are steps of the body they are written in.
 
-### Inherited members
+## Agent text
 
-Follow only `extends`, not `implements`, depth-first in written order. Visit each base once,
-stop cycles and the configured depth bound, and do not traverse past external/unresolved
-bases. Display generic members as written (`T` remains `T`); preserve overridden/repeated
-written fields rather than synthesizing a checker-computed shape.
+[drawing/text.rs](../crates/unfold-reader/src/drawing/text.rs) prints what agents read, so goldens can check it and the
+MCP server never lays out flows itself:
 
-## Flow view
+- `code_text` prints a definition's compiled tree, for `read_code`;
+- `flow_text` prints a drawn flow, for `shape_card` results and `read_page`.
 
-[flow/](../crates/unfold-reader/src/flow/mod.rs) renders written control structure and calls:
-branches, loops, exceptions, returns, and owned steps. Preserve source order, branch labels,
-and step grouping; it does not infer runtime execution paths. Layout is TypeScript's job.
-Groups must refer to permitted ordered steps of one owner, not to arbitrary overlapping ranges.
+Every line ends with the full keys of its blocks after `key=`. Each result also carries a label → key map, so the
+server turns an agent's short label (`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or
+splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `⊞`/`⊟` a
+collapsed or open combined step, `⋯` a gap tick, `↳` a callback, `+ PROPOSED` a proposal, `· never runs` and
+`· truncated` for route states. A handler's line is its clause, then the clause's project calls:
+`ON ERROR → except errors() · ▸ errors`. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
+shortened:
 
-Each node but Start and End has a `focus` from recorded ranges: a condition's condition, a
-loop's condition or else its header, a `call` node's main call expression, otherwise its
-statement, as one-based lines and UTF-16 columns. Like every recorded range, it is withheld
-unless the source verified as current.
+```text
+( createOrder )   key=src/routes/orders.ts#createOrder
+  ⋯ 1 line
+  IF req.header("prefer") === "respond-async"   key=…#createOrder/if[0] …#createOrder/if[0]/then
+      · ordersQueue.add → job, res.status().json ?   2 calls, 1 unknown   key=…
+      RETURN → End   key=…#createOrder/if[0]/then/return[0]
+  ▸ orderService.place → order   key=…#createOrder/call:orderService.place
+  ▸ slack.post   key=…#createOrder/call:slack.post
+  · res.status().json ?   key=…#createOrder/call:res.status().json
+( End )
+```
+
+## The code panel's model
+
+[code_view/](../crates/unfold-reader/src/code_view/mod.rs) answers what the panel beside the canvas shows for one
+selection. A request names the **selected** target and, when the path widens the view, a target to **show**
+instead; the selection stays marked inside the wider view.
+
+| Target | Used for |
+| --- | --- |
+| `Block` | Any block: a module, definition, control block, part, call, or exit |
+| `Lines` | A combined step, a thin row, a gap tick, and the lines a resource card or connection cites (evidence files included), with an optional mark and a combined step's title |
+| `Field` | A written member of a class or type card, shown as its line |
+| `File` | A whole file: a source file, an evidence file as plain text, or any file in the folder |
+| `Start` | An app or entrance key: its lines in `unfold.toml` |
+
+What a block shows:
+
+| Selected | Shows | Marked |
+| --- | --- | --- |
+| A definition | From its first decorator to its last line | nothing |
+| A module | The whole file | nothing |
+| A control block | Its header to the end of its last part | nothing |
+| A part | Its whole control block: the `switch` for a `case`, the `try` for an `except` or `finally`, the `if` with every `elif`/`else`, the loop for its body or `else` | the part's opening line and body |
+| A call | The statement it is written in (its own `stmt` or the nearest one above it); a call in a test or header shows that line | the call's expression |
+| An exit | Its statement | nothing |
+| A combined step, thin row, gap tick | Their lines | nothing |
+| An app or entrance | Its lines in `unfold.toml` | nothing |
+| A citation | Its lines | the cited lines |
+
+Library, builtin, and unknown calls open their call site; nothing opens a callee Unfold has no source for.
+
+The model carries the file and its **state**, the shown lines (dedented to the view, real line numbers,
+highlighted by the language's highlighter, each with the block hovering it outlines and the calls named on it), the
+mark, the **path** (the file, then each block above the selection, then the selection, each with a label and key;
+`body` parts are left out), and each shown definition's first line for `⊕`. Path labels: a definition by name, a
+control block by its header or keyword (`for item in order["items"]`, `switch (command)`, `try`), a part by the text
+that opens it, a call by its written callee, an exit by its keyword, a combined step by `⊞` and its title, a gap tick
+by its lines.
+
+| State | The panel shows |
+| --- | --- |
+| `current` | The view, cropped and marked |
+| `changed` | The whole file as it is now: "Changed since the last compile · showing the whole file" |
+| `doesNotParse` | The whole file as it is now: "Doesn't parse · showing the whole file". `unfold.toml` gets it too when it doesn't parse |
+| `notAnalyzed` | The whole file: it is outside the graph |
+| `notFound` | Nothing: the target no longer resolves, or its file is gone |
+
+**The panel never marks lines from ranges that may have moved.** Only `current` views are cropped, marked, or carry
+blocks; every other state shows whole files with nothing marked.
+
+## Contracts
+
+[contracts/](../crates/unfold-reader/src/contracts/mod.rs) shows written facts only: a type is what the code wrote, a
+pairing is what the engine proved, and a missing annotation shows missing.
+
+- **A call's contract**, by its block key: what it sends (each argument beside the parameter it fills, or why it
+  fills none; unfilled parameters only when the pairings prove them), what returns (the written return type, or the
+  class a construction makes) and where the value lands (`binds`, an exit, an outer call, or nowhere), and what the
+  callee raises, with the caller's enclosing handler that catches each. A TypeScript `catch` or a bare `except`
+  catches everything; otherwise a handler catches through its `types` links or project `extends` chains, or a library
+  class of the same module and name.
+- **A class or type**: its written members, a type alias's aliased type, its use count, and inherited members. These
+  follow `extends` only (never `implements`), depth first in written order, each base once, at most 8 levels; a
+  library or unknown base is a group without members. Generic members stay as written.
+- **Uses** of a class or type: one page at a time from the store's reverse index, each with its owner.
 
 ## Boards
 
-A board is an `unfold-board` v1 JSON document containing titled pages, optional folder/project
-references, and publishing metadata. A page contains cards, groups, labels, drawn links or
-connections, frames, resources, notes, proposed steps, and guards. Exact fields, ID syntax, enum
-values, limits, omission rules, and parsing belong to the schema and board modules, not this
-guide. New pages default to Diagram; a page keeps the default view it was saved with.
+A board is an `unfold-board` version 1 JSON file: a title, an optional folder (one name; folders are one level
+deep), and pages. A board shows one project. A page holds only authored choices; it never holds copied source or
+compiled arrows.
 
-Cards reference a block/type or entrance. Missing references remain placeholders. Description
-and label text records its author and, where source-backed, its signature. Page-level edits
-share one undo history for the board; changing a view/lens should not invent a content edit.
+| Page field | Holds |
+| --- | --- |
+| `defaultView` | `compact` or `expanded`, for cards without their own |
+| `cards` | `ref` (`{block}` for a module, definition, or type; `{entrance}` for an app or entrance), `at`, `view`, `description`, and `open` paths |
+| `names` | `{key, text, author, signature}` on any block, page-wide |
+| `combined` | `{id, title, members, collapsed, description, author, signature}`, page-wide |
+| `proposals` | `{id, after \| start, title, reason, author}`: an intended change, never signed, its place guarded |
+| `guards` | What each referenced key was when saved |
+| `links` | Connections: `kind` is `http`, `queue`, `reads`, `writes`, `calls`, `relates`, or `other` (which needs a label); `step` is a call's block key |
+| `frames`, `resources`, `notes` | Boxes around items; tables, queues, caches, storage, outside services, and actors; short plain text |
 
-A block card saves the calls it expands in place (`expanded`: paths of call-occurrence or
-callback keys, at most three levels). They are presentation only: unguarded, unsigned, and
-ignored once a key no longer resolves.
+Ids are unique together within a page; page ids are unique within the board. Text records its author
+(`person:<username>` or `agent:<name>`). Parsing is strict and serialization deterministic. Files that break the
+format fail to parse like any invalid file.
 
-A proposed step is an intended addition after a real step of a block card: a title, optional
-reason and path, and its author. It is never signed and has no implementation source, but its
-anchor is guarded. A new or moved proposal (a changed path included) must go after a step of its
-card's own Flow that something runs after (not a return, throw, break, continue, or opaque region),
-naming one of that step's paths when it has several and none otherwise, as the UI checks it. A
-missing anchor is reported missing and a held one held for review, with explicit
-Reconnect, Accept, or Remove proposal repairs; a proposal is never reattached by name or shifted
-position. Mermaid export omits proposals.
+### Files
 
-### Cards from other projects
+[board/files.rs](../crates/unfold-reader/src/board/files.rs) and the workspace's
+[board commands](../crates/unfold-workspace/src/commands/boards/mod.rs) own the files:
 
-A reference without `project` belongs to the board's project. Named references resolve through
-the board's project declarations to connected shared project names. Never treat an unknown
-project as the current project or silently change a card's origin. Saved views are local;
-shared references and explanations belong to the board.
+- Every board is `.unfold/boards/<name>.json`, its id the path in the project. A new board's name is its title's slug
+  (`Order placement` → `order-placement`), with `-2`, `-3` when taken; a new board never overwrites a file.
+- Files are written atomically as the board is edited, and shared through git.
+- An open board has a **session**: the version last loaded or saved. A save validates the window's version against
+  the graph, signs what is new, and writes it over the file, whatever the file holds.
+- An outside change to an open board's file (an agent, an editor, a `git pull`) reloads its session and sends
+  `board_reloaded` to the window. While the window's save is failing, it ignores the reload, and its Retry writes the
+  person's version, checked against every version it could be built on.
+- A board's folder is metadata the folder commands change; a window's save never changes it. Empty folders live in
+  `.unfold/local/state.json`.
 
 ### Signatures
 
-Sign only verified bytes: card/guard source or entrance evidence; group member span; label
-block; resource type/anchors; connection step/anchors; frame member-card signatures. The
-board implementation owns exact concatenation and ordering.
+| Signed | Over |
+| --- | --- |
+| A card's description | Its block's source, or the source of an app's or entrance's `code` |
+| A name | Its block's source |
+| A combined step and its description | The source from its first block's start (a definition's first decorator) to its last block's end |
+| A resource card | Its table type's range, then each anchor's bytes |
+| A connection, its label and description | Its step's range, then each anchor's bytes |
+| A frame's description | Its member cards' signatures |
 
-Changed bytes or failed verification make source-backed text/claims outdated. Pure drawn-link
-labels describe their ends rather than a code assertion and are not reported outdated; claims
-without code have the specific unsigned rules implemented in `board/save.rs` and `claims.rs`.
-Saving must not mark old explanations reviewed just because new bytes became available.
+Signatures come only from verified bytes; text can never be signed against source the graph hasn't seen. Notes,
+proposals, and open paths are never signed. A save never marks old text reviewed just because new bytes appeared.
 
 ### Guards and reconnecting
 
-A guard remembers kind, owner, and signature for each used `(project, key)`. After updates:
+A guard remembers each referenced key's kind (one of the 11 node kinds, or `entrance`), owner, and signature. An app
+or entrance guard hashes its `code` keys. After an update, keys are looked up again:
 
-- A surviving compatible key reconnects; changed source can make its text outdated.
-- A missing key remains a placeholder.
-- Changed kind/owner or changed source behind an ordinal key holds the reference for review.
-- Reconnect repairs update uses throughout the page within the original project; a card's
-  connections and proposed steps carry their relative steps to the new key with fresh guards.
+- a surviving key reconnects; changed source makes its text **outdated**;
+- a missing key stays on the page as **missing**;
+- a key whose kind or owner changed, or a position-based key whose code changed, is **held for review**.
 
-Do not automatically describe held references or silently reattach them by similar names.
-Evidence-file line anchors use input hashes and line existence rather than structural guards;
-reconnect them explicitly to new lines or keys.
+Nothing is reattached by a similar name. A rename leaves the old key missing, and Reconnect moves the reference to the
+new key, carrying what is keyed inside it (cards, names, combined steps, proposals, open paths, connection steps,
+resource anchors) to the rebased keys that exist; a combined step or open path moves whole or not at all, and the
+rest stays missing at its old key. For a missing app or entrance, health offers the one with the same `code`.
+An evidence-file anchor is gone when its file isn't an evidence file of the project or no longer has those lines; its
+bytes verify against the input's recorded hash, and Reconnect points it at new lines or a key.
 
 ### Grounding
 
-[board/claims.rs](../crates/unfold-reader/src/board/claims.rs) validates new or changed claims
-against their referenced graph and verified source. Positions alone do not change a claim.
+[board/claims.rs](../crates/unfold-reader/src/board/claims.rs) checks every claim that is new or changed (in what it
+says or cites, not its position), whoever wrote it:
 
-- Type-backed tables mark actual fields, including supported inherited fields; relations use
-  existing columns. Agent resource names/columns must occur in cited bytes.
-- Agent resources other than actors need anchors. Agent HTTP/RPC/queue/event/calls connections
-  need supported evidence; person-authored claims have their documented allowances.
-- Agent channels must be grounded in the cited code, or derived from a target entrance.
-  Carried types must be used in the step's owner or cited block.
-- An agent `calls` connection explains a call/new with an unresolved or external occurrence;
-  do not overlay a contradictory invented target on a resolved call.
-- Claims involving disconnected projects cannot be grounded. Refuse them as `board_problem`
-  with an actionable reason, without recording a partial edit or undo step.
+- a table backed by a type marks only that type's fields (inherited ones included), and `relates` joins only columns
+  its tables have;
+- a connection's `step` is a call, and a `calls` connection starts at an unknown call.
 
-Agent-authored text remains visibly attributed. Re-sign only the permitted agent work;
-overwriting a person's text requires the explicit replacement option. Preserve unchanged text
-and authorship. Agent edits run through the holding window as one undo step; see [agent IPC](ipc.md#agents).
+A claim an agent wrote must also cite what it names; people's claims need no citations:
+
+- a resource card other than an actor has an anchor; an `http`, `queue`, or `calls` connection has an anchor, and a
+  `reads` or `writes` connection a step or an anchor;
+- a resource card's name, and the columns a table lists itself, appear in the cited bytes;
+- a connection's channel appears in what it cites, unless its `to` end is an entrance, whose `on` the save fills in;
+- a carried type is used inside the step's function or an anchor's block.
+
+A refusal (`board_problem`) says what failed and what to do instead, and records nothing. (An agent's `connect` is
+also refused when it repeats a compiled call; the window checks that, [agents in the window](ui-shell.md#agents-in-the-window).)
 
 ### Health and repairs
 
-[board/check.rs](../crates/unfold-reader/src/board/check.rs) reports missing, held, outdated,
-disconnected, and invalid references/claims. Outline and repair actions use the same project
-and source rules. A repair is explicit Review/Reconnect/remove work, not silent content cleanup.
-Refresh health after graph/project changes and keep it distinct from persisted board edits.
+[board/check.rs](../crates/unfold-reader/src/board/check.rs) reports health per page, each item with the repairs it
+allows:
 
-### Files, drafts, Publish, and unpublished changes
+| Health | About |
+| --- | --- |
+| Missing | A card's, name's, or proposal's key, or a resource card's anchor or type, isn't in the graph |
+| Outdated | The code under a description, name, combined step, resource card, or connection changed since it was signed |
+| Review | A guarded reference changed kind or owner, or a position-based one changed code |
+| Broken combined step | A combined step no longer follows the overlay rules |
+| Broken link | A connection's end, step, carried type, or anchor is gone |
 
-[board/files.rs](../crates/unfold-reader/src/board/files.rs), workspace board commands, and
-UI board state own the lifecycle:
-
-- New boards are local drafts. Publish writes a shared file under `.unfold/boards/`.
-- Edits to published boards are local unpublished changes until Publish. Discard reloads
-  the published version; unpublish moves the board back to drafts under its rules.
-- External file changes must not overwrite local dirty work. Surface conflicts and use
-  explicit keep/reload choices. Failed saves preserve work and offer retry.
-- A board is held by one window; its session/undo state moves through the claim rules.
-  Quit/detach must allow closing writes to finish before releasing the claim.
-- Folder names are board metadata, not a parallel disk hierarchy. Shared project references,
-  signatures, and guards survive publish and round trips.
-
-## Mermaid export
-
-[mermaid.rs](../crates/unfold-reader/src/mermaid.rs) exports a page, flow, or entrance using
-verified graph content and board health. Preserve labels, placeholders, and uncertainty;
-export never resolves missing links by guessing. Frozen `.mmd` fixtures check exact output,
-and the Mermaid parser check verifies syntax. PNG/page checks use the desktop render window.
+Repairs are explicit: Reconnect, Resign, Accept, Remove, and Remove description. A save refuses a new missing
+reference, broken combined step, held reference, or broken link, and anything that breaks the overlay rules. Health
+is cached per board and refreshed after the graph or the entrances change; it feeds Home's Health line and the
+Problems list.
 
 ## Checks
 
-Start with local reader/board tests, matching store or workspace command tests when persistence
-changes, and the affected schema/fixture check. Changes to Publish/restore/holding-window
-behavior may need a focused journey under [testing's selection policy](testing.md#choose-checks-for-a-local-change).
+Start with the reader's tests: `drawing/tests.rs` (with the [drawn-flow goldens](../testdata/goldens/)),
+`code_view/tests.rs`, `overlay/tests.rs`, `board/tests.rs`, and `board/claims_tests.rs`. A board persistence change
+also needs the workspace's `tests/commands/boards.rs`; a schema change updates both copies
+(`crates/unfold-reader/schema/` and `docs/schemas/`), which `tools/oracles/check-board-schema.mjs` keeps identical. Bless goldens
+only after reading the diff ([testing](testing.md)).

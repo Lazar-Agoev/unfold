@@ -1,25 +1,28 @@
-# Python orders fixture
+# Python orders playground
 
-A static-analysis corpus with FastAPI routes/dependencies, Celery tasks, APScheduler jobs,
-console scripts, project roots, and ordinary service/class code. It exercises Python binding,
-imports, receivers, annotations, framework origins, and conservative body proof.
+An orders service written to exercise the compiler: FastAPI routes and dependencies, Celery tasks, APScheduler jobs,
+console scripts, and ordinary services and classes. It covers binding, imports across source roots, receivers,
+annotations, and calls that stay unknown on purpose.
 
-This is test data. Tests compile temporary copies without importing the application,
-installing dependencies, connecting external services, or running Python. `pyproject.toml`
-and shared `unfold.toml` declarations are analyzed inputs.
+This is test data. Tests compile temporary copies; nothing is imported, installed, or run. `pyproject.toml` is an
+analyzed input. `[scope]` leaves `legacy/`, `scripts/`, and `tests/` out of the graph, and `legacy/` stays a source
+root, so the legacy export's entrance points at code Unfold doesn't analyze.
 
-## Expectations
+## What it pins
 
-`expected-entrances.txt` records entrance expectations. Frozen graph/reader outputs and
-independent Pyright answers live under `testdata/reference/`. Excluded source roots are
-intentional examples of `not_indexed`; unresolved/wrapper/unsupported targets are part of
-the expected policy, not automatically missing test setup.
+- **`unfold.toml`**: 7 apps and 18 entrances, one per console script and what each handles. "Admin stats"
+  deliberately names a definition that moved, so the missing state and its one fix stay covered.
+- **Goldens** in `testdata/goldens/`: `py-orders.jsonl` (the canonical export), `py-orders.entrances.txt` (each
+  `code` key's state), and `py-orders.flows.txt` (every definition drawn).
+- **Oracles**: the corpora `py-orders` and `mixed-playground` in `testdata/reference/oracles/`, from saved Pyright
+  answers.
 
-Use the relevant Python binder/typed/entrance test and fixture for an edit. Broader semantic
-changes may need oracle checks for `py-orders` or `mixed-playground`.
+Keep the difficult cases: they are what the goldens and oracles check. To change one, edit one behavior, run the
+Python crate's tests, read the golden diff before blessing, and run `cargo xtask oracles check py-orders
+mixed-playground` when a call's outcome can change. Editing a Python source here makes its oracle stale for good:
+`refresh` converts the saved Pyright rows only for the exact sources they describe.
 
-- [Test-data conventions](../../README.md)
-- [Python rules](../../../docs/languages/python.md)
-- [Entrances](../../../docs/engine.md#entrance-detectors)
-- [Validation policy](../../../docs/testing.md#precision-and-recall-gates)
+- [Test data](../../README.md)
+- [Python front end](../../../docs/languages/python.md)
+- [Testing](../../../docs/testing.md#precision-and-recall-gates)
 - [TypeScript counterpart](../ts-orders/README.md)
