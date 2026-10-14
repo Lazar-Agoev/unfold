@@ -6,7 +6,7 @@ import { INSTRUCTIONS } from "./instructions";
 import { MAX_RESULT_CHARS } from "./results";
 import { TOOLS } from "./tools";
 
-/** Claude Code cuts the instructions and each tool's description here (design §5.3). */
+/** Claude Code cuts the instructions and each tool's description here. */
 const CLAUDE_CODE_LIMIT = 2_048;
 /** Codex wants the instructions' first characters, up to here, to stand on their own. */
 const CODEX_LEAD = 512;
@@ -17,8 +17,8 @@ const HEADER_ROOM = 200;
 const OTHER_WORDS: ReadonlySet<string> = new Set(["node_modules"]);
 
 /**
- * A word written like a tool's name: lowercase, with underscores, and not a step of a key
- * (`…/expression_statement[0]`, `#type_alias:Cart`).
+ * A word written like a tool's name: lowercase, with underscores, and not part of a key
+ * (`…/call:save_order`, `shop/api.py#create_order`).
  */
 const SNAKE = /(?<![\w:#/])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w[:/])/g;
 /** A call written in text: `add_cards(`, `get_guide({topic: …})`. */
@@ -139,7 +139,7 @@ function unknownTopics(text: string): string[] {
   return [...text.matchAll(TOPIC_NAMED)].map((match) => match[1] ?? match[2] ?? match[3] ?? "").filter((topic) => !(GUIDE_TOPICS as readonly string[]).includes(topic));
 }
 
-describe("the instructions (design §7.2)", () => {
+describe("the instructions", () => {
   it("fit Claude Code's limit, and their first paragraph stands alone within Codex's", () => {
     expect(INSTRUCTIONS.length).toBeLessThanOrEqual(CLAUDE_CODE_LIMIT);
     const [first = ""] = INSTRUCTIONS.split("\n\n");
@@ -184,7 +184,7 @@ describe("the tools' definitions", () => {
   });
 });
 
-describe("the guide (design §7.3)", () => {
+describe("the guide", () => {
   const topics = GUIDE_TOPICS.map((topic): [GuideTopic, string] => [topic, guideText(topic)]);
 
   it("has every topic written, as a Markdown document that fits one result", () => {

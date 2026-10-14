@@ -1,5 +1,5 @@
 /**
- * Orient (design §6.2): `list_projects` and `get_project`. Listing never wakes a resting project
+ * Orient: `list_projects` and `get_project`. Listing never wakes a resting project
  * (docs/engine.md#project-lifecycle): it reads the workspace and each project's boards from disk, and asks a live
  * project for its languages. `get_project` wakes the project it names.
  */

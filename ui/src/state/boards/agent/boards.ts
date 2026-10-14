@@ -1,5 +1,5 @@
 /**
- * An agent's requests about a board as a whole (design §6.3): creating a board, opened without
+ * An agent's requests about a board as a whole: creating a board, opened without
  * showing it, changing an open board's pages and title as one undo step, and showing a board to the
  * person.
  *

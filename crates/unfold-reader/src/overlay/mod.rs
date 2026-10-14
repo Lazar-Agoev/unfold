@@ -1,4 +1,4 @@
-//! The overlay rules (plan decision 2): what a page's overlay may do to a definition's drawing.
+//! The overlay rules (docs/reader.md#overlay-rules): what a page's overlay may do to a definition's drawing.
 //! The drawing function calls them to tell the canvas what each block allows ([`allows`]), and
 //! saving a board calls the checks to refuse what breaks them. There is no other copy of these
 //! rules.

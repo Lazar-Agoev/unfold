@@ -1,5 +1,5 @@
 //! `entrances`: the apps and entrances of `unfold.toml` as written
-//! (docs/designs/entrance-definitions.md), for Home's How it starts and the agents'
+//! (docs/engine.md#entrances), for Home's How it starts and the agents'
 //! `list_entrances`.
 //!
 //! Apps come in file order, each with its entrances in file order, every field as written, its

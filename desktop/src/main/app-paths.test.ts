@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { addonPath, appFolders, uiDirectory } from "./app-paths";
 
 describe("appFolders", () => {
-  it("follows architecture §8.2", () => {
+  it("keeps app data in userData and logs in ~/Library/Logs/Unfold", () => {
     expect(appFolders({ userData: "/Users/me/Library/Application Support/Unfold", home: "/Users/me" })).toEqual({
       appDataDir: "/Users/me/Library/Application Support/Unfold",
       logsDir: join("/Users/me", "Library", "Logs", "Unfold"),

@@ -1,5 +1,5 @@
 /*
- * Connections (design §4.7) are authored: every one is in the authored color, and its kind shows in
+ * Connections are authored: every one is in the authored color, and its kind shows in
  * its line's pattern and its chip's word, never in color alone. Selected, it is the accent at 1.75px.
  * The chip's sizes follow `chipWidth` (ConnectionEdge.tsx): 20px high, 8px of padding, an 11px text.
  */

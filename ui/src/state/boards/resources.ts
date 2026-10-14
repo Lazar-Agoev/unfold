@@ -1,5 +1,5 @@
 /**
- * Pure edits of a page's resource cards (design §4.5–4.6): what the code talks to that isn't a
+ * Pure edits of a page's resource cards: what the code talks to that isn't a
  * function (a table, a queue, a cache, storage, a service outside the workspace, or who starts
  * things), each with its name, its anchors, and, for a table, the type that declares its columns or
  * its own columns. Resource cards are authored claims: the next save signs them over what they cite.

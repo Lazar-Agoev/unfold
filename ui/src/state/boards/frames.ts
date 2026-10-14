@@ -1,5 +1,5 @@
 /**
- * Pure edits of a page's frames (design §4.4): named, described boxes around cards, resource cards,
+ * Pure edits of a page's frames: named, described boxes around cards, resource cards,
  * notes, and other frames. An item is in at most one frame, frames never hold each other in a cycle,
  * and they nest at most three deep. A frame has no position of its own: its box is its members'
  * bounds, so moving a frame moves everything in it. Each function is an Immer recipe over a draft

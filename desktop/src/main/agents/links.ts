@@ -1,5 +1,5 @@
 /**
- * Links (D9): `unfold://<project's folder name>/<board id>?page=<page id>&item=<item id>`, which the
+ * Links: `unfold://<project's folder name>/<board id>?page=<page id>&item=<item id>`, which the
  * window's Copy link builds and a person pastes into an agent's chat. Only the main process reads
  * them: it parses the text, then resolves the folder name against the workspace (the first project
  * whose folder has that name). A link names things and carries no code.

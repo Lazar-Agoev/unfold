@@ -1,4 +1,4 @@
-//! The `.unfold/` layout of one folder (docs/architecture.md#storage–8.2, project storage).
+//! The `.unfold/` layout of one folder (docs/architecture.md#storage).
 //!
 //! ```text
 //! <folder>/

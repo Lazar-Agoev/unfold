@@ -1,7 +1,7 @@
 /**
- * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
+ * What this window shows, reported to the main process (`report_view`) so agents work on
  * its view by default: the shown board and page, the selection, what the code panel shows (its block
- * and lines, viewing-code.md § Agents), the items in view, and the boards whose sessions the window
+ * and lines), the items in view, and the boards whose sessions the window
  * holds (`held`). Sent ~150 ms after any of them changes, and at once when the window gains focus.
  */
 

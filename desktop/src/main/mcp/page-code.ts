@@ -1,5 +1,5 @@
 /**
- * What the compiler says about a page's cards (design §6.5, `read_page`): each card's drawn flow
+ * What the compiler says about a page's cards (`read_page`): each card's drawn flow
  * (`card`, shaped by the page's names, combined steps, and proposed steps and by the card's open
  * paths) or its app or entrance, each type card's definition, and from them what the board draws
  * between cards: one arrow per project call box whose callee has a card on the page, an app's or

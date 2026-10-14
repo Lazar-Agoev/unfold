@@ -1,5 +1,5 @@
 /**
- * Where a connection leaves and enters (design §4.7): from its step's call on an expanded card that
+ * Where a connection leaves and enters: from its step's call on an expanded card that
  * draws it (a `stepPort` the card places level with the call, as arrows leave from their calls), from
  * the card's edge otherwise (a compact card, a resource card, a frame); a relationship from one table
  * column's row to the other's. An end inside a collapsed frame attaches to the frame's edge. Otherwise

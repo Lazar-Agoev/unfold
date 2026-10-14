@@ -1,6 +1,6 @@
 /**
- * What the code panel opens for what is selected on a page (docs/designs/viewing-code.md, "What each
- * block shows"), and what a click on a line selects. The reader decides which lines a target shows; this
+ * What the code panel opens for what is selected on a page (docs/reader.md#the-code-panels-model),
+ * and what a click on a line selects. The reader decides which lines a target shows; this
  * only names the target, from the page and what its cards draw, never from keys.
  */
 

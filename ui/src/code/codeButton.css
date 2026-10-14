@@ -1,4 +1,4 @@
-/* `</>` (core-scope.html's `.cx`): a small mono tag that opens code in the panel. */
+/* `</>`: a small mono tag that opens code in the panel. */
 
 .code-button {
   display: inline-grid;

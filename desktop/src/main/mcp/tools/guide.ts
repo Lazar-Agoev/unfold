@@ -1,4 +1,4 @@
-/** `get_guide` (design §6.2, §7.3): the guide, by topic. Loaded with the session's first tools. */
+/** `get_guide`: the guide, by topic. Loaded with the session's first tools. */
 
 import { z } from "zod";
 import { GUIDE_TOPICS, guideText } from "../guide";

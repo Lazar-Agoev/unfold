@@ -1,5 +1,5 @@
 /**
- * The MCP server (design §5.3): Streamable HTTP, stateless. The SDK serves each request with a fresh
+ * The MCP server: Streamable HTTP, stateless. The SDK serves each request with a fresh
  * server from one factory, on the current revision (2026-07-28, `server/discover`, each request
  * carrying its client) and on earlier ones (the `initialize` handshake, served statelessly too). It
  * offers tools and the instructions; no prompts, resources, sampling, roots, or logging.

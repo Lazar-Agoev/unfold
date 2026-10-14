@@ -1,6 +1,5 @@
 /*
- * A drawn flow (FlowView), with the looks of diagram-blocks-examples.html's DRAWN panels and
- * core-scope.html's board window. Every piece is placed at the rect layout.ts computed, so the
+ * A drawn flow (FlowView). Every piece is placed at the rect layout.ts computed, so the
  * paddings, borders, line heights, and fonts here are the numbers layout.ts measures with: call boxes
  * 5/8/6/10 with a 20px head and a 16px meta row, heads 28px, chips 22px, pills 26px, gap ticks 17px.
  */
@@ -20,7 +19,7 @@
 .flow .dim { opacity: 0.45; }
 
 /*
- * The outline on what holds the selection (core-scope.html's `.is-sel`), and the lighter one on a line's
+ * The outline on what holds the selection, and the lighter one on a line's
  * block hovered in the code panel: a box over the piece, with its corners.
  */
 .flow-outline {
@@ -51,6 +50,7 @@
 .flow > :is(:hover, .selected, :focus-within) > .flow-code,
 .flow-head > .flow-chip:is(:hover, .selected) > .flow-code,
 .flow-frame-title > .flow-chip:is(:hover, .selected) > .flow-code,
+.flow-section-title > .flow-chip:is(:hover, .selected) > .flow-code,
 .flow-exit > .flow-chip:is(:hover, .selected) > .flow-code,
 .flow-inset-title:is(:hover, .selected) > .flow-code { display: grid; }
 
@@ -306,7 +306,7 @@
   white-space: nowrap;
 }
 
-/* Thin rows: library and unknown calls folded into one row; a click lists them one per row */
+/* Thin rows: library and unknown calls gathered into one row; a click lists them one per row */
 .flow-thin {
   display: flex;
   flex-wrap: wrap;
@@ -493,6 +493,8 @@
   height: 14px;
   white-space: nowrap;
 }
+
+.flow-section-title.with-chips { align-items: center; height: 22px; }
 
 .flow-section-word {
   font: 700 9.5px/14px var(--font-ui);

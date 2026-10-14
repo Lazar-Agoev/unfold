@@ -1,5 +1,5 @@
-//! What a target shows and marks, and its path, from the records alone ("What each block
-//! shows" and "The path" in `docs/designs/viewing-code.md`).
+//! What a target shows and marks, and its path, from the records alone
+//! (docs/reader.md#the-code-panels-model).
 
 use std::rc::Rc;
 

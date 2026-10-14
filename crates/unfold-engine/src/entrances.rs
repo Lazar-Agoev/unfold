@@ -1,5 +1,4 @@
-//! Resolving the `code` of apps and entrances (docs/designs/entrance-definitions.md, "Resolving
-//! `code`"): after every update, and when only the `[[app]]` tables change, each `code` key is
+//! Resolving the `code` of apps and entrances (docs/engine.md#resolving-code): after every update, and when only the `[[app]]` tables change, each `code` key is
 //! looked up in the graph and given a [`TargetState`]. The graph's apps hold the valid entries;
 //! one with a problem stays out ([`crate::settings::EntryProblem`]).
 //!

@@ -1,5 +1,5 @@
 /**
- * Who an agent is (D5, design §5.4). Every MCP request names its client: on the current revision
+ * Who an agent is. Every MCP request names its client: on the current revision
  * (2026-07-28) each request carries `clientInfo` in its `_meta`; a client on an earlier revision
  * names itself once, in `initialize`, and its later requests carry nothing but their HTTP headers.
  * So the directory remembers, per `User-Agent`, the name each `initialize` gave, and falls back to the
@@ -15,12 +15,12 @@ import type { AgentIdentity, ConnectedAgent } from "../../shared/agent-api";
 const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
 /** Who signs for a client that gives no usable name. */
 const UNKNOWN = "unknown";
-/** The longest name an author takes (D5). */
+/** The longest name an author takes. */
 const MAX_NAME = 32;
 /** The most `User-Agent`s, and agents, remembered: a handful of clients run on one machine. */
 const MAX_REMEMBERED = 32;
 
-/** Clients with names of their own (D5). */
+/** Clients with names of their own. */
 const KNOWN: readonly { readonly match: RegExp; readonly slug: string }[] = [
   { match: /^claude[-_ ]?code/, slug: "claude" },
   { match: /^codex/, slug: "codex" },

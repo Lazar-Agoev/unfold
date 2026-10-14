@@ -1,6 +1,6 @@
 /**
  * What an agent's operations share as they apply to a page: the board, the agent, the data loaded
- * for them, refusals, the rule that people's words are safe (design §6.1) and what those words are,
+ * for them, refusals, the rule that people's words are safe and what those words are,
  * and how items are named, sized, and found on the page.
  */
 
@@ -36,7 +36,7 @@ export function boardInfo(board: Pick<BoardState, "document" | "revision">): Age
   return { title: board.document.title, revision: board.revision };
 }
 
-/** Why an operation can't apply, and what to do instead (design §7.8). Nothing of the edit applies. */
+/** Why an operation can't apply, and what to do instead. Nothing of the edit applies. */
 export class AgentRefusal extends Error {
   constructor(
     readonly code: string,
@@ -108,7 +108,7 @@ function describedWords(what: string, description: Pick<Description, "author"> |
 }
 
 /**
- * The words item `id` of a page carries, each with who wrote it (design §6.1): descriptions, labels,
+ * The words item `id` of a page carries, each with who wrote it: descriptions, labels,
  * combined step and frame titles, and a resource card, connection, note, or proposed step itself. An agent
  * replaces or removes none a person wrote unless the person asked (`guardPeopleText`).
  */

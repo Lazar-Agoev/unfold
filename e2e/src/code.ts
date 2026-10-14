@@ -1,5 +1,5 @@
 /**
- * The code panel beside the board (docs/designs/viewing-code.md): its path, its banner, its lines with
+ * The code panel beside the board (docs/ui-shell.md#the-code-panel): its path, its banner, its lines with
  * their numbers, and what it marks; and the outlines it draws on the canvas. Also the playgrounds'
  * compiled graph (their goldens), so a journey can name real keys and lines without guessing them.
  */

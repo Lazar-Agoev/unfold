@@ -1,7 +1,6 @@
 /**
  * Selected for a block drawn in a card: the page's name for it (else its words from the code: a part's,
- * the text that opens it), what it is, and where: a part's lines ("Part · lines 20–22", as
- * core-scope.html's Selected draws it), else the card it is drawn in; then its name, edited in place.
+ * the text that opens it), what it is, and where: a part's lines ("Part · lines 20–22"), else the card it is drawn in; then its name, edited in place.
  * A name applies page-wide, on every card that draws the block. A name that needs review says why,
  * with the card banner's Review menu.
  */

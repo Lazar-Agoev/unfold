@@ -1,5 +1,6 @@
 /**
- * Copy link (design §5.6, D9): a board, a page, a card, a step group, or a link copies
+ * Copy link: a board, a page, or an item on it (a card, frame, resource card, note, connection, or
+ * proposed step) copies
  * `unfold://<project's folder name>/<board id>?page=<page id>&item=<item id>`, which a person pastes
  * into an agent's chat to point at it. Only the main process reads links; clicking one opens nothing.
  */
@@ -39,7 +40,7 @@ export async function copyBoardLink(board: BoardRef): Promise<void> {
   await copyBoardItemLink(board, {});
 }
 
-/** Copies a link to a page, or to an item on it (a card, a step group, or a link). */
+/** Copies a link to a page, or to an item on it. */
 export async function copyLink(target: PageTarget, item?: string): Promise<void> {
   await copyBoardItemLink(target.board, { page: target.page, ...(item !== undefined ? { item } : {}) });
 }

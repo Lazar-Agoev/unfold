@@ -58,9 +58,9 @@ fn name(text: &str) -> Callee {
     Callee::name(text)
 }
 
-/// The tree of diagram-blocks' "Proposed: 21 blocks", keyed exactly as the design writes it.
+/// The tree of `place_order`'s 21 blocks, keyed exactly as the worked example writes it.
 #[test]
-fn place_order_keys_match_the_design() {
+fn place_order_keys_match_the_worked_example() {
     let mut f = File::new("shop/service.py");
     let place_order = f.def(0, "place_order");
     f.call(place_order, &name("load_order"));

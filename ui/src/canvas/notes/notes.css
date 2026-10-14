@@ -1,5 +1,5 @@
 /*
- * Notes (design §4.8) are authored text on the page: the authored color on its tint, an authored edge,
+ * Notes are authored text on the page: the authored color on its tint, an authored edge,
  * and who wrote it underneath. Sizes follow `noteSize` (sizing.ts): 140–260px wide, 8px by 10px of
  * padding, 18px lines, and a 16px byline 4px under the text.
  */

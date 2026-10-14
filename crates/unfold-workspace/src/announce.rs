@@ -1,4 +1,4 @@
-//! What a commit or a failure tells the windows (docs/engine.md#updates step 5, §7.9, §12).
+//! What a commit or a failure tells the windows (docs/ipc.md#events).
 
 use unfold_core::vocab::FileState;
 use unfold_core::{Key, RepoPath};

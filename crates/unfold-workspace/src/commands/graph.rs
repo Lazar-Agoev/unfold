@@ -1,4 +1,4 @@
-//! Commands for one card (`docs/designs/core-rebuild-plan.md`, "The drawn flow"): `card` (a
+//! Commands for one card (docs/reader.md#the-drawn-flow): `card` (a
 //! definition's drawn flow with the page's overlay, the card's open paths, and Show all calls;
 //! or an app's or entrance's card), and the agent text the MCP server prints: `code_text` (the
 //! compiled tree of a definition) and `flow_text` (a drawn flow). Each wakes the card's project

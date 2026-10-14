@@ -1,4 +1,4 @@
-//! The lowering, row by row of the TypeScript mapping table, and on the designs' examples: each
+//! The lowering, row by row of the TypeScript lowering table, and on the worked examples: each
 //! source is compiled into a valid graph (checked against its census) and its node tree printed.
 //!
 //! - Each source in `testdata/fixtures/typescript-structure/` is compared with the golden
@@ -1024,10 +1024,9 @@ fn a_labeled_break_leaves_an_enclosing_switch() {
     );
 }
 
-// --- The designs' examples --------------------------------------------------------------------
+// --- The worked examples ----------------------------------------------------------------------
 
-/// `src/service.ts`: diagram-blocks-examples.html, example 02, and the second half of
-/// diagram-blocks' "Worked example: the TypeScript route".
+/// `src/service.ts`: example 02, and the second half of the TypeScript route example.
 const SERVICE: &str = r#"import { chargeCard, loadOrder, saveOrder } from "./store";
 
 export async function placeOrder(id: string) {

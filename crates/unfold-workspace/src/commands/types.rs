@@ -1,4 +1,4 @@
-//! Contracts (`docs/designs/mcp-capabilities.md`, "read_call"): `call_contract` (a call, by its
+//! Contracts (docs/reader.md#contracts): `call_contract` (a call, by its
 //! block key: shown in Selected when an arrow is selected), `type_definition` (a class or type
 //! opened under a contract row), and `type_uses` (where a class or type is named). Each wakes
 //! its project and reads the committed graph in one store snapshot; the reader's contracts

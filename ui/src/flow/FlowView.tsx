@@ -1,6 +1,5 @@
 /**
- * Renders a laid-out drawn flow (`layoutFlow`) with the looks of diagram-blocks-examples.html's DRAWN
- * panels and core-scope.html's board window: every piece absolutely placed at its rect, the wires in
+ * Renders a laid-out drawn flow (`layoutFlow`): every piece absolutely placed at its rect, the wires in
  * one SVG over them. It decides nothing: selection, opening calls in place, combined steps' toggles,
  * listing thin rows, gap ticks' lines, a block's or a thin row's `</>`, and a block's menu all go to
  * the callbacks.
@@ -390,12 +389,16 @@ function HeadPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
 function SectionPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "section" }>; readonly handlers: Handlers }) {
   const { lane } = piece;
   const words = sectionWords(lane, piece.loop);
+  const chips = lane.test?.calls ?? [];
   return (
     <section className={classes("flow-section", piece.look, piece.dim && "dim", isBlock(handlers.selected, lane.key) && "selected")} style={place(piece.rect)} data-key={lane.key} {...selectable(handlers, { kind: "block", key: lane.key })}>
-      <div className="flow-section-title">
+      <div className={classes("flow-section-title", chips.length > 0 && "with-chips")}>
         <span className="flow-section-word">{words.title}</span>
         {lane.name !== undefined ? <span className="flow-name">{lane.name}</span> : null}
         {words.clause !== null ? <span className="flow-frame-header">{words.clause}</span> : null}
+        {chips.map((box) => (
+          <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />
+        ))}
         {words.note !== null ? <span className="flow-section-note">{words.note}</span> : null}
       </div>
       <ViewCode handlers={handlers} selection={{ kind: "block", key: lane.key }} />

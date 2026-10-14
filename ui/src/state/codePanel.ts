@@ -1,5 +1,5 @@
 /**
- * The code panel (docs/designs/viewing-code.md): whether it is open, what it shows, and the line the
+ * The code panel (docs/ui-shell.md#the-code-panel): whether it is open, what it shows, and the line the
  * pointer is on in it. It belongs to the board it opened on and closes when the window shows another
  * board, or Home. None of this is saved.
  *

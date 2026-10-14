@@ -1,5 +1,5 @@
 /**
- * What a tool works with (design §5.5): who is calling, the agent bridge (edits, reads, and opens go
+ * What a tool works with: who is calling, the agent bridge (edits, reads, and opens go
  * to the window that holds the board), the window's view, links, page revisions, the render window
  * (page images and checks), and the engine. The engine's commands go untrusted, as a window's do: an
  * agent reaches only the fixed actions its tools take, and nothing that takes a path outside a
@@ -41,7 +41,7 @@ export interface McpServices {
 
 /** Everything a tool's `run` gets. */
 export interface ToolContext {
-  /** Who is calling (D5). Edits are signed with it. */
+  /** Who is calling. Edits are signed with it. */
   readonly agent: AgentIdentity;
   /** Edits, reads of held boards, background opens, and finishes, through the window that holds the board. */
   readonly bridge: AgentBridge;
@@ -62,16 +62,16 @@ export interface ToolContext {
   projects(): Promise<readonly ProjectRow[]>;
   /** A project by id, by name, or by a link to one of its boards. */
   project(reference: string): Promise<ProjectRow>;
-  /** A link the person pasted (D9), with its project resolved to an id. */
+  /** A link the person pasted, with its project resolved to an id. */
   link(text: string): Promise<ResolvedLink>;
-  /** A page's revision (D4), for result headers and `expectRevision`. */
+  /** A page's revision, for result headers and `expectRevision`. */
   revision(page: AgentPage): string;
   /**
    * Asks the person to confirm in Unfold ("Claude wants to add `~/repos/payments` to your
    * workspace."), then adds the folder. Null when they cancel.
    */
   addProject(path: string): Promise<AddedProject | null>;
-  /** The result header for this agent (design §5.6). */
+  /** The result header for this agent. */
   header(place?: ResultPlace): string;
 }
 

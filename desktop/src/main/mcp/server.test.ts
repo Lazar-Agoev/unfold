@@ -104,7 +104,7 @@ const HEALTH: BoardHealthView = {
   label: "1 missing",
 };
 
-/** Every tool of design §6.11, in its order. */
+/** Every tool, in the order agents see them. */
 const SIGNATURES = [
   "get_guide",
   "get_current_view",

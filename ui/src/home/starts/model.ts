@@ -1,5 +1,5 @@
 /**
- * How it starts, as rows (entrance-definitions.md, "Home: How it starts"): each app, then its entrances,
+ * How it starts, as rows: each app, then its entrances,
  * in file order, with what starts it, what a click does, and its problem. A problem is the entry's own
  * (it then stays out of the graph), else the first of its `code` keys that isn't there: missing, not
  * analyzed, or not a start. Everything comes from `entrances`; no key is read.

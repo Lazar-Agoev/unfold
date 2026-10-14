@@ -1,5 +1,5 @@
 /**
- * What the board and project menus do (V1's flows pattern): each runs the operation and says what
+ * What the board and project menus do: each runs the operation and says what
  * happened in a toast. Failures are shown, never thrown, so a menu item can call one and forget it.
  */
 
@@ -20,7 +20,7 @@ function fail(title: string, error: unknown): void {
   showToast({ title, body: toUnfoldError(error).message, tone: "danger" });
 }
 
-function projectName(project: ProjectId): string {
+function nameOf(project: ProjectId): string {
   return getProjectIndex().byId.get(project)?.name ?? "the project";
 }
 
@@ -69,7 +69,7 @@ export async function compile(project: ProjectId): Promise<void> {
   try {
     await startCompile(project);
   } catch (error) {
-    fail(`Couldn't compile ${projectName(project)}`, error);
+    fail(`Couldn't compile ${nameOf(project)}`, error);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Working marks (design §4.10): while an agent works on a page, the page's top bar says "Claude is
+ * Working marks: while an agent works on a page, the page's top bar says "Claude is
  * working…" and the items it changed have a soft outline, until the agent finishes (`agent_finish`)
  * or the board closes here. Session state only: never saved, never an undo step.
  */

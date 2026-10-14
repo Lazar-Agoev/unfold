@@ -1,5 +1,5 @@
 /**
- * A note on the canvas (design §4.8): short plain text in the authored style, with who wrote it (the
+ * A note on the canvas: short plain text in the authored style, with who wrote it (the
  * agent mark for an agent). Free, it stays where it is put; attached, it moves with its card, frame,
  * resource card, or connection. A click selects it; dragging moves it (an attached note keeps its
  * attachment, at a new offset); double-clicking edits it in place (Enter keeps, Shift+Enter breaks the

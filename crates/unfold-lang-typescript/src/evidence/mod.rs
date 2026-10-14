@@ -1,4 +1,4 @@
-//! Link-time evidence (`docs/languages/typescript.md`, "Evidence levels"): the proof of concept's
+//! Link-time evidence (docs/languages/typescript.md#binding-and-evidence): the proof of concept's
 //! native producer's target computation (`frontend/native/index.ts`, `modules.ts`, `classes.ts`,
 //! `declared-types.ts`), evaluated over the payloads' binding tables.
 //!

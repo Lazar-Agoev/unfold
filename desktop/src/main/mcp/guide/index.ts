@@ -1,5 +1,5 @@
 /**
- * The guide (design §7.3): what agents read through `get_guide`, by topic. Each topic is a Markdown
+ * The guide: what agents read through `get_guide`, by topic. Each topic is a Markdown
  * file beside this one, bundled as text. `start` is the one every agent reads first; the others are
  * read before the job they teach (the start topic lists when).
  */

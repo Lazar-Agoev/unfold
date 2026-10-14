@@ -1,4 +1,4 @@
-//! The `[[app]]` tables of `unfold.toml` (docs/designs/entrance-definitions.md, "The tables"):
+//! The `[[app]]` tables of `unfold.toml` (docs/engine.md#the-app-tables):
 //! apps and their entrances as written, each with its span and, when it is wrong, its problem.
 //!
 //! A problem marks only its own entry: an unknown field, a value of the wrong type, a missing

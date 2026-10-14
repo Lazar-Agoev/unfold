@@ -18,7 +18,7 @@ function sources(dir: string): string[] {
  */
 const READS_KEYS = new RegExp([["key", "Name\\("], ["key", "Kind\\("], ["startsWith\\(\"", "entrance:\"\\)"]].map((parts) => parts.join("")).join("|"));
 
-describe("keys (core-rebuild-plan.md, rule 3)", () => {
+describe("keys (docs/architecture.md#ownership)", () => {
   it("are never read in the desktop shell: names and kinds come from the engine's answers", () => {
     const readers = sources(SOURCES).filter((path) => READS_KEYS.test(readFileSync(path, "utf8")));
     expect(readers).toEqual([]);

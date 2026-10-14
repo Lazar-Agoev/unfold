@@ -1,5 +1,5 @@
 //! The workspace's error type, with the stable codes the addon puts in rejected promises
-//! (`{"code", "message"}`, brief §6).
+//! (`{"code", "message"}`, docs/ipc.md#how-a-command-travels).
 
 use std::path::PathBuf;
 

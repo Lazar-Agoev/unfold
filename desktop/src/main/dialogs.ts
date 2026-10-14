@@ -56,7 +56,7 @@ function bringForward(parent: BrowserWindow | null): void {
 }
 
 /**
- * Asks whether an agent may add a folder to the workspace (design §5.7): "Claude wants to add
+ * Asks whether an agent may add a folder to the workspace: "Claude wants to add
  * `~/repos/payments` to your workspace." Unfold comes forward first, since the agent's call waits for
  * the answer. Cancel is the default, so a stray Return doesn't agree. Resolves with whether the person
  * chose Add.

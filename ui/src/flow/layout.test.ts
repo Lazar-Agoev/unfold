@@ -207,11 +207,11 @@ describe("thin rows", () => {
 
   it("lists a row one call per row when asked, each call on its own line", () => {
     const flow = drawn("08-api");
-    const folded = pieces(lay(flow), "thin")[0];
+    const gathered = pieces(lay(flow), "thin")[0];
     const geometry = lay(flow, new Set(["shop/api.py#/call:FastAPI"]));
     const [thin] = pieces(geometry, "thin");
     expect(thin?.listed).toBe(true);
-    expect(thin && folded && thin.rect.height > folded.rect.height).toBe(true);
+    expect(thin && gathered && thin.rect.height > gathered.rect.height).toBe(true);
     const lines = thin?.row.calls.map((item) => geometry.blocks.get(item.key)?.y);
     expect(new Set(lines).size).toBe(5);
   });
@@ -369,6 +369,26 @@ describe("try", () => {
     expect(onError).toMatchObject({ dashed: true, error: true, label: { text: "on error" } });
     // A return in the handler passes through finally on its way to End.
     expect(exitOf(geometry, "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/return[0]").destination).toBe("finally, then End");
+  });
+
+  it("draws the project calls in a handler's clause as chips in its title", () => {
+    const flow = drawn("03-sync-inbox");
+    const plain = pieces(lay(flow), "section").find((section) => section.look === "handler");
+    const withBlock = stepById(flow, 1);
+    const tried = withBlock.kind === "with" ? withBlock.lanes[0]?.steps.steps[0] : undefined;
+    const handler = tried?.kind === "try" ? tried.lanes.find((lane) => lane.form === "except") : undefined;
+    const lock = withBlock.kind === "with" ? withBlock.headerCalls[0] : undefined;
+    if (!handler?.test || !lock) {
+      throw new Error("a handler with a clause, and a call to put in it");
+    }
+    const key = `${handler.key}/call:mailbox_lock`;
+    handler.test.calls = [{ ...lock, key }];
+    const geometry = lay(flow);
+    const section = pieces(geometry, "section").find((piece) => piece.look === "handler");
+    const chip = geometry.blocks.get(key);
+    expect(section && chip && inside(chip, section.rect) && chip.y < section.rect.y + 40).toBe(true);
+    expect(geometry.anchors.some((anchor) => anchor.call === key)).toBe(true);
+    expect(section && plain && section.rect.height > plain.rect.height).toBe(true);
   });
 
   it("draws a with block titled by its header, with its header call as a chip", () => {

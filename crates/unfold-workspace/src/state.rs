@@ -1,5 +1,5 @@
-//! Remembered state, in JSON files Rust owns (docs/architecture.md#storage–8.2, decisions
-//! shared settings, app-data state). The UI never uses browser storage; everything it remembers lives here.
+//! Remembered state, in JSON files Rust owns (docs/architecture.md#storage). The UI never uses
+//! browser storage; everything it remembers lives here.
 //!
 //! - **Per app** (the app-data folder the desktop shell passes at init): `settings.json`
 //!   ([`AppSettings`]: the editor command), `window.json` (the window that comes back at launch:
@@ -68,7 +68,7 @@ pub struct WindowState {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct LocalState {
-    /// Board folders with no board in them, sorted (board folder metadata).
+    /// Board folders with no board in them, sorted.
     pub empty_folders: Vec<String>,
 }
 

@@ -1,5 +1,5 @@
 /**
- * Selected for a note (design §4.8): its text (edited in place, which makes it yours) and who wrote it,
+ * Selected for a note: its text (edited in place, which makes it yours) and who wrote it,
  * what it is attached to (selecting it) or that it is free, and Remove note. Notes aren't signed and
  * have no health. The file holds a note's text trimmed, so while you type the field shows what you
  * typed (a space before the next word, a line break) and saves it trimmed; leaving it shows the saved

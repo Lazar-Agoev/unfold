@@ -109,7 +109,7 @@
   --color-loop-line: #a5b4fc;
   --color-failure: #c42020;
   --color-failure-fill: #fee2e2;
-  /* Drawn flows (diagram-blocks-examples.html): call boxes, insets, decision and loop frames, unknown calls, gap ticks */
+  /* Drawn flows: call boxes, insets, decision and loop frames, unknown calls, gap ticks */
   --color-call-line: #c7cbef;
   --color-call-fill: #f8f9ff;
   --color-inset-fill: #f5f6fd;

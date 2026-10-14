@@ -99,7 +99,7 @@ export function boardMenuEntries(ref: BoardRef): MenuEntry[] {
   return boardMenuFor(ref, factsOf(ref, queryClient.getQueryData<BoardList>(engineKey("list_boards", { project: ref.project }))));
 }
 
-/** The board header's `⋯` (12 §2.1), right-aligned under it, 220 wide. */
+/** The board header's `⋯`, right-aligned under it, 220 wide. */
 export function BoardMenuButton({ board }: { readonly board: BoardRef }): JSX.Element {
   const list = useEngineQuery("list_boards", { project: board.project });
   // Re-render when the page the session shows changes (Export PNG exports it).

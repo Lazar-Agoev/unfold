@@ -1,4 +1,4 @@
-//! The code panel's model: every row of viewing-code's "What each block shows" table, the path,
+//! The code panel's model: what each kind of block shows, the path,
 //! hover, `⊕`, the states, and UTF-16 columns.
 
 use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};

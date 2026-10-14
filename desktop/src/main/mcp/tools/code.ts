@@ -1,5 +1,5 @@
 /**
- * Read the code (design §6.4): `read_code` and `get_relations`.
+ * Read the code: `read_code` and `get_relations`.
  *
  * `read_code` prints a definition's compiled tree (`code_text`): each block with its short label and
  * full key beside the line it starts on, what it calls, binds, or tests, and the code between blocks;

@@ -1,5 +1,5 @@
 /**
- * Tracing an entrance (docs/designs/entrance-definitions.md, "Home: How it starts"), end to end on a
+ * Tracing an entrance (docs/ui-shell.md#home), end to end on a
  * copy of `py-orders` (Python, so its flows have builtins to hide): clicking an entrance on Home puts it
  * and its code, expanded, on a new board with arrows to the code; a call opens its callee's flow in
  * place; Show callers adds the calling definition with its arrow; Show all calls reveals the builtins;

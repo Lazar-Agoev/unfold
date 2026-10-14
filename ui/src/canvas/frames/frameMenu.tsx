@@ -1,5 +1,5 @@
 /**
- * A frame's context menu (design §4, "small controls"): Rename…, Describe…, Collapse or Expand, Draw
+ * A frame's context menu: Rename…, Describe…, Collapse or Expand, Draw
  * link… (`startLink`), Copy link, and Remove frame (keep cards). Agents create frames; people adjust them. Each choice that
  * changes the page is one board edit, so ⌘Z undoes it.
  */

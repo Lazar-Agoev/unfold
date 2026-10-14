@@ -1,5 +1,5 @@
 /**
- * `add_resources` (design §6.7): adds resource cards to a page, or updates them by id: a table (backed
+ * `add_resources`: adds resource cards to a page, or updates them by id: a table (backed
  * by a type, whose fields are its columns, or listing its own), a queue, a cache, storage, a service
  * outside the workspace, or an actor, each with what it cites. The window checks the card's shape and
  * places it; the save checks what it cites and grounds an agent's card (its name, and the columns a

@@ -3,8 +3,8 @@
 //! (snapshots, SHA-256, the line index, UTF-8/UTF-16 offsets), and the `Highlighter` contract
 //! for the code panel.
 //!
-//! `unfold-core` depends on no other Unfold crate. `docs/designs/diagram-blocks.md` describes
-//! the model this crate encodes.
+//! `unfold-core` depends on no other Unfold crate. docs/graph-model.md describes the model this
+//! crate encodes.
 
 #![forbid(unsafe_code)]
 

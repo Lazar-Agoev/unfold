@@ -183,9 +183,9 @@ describe("type cards", () => {
 
   it("fold 12 fields or more behind “N more”, and estimate their rows before they are drawn", () => {
     const wide = definition(Array.from({ length: 12 }, (_, index) => member(`f${index}`, "string")));
-    const folded = listedFields(wide, false);
-    expect(folded.entries).toHaveLength(FIELDS_FOLDED);
-    expect(folded.hidden).toBe(12 - FIELDS_FOLDED);
+    const short = listedFields(wide, false);
+    expect(short.entries).toHaveLength(FIELDS_FOLDED);
+    expect(short.hidden).toBe(12 - FIELDS_FOLDED);
     expect(listedFields(wide, true).hidden).toBe(0);
     expect(listedFields(definition(Array.from({ length: 11 }, (_, index) => member(`f${index}`, "string"))), false).hidden).toBe(0);
     // The header, the grid's padding, 8 rows, and "N more".

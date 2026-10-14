@@ -1,5 +1,5 @@
-//! Incremental equals full, with the real languages (docs/engine.md#updates,
-//! §16): random edit sequences on copies of both playgrounds go through a workspace's background
+//! Incremental equals full, with the real languages (docs/engine.md#updates):
+//! random edit sequences on copies of both playgrounds go through a workspace's background
 //! updates (the path the watcher feeds, and the store's row diffs), and the graph the workspace
 //! committed must equal a fresh full compile of the same bytes, record for record.
 //!

@@ -1,6 +1,6 @@
 /**
- * The code panel (docs/designs/viewing-code.md), end to end on a copy of `ts-orders`: a board written as
- * a file (with a combined step, which people can't make yet) opens with two expanded cards; selecting a
+ * The code panel (docs/ui-shell.md#the-code-panel), end to end on a copy of `ts-orders`: a board written as
+ * a file (with a combined step) opens with two expanded cards; selecting a
  * call, a part, a gap tick, and the combined step each shows its lines with the right thing marked; the
  * path widens the view; lines hovered and clicked in the panel light and select their blocks; a file
  * opened from Add adds a card with `⊕`; an entrance opens its lines in `unfold.toml`; a file changed on

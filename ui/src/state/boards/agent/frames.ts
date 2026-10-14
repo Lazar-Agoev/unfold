@@ -1,5 +1,5 @@
 /**
- * `frame_cards` (design §6.12): gathers items of a page into frames, or updates frames by id: title,
+ * `frame_cards`: gathers items of a page into frames, or updates frames by id: title,
  * description, members, look, icon, parent, direction, and whether it is collapsed. An item is in one
  * frame, so members come from no frame, from the frame itself, or from the parent it is nested in;
  * frames nest at most three deep and never in a cycle. A frame's title and description are a person's
@@ -73,7 +73,7 @@ function quoted(frame: Pick<Frame, "title">): string {
   return `“${frame.title}”`;
 }
 
-/** Refuses members a frame can't hold: missing items, step groups and links, itself, its own holders, and items in another frame. */
+/** Refuses members a frame can't hold: missing items, combined steps and connections, itself, its own holders, and items in another frame. */
 function checkMembers(ctx: OpContext, page: Page, spec: AgentFrameSpec, title: string, self: Frame | undefined): void {
   if (spec.members.length === 0) {
     throw invalid(`The frame “${title}” needs members: the ids of the cards, resource cards, notes, or frames on this page it holds.`);

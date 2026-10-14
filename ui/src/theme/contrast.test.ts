@@ -59,7 +59,7 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
 
 /**
  * Focus rings, state dots, and marks against their grounds: 3:1. `--color-faint` isn't held to it:
- * it is for rules, icons, and disabled states only (docs/ui-shell.md#theme), and the designs' value is below
+ * it is for rules, icons, and disabled states only (docs/ui-shell.md#theme), and its value is below
  * 3:1 (2.56:1 on the surface).
  */
 const MARK_PAIRS: readonly (readonly [string, string])[] = [

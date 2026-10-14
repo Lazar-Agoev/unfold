@@ -1,4 +1,4 @@
-//! The code panel's model (`docs/designs/viewing-code.md`): what the panel beside the canvas
+//! The code panel's model (docs/reader.md#the-code-panels-model): what the panel beside the canvas
 //! shows for one selection.
 //!
 //! | Part | What it is |

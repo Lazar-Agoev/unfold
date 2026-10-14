@@ -1,5 +1,5 @@
-//! Lowering: oxc's parse tree straight to the file's nodes (`docs/designs/diagram-blocks.md`,
-//! "Language mapping › TypeScript"), with one rule per syntax form, keyed with
+//! Lowering: oxc's parse tree straight to the file's nodes (docs/languages/typescript.md#lowering),
+//! with one rule per syntax form, keyed with
 //! [`KeyBuilder`] in preorder. The same walk records each call's facts and the value table, each
 //! written module dependency, each function's signature and parameters, the members of types
 //! and classes, and the node each function, class, method, and type declaration became, which

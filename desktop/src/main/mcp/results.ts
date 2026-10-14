@@ -1,5 +1,5 @@
 /**
- * What tools answer (design §6.1, §7.8): a header that says where the result is and who is asking,
+ * What tools answer: a header that says where the result is and who is asking,
  * then compact text, a `next` cursor when there's more, and never more than about 6,000 tokens.
  * Errors teach: what failed, why, and what to call instead.
  */
@@ -21,12 +21,12 @@ export interface ResultPlace {
   readonly board?: string;
   /** The page's title. */
   readonly page?: string;
-  /** The page's revision (D4). */
+  /** The page's revision. */
   readonly revision?: string;
 }
 
 /**
- * The first line of every result (design §5.6):
+ * The first line of every result:
  * `Unfold · ts-orders › Order placement › Placing an order · rev 1a2b3c4d · as Claude`.
  */
 export function header(agent: AgentIdentity, place: ResultPlace = {}): string {
@@ -151,7 +151,7 @@ export class ToolError extends Error {
 }
 
 /**
- * A refusal in the shape §7.8 asks for: `Can't <what>: <why>. <instead>`, for example "Can't read the
+ * A refusal, shaped `Can't <what>: <why>. <instead>`, for example "Can't read the
  * board: no project named “shop” is in the workspace. list_projects shows the names."
  */
 export function cant(what: string, why: string, instead: string): ToolError {

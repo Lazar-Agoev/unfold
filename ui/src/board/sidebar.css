@@ -73,7 +73,7 @@
 .inline-rename.board-page-title { font-size: var(--text-13); line-height: var(--leading-20); }
 
 /* A page's ⋯ shows in its trailing slot on hover and keyboard focus, so the review dot keeps its lane
-   (the design draws no ⋯ on the selected row). */
+   (the selected row draws no ⋯). */
 .page-row { position: relative; }
 
 .list-row.page-row .list-row-menu {

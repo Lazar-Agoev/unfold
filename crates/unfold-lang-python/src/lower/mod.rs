@@ -1,6 +1,5 @@
 //! Lowering one parsed file straight to its node tree, with one rule per syntax form
-//! (`docs/designs/diagram-blocks.md`, "How a front end builds it" and "Language mapping ›
-//! Python"). Statements are lowered in [`statements`], expressions in [`expressions`].
+//! (docs/languages/python.md#lowering). Statements are lowered in [`statements`], expressions in [`expressions`].
 //!
 //! | Written | Node |
 //! | --- | --- |

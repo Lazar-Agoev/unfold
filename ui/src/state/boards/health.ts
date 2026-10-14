@@ -89,7 +89,7 @@ function itemReference(item: HealthItem, page: Page): Key | null {
 }
 
 /**
- * What a repair is called (core-scope.html's A CARD TO REVIEW). Re-signing text written for changed
+ * What a repair is called on a card's Review menu. Re-signing text written for changed
  * code is Accept too: no problem offers both, and the tooltip (`repairEffect`) says which it does.
  */
 const REPAIR_LABELS: Readonly<Record<RepairKind, string>> = {

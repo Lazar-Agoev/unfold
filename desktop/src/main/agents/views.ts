@@ -1,5 +1,5 @@
 /**
- * What the window shows (design §5.6): it reports its board, page, selection, what the code panel
+ * What the window shows: it reports its board, page, selection, what the code panel
  * shows, the items in view, and the boards whose sessions it holds (`report_view`) when any of them
  * changes and when it gains focus. The main process keeps the one window's last report, so tools
  * default to its view and edits know whether it holds a board; the report goes when the window closes.

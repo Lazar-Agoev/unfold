@@ -1,5 +1,5 @@
 /**
- * The page checks (design §7.7): the review checklist as data, so an agent that can't see images can
+ * The page checks: the review checklist as data, so an agent that can't see images can
  * review a page too. They read the page's document and the page as the canvas laid it out, and find:
  *
  * - **Overlap**: cards, frames, resource cards, or notes on top of each other (a frame and what it

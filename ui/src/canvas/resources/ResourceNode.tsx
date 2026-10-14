@@ -1,5 +1,5 @@
 /**
- * A resource card on the canvas (design §4.5–4.6): what the code talks to that isn't a function, drawn
+ * A resource card on the canvas: what the code talks to that isn't a function, drawn
  * in the authored style and the same in every view. Its header shows its kind's glyph and word, its
  * name, and the agent mark when an agent drew it; the review banner and its whole description follow.
  * A table lists its columns: each name (`?` when optional), its written type (a type-backed table's

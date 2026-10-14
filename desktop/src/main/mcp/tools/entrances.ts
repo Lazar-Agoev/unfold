@@ -1,5 +1,5 @@
 /**
- * Declare apps and entrances (mcp-capabilities.md § Apps and entrances; entrance-definitions.md):
+ * Declare apps and entrances (docs/engine.md#entrances):
  * `set_app`, `set_entrance`, and `remove_entrance` write the `[[app]]` tables of a project's
  * `unfold.toml` through `update_project_config`, and return the change as a diff.
  *

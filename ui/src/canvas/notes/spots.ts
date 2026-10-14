@@ -1,5 +1,5 @@
 /**
- * Where a note on a line goes (design §4.8): beside the line's middle, covering nothing. Arrange and
+ * Where a note on a line goes: beside the line's middle, covering nothing. Arrange and
  * an agent's `add_notes` place a link's note this way. Pure.
  */
 

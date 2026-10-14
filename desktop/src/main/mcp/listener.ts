@@ -1,5 +1,5 @@
 /**
- * The MCP server's HTTP listener (design §5.3, §5.7): `127.0.0.1:<port>`, path `/mcp`, from launch
+ * The MCP server's HTTP listener: `127.0.0.1:<port>`, path `/mcp`, from launch
  * until the app quits. It serves this machine's programs and nothing else:
  *
  * - a request with an `Origin` header comes from a web page, and one whose `Host` isn't

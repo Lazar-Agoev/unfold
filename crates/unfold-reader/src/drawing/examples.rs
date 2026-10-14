@@ -1,7 +1,6 @@
-//! The examples of `docs/designs/diagram-blocks-examples.html` as graphs, compiled by hand the
-//! way the page compiles them: 02–09 here, and 01 (`place_order`) from
+//! The worked examples as graphs, compiled by hand: 02–09 here, and 01 (`place_order`) from
 //! [`unfold_core::testkit::sample`], which holds exactly its 21 blocks. Ranges are found by
-//! line and text, so each block covers what the page's compiled panel shows.
+//! line and text.
 
 use rustc_hash::FxHashSet;
 use unfold_core::key::Callee;

@@ -96,15 +96,15 @@ describe("FlowView", () => {
   it("lists and folds thin rows, and selects a listed call", () => {
     const onToggleRow = vi.fn();
     const onSelect = vi.fn();
-    const folded = show("08-api", { onToggleRow, onSelect });
-    const row = all(folded.container, ".flow-thin")[0];
+    const gathered = show("08-api", { onToggleRow, onSelect });
+    const row = all(gathered.container, ".flow-thin")[0];
     expect(row?.textContent).toContain("5 calls, 2 unknown");
-    expect(all(folded.container, ".flow-unknown")).toHaveLength(2);
+    expect(all(gathered.container, ".flow-unknown")).toHaveLength(2);
     if (row) {
       fireEvent.click(row);
     }
     expect(onToggleRow).toHaveBeenCalledWith("shop/api.py#/call:FastAPI");
-    folded.container.remove();
+    gathered.container.remove();
     const listed = show("08-api", { onToggleRow, onSelect }, new Set(["shop/api.py#/call:FastAPI"]));
     expect(all(listed.container, ".flow-thin.listed")).toHaveLength(1);
     fireEvent.click(screen.getByText("Depends"));

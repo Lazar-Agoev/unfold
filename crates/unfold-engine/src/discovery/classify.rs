@@ -56,7 +56,7 @@ pub enum Unindexed {
     NotIncluded,
     /// Its language is left out of `languages`.
     LanguageOff,
-    /// JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx`), which V1 doesn't index.
+    /// JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx`), which Unfold doesn't index.
     #[serde(rename = "javascript")]
     JavaScript,
 }

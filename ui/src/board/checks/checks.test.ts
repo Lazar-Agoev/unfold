@@ -267,7 +267,7 @@ describe("density", () => {
     expect(crowded.map((check) => [check.kind, check.items])).toEqual([["density", []]]);
     expect(crowded[0]?.message).toBe("The page shows 33 items (cards, resource cards, and collapsed frames); about 30 is the most a page reads well with.");
 
-    const frames = [frame("folded", ["c0", "c1", "c2", "c3"], { collapsed: true })];
+    const frames = [frame("collapsed", ["c0", "c1", "c2", "c3"], { collapsed: true })];
     expect(kinds(run(page(cards, { frames }), drawn(boxes, lines)))).not.toContain("density");
   });
 

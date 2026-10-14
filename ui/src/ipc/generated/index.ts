@@ -2091,13 +2091,10 @@ state: RouteState,
 name?: string, 
 /**
  * Its test, drawn as a diamond: a branch's condition, a case's pattern, a comprehension's
- * filter.
+ * filter. A handler's clause, which titles its section, is its test too: `except
+ * PaymentDeclined as error`, `catch (error)`.
  */
 test?: Test, 
-/**
- * A handler's clause as written: `except PaymentDeclined as error`, `catch (error)`.
- */
-clause?: string, 
 /**
  * The classes a handler's clause names.
  */
@@ -3615,7 +3612,7 @@ export type TargetSpec = { "card": string } | { "combined": string } | { "name":
 export type TargetState = "found" | "missing" | "not_analyzed" | "not_a_start" | "stale";
 
 /**
- * A part's test.
+ * A part's test, or a handler's clause.
  */
 export type Test = { 
 /**
@@ -4228,11 +4225,13 @@ export interface Commands {
    */
   delete_folder: { args: ProjectPathArgs; result: null };
   /**
-   * The remembered window: bounds and the last board shown (main process only).
+   * The remembered window: bounds, whether it was maximized, the last board shown, and the Show all
+   * calls switch (main process only).
    */
   window_state: { args: NoArgs; result: WindowState | null };
   /**
-   * Remembers the window's bounds and the board it shows (main process only).
+   * Remembers the window's bounds, whether it is maximized, the board it shows, and the Show all
+   * calls switch (main process only).
    */
   save_window_state: { args: SaveWindowStateArgs; result: null };
 }

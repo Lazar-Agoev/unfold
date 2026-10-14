@@ -1,4 +1,4 @@
-//! Per-file binding (`docs/languages/typescript.md`, "Binding"): the proof of concept's binder
+//! Per-file binding (docs/languages/typescript.md#binding-and-evidence): the proof of concept's binder
 //! rules (`frontend/native/names.ts`, `classes.ts`) ported onto oxc's tree.
 //!
 //! One walk of oxc's tree ([`visit`]) builds the file's scopes and symbols ([`scope`]), creates a

@@ -1,5 +1,5 @@
 //! The drawing function and agent text: the route rules, the presentation rules, the nine
-//! examples of diagram-blocks-examples.html, `place_order` drawn and shaped, and the
+//! worked examples, `place_order` drawn and shaped, and the
 //! playgrounds' drawn-flow goldens.
 
 use rustc_hash::FxHashMap;
@@ -66,7 +66,7 @@ fn names(sequence: &Sequence, out: &mut FxHashMap<u32, String>) {
             Shape::Decision(frame) | Shape::Loop(frame) | Shape::Try(frame) | Shape::With(frame) => {
                 for lane in &frame.lanes {
                     let test = lane.test.as_ref().and_then(|test| test.text.as_deref());
-                    let lane_name = match test.or(lane.clause.as_deref()) {
+                    let lane_name = match test {
                         Some(test) => format!("{} {test}", lane.form),
                         None => lane.form.to_string(),
                     };
@@ -164,7 +164,7 @@ const PLACE_ORDER_DRAWN: &str = r#"( place_order )
 ( End )
 "#;
 
-/// Example 01 and diagram-blocks' "Drawn": every step connected, builtins hidden, the library
+/// Example 01 drawn: every step connected, builtins hidden, the library
 /// call `logger.warning` in a thin row, and the two gap ticks for `total = sum(…)` and
 /// `order["receipt"] = receipt`.
 #[test]
@@ -435,7 +435,7 @@ fn a_module_draws_its_code_and_opens_calls_in_place() {
     assert_eq!(plain(&flow), expected);
 }
 
-/// Example 08: decorators and defaults are calls of the enclosing body, folded into one thin
+/// Example 08: decorators and defaults are calls of the enclosing body, gathered into one thin
 /// row there, and listed as "runs when defined" on the definition's card.
 #[test]
 fn decorators_and_defaults_run_in_the_enclosing_body() {
@@ -506,7 +506,7 @@ fn an_inline_handler_is_a_callback_and_a_card() {
     );
 }
 
-/// The overlay of mcp-capabilities' `shape_card` example: a title, a named handler, and three
+/// The overlay of a `shape_card` example: a title, a named handler, and three
 /// combined steps.
 fn shaped() -> Overlay {
     let step = |relative: &str| key(&format!("{PLACE_ORDER}/{relative}"));
@@ -543,7 +543,7 @@ fn shaped() -> Overlay {
     }
 }
 
-/// mcp-capabilities' `shape_card` result, line for line (keys aside).
+/// The `shape_card` result, line for line (keys aside).
 #[test]
 fn the_shaped_place_order_reads_as_the_shape_card_result() {
     let flow = drawn_with(&sample::shop(), PLACE_ORDER, &shaped(), &[], false);
@@ -1525,6 +1525,47 @@ fn expressions_in_a_test_belong_to_the_test() {
     }
     let (tree, then) = playground.block("h.py#h/if[0]/then");
     assert_eq!(crate::overlay::steps(&tree, then).count(), 1);
+}
+
+/// A call written in a handler's clause is drawn on the clause, as a test's calls are on the
+/// test, and is no step of the handler.
+#[test]
+fn a_call_in_a_handlers_clause_is_drawn_on_it() {
+    const CODE: &str = "def f():\n    try:\n        work()\n    except errors():\n        return None\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "m.py", Language::Python, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("m.py#{name}")));
+    let function = c.function(module, "f", 1, 5, "def f()");
+    let try_block = c.block(function, Form::Try, c.lines(2, 5), None, None);
+    let body = c.suite(try_block, Form::Body, 3, 3);
+    c.call(body, "work", 3, "work()", to("work"));
+    let handler = c.part(try_block, Form::Except, 4, 5, Some("except errors()"));
+    let clause = c.call(handler, "errors", 4, "errors()", to("errors"));
+    c.set(clause).role = Some(CallRole::Test);
+    c.set(clause).stmt = None;
+    c.exit(handler, Form::Return, 5, Some("None"));
+
+    let flow = drawn(&g, "m.py#f");
+    assert_eq!(
+        plain(&flow),
+        "( f )
+  TRY
+      ▸ work
+  ON ERROR → except errors() · ▸ errors
+      RETURN None → End
+( End )
+"
+    );
+    let Shape::Try(frame) = &flow.steps.steps[0].shape else {
+        panic!("a try: {:?}", flow.steps.steps[0].shape);
+    };
+    let test = frame.lanes[1].test.as_ref().expect("the clause");
+    assert_eq!(test.text.as_deref(), Some("except errors()"));
+    let calls: Vec<&str> = test.calls.iter().map(|call| call.key.as_str()).collect();
+    assert_eq!(calls, ["m.py#f/try[0]/except[0]/call:errors"]);
+    assert!(test.calls[0].actions.open);
+    assert_routes(&flow, &["body -OnError-> except except errors()"]);
 }
 
 /// A thin row counts the unknown calls listed inside its calls too.

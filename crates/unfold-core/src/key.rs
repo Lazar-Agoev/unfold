@@ -1,6 +1,5 @@
 //! Structural keys: one readable name for every block, app, and entrance, which survives most
-//! edits (`docs/designs/diagram-blocks.md`, "Keys"; `docs/designs/entrance-definitions.md`,
-//! "Keys").
+//! edits (docs/graph-model.md#identity-and-structural-keys, docs/engine.md#app-and-entrance-keys).
 //!
 //! ```text
 //! key    = path "#"                               a module

@@ -1,5 +1,5 @@
 /**
- * Shape a card (mcp-capabilities.md § Shape a card): `shape_card`, a card's whole shaping in one call.
+ * Shape a card: `shape_card`, a card's whole shaping in one call.
  *
  * The agent names blocks by short label (`try[0]/except[0]`, `call:save_order`) or full key. A short
  * label names one of the card's own blocks, by lookup in the card's label map (`code_text`); a block of

@@ -1,5 +1,5 @@
 /**
- * Every limit the page checks apply, in one place (design §7.4's review checklist: about 12 visible
+ * Every limit the page checks apply, in one place (the review checklist: about 12 visible
  * items per frame, 30 per page, and 12 visible steps per expanded function card).
  */
 

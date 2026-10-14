@@ -1,5 +1,5 @@
 /**
- * What a tool works on (design §5.6, §6.1): the project, board, page, and item its arguments name, by
+ * What a tool works on: the project, board, page, and item its arguments name, by
  * id or by a link the person pasted, or else what the person is looking at in the window. A board
  * id names a board within a project; given alone, it is found among the projects' boards. Reading a
  * page goes to the window when it holds the board (unsaved edits included), else to the board's file.

@@ -5,7 +5,7 @@
 //! (JSON, the canonical export) values serialize as those strings; in compact formats (postcard,
 //! the facts cache) they serialize as their variant index.
 //!
-//! `docs/designs/diagram-blocks.md` ("Records") describes every node and link value.
+//! docs/graph-model.md describes every node and link value.
 
 use std::fmt;
 use std::str::FromStr;
@@ -407,8 +407,8 @@ impl Form {
         }
     }
 
-    /// Whether files of `language` can contain this form, following the design's language
-    /// mapping. Python has no `switch`, `do`, `using`, `catch`, `throw`, or type declarations;
+    /// Whether files of `language` can contain this form, following each language's lowering.
+    /// Python has no `switch`, `do`, `using`, `catch`, `throw`, or type declarations;
     /// TypeScript has no `match`, comprehensions, `with`, `except`, or `raise`.
     pub const fn allowed_in(self, language: Language) -> bool {
         match language {
@@ -651,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn vocabulary_sizes_match_the_design() {
+    fn vocabulary_sizes_match_the_graph_model() {
         assert_eq!(NodeKind::ALL.len(), 11);
         assert_eq!(Form::ALL.len(), 39);
         assert_eq!(Flag::ALL.len(), 8);

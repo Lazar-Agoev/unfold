@@ -1,4 +1,4 @@
-//! Syntax highlighting for the Code view.
+//! Syntax highlighting for the code panel.
 //!
 //! Language crates implement [`Highlighter`]; the workspace wires them into the reader, which never
 //! parses source itself (docs/architecture.md#ownership, rule 4). A highlighter classifies byte spans of one

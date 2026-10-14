@@ -192,9 +192,11 @@ command_table! {
     "delete_folder" => DeleteFolder(ProjectPathArgs) -> () = boards::delete_folder;
 
     // The window.
-    /// The remembered window: bounds and the last board shown (main process only).
+    /// The remembered window: bounds, whether it was maximized, the last board shown, and the Show all
+    /// calls switch (main process only).
     "window_state" => WindowState(NoArgs) -> Option<WindowState> = windows::window_state;
-    /// Remembers the window's bounds and the board it shows (main process only).
+    /// Remembers the window's bounds, whether it is maximized, the board it shows, and the Show all
+    /// calls switch (main process only).
     "save_window_state" => SaveWindowState(windows::SaveWindowStateArgs) -> () = windows::save_window_state;
 }
 

@@ -1,7 +1,7 @@
-//! The `shop` example of the designs as a small, complete graph for tests.
+//! The `shop` worked example as a small, complete graph for tests.
 //!
-//! - `shop/service.py`: `place_order`, exactly the 21-block tree of diagram-blocks' worked
-//!   example, under a module with `imports` links and a `#/` step.
+//! - `shop/service.py`: `place_order`, exactly its 21-block tree, under a module with `imports`
+//!   links and a `#/` step.
 //! - `shop/payments.py`: a class with an `extends` link, a decorator, a construction, and a
 //!   lambda.
 //! - `shop/store.py`: `place_order`'s callees, a loop whose header call takes a callback, and a
@@ -22,7 +22,7 @@ use crate::vocab::{
     Reason, TargetState,
 };
 
-/// `shop/service.py`, the source of diagram-blocks' worked example.
+/// `shop/service.py`, the source of the worked example.
 pub const SERVICE_PY: &str = r#"import logging
 
 from shop.payments import PaymentDeclined, charge_card
@@ -604,7 +604,7 @@ fn payments(g: &mut GraphBuilder) -> Payments {
     }
 }
 
-/// `shop/service.py`: diagram-blocks' "Proposed: 21 blocks".
+/// `shop/service.py`: `place_order`'s 21 blocks.
 fn service(g: &mut GraphBuilder, store: &Store, payments: &Payments) {
     let module = g.file("shop/service.py", Language::Python, SERVICE_PY);
     let imports = [
@@ -1257,7 +1257,7 @@ mod tests {
     }
 
     #[test]
-    fn the_route_handler_and_other_keys_match_the_designs() {
+    fn the_route_handler_and_other_keys_are_pinned() {
         let graph = shop().build();
         let orders = graph.file("src/orders.ts").unwrap();
         let keys: Vec<&str> = orders.nodes.iter().map(|node| node.key.as_str()).collect();

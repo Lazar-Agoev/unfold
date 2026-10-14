@@ -1,5 +1,5 @@
 /**
- * Drawing a link by hand (mcp-capabilities.md, "What people do by hand"): Draw link… on a card, a
+ * Drawing a link by hand (docs/ui-shell.md#explaining-by-hand): Draw link… on a card, a
  * resource card, or a frame starts it; the next of those clicked ends it, and the page asks for the
  * label an `other` connection says what it is with. Escape, or a click on the canvas, lets go. While a
  * link is being drawn, a click selects nothing. View state only: nothing is saved until the label is.

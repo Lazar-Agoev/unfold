@@ -1,5 +1,5 @@
 /**
- * The blocks an agent names (core-rebuild-plan.md, "The drawn flow"). A short label (`try[0]/except[0]`,
+ * The blocks an agent names (docs/reader.md#agent-text). A short label (`try[0]/except[0]`,
  * `call:save_order`) maps to its full key by lookup in the definition's label map, which `code_text`
  * and `flow_text` return; anything else is taken as a full key, as written. The server never joins or
  * splits key strings: what a key names comes from the engine's answers.

@@ -1,7 +1,7 @@
 /**
  * Selected for a frame: its title (renamed in place, which makes it yours), its look and where it is
  * nested, who drew it, its description, what it holds (each brought into view by a click), the lines
- * in and out (drawn links today; typed connections are links too, so they list here as well), the
+ * in and out (drawn links and typed connections), the
  * repairs its health offers, Collapse or Expand, and Remove frame (its members stay).
  */
 

@@ -95,7 +95,7 @@ describe("repair", () => {
     expect(repairs(test)[1]).toMatchObject({ repair: { page: "page-1", kind: "remove", target: { card: "place" } }, items: [] });
   });
 
-  it("re-signs and accepts only what agents wrote (D6): a person's words are theirs to sign off", async () => {
+  it("re-signs and accepts only what agents wrote: a person's words are theirs to sign off", async () => {
     const test = app(OUTDATED_PLACE, OUTDATED_CHARGE, REVIEW_CHARGE);
     const person = await test.call(repair, { ...AT, item: "place", repair: "resign" });
     expect(person).toMatchObject({

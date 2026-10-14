@@ -1,6 +1,6 @@
-//! Agent text (plan decision 3): the compiled tree for `read_code` ([`code_text`]) and the drawn
-//! flow for `shape_card` results and `read_page` ([`flow_text`]), in the formats of
-//! `docs/designs/mcp-capabilities.md`. The MCP server prints what these return.
+//! Agent text (docs/reader.md#agent-text): the compiled tree for `read_code` ([`code_text`]) and
+//! the drawn flow for `shape_card` results and `read_page` ([`flow_text`]). The MCP server prints
+//! what these return.
 //!
 //! Both carry each block's full key at the end of its line, after `key=`, so the server can
 //! turn the short label an agent writes into a key by looking it up, never by joining or
@@ -494,7 +494,7 @@ impl<'f> Printer<'f> {
                     self.sequence(out, &lane.steps, indent + 4);
                 }
                 Form::Except | Form::Catch => {
-                    let label = [lane.name.as_deref(), lane.clause.as_deref()];
+                    let label = [lane.name.as_deref(), test_text(lane)];
                     self.lane(out, lane, "ON ERROR →", &label, &[&lane.key], indent);
                 }
                 Form::Else => {

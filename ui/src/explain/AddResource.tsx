@@ -1,5 +1,5 @@
 /**
- * Add resource… (core-scope.html's ADD RESOURCE…), from the canvas's menu: a small popover that asks
+ * Add resource…, from the canvas's menu: a small popover that asks
  * for the kind (table, queue, cache, storage, an outside service, or an actor), the name, and, for a
  * table, its columns. Columns are written by hand (name, type, and key mark; + Column adds one), or come
  * from the type that declares them (From a type…, a name search over types and classes): then they are

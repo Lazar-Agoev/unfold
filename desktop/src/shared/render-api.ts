@@ -1,5 +1,5 @@
 /**
- * Page images and page checks (design §5.1, §6.5, §7.7): a hidden render window draws one page of a
+ * Page images and page checks: a hidden render window draws one page of a
  * board read-only, the way the board view draws it, from what the main process hands it. The main
  * process then captures it (an image), or takes the layout and content checks the window ran on the
  * laid-out page. Types only, so the UI imports them as `@unfold/desktop/render-api`.
@@ -57,7 +57,7 @@ export interface RenderFrame {
   readonly height: number;
 }
 
-/** A layout or content problem the page checks found (design §7.7). */
+/** A layout or content problem the page checks found. */
 export type PageCheckKind = "overlap" | "crossings" | "density" | "missingWords" | "evidence" | "strays";
 
 /** One finding of the page checks: what it is about, in words, and what fixes it. */

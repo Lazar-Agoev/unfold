@@ -1,5 +1,5 @@
 /**
- * `get_current_view` (design §5.6, §6.2; viewing-code.md § Agents): what the person is looking at in
+ * `get_current_view`: what the person is looking at in
  * the window, from its view report, with the page as the window holds it (unsaved edits included):
  * the selection (a proposed step, or a step shown in a call opened in place with the definition that
  * owns it, among the rest), what the code panel shows (its block and lines), and the items in view.

@@ -42,8 +42,8 @@ dev: addon dev-stop
     electron="{{justfile_directory()}}/node_modules/.pnpm/electron@"
     pnpm --filter @unfold/ui dev &
     ui=$!
-    # Ctrl+C or the app quitting ends the whole session. The app quits gracefully on Ctrl+C (saving
-    # drafts); anything still running after 8 s is stopped, so no Electron outlives the session.
+    # Ctrl+C or the app quitting ends the whole session. The app quits gracefully on Ctrl+C (landing
+    # board writes); anything still running after 8 s is stopped, so no Electron outlives the session.
     stop_session() {
         kill "$ui" 2>/dev/null || true
         for _ in $(seq 80); do pgrep -f "$electron" >/dev/null || return 0; sleep 0.1; done

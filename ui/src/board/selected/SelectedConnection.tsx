@@ -93,7 +93,7 @@ function columnEntries(columns: readonly TableColumn[], chosen: string | undefin
 }
 
 /**
- * A relationship's columns and cardinality (core-scope.html's A RELATIONSHIP): which column of the
+ * A relationship's columns and cardinality: which column of the
  * table it starts at holds which column of the other, and how many of each. Each change is saved at
  * once as one undo step and makes you the one who drew it; what the board refuses comes back as a
  * message.

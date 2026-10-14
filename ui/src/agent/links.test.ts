@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("boardLink", () => {
-  it("names the project by its folder name, then the board, page, and item (D9)", () => {
+  it("names the project by its folder name, then the board, page, and item", () => {
     expect(boardLink({ project: "ts-orders", board: ".unfold/boards/order-placement.json", page: "page-1", item: "create-order" })).toBe(
       "unfold://ts-orders/.unfold/boards/order-placement.json?page=page-1&item=create-order",
     );

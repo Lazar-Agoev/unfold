@@ -1,7 +1,7 @@
 /**
- * Health items as agents meet them (design §4.11, §6.8, §7.7): what an item is about, in words and by
+ * Health items as agents meet them: what an item is about, in words and by
  * the id `repair` takes; the repairs it offers, by the names `repair` takes; the `repair_board`
- * request for one of them; and, for D6, who wrote what re-signing or accepting it vouches for: an
+ * request for one of them; and who wrote what re-signing or accepting it vouches for: an
  * agent may re-sign or accept only what agents wrote.
  */
 
@@ -186,7 +186,7 @@ export async function acceptedBlocks(context: ToolContext, project: string, page
 }
 
 /**
- * A person's words among what re-signing or accepting an item vouches for (D6), or null when only
+ * A person's words among what re-signing or accepting an item vouches for, or null when only
  * agents wrote it. `blocks` are the blocks accepting it vouches for ({@link acceptedBlocks}).
  */
 export function personWords(page: Page, item: HealthItem, repair: "resign" | "accept", blocks: ReadonlySet<string>): Words | null {

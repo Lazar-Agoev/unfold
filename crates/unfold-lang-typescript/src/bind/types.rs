@@ -1,5 +1,4 @@
-//! Type names written in recorded annotations (`docs/languages/typescript.md`, "Type
-//! links"): every `TSTypeReference` name of the written types that typed records carry,
+//! Type names written in recorded annotations (docs/languages/typescript.md#typed-records): every `TSTypeReference` name of the written types that typed records carry,
 //! qualified names whole, recursing into type arguments, unions, intersections, arrays, tuples,
 //! function and constructor types, object type literals, indexed accesses, type operators,
 //! template literal types, predicates, and conditional and mapped types.

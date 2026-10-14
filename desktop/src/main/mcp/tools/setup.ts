@@ -1,5 +1,5 @@
 /**
- * Set up (design §6.3): `add_project`, `compile_project`, and `update_project_settings`.
+ * Set up: `add_project`, `compile_project`, and `update_project_settings`.
  *
  * Adding a project is the one trusted request an agent can make, and only after the person confirms
  * it in a native dialog; the project compiles as it is added. A compile is waited on for at most 50
@@ -16,7 +16,7 @@ import { count, stateText } from "../format";
 import { cant, textResult, ToolError } from "../results";
 import { defineTool } from "../tool";
 
-/** The longest a tool call waits for a compile (design §6.11). */
+/** The longest a tool call waits for a compile. */
 const MAX_WAIT_SECONDS = 50;
 
 /** A folder as the person would write it: `~/repos/payments` under their home. */

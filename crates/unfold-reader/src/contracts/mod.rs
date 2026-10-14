@@ -1,5 +1,5 @@
 //! Contracts: what flows through one call, and the written types it names
-//! (`docs/designs/mcp-capabilities.md`, "read_call"). Everything is computed per request from
+//! (docs/reader.md#contracts). Everything is computed per request from
 //! the stored records of the caller's and the callee's files, plus the verified source only where
 //! written text is shown.
 //!

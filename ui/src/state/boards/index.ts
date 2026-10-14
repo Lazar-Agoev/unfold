@@ -67,7 +67,6 @@ export { installBoardEvents } from "./events";
 export { deleteBoard, deleteFolder, exportPagePng, renameBoard, renameFolder, repairBoard, setBoardFolder } from "./files";
 export { itemsFor, kindWord, repairEffect, repairLabel, repairSpec } from "./health";
 export { boardKey, cardRefKey, pageKey, sameBoard } from "./keys";
-export { lineOffsetIn, followCall, type FollowRequest } from "./navigation";
 export { closeBoard, closeBoardsOfProject, newBoard, openBoard, reopenBoards } from "./open";
 export { addPage, deletePage, movePage, renamePage } from "./pages";
 export {

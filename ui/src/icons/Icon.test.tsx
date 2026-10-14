@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ICON_NAMES, Icon, StateGlyph } from ".";
 
-/** The set the UI plan (§6) promises the screens. */
+/** The icons the screens use. */
 const PLANNED = [
   "chevron-left",
   "chevron-right",
@@ -60,7 +60,7 @@ describe("Icon", () => {
     expect(svg?.querySelectorAll("path, circle, rect").length).toBeGreaterThan(0);
   });
 
-  it("keeps the designs' dashes and filled dots", () => {
+  it("keeps the dashes and filled dots", () => {
     const { container } = render(
       <>
         <Icon name="link" />

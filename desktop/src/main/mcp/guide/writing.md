@@ -22,7 +22,7 @@ goes to review.
 | Frame title | frame_cards | A noun, 1 to 4 words | "Request checks", "Server" | "Group 1" |
 | Connection label | connect | What travels, 1 to 5 words | "place-order job" | "calls" |
 | Connection description | connect | The evidence, one sentence | "createOrder adds a place-order job to the orders queue." | "They are connected." |
-| Proposed step | propose | The intended behavior, 2 to 6 words, and a reason; only when asked | "Email a confirmation" | "TODO", "Done" |
+| Proposed step | propose | The intended behavior, 2 to 6 words, and a reason; only when asked | "Email a confirmation" | "Later", "Done" |
 | Note | add_notes | Two sentences at most, for what a reader would miss | "Queued orders are placed by the worker. The client gets a job id, not the order." | A summary of the page |
 | Page title | create_board, edit_pages | What the page explains, 1 to 6 words | "Placing an order" | "Page 2" |
 | Board title | create_board | The story | "Order placement" | "Board for ts-orders" |

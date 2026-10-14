@@ -1,4 +1,4 @@
-//! `code_view`: the code panel's model for one selection (docs/designs/viewing-code.md): a
+//! `code_view`: the code panel's model for one selection (docs/reader.md#the-code-panels-model): a
 //! block, lines of a file (with an optional mark), a field of a type card, a whole file, or an
 //! app or entrance (its lines in `unfold.toml`). The reader builds the model from the committed
 //! graph and the source verified against it; the workspace confines paths, finds an app's or

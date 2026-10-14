@@ -1,5 +1,5 @@
 /**
- * Arrows and connections at collapsed frames (design §4.4): an end inside a collapsed frame attaches
+ * Arrows and connections at collapsed frames: an end inside a collapsed frame attaches
  * to the frame instead, an arrow or connection with both ends inside one isn't drawn, and the ones that
  * would then draw on top of each other merge into one (a merged connection counts them), as a compact
  * card's calls to one card merge. A line that only moved an end keeps its id and contract. Pure.

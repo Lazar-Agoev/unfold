@@ -1,5 +1,5 @@
 /**
- * `</>`: opens the code of what it sits on in the code panel (core-scope.html's `.cx`). It sits on a
+ * `</>`: opens the code of what it sits on in the code panel. It sits on a
  * card's header, and on a block while the block is hovered or selected. A click on it never also
  * clicks what it sits on.
  */

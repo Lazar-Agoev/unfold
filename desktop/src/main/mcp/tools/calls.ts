@@ -1,5 +1,5 @@
 /**
- * `read_call` (design §6.4, §8.7): one call's contract (`call_contract`), named by the call's block
+ * `read_call`: one call's contract (`call_contract`), named by the call's block
  * key, as the board's arrow contract shows it: what it sends, what comes back and where it lands, what
  * the callee raises directly, and which part of the caller catches it. Written types only; nothing is
  * inferred.

@@ -1,5 +1,5 @@
 /**
- * How a tool is written (design §5.3, §6.1, §6.12): its name, title, description (where it teaches,
+ * How a tool is written: its name, title, description (where it teaches,
  * at most 2,048 characters, which Claude Code keeps), its arguments as a zod schema (the SDK checks
  * them before the tool runs), its annotations, whether Claude Code loads it with the session's first
  * tools, and what it does with a {@link ToolContext}. `defineTool` turns that into a {@link Tool} the
@@ -14,7 +14,7 @@ import type { ToolResult } from "./results";
 /** Claude Code loads a tool marked with this at once, instead of finding it with tool search. */
 const ALWAYS_LOAD = "anthropic/alwaysLoad";
 
-/** The annotations the design sets (§5.3): read tools are read-only; creating by id is idempotent. */
+/** Tool annotations: read tools are read-only; creating by id is idempotent. */
 interface ToolHints {
   readonly readOnlyHint: boolean;
   readonly destructiveHint?: boolean;

@@ -1,4 +1,4 @@
-//! The board commands' argument and result types (docs/ipc.md › Boards).
+//! The board commands' argument and result types (docs/ipc.md#boards).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

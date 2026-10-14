@@ -1,5 +1,5 @@
 /**
- * Find code (design §6.4): `search` and `list_entrances`.
+ * Find code: `search` and `list_entrances`.
  *
  * `search` asks the engine's name search for entrances, functions, types (each a definition search
  * narrowed to their block kinds, so each has its own total), and files. A cursor is an offset into
@@ -92,8 +92,8 @@ export const search = defineTool({
       wanted.has("types") ? names(TYPE_KINDS) : null,
       others.length > 0 ? context.engine("search", { query, kinds: [...others], limit: engineLimit, projects: ids }) : null,
     ]);
-    const projectNames = new Map(rows.map((row) => [row.id, row.name]));
-    const tag = (project: string) => (rows.length > 1 ? ` in ${projectNames.get(project) ?? project}` : "");
+    const namesById = new Map(rows.map((row) => [row.id, row.name]));
+    const tag = (project: string) => (rows.length > 1 ? ` in ${namesById.get(project) ?? project}` : "");
     const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number, line = hitLine) =>
       group ? section(title, group.hits, group.total, offset, size, (hit) => line(hit, tag(hit.project))) : null;
     const page = fitting(limit, 0, (size) =>

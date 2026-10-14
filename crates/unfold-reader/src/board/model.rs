@@ -1,4 +1,4 @@
-//! The `unfold-board` version 1 document (docs/designs/core-rebuild-plan.md, "The board file").
+//! The `unfold-board` version 1 document (docs/schemas/unfold-board.schema.json).
 //!
 //! A board is a titled list of **pages**, optionally filed in a folder. Each page holds authored
 //! choices only: cards that show blocks and entrances of the board's project by key, their

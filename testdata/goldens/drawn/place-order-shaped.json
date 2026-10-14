@@ -166,7 +166,10 @@
             ],
             "state": "reached",
             "name": "Card declined",
-            "clause": "except PaymentDeclined as error",
+            "test": {
+              "text": "except PaymentDeclined as error",
+              "calls": []
+            },
             "types": [
               {
                 "outcome": "project",

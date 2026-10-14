@@ -1,5 +1,5 @@
 /**
- * Every tool the server offers (design §6), in the order agents see them. A new tool is a
+ * Every tool the server offers, in the order agents see them. A new tool is a
  * `defineTool` in this folder, listed here.
  */
 

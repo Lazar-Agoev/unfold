@@ -8,7 +8,7 @@ vi.mock("electron", async () => (await import("../../fake-electron")).electronMo
 const CALL = "orders/create.ts#createOrder/try[0]/body/call:chargePayment";
 const BOARD = { project: PROJECT, id: ".unfold/boards/typed.json" };
 
-/** The typed-lines fixture's call from createOrder to chargePayment (design §8.7). */
+/** The typed-lines fixture's call from createOrder to chargePayment. */
 const CONTRACT: CallContract = {
   call: CALL,
   line: 27,

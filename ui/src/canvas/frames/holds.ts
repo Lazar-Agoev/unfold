@@ -1,5 +1,5 @@
 /**
- * What a frame holds, in words, as its collapsed node says it (design §4.4): "2 entrances · 3
+ * What a frame holds, in words, as its collapsed node says it: "2 entrances · 3
  * functions · 1 table". Every card and resource card inside it counts, nested frames' too; a card's
  * word comes from what the reader drew for it ("card" while it isn't loaded).
  */

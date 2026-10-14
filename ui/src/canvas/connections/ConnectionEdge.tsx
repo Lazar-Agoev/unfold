@@ -1,5 +1,5 @@
 /**
- * A connection (design §4.7): a line in the authored color, in its kind's pattern (solid for HTTP,
+ * A connection: a line in the authored color, in its kind's pattern (solid for HTTP,
  * reads and writes; long dashes for a queue; short dashes for a runtime call; thin with crow's-foot
  * ends for a relationship; dashed for other), with a filled head where the data
  * goes (into the table for `writes`, back into the code for `reads`), and a chip that says its kind and

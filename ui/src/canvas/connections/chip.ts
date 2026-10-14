@@ -1,5 +1,5 @@
 /**
- * What a connection's chip says (design §4.7): its kind's word, then what travels: the channel (a
+ * What a connection's chip says: its kind's word, then what travels: the channel (a
  * route, a queue, an event; for reads and writes, the table when it names none), the type it carries,
  * and its label (`queue · orders · OrderJob`, `writes · orders`, `runtime call`). A relationship's
  * chip is its cardinality (`N : 1`); an `other` connection's is its label. Chips have shorter forms

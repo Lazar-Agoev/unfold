@@ -1,8 +1,8 @@
 /**
- * Repair and finish (design §6.8): `repair` and `finish_work`.
+ * Repair and finish: `repair` and `finish_work`.
  *
  * `repair` finds the health item (`board_health`, as the window that holds the board), refuses to
- * re-sign or accept what a person wrote (D6: that sign-off is theirs), and has the holding window
+ * re-sign or accept what a person wrote (that sign-off is theirs), and has the holding window
  * apply the repair the way Review does: saved at once, one undo step. `finish_work` clears the agent's
  * working marks on the boards it changed and shows its summary as a toast in the window.
  */

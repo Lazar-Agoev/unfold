@@ -1,7 +1,7 @@
 /**
- * Geometry for a drawn flow (core-rebuild-plan.md, "The drawn flow"): the reader decides what is
- * drawn, in which order, and where every route goes; this lays it out, top to bottom like
- * diagram-blocks-examples.html's DRAWN panels, and applies no rules of its own.
+ * Geometry for a drawn flow (docs/reader.md#the-drawn-flow): the reader decides what is drawn, in
+ * which order, and where every route goes; this lays it out, top to bottom, and applies no rules of
+ * its own.
  *
  * ```text
  * layoutFlow(flow, { measure })
@@ -87,8 +87,8 @@ export type FlowPiece =
       readonly chips: readonly CallBox[];
       readonly path: readonly Key[];
     })
-  /** A part drawn as a section: a try's TRY, EXCEPT, ELSE, and FINALLY, or a loop's ELSE. */
-  | (PieceBase & { readonly kind: "section"; readonly lane: Lane; readonly look: "try" | "handler" | "else" | "finally" | "loop-else"; readonly loop: boolean })
+  /** A part drawn as a section: a try's TRY, EXCEPT, ELSE, and FINALLY, or a loop's ELSE. `path` is the open path for the chips in its title (a handler's clause calls). */
+  | (PieceBase & { readonly kind: "section"; readonly lane: Lane; readonly look: "try" | "handler" | "else" | "finally" | "loop-else"; readonly loop: boolean; readonly path: readonly Key[] })
   /** A combined step: one box when collapsed, a frame around its steps when open. */
   | (PieceBase & { readonly kind: "combined"; readonly step: CombinedStep; readonly exits: readonly CombinedExit[] })
   | (PieceBase & { readonly kind: "proposed"; readonly step: ProposedStep })
@@ -1104,18 +1104,27 @@ class Builder {
     return { width: rect.width, height: rect.height, box: rect };
   }
 
-  /** A part as a section: its title (and name, clause, or note), then its steps. */
+  /** A part as a section: its title (and name, clause with its calls as chips, or note), then its steps. */
   private section(lane: Lane, look: "try" | "handler" | "else" | "finally" | "loop-else", x: number, y: number, scope: Scope, frame: number, dim: boolean, loop: boolean): Placed {
     const rect: MutableRect = { x, y, width: 0, height: 0 };
-    this.pieces.push({ kind: "section", rect, dim, lane, look, loop });
+    this.pieces.push({ kind: "section", rect, dim, lane, look, loop, path: scope.path });
     this.block(lane.key, rect);
     const words = sectionWords(lane, loop);
+    const chips = lane.test?.calls ?? [];
+    const title = chips.length > 0 ? CHIP_HEIGHT : SECTION.title;
+    const cx = x + 1 + SECTION.padX;
     let titleWidth = this.caps(words.title, FONT.word, 9.5, 0.09);
     titleWidth += lane.name !== undefined ? 8 + this.text(lane.name, FONT.name) : 0;
     titleWidth += words.clause !== null ? 8 + this.text(words.clause, FONT.head) : 0;
+    if (chips.length > 0) {
+      titleWidth = this.chips(chips, cx + titleWidth + 8, y + 1 + SECTION.padTop + title / 2, 8) - cx;
+    }
     titleWidth += words.note !== null ? 8 + this.text(words.note, FONT.sectionNote) : 0;
-    const top = y + 1 + SECTION.padTop + SECTION.title + SECTION.titleGap;
-    const column = this.lane(lane, x + 1 + SECTION.padX, top, scope, frame, look === "handler" ? "continues after the try" : null, dim);
+    let top = y + 1 + SECTION.padTop + title + SECTION.titleGap;
+    const insets = this.chipInsets(chips, cx + INSET.indent, top, scope, dim);
+    titleWidth = Math.max(titleWidth, INSET.indent + insets.width);
+    top += insets.height;
+    const column = this.lane(lane, cx, top, scope, frame, look === "handler" ? "continues after the try" : null, dim);
     rect.width = Math.ceil(Math.max(titleWidth, column.width) + 2 * SECTION.padX + 2);
     rect.height = top - y + column.height + SECTION.padBottom + 1;
     return { width: rect.width, height: rect.height, box: rect };

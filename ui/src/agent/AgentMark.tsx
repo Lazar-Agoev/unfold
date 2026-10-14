@@ -1,5 +1,5 @@
 /**
- * The agent mark (design §4.10): a quiet spark and the word "agent" wherever an agent's words show, so
+ * The agent mark: a quiet spark and the word "agent" wherever an agent's words show, so
  * they never read as a person's, in both themes and without color. Selected's bylines read "Claude ·
  * agent"; on the canvas, a description or label an agent wrote carries the mark.
  */

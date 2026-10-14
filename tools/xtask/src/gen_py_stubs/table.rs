@@ -1,7 +1,7 @@
 //! Turning the stub modules into the table: the members of the covered modules and of every class
 //! they reach, with written types read without generics.
 //!
-//! A written type is kept in exactly the forms the design allows: a class (`-> Logger`), a class
+//! A written type is kept in exactly the forms a call's value allows: a class (`-> Logger`), a class
 //! or nothing (`-> Match[str] | None`, `Optional[X]`), a quoted name (`-> "Repo"`), read through
 //! `await` for an `async def`; and `Self`, which is the receiver's class. Type arguments are
 //! dropped (`dict[str, int]` is `dict`); anything else (a type variable, a union of classes, a

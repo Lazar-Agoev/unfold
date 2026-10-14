@@ -1,5 +1,5 @@
-//! Validated edits to `unfold.toml` that keep its comments and formatting (architecture
-//! §9.2, shared settings).
+//! Validated edits to `unfold.toml` that keep its comments and formatting
+//! (docs/engine.md#settings-edits).
 //!
 //! Each [`SettingsEdit`] changes the TOML document through `toml_edit`, so everything the edit
 //! doesn't touch (comments, blank lines, key order, quoting) stays byte for byte. The result is

@@ -1,4 +1,4 @@
-//! The graph's records (`docs/designs/diagram-blocks.md`, "Records"): files and their nodes,
+//! The graph's records (docs/graph-model.md#records): files and their nodes,
 //! links, and typed records ([`crate::typed`]); the inputs that shaped them; and the apps and
 //! entrances `unfold.toml` declares.
 //!

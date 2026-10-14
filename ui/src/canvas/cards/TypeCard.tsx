@@ -1,5 +1,5 @@
 /**
- * A type card (design §4.2): a type declaration as its fields in every view (it has no chevron), or a
+ * A type card: a type declaration as its fields in every view (it has no chevron), or a
  * compact class, whose header starts with the chevron that expands it to its class-level code
  * (`BlockCard`). The header shows the kind (`interface`, `type`, `enum`, `class`), the name, and where
  * it is, from what the reader drew; the review banner and the description follow. The fields come from

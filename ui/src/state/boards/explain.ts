@@ -1,6 +1,6 @@
 /**
- * What people make by hand on a page, under the rules agents follow (mcp-capabilities.md, "What people
- * do by hand"): combined steps, proposed steps, resource cards, drawn links, a connection's kind, and
+ * What people make by hand on a page, under the rules agents follow (docs/ui-shell.md#explaining-by-hand):
+ * combined steps, proposed steps, resource cards, drawn links, a connection's kind, and
  * a relationship's columns and cardinality. Each is saved at once as one undo step (`saveStep`), so the board's own
  * checks decide: what they refuse leaves the page as it was and comes back as a message. Nothing here
  * re-checks a rule the board checks; what each block allows comes from the drawn flow's actions.

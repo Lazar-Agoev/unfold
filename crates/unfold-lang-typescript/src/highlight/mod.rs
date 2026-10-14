@@ -1,4 +1,4 @@
-//! TypeScript syntax highlighting for the Code view.
+//! TypeScript syntax highlighting for the code panel.
 //!
 //! Colors are lexical, as in the proof of concept's reader: the text is split into tokens and a
 //! few neighbor rules pick a class. The tokens come from oxc's lexer (through the parser's token

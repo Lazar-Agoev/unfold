@@ -24,8 +24,8 @@
 //!   survive that file's replacement, and the reverse indexes (callers, type uses) are one
 //!   index lookup.
 //! - **A cache.** A database written by another schema or engine version, or a damaged one, is
-//!   discarded and recreated on open ([`Opened`]); there are no migrations (cache rebuild policy).
-//!   The database is private and may change in any release (shared file contracts).
+//!   discarded and recreated on open ([`Opened`]); there are no migrations.
+//!   The database is private and may change in any release.
 //! - **Facts cache.** Serialized per-file facts, keyed by path, content hash, engine, and
 //!   settings hash, keeping each path's current and last good entries ([`writer::facts`]).
 //! - **Search.** FTS5 with trigram tokens finds definitions, apps, entrances, and files by name,

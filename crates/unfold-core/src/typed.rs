@@ -1,5 +1,5 @@
 //! The typed records of one file: what each function takes and returns, what each call sends,
-//! and the written members of types and classes (`docs/designs/diagram-blocks.md`, "Records").
+//! and the written members of types and classes (docs/graph-model.md#typed-records).
 //!
 //! | Record | One per |
 //! | --- | --- |

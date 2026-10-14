@@ -1,5 +1,5 @@
 /**
- * Authored text in Selected: a description or a Flow label in the authored color on its tint, edited
+ * Authored text in Selected: a description, a name, or a note in the authored color on its tint, edited
  * in place (the field grows with its lines), with who wrote it underneath ("Claude · agent" for an
  * agent). Every keystroke is a board edit, and makes the text yours; typing in one field merges into
  * one undo step.
@@ -11,7 +11,7 @@ import type { Description } from "../../ipc/generated";
 import { useFocusTarget } from "../../lib/focus-targets";
 
 export interface AuthoredFieldProps {
-  /** The field's accessible name ("Description", "Flow label"). */
+  /** The field's accessible name ("Description", "Name"). */
   readonly label: string;
   readonly value: Description | undefined;
   readonly placeholder: string;

@@ -1,5 +1,5 @@
 /**
- * Selected for a resource card (design §4.5): its name, its kind and who drew it, its description with
+ * Selected for a resource card: its name, its kind and who drew it, its description with
  * what needs review about it (and Review, its repairs), the type a table is backed by (opening its
  * definition in place), what it cites (each opening its source), the connections in and out of it,
  * and Remove resource card.

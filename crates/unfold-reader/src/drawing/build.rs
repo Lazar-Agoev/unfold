@@ -1,5 +1,5 @@
 //! Building a drawn flow's steps from a definition's tree, with the presentation rules
-//! (`docs/designs/diagram-blocks.md`, "How the diagram draws it"):
+//! (docs/reader.md#what-is-drawn):
 //!
 //! - **Calls.** A project call, a named call, and a call that takes a callback are boxes. The
 //!   boxes and expression control blocks written inside a call come first, in the order they
@@ -8,7 +8,8 @@
 //!   into one row unless a gap tick sits between them. Builtins are hidden unless Show all calls
 //!   is on; the calls inside a hidden call surface on their own.
 //! - **Control blocks** are frames whose parts are lanes. One with nothing drawn inside is
-//!   hidden and named in its gap tick. The boxes written in a header or a test are drawn on it.
+//!   hidden and named in its gap tick. The boxes written in a header, a test, or a handler's
+//!   clause are drawn on it.
 //! - **Exits** are labeled by the call that is their value, or by their value as written.
 //! - **Gap ticks** count the code lines of a body that no drawn step covers.
 //! - **The overlay:** names; combined steps (one step when collapsed, their steps under a title
@@ -689,22 +690,18 @@ impl<'a> Builder<'_, 'a> {
     fn lane(&mut self, part: u32) -> Lane {
         let id = self.id();
         let node = self.node(part);
-        let handler = matches!(node.form, Form::Except | Form::Catch);
-        let test = match node.head {
-            Some(head) if !handler => {
-                let mut calls = Vec::new();
-                for &child in self.children(part) {
-                    if self.belongs_to_test(child) {
-                        self.boxes(child, &mut calls);
-                    }
+        let test = node.head.map(|head| {
+            let mut calls = Vec::new();
+            for &child in self.children(part) {
+                if self.belongs_to_test(child) {
+                    self.boxes(child, &mut calls);
                 }
-                Some(Test {
-                    text: self.one_line(Some(head)),
-                    calls,
-                })
             }
-            _ => None,
-        };
+            Test {
+                text: self.one_line(Some(head)),
+                calls,
+            }
+        });
         let types = self
             .tree
             .links(part)
@@ -729,7 +726,6 @@ impl<'a> Builder<'_, 'a> {
             state: RouteState::Reached,
             name: self.name(part),
             test,
-            clause: if handler { self.one_line(node.head) } else { None },
             types,
             falls_through: node.flags.contains(Flag::FallsThrough),
             combinable: self.combinable(part),
@@ -893,7 +889,7 @@ fn hidden_label(form: Form) -> &'static str {
 }
 
 /// The sequence of `items`, with gap ticks for the code `lines` no item covers and thin items
-/// folded into rows.
+/// gathered into rows.
 fn finish(items: Vec<Item>, hidden: &[Hidden], lines: &[u32]) -> Sequence {
     let spanned: Vec<(usize, LineSpan)> = items
         .iter()

@@ -1,5 +1,5 @@
 /**
- * Tracing an app or entrance from How it starts (entrance-definitions.md, "Home: How it starts"): a new
+ * Tracing an app or entrance from How it starts: a new
  * board named after it, showing its card and the cards for its code, expanded, in a column to its right
  * in the order they run. Its arrows point at them. Code that names no block gets no card: the start card
  * lists it, dashed and labeled with its state. A trace of a start already being traced (a double click)

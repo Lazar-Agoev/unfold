@@ -1,5 +1,5 @@
 /**
- * Pure edits of a page's notes (design §4.8): short plain text written on the page, free (at a canvas
+ * Pure edits of a page's notes: short plain text written on the page, free (at a canvas
  * position) or attached to a card, frame, resource card, or link (at an offset from it, so it moves
  * with it). Notes aren't signed and have no health. Each function is an Immer recipe over a draft
  * page; an empty list is deleted, as the file omits it.

@@ -1,6 +1,6 @@
 /**
  * Toasts: short notes in the window's bottom-right corner that never block the canvas
- * ("storefront-web compiled", "Reconnecting to the engine…"). Call `showToast` from anywhere; the
+ * ("Copied the link", "Exported PNG"). Call `showToast` from anywhere; the
  * frame renders one `<Toaster />`. At most four show, newest at the bottom; a toast shown with the id
  * of one already showing replaces it in place. While a dialog is open, the stack rises above its
  * footer when the two would meet, so its buttons stay reachable.

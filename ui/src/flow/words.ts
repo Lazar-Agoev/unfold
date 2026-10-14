@@ -1,5 +1,5 @@
 /**
- * The words a drawn flow is shown with (diagram-blocks-examples.html, mcp-capability-examples.html): a
+ * The words a drawn flow is shown with: a
  * call box's meta row, a frame's keyword, an exit's word and where it goes, a gap tick, a combined
  * step's counts. Each comes from the drawn flow's fields; the layout measures the same words the view
  * renders.
@@ -188,7 +188,8 @@ export function sectionWords(lane: Lane, loop: boolean): SectionWords {
   switch (lane.form) {
     case "except":
     case "catch": {
-      const clause = lane.clause?.startsWith(lane.form) ? lane.clause.slice(lane.form.length).trim() : lane.clause;
+      const written = lane.test?.text;
+      const clause = written?.startsWith(lane.form) ? written.slice(lane.form.length).trim() : written;
       return { title: lane.form === "except" ? "Except" : "Catch", clause: clause !== undefined && clause.length > 0 ? clause : null, note: null };
     }
     case "else":

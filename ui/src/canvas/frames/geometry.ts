@@ -1,5 +1,5 @@
 /**
- * Where a page's frames and notes are (design §4.4, §4.8). A frame has no position of its own: its box
+ * Where a page's frames and notes are. A frame has no position of its own: its box
  * is the bounds of what it holds plus room for its title, computed from the inside out, so it follows
  * its members as they move and reflow. A collapsed frame is one node, drawn where the top-left of its
  * box would be; what it holds isn't drawn, and the arrows and links of those items attach to it instead

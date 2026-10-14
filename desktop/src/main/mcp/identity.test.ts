@@ -9,7 +9,7 @@ const call = (name: string, clientInfo?: { name: string }) => ({
 });
 const initialize = (name: string) => ({ jsonrpc: "2.0", id: 0, method: "initialize", params: { clientInfo: { name, version: "1" } } });
 
-describe("agentIdentity (D5)", () => {
+describe("agentIdentity", () => {
   it("names Claude Code and Codex, and any other client by its own name", () => {
     expect(agentIdentity("claude-code")).toEqual({ author: "agent:claude", name: "Claude" });
     expect(agentIdentity("Claude Code")).toEqual({ author: "agent:claude", name: "Claude" });

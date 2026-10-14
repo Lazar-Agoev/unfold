@@ -1,4 +1,4 @@
-/** What each kind of resource card is called and drawn with (design §4.5): a quiet glyph and a word. */
+/** What each kind of resource card is called and drawn with: a quiet glyph and a word. */
 
 import type { IconName } from "../../icons";
 import type { ResourceKind } from "../../ipc/generated";

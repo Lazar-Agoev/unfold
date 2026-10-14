@@ -1,6 +1,6 @@
 /**
  * Health on a card or a resource card: a full-width banner under the header ("Changed since it was
- * described · Review"), and the menu its Review opens (core-scope.html's A CARD TO REVIEW): Accept,
+ * described · Review"), and the menu its Review opens: Accept,
  * Reconnect…, and Remove from page (`reviewRepairs`), each explained in its tooltip (`repairEffect`)
  * and saved at once as one undo step. Reconnect… first asks for the definition
  * (or app or entrance) the reference became by a name search, offering the one the engine found when
@@ -219,7 +219,7 @@ function ReconnectPopover({
 }
 
 /**
- * What the review menu offers for an item, in order (core-scope.html's A CARD TO REVIEW): Accept (the
+ * What the review menu offers for an item, in order: Accept (the
  * accept or re-sign repair, whichever the item offers), Reconnect…, and Remove from page. A card can be
  * pointed at another block or removed whatever its problem; removing only its description is left to
  * Selected and agents.

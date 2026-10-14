@@ -1,5 +1,5 @@
 /**
- * Shape and explain (design §6.7): `frame_cards`, `add_resources`, `connect`, `add_notes`, `describe`,
+ * Shape and explain: `frame_cards`, `add_resources`, `connect`, `add_notes`, `describe`,
  * and `propose` (proposed steps, on request only).
  * Each is one agent edit of one page (one undo step in the window that holds the board, saved at once).
  * The save checks what agents claim: resource cards and connections must cite code (anchors) whose

@@ -1,4 +1,4 @@
-/** Display text for library and unknown links (reader.md "External and unresolved text"), paths, and authors. */
+/** Display text for library and unknown links, paths, and authors. */
 
 import type { LinkEnd, Reason } from "../ipc/generated";
 
@@ -42,7 +42,7 @@ export function shortPath(path: string): string {
   return parts.length <= 2 ? path : parts.slice(-2).join("/");
 }
 
-/** Who wrote a piece of text, as the app shows it: a name, and whether an agent wrote it (D5). */
+/** Who wrote a piece of text, as the app shows it: a name, and whether an agent wrote it. */
 interface AuthorView {
   readonly name: string;
   readonly agent: boolean;

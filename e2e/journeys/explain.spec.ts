@@ -1,5 +1,5 @@
 /**
- * Explaining a card by hand (docs/designs/mcp-capabilities.md, "What people do by hand"), end to end on
+ * Explaining a card by hand (docs/ui-shell.md#explaining-by-hand), end to end on
  * a copy of `py-orders`, whose `OrderService.place` charges, saves, announces, and returns: from the
  * block menu a step is named, the announcement and the return are combined, the card is described,
  * and a step is proposed; the combined step collapses and keeps its way out to End and its arrow; a

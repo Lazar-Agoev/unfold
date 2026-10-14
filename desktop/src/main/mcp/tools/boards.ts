@@ -1,5 +1,5 @@
 /**
- * Navigate (design §6.3): `create_board`, `organize_boards`, `edit_pages`, and `show`.
+ * Navigate: `create_board`, `organize_boards`, `edit_pages`, and `show`.
  *
  * A board is a file in `.unfold/boards/`, and the window holds a session for each board it loaded, so
  * everything that changes a board goes to the window (loading the board's session first, without

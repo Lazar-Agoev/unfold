@@ -1,5 +1,5 @@
 /**
- * How the write tools edit a page (design §5.5, §6.1, §7.8): find the page (ids, a link, or the page
+ * How the write tools edit a page: find the page (ids, a link, or the page
  * in view), send one agent edit (one undo step in the window that holds the board, saved at once,
  * signed with the agent's name, refused when the page changed since `expectRevision`), and turn what
  * the window answers into compact text: the header with the page's new revision, each item with its
@@ -27,7 +27,7 @@ const lineRange = z
   .tuple([z.number().int().min(1), z.number().int().min(1)])
   .refine(([from, to]) => from <= to, "lines is [from, to] with from ≤ to");
 
-/** What a claim cites (design §4.9): a block's or an entrance's key, or an evidence file's lines. */
+/** What a claim cites: a block's or an entrance's key, or an evidence file's lines. */
 export const anchorArg = z.union([
   z.object({ key: z.string().min(1).describe("A block's or entrance's key") }),
   z.object({
@@ -36,7 +36,7 @@ export const anchorArg = z.union([
   }),
 ]);
 
-/** The page revision a write expects (D4). */
+/** The page revision a write expects. */
 export const expectRevision = z
   .string()
   .regex(/^[0-9a-f]{8}$/, "expectRevision is a page's revision: the 8 hex digits after rev in a result's header")

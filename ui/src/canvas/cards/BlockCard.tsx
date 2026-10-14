@@ -1,6 +1,6 @@
 /**
- * A definition's card (a module, class, or function, an inline function too), as the reader drew it
- * (core-scope.html's board window). Its header is the chevron that makes it compact or expanded, its
+ * A definition's card (a module, class, or function, an inline function too), as the reader drew it.
+ * Its header is the chevron that makes it compact or expanded, its
  * mark (`ƒ`, `λ`, `M`, or `class`), its name (the page's, else its code name: `callback to …` for an
  * inline function), and where it is; the review banner and the description follow.
  *

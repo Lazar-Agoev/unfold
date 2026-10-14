@@ -1,4 +1,4 @@
-//! The one drawing function (`docs/designs/diagram-blocks.md`, "One drawing function"): it
+//! The one drawing function (docs/reader.md#the-drawn-flow): it
 //! turns a definition's tree and links, the page's overlay, the card's open paths, and Show all
 //! calls into the drawn flow, the same way for every language. The canvas lays the flow out and
 //! applies no rules of its own; agent text ([`flow_text`], [`code_text`]) prints the same flow
@@ -418,14 +418,11 @@ pub struct Lane {
     #[cfg_attr(feature = "ts", ts(optional))]
     pub name: Option<String>,
     /// Its test, drawn as a diamond: a branch's condition, a case's pattern, a comprehension's
-    /// filter.
+    /// filter. A handler's clause, which titles its section, is its test too: `except
+    /// PaymentDeclined as error`, `catch (error)`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub test: Option<Test>,
-    /// A handler's clause as written: `except PaymentDeclined as error`, `catch (error)`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub clause: Option<String>,
     /// The classes a handler's clause names.
     pub types: Vec<LinkEnd>,
     /// A `switch` case that runs into the next one.
@@ -438,7 +435,7 @@ pub struct Lane {
     pub actions: Actions,
 }
 
-/// A part's test.
+/// A part's test, or a handler's clause.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

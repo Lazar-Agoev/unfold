@@ -1,6 +1,6 @@
 /**
  * Code an app or entrance starts at that isn't found, drawn as its own dashed card beside the start's
- * card (entrance-definitions.html's board; entrance-definitions.md, "Resolving `code`"): "Code not
+ * card (docs/engine.md#resolving-code): "Code not
  * found", the key as written in `unfold.toml`, and the fix the engine offers, never applied unasked. A
  * missing key that exactly one candidate fits says where it went, with Fix (one line rewritten); code
  * the scope leaves out offers `unfold.toml`, where `[scope]` is; code that isn't a start offers Choose

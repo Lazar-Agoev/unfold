@@ -1,5 +1,5 @@
 /**
- * Arrange (design §4.12), from the inside out. Each frame, deepest first, lays out what it holds by
+ * Arrange, from the inside out. Each frame, deepest first, lays out what it holds by
  * call depth and connections (`arrange`), to the right or downward as its direction says, and takes
  * the size that fits them plus room for its title. The level above treats each frame as one node: the
  * arrows that cross its border join it at the card they reach inside. A collapsed frame is one node of

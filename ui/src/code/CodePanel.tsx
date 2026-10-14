@@ -1,5 +1,5 @@
 /**
- * The code panel (docs/designs/viewing-code.md; core-scope.html's board window): on the right of the
+ * The code panel (docs/ui-shell.md#the-code-panel): on the right of the
  * board, full height beside the top bar. Its header is the path from the file to the selection (the step
  * showing in bold; a click widens the view to that step, the file to the whole file), Open in editor,
  * and ×. Under it, a banner when the lines can't be trusted, then the lines the reader chose, with their

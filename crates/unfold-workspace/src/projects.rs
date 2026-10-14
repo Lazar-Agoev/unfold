@@ -1,4 +1,4 @@
-//! The workspace's projects (docs/ui-shell.md#state-and-engine-data–11.2; decisions project-scoped commands, project liveness): one per
+//! The workspace's projects (docs/ipc.md#liveness-and-paths, docs/engine.md#project-lifecycle): one per
 //! [`crate::host::Host`], owned by it.
 //!
 //! ```text

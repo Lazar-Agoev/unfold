@@ -1,5 +1,5 @@
 /**
- * The agent channel (design §5.5, §5.6): how the main process has the window apply an agent's edits
+ * The agent channel: how the main process has the window apply an agent's edits
  * to a board it holds, read a page it holds, load a board's session without showing it, create a
  * board, change a board's pages and title, show a board to the person, apply a health repair, and end
  * a piece of work, and what the window reports about its view. Types only, so the UI imports them as
@@ -21,7 +21,7 @@ export interface AgentBoardRef {
   readonly id: string;
 }
 
-/** Who an edit is from (D5): `{author: "agent:claude", name: "Claude"}`. An agent never writes as a person. */
+/** Who an edit is from: `{author: "agent:claude", name: "Claude"}`. An agent never writes as a person. */
 export interface AgentIdentity {
   readonly author: `agent:${string}`;
   /** How the app shows it: "Claude", "Codex". */
@@ -174,11 +174,11 @@ export interface DescribeOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** What a resource card stands for (design §4.5): a table, a queue, a cache, storage, a service outside the project, or who starts things. */
+/** What a resource card stands for: a table, a queue, a cache, storage, a service outside the project, or who starts things. */
 export type AgentResourceKind = "table" | "queue" | "cache" | "storage" | "external" | "actor";
 
 /**
- * What an authored claim cites (design §4.9): a block's or an entrance's key, or lines of an evidence
+ * What an authored claim cites: a block's or an entrance's key, or lines of an evidence
  * file (relative to the project's folder; 1-based and inclusive).
  */
 export type AgentAnchor = { readonly key: string } | { readonly file: string; readonly lines: readonly [number, number] };
@@ -226,7 +226,7 @@ export interface AddResourcesOp {
   readonly replacePeopleText?: boolean;
 }
 
-/** What a connection says (design §4.7); `other` needs a label. */
+/** What a connection says; `other` needs a label. */
 export type AgentConnectionKind = "http" | "queue" | "reads" | "writes" | "calls" | "relates" | "other";
 
 /** How many rows of one table a row of the other relates to (`relates` only). */
@@ -532,7 +532,7 @@ export interface AgentBoardInfo {
 }
 
 /**
- * A refusal: what failed and what to do instead (design §7.8). The window's codes are
+ * A refusal: what failed and what to do instead. The window's codes are
  * `board_not_open`, `page_not_found`, `invalid_op`, `people_text`, `code_unavailable`,
  * `unsaved_edits`, and `page_changed`, besides the engine's own (`board_problem`, …); the main
  * process adds `revision_mismatch`, `window_closed`, `timeout` (a read), `unconfirmed` (a change that
@@ -758,7 +758,7 @@ export type ViewSelection =
 /** Whether the code panel's lines can be trusted: `current`, or why not. */
 export type CodePanelState = "current" | "changed" | "doesNotParse" | "notAnalyzed" | "notFound";
 
-/** What the code panel shows (viewing-code.md § Agents), so "this code" means the same to the agent and the person. */
+/** What the code panel shows, so "this code" means the same to the agent and the person. */
 export interface CodePanelReport {
   /** The block it opened on: a block's key, a type's key (for one of its fields), or an app's or entrance's key; absent when it opened on lines of a file or a whole file. */
   readonly key?: string;
@@ -840,7 +840,7 @@ export interface AgentServerStatus {
 }
 
 /**
- * A link to a board, a page, or an item (D9): `unfold://<project's folder name>/<board id>?page=<page
+ * A link to a board, a page, or an item: `unfold://<project's folder name>/<board id>?page=<page
  * id>&item=<item id>`, each part URI-encoded. Only the main process parses links.
  */
 export interface AgentLink {

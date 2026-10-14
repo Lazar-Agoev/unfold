@@ -1,5 +1,5 @@
 /**
- * The ways into the code panel (docs/designs/viewing-code.md, "Opening and closing"): `</>` and View
+ * The ways into the code panel (docs/ui-shell.md#the-code-panel): `</>` and View
  * code on a block, a card, or a row of other calls, a gap tick, a file from Add, and a type name in
  * Selected. A combined step, a row, and a gap tick keep what drew them (`CodeOpen.from`).
  */

@@ -306,7 +306,7 @@ fn testdata_settings_parse() {
     }
 }
 
-/// `docs/designs/unfold.example.toml`, trimmed.
+/// A full `[[app]]` example.
 const APPS: &str = r#"[scope]
 exclude = ["legacy/**"]
 

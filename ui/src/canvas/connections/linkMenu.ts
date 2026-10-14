@@ -1,5 +1,5 @@
 /**
- * The menu of a connection (design §4.7): Kind ▸ (the seven, as `kindEntries` offers them; `relates`
+ * The menu of a connection: Kind ▸ (the seven, as `kindEntries` offers them; `relates`
  * only joins two tables), Edit label, Describe… (its evidence in words), Copy link, and Remove
  * connection. Changing the kind makes you the one who drew it. Each choice that changes the page is
  * one undo step.

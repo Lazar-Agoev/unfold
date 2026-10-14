@@ -396,7 +396,10 @@
                                         22
                                       ],
                                       "state": "reached",
-                                      "clause": "except PaymentDeclined as error",
+                                      "test": {
+                                        "text": "except PaymentDeclined as error",
+                                        "calls": []
+                                      },
                                       "types": [
                                         {
                                           "outcome": "project",

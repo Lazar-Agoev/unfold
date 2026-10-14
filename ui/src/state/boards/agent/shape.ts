@@ -1,5 +1,5 @@
 /**
- * `shape_card` (mcp-capabilities.md § Shape a card): a card's whole shaping as one operation — its
+ * `shape_card`: a card's whole shaping as one operation — its
  * title (the page's name for its definition), its description, names on blocks, combined steps, and
  * the calls it opens in place; an app's or entrance's card, or a type card, which draw no flow, take only
  * a description. Names and combined steps apply page-wide, by key. It uses the edits

@@ -1,5 +1,5 @@
 /**
- * An agent's requests in this window (design §5.5): edits, reads of a held page, opening a board
+ * An agent's requests in this window: edits, reads of a held page, opening a board
  * without showing it, and finishing a piece of work.
  *
  * An edit loads what its operations read (card models, calls, callers), then applies them to the

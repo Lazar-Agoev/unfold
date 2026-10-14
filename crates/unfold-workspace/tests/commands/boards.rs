@@ -1,4 +1,4 @@
-//! Boards (docs/ipc.md › Boards): boards are files in `.unfold/boards/`, saved as they are
+//! Boards (docs/ipc.md#boards): boards are files in `.unfold/boards/`, saved as they are
 //! edited; open boards and their sessions, reading a board without opening it, pages, the
 //! overlay (names, combined steps, proposed steps, open calls), connections, frames, resource
 //! cards, and notes, one-level folders, the boards list by last edit, outside edits that reload

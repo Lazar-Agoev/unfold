@@ -1,5 +1,5 @@
-//! The engine's per-file facts cache, backed by the store's `file_facts` table (architecture
-//! §8.4).
+//! The engine's per-file facts cache, backed by the store's `file_facts` table
+//! (docs/engine.md#facts-cache-and-failures).
 //!
 //! # Why one connection behind a mutex
 //!

@@ -50,7 +50,7 @@ source_roots = ["fixtures"]
 """
 pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/ranges-reference.json", lock = "python-range", paths = [{ poc = "", unfold = "" }] }
 
-# --- Pinned outside the repository: nightly CI fetches them, or a local checkout ------------
+# --- Pinned outside the repository: run locally, from $UNFOLD_CORPORA_DIR or a local checkout
 
 [[corpus]]
 name = "fastapi-template"
@@ -63,7 +63,7 @@ source_roots = ["backend"]
 """
 pyright = { rows = "compilers/codegraph/reports/python-typescript/phase5/macos/target-reference.json", lock = "fastapi-full-stack-template-0.12.0", paths = [{ poc = "", unfold = "" }] }
 
-# The upstream v6.0.3 tag's src/ (601 files): what nightly CI downloads and checks.
+# The upstream v6.0.3 tag's src/ (601 files), checked locally.
 [[corpus]]
 name = "typescript-6.0.3-src-upstream"
 lock = "typescript-6.0.3-src-upstream"

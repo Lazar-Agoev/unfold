@@ -1,4 +1,4 @@
-//! The routes of a built flow (`docs/designs/diagram-blocks.md`, the routes table), the combined
+//! The routes of a built flow (docs/reader.md#routes), the combined
 //! steps that take over the routes leaving them, and each step's route state.
 //!
 //! | Block | Routes |

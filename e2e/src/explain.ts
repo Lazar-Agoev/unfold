@@ -1,5 +1,5 @@
 /**
- * Explaining a card by hand (core-scope.html's Explaining frames): a block's menu, the canvas's menu
+ * Explaining a card by hand (docs/ui-shell.md#explaining-by-hand): a block's menu, the canvas's menu
  * and Add resource…, drawing a link and picking its kind, and the board as its file holds it.
  */
 

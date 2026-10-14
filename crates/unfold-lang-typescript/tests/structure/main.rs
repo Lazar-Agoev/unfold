@@ -1,5 +1,5 @@
 //! TypeScript structure, modules, and evidence: the lowering to nodes row by row and on the
-//! designs' examples, binding and evidence case by case, typed records and type links, failures,
+//! worked examples, binding and evidence case by case, typed records and type links, failures,
 //! values and call facts, the census, robustness on any input, determinism, incremental updates,
 //! project configuration, module resolution, and the `ts-orders` playground's goldens.
 

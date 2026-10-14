@@ -1,5 +1,5 @@
 /**
- * The agents' MCP server as the app runs it (design §5.2, §5.7): it listens on `127.0.0.1:29180`
+ * The agents' MCP server as the app runs it: it listens on `127.0.0.1:29180`
  * whenever the app is open. Settings reads its status (`agent_server_status`), and the window hears
  * when it changes (`agent_server_changed`): at once when it starts listening or can't, and at most
  * once a second while agents act.

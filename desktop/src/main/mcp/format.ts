@@ -1,5 +1,5 @@
 /**
- * How results name things (design §6.1): Unfold's names with `file:line`, counts in words, and written
+ * How results name things: Unfold's names with `file:line`, counts in words, and written
  * types with the declarations they link to. Shared by the tools so every result reads the same.
  */
 

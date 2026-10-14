@@ -1,5 +1,5 @@
 /**
- * Compile and Home (docs/designs/entrance-definitions.md, "Home: How it starts"), end to end on a copy
+ * Compile and Home (docs/ui-shell.md#home), end to end on a copy
  * of `ts-orders` added to an empty workspace: it compiles at once; Home shows the state line, How it
  * starts as `unfold.toml` writes it, Boards, and Health; the deliberately missing key shows its dot,
  * and Fix rewrites its one line; the project menu opens `unfold.toml` in the editor; Settings opens

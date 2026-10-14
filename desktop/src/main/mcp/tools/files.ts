@@ -1,5 +1,5 @@
 /**
- * `read_file` (design §6.4): a file's verified text and its definitions, from `code_view`'s file
+ * `read_file`: a file's verified text and its definitions, from `code_view`'s file
  * target. Text is shown only when it is what Unfold compiled or recorded (`current`): what boards may
  * cite. Evidence files read as plain text.
  */

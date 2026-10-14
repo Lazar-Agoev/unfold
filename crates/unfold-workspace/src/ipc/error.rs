@@ -1,5 +1,6 @@
 //! The error every command rejects with: a stable snake_case `code` and a sentence, the
-//! `{"code", "message"}` JSON the addon puts in a rejected promise (brief §6).
+//! `{"code", "message"}` JSON the addon puts in a rejected promise
+//! (docs/ipc.md#how-a-command-travels).
 //!
 //! | Code | Meaning |
 //! | --- | --- |

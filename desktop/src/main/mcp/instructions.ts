@@ -1,5 +1,5 @@
 /**
- * The server's instructions (design §7.2): what an agent reads when its session starts, before any
+ * The server's instructions: what an agent reads when its session starts, before any
  * tool. Claude Code cuts them at 2,048 characters, and Codex wants the first 512 to stand on their
  * own, so the first paragraph says what Unfold is and ends with the call to read the guide.
  */

@@ -1,7 +1,7 @@
 # The teaching task suite
 
 The instructions, the guide, the tool descriptions, and the results' wording are what teach an
-agent to use Unfold (design §7). They're tuned like code: run these tasks with Claude Code and with Codex, score
+agent to use Unfold. They're tuned like code: run these tasks with Claude Code and with Codex, score
 each run with the rubric below, change the teaching, and run them again. This file is for the person running the
 suite; agents never see it.
 

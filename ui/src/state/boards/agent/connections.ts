@@ -1,5 +1,5 @@
 /**
- * `connect` (design §6.12): draws connections between cards, resource cards, and frames of a page, or
+ * `connect`: draws connections between cards, resource cards, and frames of a page, or
  * updates them by id: a kind, the step the line leaves from, the columns a relationship joins and its
  * cardinality, the channel and the type that travel, a label, a description, and anchors. The window
  * checks the connection's shape; the save checks what it cites, fills in the channel when `to` is an

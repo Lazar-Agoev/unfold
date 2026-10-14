@@ -1,5 +1,5 @@
 /**
- * The name search an entrance's `code` is chosen with (entrance-definitions.md, "`code`"): Add's list,
+ * The name search an entrance's `code` is chosen with: Add's list,
  * narrowed to what can start. That is modules, classes, and functions, inline handlers among them by
  * their labels ("callback to ordersRouter.post"). Home's Add entrance and Choose code… use it, and Add
  * resource…'s From a type… narrows it to types and classes. Focus stays in its input: ↑ ↓ move the

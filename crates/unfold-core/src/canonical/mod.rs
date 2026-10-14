@@ -1,5 +1,5 @@
 //! The canonical export: a deterministic JSON Lines form of the whole graph
-//! (`docs/designs/diagram-blocks.md`, "Records").
+//! (docs/graph-model.md#order-and-canonical-export).
 //!
 //! It is used for goldens, the oracle tooling, determinism checks, and debugging. Each line is
 //! one record, named by its `t`:

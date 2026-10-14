@@ -1,7 +1,7 @@
 //! Lowering to nodes, checked as readable trees ([`crate::common::tree`]): one test per row of
-//! diagram-blocks' Python mapping table, `place_order` exactly as the design's 21 blocks (and as
-//! `unfold-core`'s sample graph), the worked examples of diagram-blocks-examples.html, and a
-//! function shaped like `_capture`, each compiled, linked, and validated with the census.
+//! the Python lowering table (docs/languages/python.md#lowering), `place_order` exactly as its
+//! 21 blocks (and as `unfold-core`'s sample graph), the worked examples, and a function shaped
+//! like `_capture`, each compiled, linked, and validated with the census.
 
 use unfold_core::LinkTarget;
 use unfold_core::testkit::sample;
@@ -479,7 +479,7 @@ pkg/main.py# module
 }
 
 /// The shop sample's Python files: their nodes are exactly `unfold-core`'s sample graph, which
-/// builds `place_order` as diagram-blocks' "Proposed: 21 blocks" by hand.
+/// builds `place_order` as its 21 blocks by hand.
 fn shop() -> crate::common::Compiled {
     compile(&[
         ("shop/service.py", sample::SERVICE_PY),
@@ -560,10 +560,10 @@ fn the_shop_sample_lowers_to_unfold_cores_sample_graph() {
     }
 }
 
-/// The worked examples of diagram-blocks-examples.html, compiled with modules that define what
-/// they call: each tree has the example's blocks, keys, fields, and outcomes.
+/// The worked examples (`testdata/fixtures/python-lowering/`), compiled with modules that define
+/// what they call: each tree has the example's blocks, keys, fields, and outcomes.
 #[test]
-fn the_design_examples_lower_to_their_trees() {
+fn the_worked_examples_lower_to_their_trees() {
     let compiled = compile_folder(&testdata().join("fixtures/python-lowering")).valid();
     let examples = [
         (
@@ -680,7 +680,7 @@ shop/api.py# module [imports fastapi → library fastapi] [imports shop.auth →
     }
 }
 
-/// A function shaped like pathway-agents' `_capture` (diagram-blocks, "A real function"): two
+/// A function shaped like pathway-agents' `_capture`: two
 /// `try` statements, a conditional expression with calls, and nested decisions.
 #[test]
 fn a_capture_shaped_function_lowers_to_its_tree() {

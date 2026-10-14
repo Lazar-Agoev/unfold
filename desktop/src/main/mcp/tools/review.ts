@@ -1,5 +1,5 @@
 /**
- * Check boards (design §6.5, §7.7): `check` and `get_screenshot`. Both draw the page in the render
+ * Check boards: `check` and `get_screenshot`. Both draw the page in the render
  * window, as the board view draws it (unsaved edits included), and never move the person's view.
  * `check` adds the board's health (`board_health`, which needs the board's session, so a board the
  * window doesn't hold is loaded there first) to the page checks, each with the call that fixes
@@ -49,7 +49,7 @@ const CHECK_WORDS: Readonly<Record<PageCheckKind, string>> = {
   strays: "strays",
 };
 
-/** The blocks accepting each health item's code vouches for (D6), for the items that offer accept. */
+/** The blocks accepting each health item's code vouches for, for the items that offer accept. */
 type Vouched = ReadonlyMap<HealthItem, ReadonlySet<string>>;
 
 async function vouched(context: ToolContext, board: AgentBoardRef, page: Page | undefined, items: readonly HealthItem[]): Promise<Vouched> {
@@ -60,7 +60,7 @@ async function vouched(context: ToolContext, board: AgentBoardRef, page: Page | 
   return new Map(await Promise.all(accepts.map(async (item) => [item, await acceptedBlocks(context, board.project, page, item, "accept")] as const)));
 }
 
-/** The `repair` call for one of an item's repairs, or why it is the person's to do (D6). */
+/** The `repair` call for one of an item's repairs, or why it is the person's to do. */
 function repairCall(page: Page, board: AgentBoardRef, item: HealthItem, repair: RepairName, agent: AgentIdentity, blocks: Vouched): string {
   if (repair === "resign" || repair === "accept") {
     const words = personWords(page, item, repair, repair === "accept" ? (blocks.get(item) ?? new Set()) : new Set());

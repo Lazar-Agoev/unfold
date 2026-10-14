@@ -1,6 +1,5 @@
 /**
- * An app's or entrance's card (entrance-definitions.md, "On a board"; entrance-definitions.html's
- * board): it looks declared, so it is drawn with the dark border the page draws. An entrance's card shows
+ * An app's or entrance's card: it looks declared, so it is drawn with a dark border. An entrance's card shows
  * its app in small caps, its name, and its `on` in mono; an app's card, its name and its `run`. It points
  * at the cards for its code, in order (`computeArrows`).
  *

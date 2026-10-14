@@ -1,4 +1,4 @@
-//! Board commands (docs/ipc.md › Boards; decisions board references, board folder metadata).
+//! Board commands (docs/ipc.md#boards).
 //!
 //! A board belongs to a project and is addressed as `{project, id}`, its id being its file's
 //! path ([`files`]): every board is a file in `.unfold/boards/`, saved as it is edited and

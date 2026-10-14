@@ -1,5 +1,5 @@
 //! `update(changes)`: the single entry point that keeps one folder's graph current
-//! (docs/engine.md#updates–7.8; decisions background updates, facts caching, last-good facts, source verification).
+//! (docs/engine.md#updates, docs/engine.md#facts-cache-and-failures).
 //!
 //! An [`Engine`] is the long-lived, in-memory program of one open folder. Every action is an
 //! update over it:

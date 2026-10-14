@@ -24,7 +24,7 @@ describe("drawnGeometry", () => {
     const container = canvas(`<div class="react-flow__node" data-id="flow"></div><div class="react-flow__node" data-id="code"></div>`);
     const geometry = drawnGeometry(
       container,
-      state([node("flow", 10, 20, { width: 300, height: 200 }), node("code", 400, 0, { width: 200, height: 100 }), node("folded", 0, 0, { width: 100, height: 40 }, true), node("pending", 0, 0, {})], []),
+      state([node("flow", 10, 20, { width: 300, height: 200 }), node("code", 400, 0, { width: 200, height: 100 }), node("hidden", 0, 0, { width: 100, height: 40 }, true), node("pending", 0, 0, {})], []),
     );
     expect([...geometry.boxes]).toEqual([
       ["flow", { x: 10, y: 20, width: 300, height: 200 }],

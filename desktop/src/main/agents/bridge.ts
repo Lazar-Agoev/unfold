@@ -1,5 +1,5 @@
 /**
- * The agent bridge (design §5.1, §5.5): how the main process has the one window act for an agent. The
+ * The agent bridge: how the main process has the one window act for an agent. The
  * window makes an agent's edits the way it makes the person's, on the boards whose sessions it holds
  * (from its view reports). An edit of a board it doesn't hold loads that board's session first,
  * without changing what the person sees (opening the window when it is closed); a new board's file is
@@ -7,7 +7,7 @@
  * it answers fails its requests with `window_closed`. A window can't be told to drop a request, so a
  * change that times out (`unconfirmed`) may still land.
  *
- * Page revisions are checked here (D4): an edit that passes `expectRevision` reads the page from the
+ * Page revisions are checked here: an edit that passes `expectRevision` reads the page from the
  * holding window first and is refused when it changed. The bridge also remembers which boards each
  * agent edited or repaired until it finishes its work on them, so `finish_work` knows where to finish.
  */
@@ -238,7 +238,7 @@ export class AgentBridge {
   }
 
   /**
-   * Shows a board to the person (design §6.3 `show`). In the `background`, the board's session is
+   * Shows a board to the person (`show`). In the `background`, the board's session is
    * loaded as for an edit and nothing moves; otherwise the window switches to it and `page`, selects
    * and centers `item`, and comes to the front.
    */

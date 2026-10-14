@@ -1,5 +1,5 @@
 /**
- * Page revisions (D4): what an agent passes as `expectRevision`, so an edit is refused when the page
+ * Page revisions: what an agent passes as `expectRevision`, so an edit is refused when the page
  * changed since the agent read it. Computed only here, from the page JSON a window or the engine
  * reports.
  */

@@ -1,4 +1,4 @@
-//! Boards (docs/designs/core-rebuild-plan.md, "The board file"): the `unfold-board` version 1
+//! Boards (docs/reader.md#boards): the `unfold-board` version 1
 //! format with pages, its JSON Schema, strict parsing, deterministic serialization, signatures,
 //! guards, the page's overlay (names, combined steps, proposed steps, and calls opened in place)
 //! checked against the overlay rules, connections, frames, resource cards, notes, the claims'

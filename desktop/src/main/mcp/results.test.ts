@@ -3,7 +3,7 @@ import { cant, fitResult, header, MAX_RESULT_CHARS, nextLine, paged, pagedLines,
 
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
-describe("result headers (design §5.6)", () => {
+describe("result headers", () => {
   it("name the project, board, page, and revision, and who is asking", () => {
     expect(header(CLAUDE, { project: "ts-orders", board: "Order placement", page: "Placing an order", revision: "1a2b3c4d" })).toBe(
       "Unfold · ts-orders › Order placement › Placing an order · rev 1a2b3c4d · as Claude",
@@ -63,7 +63,7 @@ describe("cursors", () => {
   });
 });
 
-describe("errors that teach (design §7.8)", () => {
+describe("errors that teach", () => {
   it("say a change that timed out may still land, and to read it before trying again", () => {
     const refusal = windowRefusal({ ok: false, code: "unconfirmed", message: "The Unfold window didn't answer within 30 s, so the change may still land." });
     expect(refusal.code).toBe("unconfirmed");

@@ -1,5 +1,5 @@
 /**
- * Combine… (core-scope.html's A BLOCK'S MENU): a small popover beside the block that lists the drawn
+ * Combine…: a small popover beside the block that lists the drawn
  * steps of the body it can be combined in, the block's own step ticked. Clicking another step ticks the
  * run from the block to it, so what is chosen is always consecutive; steps the card doesn't draw between
  * them (hidden builtins) go with them. A whole control block combined by itself lists only itself. The

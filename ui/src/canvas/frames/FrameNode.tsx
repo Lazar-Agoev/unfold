@@ -1,5 +1,5 @@
 /**
- * A frame on the canvas (design §4.4), drawn in the authored style. Expanded, it is a box behind what
+ * A frame on the canvas, drawn in the authored style. Expanded, it is a box behind what
  * it holds, sized by `pageGeometry`: a **box** is outlined with a title bar, a **zone** is a tinted
  * area with a large title and no border. Only its title takes the pointer, so the canvas pans and
  * cards are clicked through it. Collapsed, it is one node like a card: its icon, title, description,

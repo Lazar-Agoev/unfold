@@ -38,7 +38,7 @@
   right: 10px;
 }
 
-/* A card an agent changed while it is still working (design §4.10): a soft authored outline. */
+/* A card an agent changed while it is still working: a soft authored outline. */
 .react-flow__node.agent-working > .board-card,
 .react-flow__node.agent-working > .start-node > .board-card {
   outline: 2px solid var(--color-authored-line);
@@ -189,7 +189,7 @@
 
 .card-note.warn { color: var(--color-warn); }
 
-/* What an expanded card says from its code (diagram-blocks-examples.html's card head): its signature, its
+/* What an expanded card says from its code: its signature, its
    doc as a description from code, a module's imports, and what runs when it is defined. */
 .card-code {
   display: grid;
@@ -269,7 +269,7 @@
 .card-body > .react-flow__handle.card-port { right: 0; }
 
 /*
- * An app's or entrance's card (entrance-definitions.html's board; entrance-definitions.md, "On a board"): it
+ * An app's or entrance's card: it
  * looks declared, so it is drawn with a dark border, with the app in small caps, the name, and what starts it
  * in mono; then the code it starts at.
  */
@@ -336,7 +336,7 @@
 
 /*
  * An app's or entrance's node: its card, then, for each code that isn't found, a gray arrow to a dashed
- * card of its own (entrance-definitions.html's board; sizing.ts UNFOUND_*).
+ * card of its own (sizing.ts UNFOUND_*).
  */
 .start-node {
   display: flex;
@@ -441,7 +441,7 @@
   border-radius: 3px;
 }
 
-/* A type card (design §4.2): the kind before the name, as a definition's header reads, then the fields.
+/* A type card: the kind before the name, as a definition's header reads, then the fields.
    Every type starts in one column after the widest name, as in a type's definition. */
 .tcard-kind {
   flex-shrink: 0;

@@ -1,5 +1,5 @@
 /**
- * How it starts on Home (entrance-definitions.md, "Home: How it starts"; entrance-definitions.html): one
+ * How it starts on Home (docs/ui-shell.md#home): one
  * quiet list in two columns, names on the left and `run` or `on` in mono on the right. Apps are the bold
  * rows, with their entrances indented under them, in file order. Hover shows a chevron, and a copy icon
  * beside an app's command. A problem is an amber dot before the name; hovering the row says what

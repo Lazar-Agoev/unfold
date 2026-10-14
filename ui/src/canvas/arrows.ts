@@ -1,5 +1,5 @@
 /**
- * Arrows between cards, from what the reader drew (docs/designs/core-rebuild-plan.md, step 11). The
+ * Arrows between cards, from what the reader drew (docs/ui-shell.md#the-canvas). The
  * board file holds no arrows; they are derived from the cards' drawn flows, start cards, and type
  * definitions.
  *

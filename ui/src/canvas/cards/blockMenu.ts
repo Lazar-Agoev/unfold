@@ -1,5 +1,5 @@
 /**
- * A block's menu in an expanded card (core-scope.html's A BLOCK'S MENU): View code, Open in place, then
+ * A block's menu in an expanded card: View code, Open in place, then
  * Name…, Describe…, Combine…, and Add proposed step after… (or at the start of a body). What each item
  * offers comes from the block's overlay actions in the drawn flow, never from a rule of our own: Open
  * in place when it opens, Combine… with the steps of the body it can be combined in (or by itself), a

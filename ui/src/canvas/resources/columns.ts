@@ -1,5 +1,5 @@
 /**
- * A table card's columns (design §4.6). A table backed by a type lists the type's fields, compiled:
+ * A table card's columns. A table backed by a type lists the type's fields, compiled:
  * its own properties, then those it inherits, base by base (`type_definition`'s members and inherited
  * groups; a redeclared field once), each with its written type and whether it is optional; the board's columns only lay marks
  * on them (primary key, foreign key with what it references, unique). A table that lists its own

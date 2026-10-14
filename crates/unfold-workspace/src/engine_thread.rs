@@ -41,13 +41,13 @@ use unfold_engine::update::Progress;
 use unfold_engine::{CancelToken, Engine, Language, UpdateError, UpdateRequest};
 use unfold_store::{Store, Writer};
 
+use crate::announce;
 use crate::commit::{self, Committed};
 use crate::compile::{CompileJob, CompileOutcome, CompileProgress, ProgressFn};
 use crate::error::{Result, WorkspaceError};
 use crate::events::WorkspaceEvent;
 use crate::facts_cache::StoreFactsCache;
 use crate::lock::FolderLock;
-use crate::publish;
 use crate::shared::{Job, Running, Shared, lock};
 use crate::status::{Activity, WatchMode};
 use crate::storage::open_store;
@@ -144,7 +144,7 @@ impl EngineThread {
                     .map(|text| (*text).to_owned())
                     .or_else(|| panic.downcast_ref::<String>().cloned())
                     .unwrap_or_else(|| "the engine thread panicked".to_owned());
-                publish::failed(&self.shared, &WorkspaceError::Internal(message));
+                announce::failed(&self.shared, &WorkspaceError::Internal(message));
             }
         }
         let jobs: Vec<Job> = lock(&self.shared.sched).jobs.drain(..).collect();
@@ -232,7 +232,7 @@ impl EngineThread {
     fn execute(&mut self, work: Work) {
         if self.cache_missing() {
             if let Err(error) = self.recover() {
-                publish::failed(&self.shared, &error);
+                announce::failed(&self.shared, &error);
                 if let Work::Job(Job::Compile(job), _) = work {
                     let _ = job.reply.send(Err(error));
                 }
@@ -417,7 +417,7 @@ impl EngineThread {
                 self.shared.reader_cache.invalidate();
                 let _ = self.run(RunKind::Recompile, cancel, None);
             }
-            Err(error) => publish::failed(&self.shared, &error),
+            Err(error) => announce::failed(&self.shared, &error),
         }
     }
 
@@ -446,10 +446,10 @@ impl EngineThread {
             Ok(next) => *committed = Some(next),
             Err(error) => {
                 *committed = None;
-                publish::failed(shared, &error);
+                announce::failed(shared, &error);
             }
         }
-        publish::entrances_resolved(shared, &outcome, complete);
+        announce::entrances_resolved(shared, &outcome, complete);
         shared.publish_entrances(engine);
         true
     }
@@ -468,7 +468,7 @@ impl EngineThread {
             Ok(_) | Err(WorkspaceError::Cancelled) => {
                 self.shared.update_status(|model| model.activity = Activity::Idle);
             }
-            Err(error) => publish::failed(&self.shared, error),
+            Err(error) => announce::failed(&self.shared, error),
         }
         result
     }
@@ -520,7 +520,7 @@ impl EngineThread {
         };
         // A Compile the user cancels stops even while committing, so the cancel is acknowledged
         // promptly; background work that newer changes cancel always commits once it has started
-        // committing (§7.5), so a stream of edits can't starve it.
+        // committing, so a stream of edits can't starve it.
         let commit_cancel = matches!(kind, RunKind::Compile).then(|| cancel.clone());
         let request = kind.request().with_cancel(cancel).with_progress(&on_progress);
         let prepared = engine.prepare(request).map_err(update_error)?;
@@ -546,6 +546,6 @@ impl EngineThread {
         }
         self.shared.publish_entrances(engine);
         let rescanned = matches!(kind, RunKind::Rescan);
-        Ok(publish::committed(&self.shared, &outcome, first, rescanned))
+        Ok(announce::committed(&self.shared, &outcome, first, rescanned))
     }
 }

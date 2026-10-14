@@ -1,5 +1,5 @@
 /**
- * Add proposed step… (core-scope.html's NAMED, COMBINED, PROPOSED): a small popover beside the block
+ * Add proposed step…: a small popover beside the block
  * that asks for the intended step's title (required) and why (optional). It goes after the block, or at
  * the start of its body, as the block's actions allow; it is drawn dashed as PROPOSED, and Selected edits
  * or removes it. Proposing saves at once as one undo step and selects it; what the board refuses shows

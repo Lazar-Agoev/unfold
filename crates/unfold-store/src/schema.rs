@@ -1,6 +1,6 @@
 //! The executable database schema and connection settings.
 //!
-//! The tables persist the graph's records (`docs/designs/diagram-blocks.md`, "Records") and the
+//! The tables persist the graph's records (docs/graph-model.md#records) and the
 //! reader's definition catalog:
 //!
 //! | Table | One row per |

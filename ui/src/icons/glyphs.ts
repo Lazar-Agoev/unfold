@@ -1,5 +1,5 @@
 /**
- * The icon set's drawings. Path data is the designs' own, verbatim, in the viewBox each was drawn in:
+ * The icon set's drawings. Path data is verbatim, in the viewBox each was drawn in:
  * the custom 16px icons of Home, the 24px icons of the board, Add, and the code panel, and the
  * 10px disclosure chevrons. The Lucide-style icons of Health (check, close, folder, warning, info) are
  * redrawn in the 16px style, and the frames' icons are drawn in it. Strokes are `currentColor`, 1.5

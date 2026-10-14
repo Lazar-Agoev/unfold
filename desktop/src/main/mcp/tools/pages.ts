@@ -1,5 +1,5 @@
 /**
- * Read boards (design §6.5): `list_boards` and `read_page`.
+ * Read boards: `list_boards` and `read_page`.
  *
  * `list_boards` lists a project's boards (`list_boards`, which never wakes a project), last edited
  * first, with each board's pages from its file (`read_board`). `read_page` reads a page as the

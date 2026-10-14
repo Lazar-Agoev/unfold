@@ -1,4 +1,4 @@
-//! Events to windows (docs/ipc.md#how-a-command-travels, docs/ipc.md › Events) and the sink they go through.
+//! Events to windows (docs/ipc.md#how-a-command-travels, docs/ipc.md#events) and the sink they go through.
 //!
 //! The window shows the whole workspace, so every event is for it: a project's workspace hands
 //! each event to the [`EventSink`], and the host sends it as `{"kind":"broadcast","event":{…}}`,

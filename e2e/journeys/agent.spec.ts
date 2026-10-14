@@ -1,5 +1,5 @@
 /**
- * An agent's session (docs/designs/mcp-capabilities.md, "A session"), end to end on a copy of
+ * An agent's session (docs/ipc.md#agents), end to end on a copy of
  * `ts-orders`: an MCP client connects to the app's server as Claude Code, reads the guide, the
  * entrances, and the compiled tree; traces "Place an order" onto a new board, which the person opens
  * while "Claude is working…" and what it changed is outlined; shapes createOrder in one call (a name, a

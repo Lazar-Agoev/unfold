@@ -56,6 +56,7 @@
 
 #![forbid(unsafe_code)]
 
+mod announce;
 pub mod commands;
 mod commit;
 pub mod compile;
@@ -72,7 +73,6 @@ pub mod open_boards;
 pub mod options;
 pub mod problems;
 pub mod projects;
-mod publish;
 mod shared;
 pub mod state;
 pub mod status;

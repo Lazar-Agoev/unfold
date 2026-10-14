@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use unfold_engine::{EngineOptions, Language};
 
-/// The app folders the desktop shell passes to the addon's `init` (brief §6, docs/architecture.md#storage).
+/// The app folders the desktop shell passes to the addon's `init` (docs/architecture.md#storage).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {

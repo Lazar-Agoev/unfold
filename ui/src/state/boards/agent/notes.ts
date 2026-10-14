@@ -1,5 +1,5 @@
 /**
- * `add_notes` (design §6.7): adds notes to a page, or updates them by id: short plain text, attached to
+ * `add_notes`: adds notes to a page, or updates them by id: short plain text, attached to
  * a card, frame, resource card, or link (so it moves with it) or free. A new note goes beside what it is
  * attached to, or beside the item it is `near`, else right of everything, covering nothing. A note a
  * person wrote is theirs unless the call says the person asked.

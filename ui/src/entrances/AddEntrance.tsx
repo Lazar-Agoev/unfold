@@ -1,5 +1,5 @@
 /**
- * Add as entrance (entrance-definitions.md, "Add as entrance"): a small popover that asks for the app
+ * Add as entrance: a small popover that asks for the app
  * (one of the file's, or a new name), the entrance's name, and `on`, then writes one line into that app
  * with `add_entrance`, which creates the app when it is new and refuses a name whose key the app has
  * (the refusal shows in the popover). From a card, the card's key is the `code`, shown in the footer.

@@ -36,14 +36,14 @@ describe("Toast", () => {
     render(<Toaster />);
     act(() => {
       showToast({ id: "engine", title: "Reconnecting to the engine…", duration: null });
-      showToast({ title: "Board published" });
+      showToast({ title: "Copied the link" });
       showToast({ id: "engine", title: "Reconnected", duration: null });
     });
-    expect(titles()).toEqual(["Reconnected", "Board published"]);
+    expect(titles()).toEqual(["Reconnected", "Copied the link"]);
     act(() => {
       dismissToast("engine");
     });
-    expect(titles()).toEqual(["Board published"]);
+    expect(titles()).toEqual(["Copied the link"]);
   });
 
   it("hides info after 5 s and errors after 8 s, keeps at most four, and alerts on errors", () => {

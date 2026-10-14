@@ -143,7 +143,10 @@
                         15
                       ],
                       "state": "reached",
-                      "clause": "except RateLimited as error",
+                      "test": {
+                        "text": "except RateLimited as error",
+                        "calls": []
+                      },
                       "types": [
                         {
                           "outcome": "project",
