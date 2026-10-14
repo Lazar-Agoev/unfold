@@ -19,7 +19,7 @@
 {"t":"link","from":"shop/payments.py#PaymentDeclined","seq":0,"kind":"extends","range":[99,108],"text":"Exception","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"shop/payments.py#/call:retry","seq":0,"kind":"calls","range":[204,209],"text":"retry","outcome":"project","to":"shop/payments.py#retry","bound":0}
 {"t":"link","from":"shop/payments.py#charge_card/if[0]/then/raise[0]/call:PaymentDeclined","seq":0,"kind":"calls","range":[278,293],"text":"PaymentDeclined","outcome":"project","to":"shop/payments.py#PaymentDeclined"}
-{"t":"link","from":"shop/payments.py#charge_card/call:logger.info","seq":0,"kind":"calls","range":[319,330],"text":"logger.info","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"shop/payments.py#charge_card/call:logger.info","seq":0,"kind":"calls","range":[319,330],"text":"logger.info","outcome":"library","to":"python:logging"}
 {"t":"signature","node":"shop/payments.py#retry"}
 {"t":"signature","node":"shop/payments.py#retry/return[0]/lambda[0]"}
 {"t":"signature","node":"shop/payments.py#charge_card"}
@@ -64,7 +64,7 @@
 {"t":"link","from":"shop/service.py#place_order/call:sum","seq":0,"kind":"calls","range":[406,409],"text":"sum","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"shop/service.py#place_order/try[0]/body/call:charge_card","seq":0,"kind":"calls","range":[479,490],"text":"charge_card","outcome":"project","to":"shop/payments.py#charge_card","bound":0}
 {"t":"link","from":"shop/service.py#place_order/try[0]/except[0]","seq":0,"kind":"types","range":[524,539],"text":"PaymentDeclined","outcome":"project","to":"shop/payments.py#PaymentDeclined"}
-{"t":"link","from":"shop/service.py#place_order/try[0]/except[0]/call:logger.warning","seq":0,"kind":"calls","range":[558,572],"text":"logger.warning","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"shop/service.py#place_order/try[0]/except[0]/call:logger.warning","seq":0,"kind":"calls","range":[558,572],"text":"logger.warning","outcome":"library","to":"python:logging"}
 {"t":"link","from":"shop/service.py#place_order/try[0]/except[0]/return[0]/call:mark_failed","seq":0,"kind":"calls","range":[611,622],"text":"mark_failed","outcome":"project","to":"shop/store.py#mark_failed","bound":0}
 {"t":"link","from":"shop/service.py#place_order/call:save_order","seq":0,"kind":"calls","range":[666,676],"text":"save_order","outcome":"project","to":"shop/store.py#save_order","bound":0}
 {"t":"link","from":"shop/service.py#place_order/for[0]/body/call:reserve_stock","seq":0,"kind":"calls","range":[724,737],"text":"reserve_stock","outcome":"project","to":"shop/store.py#reserve_stock","bound":0}

@@ -165,7 +165,7 @@ impl Binder<'_> {
                 }
             }
             &ExprKind::Chain(value) => result.extend(self.objects(Raw::Expr(local(value)), seen)),
-            ExprKind::Sequence(items) | ExprKind::Dict(items) => {
+            ExprKind::Sequence { items, .. } | ExprKind::Dict(items) => {
                 for &item in items {
                     result.extend(self.objects(Raw::Expr(local(item)), seen));
                 }

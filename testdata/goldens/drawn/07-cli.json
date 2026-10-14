@@ -420,9 +420,9 @@
                                                 "callee": "logger.warning",
                                                 "form": "call",
                                                 "to": {
-                                                  "outcome": "unknown",
-                                                  "reason": "unknown_receiver",
-                                                  "note": "receiver type unknown"
+                                                  "outcome": "library",
+                                                  "module": "python:logging",
+                                                  "note": "python:logging"
                                                 },
                                                 "awaited": false,
                                                 "sometimes": false,
@@ -442,7 +442,7 @@
                                               21,
                                               21
                                             ],
-                                            "unknown": 1
+                                            "unknown": 0
                                           },
                                           {
                                             "id": 12,

@@ -676,7 +676,7 @@ fn exits() {
             "    /then then head=`!reply`",
             "      /throw[0] throw",
             "        /call:Error new exit_value head=`Error`",
-            "          ↳ calls `Error` → library global",
+            "          ↳ calls `Error` → builtin ecmascript",
             "  /return[0] return",
             "    /call:finish call exit_value head=`finish`",
             "      ↳ calls `finish` → unknown unknown_name",
@@ -706,7 +706,7 @@ super_.call(this);
             "  /call:res.status call head=`res.status`",
             "    ↳ calls `res.status` → unknown unknown_receiver",
             "  /call:String call head=`String`",
-            "    ↳ calls `String` → library global",
+            "    ↳ calls `String` → builtin ecmascript",
             "/call:handlers%5B%5D call head=`handlers[kind]`",
             "  ↳ calls `handlers[…]` → unknown dynamic",
             "/call:\"\".join call head=`\", \".join`",
@@ -716,7 +716,7 @@ super_.call(this);
             "  /call:row.get call head=`row.get`",
             "    ↳ calls `row.get` → unknown unknown_receiver",
             "/call:Date new head=`Date`",
-            "  ↳ calls `Date` → library global",
+            "  ↳ calls `Date` → builtin ecmascript",
             "/call:sql call head=`sql`",
             "  ↳ calls `sql` → unknown unknown_name",
             "  /call:columns call head=`columns`",
@@ -1082,8 +1082,8 @@ fn example_trees() -> (Vec<String>, Vec<String>) {
 }
 
 /// The registration call is keyed by its literal path, so its callback's key (the entrance's
-/// code) holds when another route is added above it. Until ECMAScript's standard objects get a
-/// table of their own, `String` and `Error` are `library global` rather than `builtin`.
+/// code) holds when another route is added above it. `String` and `Error` are ECMAScript's
+/// standard objects: `builtin`.
 #[test]
 fn the_typescript_route() {
     let (routes, _) = example_trees();
@@ -1107,7 +1107,7 @@ fn the_typescript_route() {
             "          /call:res.status call head=`res.status`",
             "            ↳ calls `res.status` → unknown unknown_receiver",
             "          /call:String call head=`String`",
-            "            ↳ calls `String` → library global",
+            "            ↳ calls `String` → builtin ecmascript",
             "↳ imports `express` → library express",
             "↳ imports `../service` → project src/service.ts#",
         ]
@@ -1139,7 +1139,7 @@ fn place_order_is_an_ordinary_decision() {
             "    /case[1] case head=`\"cancelled\"`",
             "      /throw[0] throw",
             "        /call:Error new exit_value head=`Error`",
-            "          ↳ calls `Error` → library global",
+            "          ↳ calls `Error` → builtin ecmascript",
             "  /call:chargeCard call awaited binds=`order.receipt` head=`chargeCard`",
             "    ↳ calls `chargeCard` → project src/store.ts#chargeCard",
             "  /call:saveOrder call awaited head=`saveOrder`",

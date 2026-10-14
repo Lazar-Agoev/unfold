@@ -126,6 +126,8 @@ impl TypeScriptLinked<'_> {
         }
         let file = class.file;
         let target = self.target(walk, file, expression);
+        // A builtin base's members are only known to be outside the project: a member other
+        // than an ECMAScript method may come from the host (Node's `Error.captureStackTrace`).
         let mut base = Base {
             class: self.class_for_target(&target),
             external: !target.external.is_empty(),
@@ -133,7 +135,14 @@ impl TypeScriptLinked<'_> {
             locations: if target.external.is_empty() {
                 target.excluded.clone()
             } else {
-                target.external.clone()
+                target
+                    .external
+                    .iter()
+                    .map(|location| match location {
+                        ExternalLocation::Builtin => ExternalLocation::Library,
+                        other => other.clone(),
+                    })
+                    .collect()
             },
             unknown: false,
         };

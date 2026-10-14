@@ -1,5 +1,6 @@
-//! The binder pass over definitions: `def` (decorators, type parameters, parameters, body) and
-//! the type-parameter scopes of definitions and `type` aliases.
+//! The binder pass over definitions: `def` (decorators, type parameters, parameters, the class
+//! its return annotation names, body) and the type-parameter scopes of definitions and `type`
+//! aliases.
 
 use ruff_python_ast::{Parameters, Stmt, StmtFunctionDef, TypeParam, TypeParams};
 
@@ -23,6 +24,8 @@ impl<'a> Builder<'a> {
             parameters: Vec::new(),
             first_parameter: self.first_parameter(&function.parameters),
             body,
+            asynchronous: function.is_async,
+            returns: None,
         });
         let node = self.node(kind, ctx);
         self.simple_write(ctx, function.name.id.as_str(), node, WriteKind::Definition);
@@ -35,6 +38,10 @@ impl<'a> Builder<'a> {
         self.parameters(&function.parameters, node, body, header.in_scope(type_scope));
         if let Some(returns) = function.returns.as_deref() {
             self.annotation(returns, type_scope);
+            let returned = self.returned_class(returns, type_scope);
+            if let NodeKind::Function(fact) = &mut self.nodes[node as usize].kind {
+                fact.returns = returned;
+            }
         }
         let inside = Ctx {
             scope: body,

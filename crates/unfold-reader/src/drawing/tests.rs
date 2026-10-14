@@ -154,7 +154,7 @@ const PLACE_ORDER_DRAWN: &str = r#"( place_order )
   TRY
       ▸ charge_card → receipt
   ON ERROR → except PaymentDeclined as error
-      · logger.warning ?
+      · logger.warning
       RETURN ▸ mark_failed → End
   ⋯ 1 line
   ▸ save_order
@@ -164,8 +164,8 @@ const PLACE_ORDER_DRAWN: &str = r#"( place_order )
 ( End )
 "#;
 
-/// Example 01 and diagram-blocks' "Drawn": every step connected, builtins hidden, the unknown
-/// `logger.warning` in a thin row, and the two gap ticks for `total = sum(…)` and
+/// Example 01 and diagram-blocks' "Drawn": every step connected, builtins hidden, the library
+/// call `logger.warning` in a thin row, and the two gap ticks for `total = sum(…)` and
 /// `order["receipt"] = receipt`.
 #[test]
 fn place_order_draws_as_the_design_shows() {
@@ -556,7 +556,7 @@ fn the_shaped_place_order_reads_as_the_shape_card_result() {
   TRY
       ▸ charge_card → receipt
   ON ERROR → Card declined · except PaymentDeclined as error
-      ⊞ Mark the order failed   mark_failed · 1 unknown ? · returns → End
+      ⊞ Mark the order failed   mark_failed · 1 library · returns → End
   ⋯ 1 line
   ⊞ Save it and reserve stock   1 loop · save_order · reserve_stock
   RETURN order → End
@@ -786,7 +786,7 @@ fn builtins_show_on_request_and_names_lift_calls_into_boxes() {
         ..Overlay::default()
     };
     let named = drawn_with(&sample::shop(), PLACE_ORDER, &overlay, &[], false);
-    assert!(plain(&named).contains("      □ Log the decline · logger.warning ?\n"));
+    assert!(plain(&named).contains("      □ Log the decline · logger.warning\n"));
 }
 
 /// Proposed steps go after a block or at the start of a body, on the route.
@@ -813,7 +813,9 @@ fn proposals_sit_after_a_block_or_at_the_start_of_a_body() {
         text.contains("  ▸ save_order\n  + PROPOSED Write an audit row\n  LOOP"),
         "{text}"
     );
-    assert!(text.contains("  ON ERROR → except PaymentDeclined as error\n      + PROPOSED Retry once\n      · logger.warning ?\n"));
+    assert!(text.contains(
+        "  ON ERROR → except PaymentDeclined as error\n      + PROPOSED Retry once\n      · logger.warning\n"
+    ));
     assert_routes(
         &flow,
         &[
@@ -1279,7 +1281,7 @@ fn the_compiled_tree_prints_every_block_with_its_key() {
             "L19  try[0]/body                                  body",
             "L19  try[0]/body/call:charge_card                 ▸ shop/payments.py#charge_card · binds receipt",
             "L20  try[0]/except[0]                             clause except PaymentDeclined as error · types ▸ shop/payments.py#PaymentDeclined",
-            "L21  try[0]/except[0]/call:logger.warning         ? unknown_receiver",
+            "L21  try[0]/except[0]/call:logger.warning         library python:logging",
             "L22  try[0]/except[0]/return[0]                   return · value mark_failed(order)",
             "L22  try[0]/except[0]/return[0]/call:mark_failed  ▸ shop/store.py#mark_failed · exit value",
             "L24  ⋯ order[\"receipt\"] = receipt                 code",

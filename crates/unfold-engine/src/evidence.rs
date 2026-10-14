@@ -28,6 +28,9 @@ pub enum ValueContext {
 pub enum ExternalLocation {
     /// The language's default library or known globals.
     Library,
+    /// The language's own builtins where its default library holds more than them:
+    /// ECMAScript's standard objects, beside the DOM and Node globals of TypeScript's.
+    Builtin,
     /// An installed or declared package, by its package name.
     Package(Box<str>),
     /// A repository file outside the indexed files (excluded, failed, or a declaration file).

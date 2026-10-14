@@ -7,6 +7,11 @@
 //! links label `global`, are a separate table generated from the library files alone
 //! (`cargo xtask gen-lib-tables <lib-dir> --aliases`; the version is in [`aliases`]).
 //!
+//! The ECMAScript tables come from the `lib.es*.d.ts` files alone: the language's own globals
+//! (`JSON`, `Math`, `Promise`; not the DOM's or Node's `console`), the type of each, and the
+//! methods of its built-in types (`Array`, `String`, `ObjectConstructor`), so a built-in method
+//! can be named on a literal or a written type.
+//!
 //! Each table is a sorted static array searched by bisection.
 
 mod aliases;
@@ -43,6 +48,50 @@ pub fn is_builtin_module(specifier: &str) -> bool {
     generated::BUILTIN_MODULES.binary_search(&specifier).is_ok()
 }
 
+/// Whether `name` is one of ECMAScript's own global values (`JSON`, `Math`, `Promise`, `String`,
+/// `parseInt`, `globalThis`, `undefined`), declared by the `lib.es*.d.ts` files: not a DOM or Node
+/// global such as `console`, `fetch`, or `setTimeout`.
+pub fn is_ecmascript_global(name: &str) -> bool {
+    generated::ECMASCRIPT_GLOBALS.binary_search(&name).is_ok()
+}
+
+/// The type whose methods an ECMAScript global value has: the type its declaration writes
+/// (`Object` → `ObjectConstructor`, `JSON` → `JSON`), or the value namespace itself (`Reflect`).
+pub fn ecmascript_value_type(name: &str) -> Option<&'static str> {
+    let table = generated::ECMASCRIPT_VALUE_TYPES;
+    let index = table.binary_search_by(|(key, _)| key.cmp(&name)).ok()?;
+    table.get(index).map(|(_, written)| *written)
+}
+
+/// The ECMAScript interface `name` (`Array`, `Map`, `ReadonlyArray`, `PromiseLike`), or `name`
+/// prefixed with `globalThis.`, as the methods table spells it: one with methods of its own or
+/// inherited.
+pub fn ecmascript_type(name: &str) -> Option<&'static str> {
+    let name = name.strip_prefix("globalThis.").unwrap_or(name);
+    let table = generated::ECMASCRIPT_METHODS;
+    let index = table.binary_search_by(|(key, _)| (*key).cmp(name)).ok()?;
+    table.get(index).map(|(key, _)| *key)
+}
+
+/// Whether the qualified type name is one of ECMAScript's own types: an interface with methods
+/// ([`ecmascript_type`]) or the type of the same name as an ECMAScript global (`Error`).
+pub fn is_ecmascript_type(qualified: &str) -> bool {
+    let name = qualified.strip_prefix("globalThis.").unwrap_or(qualified);
+    ecmascript_type(name).is_some() || is_ecmascript_global(name)
+}
+
+/// Whether `method` is a method of the ECMAScript type `type_name` (`Array`, `String`,
+/// `Promise`, `ObjectConstructor`), the interfaces it extends included, or a function of the
+/// value namespace `type_name` (`Reflect`).
+pub fn is_ecmascript_method(type_name: &str, method: &str) -> bool {
+    let table = generated::ECMASCRIPT_METHODS;
+    table
+        .binary_search_by(|(key, _)| key.cmp(&type_name))
+        .ok()
+        .and_then(|index| table.get(index))
+        .is_some_and(|(_, methods)| methods.binary_search(&method).is_ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,10 +102,93 @@ mod tests {
             generated::GLOBALS,
             generated::LIBRARY_TYPES,
             generated::BUILTIN_MODULES,
+            generated::ECMASCRIPT_GLOBALS,
             aliases::TYPE_ALIASES,
         ] {
             assert!(table.windows(2).all(|pair| pair[0] < pair[1]));
         }
+        let types = generated::ECMASCRIPT_VALUE_TYPES;
+        assert!(types.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        let methods = generated::ECMASCRIPT_METHODS;
+        assert!(methods.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        for (_, names) in methods {
+            assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+    }
+
+    #[test]
+    fn ecmascript_globals_and_methods() {
+        for name in [
+            "JSON",
+            "Object",
+            "Math",
+            "Promise",
+            "String",
+            "Error",
+            "Array",
+            "Number",
+            "Map",
+            "Set",
+            "Date",
+            "RegExp",
+            "Symbol",
+            "Reflect",
+            "parseInt",
+            "Intl",
+            "globalThis",
+            "undefined",
+        ] {
+            assert!(is_ecmascript_global(name), "{name}");
+            assert!(is_known_global(name), "{name}");
+        }
+        for name in [
+            "console",
+            "fetch",
+            "setTimeout",
+            "process",
+            "Buffer",
+            "document",
+            "window",
+        ] {
+            assert!(!is_ecmascript_global(name), "{name}");
+        }
+        assert_eq!(ecmascript_value_type("Object"), Some("ObjectConstructor"));
+        assert_eq!(ecmascript_value_type("JSON"), Some("JSON"));
+        assert_eq!(ecmascript_value_type("Reflect"), Some("Reflect"));
+        assert_eq!(ecmascript_value_type("console"), None);
+        for (type_name, method) in [
+            ("JSON", "parse"),
+            ("ObjectConstructor", "keys"),
+            ("Math", "max"),
+            ("PromiseConstructor", "all"),
+            ("Reflect", "ownKeys"),
+            ("Array", "map"),
+            ("Array", "includes"),
+            ("Array", "flatMap"),
+            ("Array", "at"),
+            ("ReadonlyArray", "map"),
+            ("String", "trim"),
+            ("String", "replaceAll"),
+            ("Promise", "then"),
+            ("Promise", "finally"),
+            ("Map", "get"),
+            ("RegExp", "test"),
+            ("ArrayIterator", "next"),
+        ] {
+            assert!(is_ecmascript_method(type_name, method), "{type_name}.{method}");
+        }
+        assert_eq!(ecmascript_type("ReadonlyArray"), Some("ReadonlyArray"));
+        assert_eq!(ecmascript_type("globalThis.Map"), Some("Map"));
+        assert_eq!(ecmascript_type("Console"), None);
+        for name in ["Promise", "Error", "globalThis.Array", "PromiseLike", "Date"] {
+            assert!(is_ecmascript_type(name), "{name}");
+        }
+        for name in ["HTMLElement", "Console", "NodeJS.Process", "Partial", "Express"] {
+            assert!(!is_ecmascript_type(name), "{name}");
+        }
+        assert!(!is_ecmascript_method("Array", "length"));
+        assert!(!is_ecmascript_method("Array", "trim"));
+        assert!(!is_ecmascript_method("Console", "log"));
     }
 
     #[test]

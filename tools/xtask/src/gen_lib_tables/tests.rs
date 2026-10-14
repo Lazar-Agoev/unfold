@@ -1,5 +1,5 @@
 use super::scan::Model;
-use super::{Header, is_library_file, reference_paths, render};
+use super::{Ecmascript, Header, is_ecmascript_file, is_library_file, reference_paths, render};
 
 fn model(files: &[&str]) -> Model {
     let mut model = Model::default();
@@ -100,6 +100,10 @@ fn files_and_references_are_recognized() {
     assert!(is_library_file("lib.dom.iterable.d.ts"));
     assert!(!is_library_file("lib.d.ts"));
     assert!(!is_library_file("typescript.d.ts"));
+    assert!(is_ecmascript_file("lib.es5.d.ts"));
+    assert!(is_ecmascript_file("lib.esnext.iterator.d.ts"));
+    assert!(!is_ecmascript_file("lib.dom.d.ts"));
+    assert!(!is_ecmascript_file("lib.decorators.d.ts"));
     let text = "/// <reference path=\"globals.d.ts\" />\n///<reference path='fs/promises.d.ts'/>\n\
                 /// <reference lib=\"es2020\" />\n// /// <reference path=\"no.d.ts\" />\n";
     assert_eq!(reference_paths(text), ["globals.d.ts", "fs/promises.d.ts"]);
@@ -114,12 +118,77 @@ fn rendering_is_sorted_compact_and_versioned() {
         digest: "abc",
     };
     let names: Vec<String> = (0..40).rev().map(|index| format!("name{index:02}")).collect();
-    let text = render(&header, &names, &["B".into(), "A".into()], &["fs".into()]);
+    let ecmascript = Ecmascript {
+        files: 1,
+        globals: vec!["JSON".into()],
+        value_types: vec![("Object".into(), "ObjectConstructor".into())],
+        methods: vec![("Array".into(), vec!["map".into(), "at".into()])],
+    };
+    let text = render(
+        &header,
+        &names,
+        &["B".into(), "A".into()],
+        &["fs".into()],
+        &ecmascript,
+    );
     assert!(text.contains("TypeScript 6.0.3 (`lib.*.d.ts`, 2 files) and @types/node 25.3.3"));
+    assert!(text.contains("`lib.es*.d.ts` files alone (1 files)"));
+    assert!(text.contains("    (\"Object\", \"ObjectConstructor\"),\n"));
+    assert!(text.contains("    (\"Array\", &[\n        \"at\", \"map\",\n    ]),\n"));
     assert!(text.contains("pub(crate) const TYPESCRIPT_VERSION: &str = \"6.0.3\";"));
     assert!(text.contains("    \"A\", \"B\",\n"));
     assert!(text.lines().all(|line| line.len() <= 110));
     let first = text.find("\"name00\"").expect("present");
     let last = text.find("\"name39\"").expect("present");
     assert!(first < last);
+}
+
+#[test]
+fn methods_merge_across_declarations_and_follow_extends() {
+    let base = "interface IteratorObject<T> { map<U>(f: (v: T) => U): IteratorObject<U>; next(): T; \
+                readonly size: number; [Symbol.iterator](): IteratorObject<T>; get x(): number; } \
+                interface ArrayIterator<T> extends IteratorObject<T> { } \
+                interface Array<T> { push(...items: T[]): number; length: number; } \
+                interface ArrayConstructor { isArray(arg: any): arg is any[]; } \
+                declare var Array: ArrayConstructor; declare var NaN: number; \
+                declare var Inline: { f(): void }; \
+                declare namespace Reflect { function ownKeys(target: object): PropertyKey[]; const x: number; } \
+                declare namespace Intl { interface Options { a(): void; } interface Collator extends Options { compare(): number; } \
+                interface Empty {} }";
+    let more = "interface Array<T> { at(index: number): T | undefined; }";
+    let model = model(&[base, more]);
+    assert_eq!(
+        model.methods().expect("no clashes"),
+        [
+            ("Array".to_owned(), vec!["at".to_owned(), "push".to_owned()]),
+            ("ArrayConstructor".to_owned(), vec!["isArray".to_owned()]),
+            (
+                "ArrayIterator".to_owned(),
+                vec!["map".to_owned(), "next".to_owned()]
+            ),
+            (
+                "Intl.Collator".to_owned(),
+                vec!["a".to_owned(), "compare".to_owned()]
+            ),
+            ("Intl.Options".to_owned(), vec!["a".to_owned()]),
+            (
+                "IteratorObject".to_owned(),
+                vec!["map".to_owned(), "next".to_owned()]
+            ),
+            ("Reflect".to_owned(), vec!["ownKeys".to_owned()]),
+        ]
+    );
+    assert_eq!(
+        model.global_value_types(),
+        [
+            ("Array".to_owned(), "ArrayConstructor".to_owned()),
+            ("Reflect".to_owned(), "Reflect".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn a_namespace_and_an_interface_with_methods_cannot_share_a_name() {
+    let file = "interface Clash { m(): void; } declare namespace Clash { function f(): void; }";
+    assert!(model(&[file]).methods().is_err());
 }

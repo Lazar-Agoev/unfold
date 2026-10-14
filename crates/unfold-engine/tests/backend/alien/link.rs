@@ -25,6 +25,8 @@ use super::payload::{Decl, DeclKind, Payload, ScopeKind, ValueInfo};
 
 /// Names that resolve to the alien standard library when nothing declares them.
 const GLOBALS: &[&str] = &["console", "print", "Math"];
+/// Globals that are the language's own builtins, apart from the rest of its library.
+const CORE: &[&str] = &["JSON"];
 
 pub struct AlienLinked<'a> {
     pub program: &'a FactsSet,
@@ -147,6 +149,11 @@ impl<'a> AlienLinked<'a> {
             evidence
                 .candidates
                 .push(Candidate::external(ExternalLocation::Library));
+        }
+        if CORE.contains(&name) {
+            evidence
+                .candidates
+                .push(Candidate::external(ExternalLocation::Builtin));
         }
         evidence
     }
@@ -759,6 +766,7 @@ impl Linked for AlienLinked<'_> {
     fn label_for_location(&self, file: FileId, location: &ExternalLocation) -> String {
         match location {
             ExternalLocation::Library => "alien:lib".to_owned(),
+            ExternalLocation::Builtin => "alien:core".to_owned(),
             ExternalLocation::Package(name) => self.label_for_specifier(file, name),
             ExternalLocation::File(path) => path.to_string(),
         }
@@ -769,7 +777,7 @@ impl Linked for AlienLinked<'_> {
     }
 
     fn is_builtin(&self, label: &ModuleLabel) -> bool {
-        label.as_str() == "alien:lib"
+        matches!(label.as_str(), "alien:lib" | "alien:core")
     }
 
     /// A `:when-indexed` import stays when its specifier names an indexed file.

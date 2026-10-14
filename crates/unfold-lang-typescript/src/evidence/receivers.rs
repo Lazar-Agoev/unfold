@@ -1,10 +1,14 @@
 //! Receiver evidence from what the syntax states (the proof of concept's
 //! `frontend/native/declared-types.ts`, evidence level 4): written annotations of variables,
-//! parameters, properties, and getters; explicit `new` and assertion initializers; `as` and
-//! `<T>` assertions; declared return types of callees; and member chains through class members'
-//! declared types. Library receivers (`string`, arrays, `Map`, `NodeJS.Process`, …) come from the
-//! generated tables. There is no inference, substitution, contextual typing, or flow narrowing:
-//! an unknown constituent, disagreeing declarations, or a narrowed receiver give no receiver.
+//! parameters, properties, and getters; explicit `new`, assertion, and call initializers; `as`
+//! and `<T>` assertions; declared return types of callees, and through `await` the `Promise`
+//! type arguments `async` callees declare; and member chains through class members' declared
+//! types. Library receivers (`string`, arrays, `Map`, `NodeJS.Process`, …) come from the
+//! generated tables, and so does the ECMAScript type whose methods a receiver has: a primitive
+//! or array type, an ECMAScript type written by name, an ECMAScript global (`JSON`, `Object`)
+//! or what `new` of one constructs, and a literal. There is no inference, substitution,
+//! contextual typing, or flow narrowing: an unknown constituent, disagreeing declarations, or a
+//! narrowed receiver give no receiver.
 
 use smallvec::SmallVec;
 use unfold_engine::evidence::ExternalLocation;
@@ -12,7 +16,7 @@ use unfold_engine::{DeclRef, FileId};
 
 use super::{Receiver, Target, Walk};
 use crate::link::TypeScriptLinked;
-use crate::payload::binding::{DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef, VarKind};
+use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef, VarKind};
 use crate::tables;
 
 /// A member access whose receiver is being evaluated.
@@ -85,7 +89,13 @@ impl TypeScriptLinked<'_> {
             Expr::Super(context) => self.super_receiver(walk, file, *context),
             Expr::Name { name, lookup } => {
                 if !self.has_symbol(file, name, *lookup) {
-                    return Receiver::default();
+                    if !is_ecmascript_global(name, *lookup) {
+                        return Receiver::default();
+                    }
+                    return Receiver {
+                        builtin: tables::ecmascript_value_type(name),
+                        ..Receiver::external([ExternalLocation::Library], false)
+                    };
                 }
                 let target = self.symbol_lookup(walk, file, name, *lookup, Meanings::VALUE);
                 self.declared_receiver(walk, &target, true)
@@ -99,6 +109,11 @@ impl TypeScriptLinked<'_> {
                 let target = self.target(walk, file, *callee);
                 self.return_type(walk, &target)
             }
+            Expr::Await(operand) => self.awaited(walk, file, *operand),
+            Expr::Literal(builtin) => Receiver {
+                builtin: Some(builtin.interface()),
+                ..Receiver::default()
+            },
             Expr::Member {
                 object,
                 name,
@@ -166,8 +181,26 @@ impl TypeScriptLinked<'_> {
         consensus(receivers)
     }
 
-    /// The receiver `new callee` constructs.
+    /// The receiver `new callee` constructs. `new` of an ECMAScript global constructs the
+    /// interface of the same name (`new Map()` a `Map`).
     fn constructed(&self, walk: &mut Walk, file: FileId, callee: u32) -> Receiver {
+        let mut written = callee;
+        while let Some(
+            Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) | Expr::Instantiation(inner),
+        ) = self.expr(file, written)
+        {
+            written = *inner;
+        }
+        if let Some(Expr::Name { name, lookup }) = self.expr(file, written)
+            && !self.has_symbol(file, name, *lookup)
+            && is_ecmascript_global(name, *lookup)
+        {
+            return Receiver {
+                array: &**name == "Array",
+                builtin: tables::ecmascript_type(name),
+                ..Receiver::external([ExternalLocation::Library], false)
+            };
+        }
         let constructor = self.receiver(walk, file, callee);
         if constructor.excluded {
             return constructor;
@@ -182,27 +215,10 @@ impl TypeScriptLinked<'_> {
                 Receiver::default()
             };
         }
-        let mut written = callee;
-        while let Some(
-            Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) | Expr::Instantiation(inner),
-        ) = self.expr(file, written)
-        {
-            written = *inner;
-        }
         if matches!(self.expr(file, written), Some(Expr::Assert { .. })) {
             return Receiver::default();
         }
         let target = self.target(walk, file, callee);
-        if let Some(Expr::Name { name, lookup }) = self.expr(file, written)
-            && &**name == "Array"
-            && !self.has_symbol(file, name, *lookup)
-            && !target.external.is_empty()
-        {
-            return Receiver {
-                array: true,
-                ..Receiver::external(target.external.iter().cloned(), false)
-            };
-        }
         let annotated = target.declarations.iter().any(|&declaration| {
             self.decl(declaration).is_some_and(|decl| {
                 decl.ty.is_some()
@@ -280,8 +296,8 @@ impl TypeScriptLinked<'_> {
         consensus(receivers)
     }
 
-    /// A declaration's declared receiver: its written type, or an explicit `new` or assertion
-    /// initializer.
+    /// A declaration's declared receiver: its written type, or an explicit `new`, assertion,
+    /// call, or `await` initializer.
     pub(crate) fn declaration_type(&self, walk: &mut Walk, declaration: DeclRef) -> Receiver {
         let Some(decl) = self.decl(declaration) else {
             return Receiver::default();
@@ -304,7 +320,9 @@ impl TypeScriptLinked<'_> {
             init = *inner;
         }
         match self.expr(declaration.file, init) {
-            Some(Expr::New { .. } | Expr::Assert { .. }) => self.receiver(walk, declaration.file, init),
+            Some(Expr::New { .. } | Expr::Assert { .. } | Expr::Call { .. } | Expr::Await(_)) => {
+                self.receiver(walk, declaration.file, init)
+            }
             _ => Receiver::default(),
         }
     }
@@ -320,9 +338,13 @@ impl TypeScriptLinked<'_> {
         {
             Some(TypeRef::Array) => Receiver {
                 array: true,
+                builtin: tables::ecmascript_type("Array"),
                 ..Receiver::external([ExternalLocation::Library], false)
             },
-            Some(TypeRef::Primitive) => Receiver::external([ExternalLocation::Library], false),
+            Some(TypeRef::Primitive(builtin)) => Receiver {
+                builtin: tables::ecmascript_type(builtin.interface()),
+                ..Receiver::external([ExternalLocation::Library], false)
+            },
             Some(TypeRef::Names {
                 names,
                 value,
@@ -361,8 +383,14 @@ impl TypeScriptLinked<'_> {
             if shadow || !tables::is_library_type(&qualified) {
                 return Receiver::default();
             }
+            let builtin = if value {
+                tables::ecmascript_value_type(qualified.strip_prefix("globalThis.").unwrap_or(&qualified))
+            } else {
+                tables::ecmascript_type(&qualified)
+            };
             return Receiver {
                 array: ARRAYS.contains(&qualified.as_str()),
+                builtin,
                 ..Receiver::external([library_location(&qualified)], value)
             };
         };
@@ -417,6 +445,46 @@ impl TypeScriptLinked<'_> {
     /// The receiver a call to a target returns: the declared return types of its callables
     /// (overload signatures included), when all of them agree and one has a body.
     pub(crate) fn return_type(&self, walk: &mut Walk, target: &Target) -> Receiver {
+        self.callables_type(walk, target, |this, walk, callable, decl| match decl.returns {
+            Some(ty) => this.type_at(walk, callable.file, ty),
+            None => Receiver::default(),
+        })
+    }
+
+    /// The receiver `await` of `operand` gives: for a call, what the `async` callables it
+    /// reaches declare their `Promise` resolves to, when all of them agree and one has a body.
+    /// Anything else gives none.
+    fn awaited(&self, walk: &mut Walk, file: FileId, operand: u32) -> Receiver {
+        let operand = self.unwrap_receiver(file, operand);
+        let Some(Expr::Call { callee: Some(callee) }) = self.expr(file, operand) else {
+            return Receiver::default();
+        };
+        let signature = self.unwrap_receiver(file, *callee);
+        if matches!(self.expr(file, signature), Some(Expr::Assert { .. })) {
+            return Receiver::default();
+        }
+        let target = self.target(walk, file, *callee);
+        self.callables_type(walk, &target, |this, walk, callable, decl| {
+            let (Some(returns), Some(awaits)) = (decl.returns, decl.awaits) else {
+                return Receiver::default();
+            };
+            // An `async` callable's `Promise` is the library's.
+            let promise = this.type_at(walk, callable.file, returns);
+            if promise.class.is_some() || promise.locations.as_slice() != [ExternalLocation::Library] {
+                return Receiver::default();
+            }
+            this.type_at(walk, callable.file, awaits)
+        })
+    }
+
+    /// The receiver `declared` reads from each callable of a target (overload signatures
+    /// included), when all of them agree and one has a body.
+    fn callables_type(
+        &self,
+        walk: &mut Walk,
+        target: &Target,
+        declared: impl Fn(&Self, &mut Walk, DeclRef, &Decl) -> Receiver,
+    ) -> Receiver {
         if target.ambiguous || !target.excluded.is_empty() || !target.external.is_empty() {
             return Receiver::default();
         }
@@ -442,12 +510,10 @@ impl TypeScriptLinked<'_> {
         let receivers: SmallVec<[Receiver; 2]> = callables
             .into_iter()
             .flatten()
-            .map(
-                |callable| match self.decl(callable).and_then(|decl| decl.returns) {
-                    Some(ty) => self.type_at(walk, callable.file, ty),
-                    None => Receiver::default(),
-                },
-            )
+            .map(|callable| match self.decl(callable) {
+                Some(decl) => declared(self, walk, callable, decl),
+                None => Receiver::default(),
+            })
             .collect();
         consensus(receivers)
     }
@@ -480,6 +546,11 @@ impl TypeScriptLinked<'_> {
     }
 }
 
+/// Whether a name with no symbol denotes an ECMAScript global.
+fn is_ecmascript_global(name: &str, lookup: Lookup) -> bool {
+    lookup != Lookup::Dynamic && tables::is_ecmascript_global(name)
+}
+
 /// The one receiver every declaration agrees on; anything unknown or disagreeing gives none.
 fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
     let Some(first) = receivers.first() else {
@@ -491,6 +562,7 @@ fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
             && item.external == first.external
             && item.excluded == first.excluded
             && item.array == first.array
+            && item.builtin == first.builtin
             && item.is_static == first.is_static
             && !item.unbound_this
     });

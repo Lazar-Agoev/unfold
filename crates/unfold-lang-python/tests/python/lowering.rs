@@ -435,7 +435,7 @@ pkg/main.py# module
       call:res.status call [→ unknown (unknown_receiver)]
       call:body call [→ unknown (unknown_name)]
     call:handlers%5B%5D call name=handlers[] stmt [→ unknown (dynamic)]
-    call:"".join call stmt [→ unknown (unknown_receiver)]
+    call:"".join call stmt [→ builtin]
       call:names call [→ unknown (unknown_name)]
     call:(…).strip call stmt [→ unknown (unknown_receiver)]
       call:order.get call [→ unknown (unknown_receiver)]
@@ -513,7 +513,7 @@ place_order function head=`def place_order(order_id)` stmt doc
     body body
       call:charge_card call binds=receipt stmt=`receipt = charge_card(order["card"], total)` [→ unknown (wrapper)]
     except[0] except head=`except PaymentDeclined as error` [types PaymentDeclined → project shop/payments.py#PaymentDeclined]
-      call:logger.warning call stmt [→ unknown (unknown_receiver)]
+      call:logger.warning call stmt [→ library python:logging]
       return[0] return stmt value=`mark_failed(order)`
         call:mark_failed call exit_value [→ project shop/store.py#mark_failed]
   call:save_order call stmt [→ project shop/store.py#save_order]
@@ -543,8 +543,7 @@ fn the_shop_sample_lowers_to_unfold_cores_sample_graph() {
         assert_eq!(lowered.types.signatures, expected.types.signatures, "{path}");
         assert_eq!(lowered.types.parameters, expected.types.parameters, "{path}");
         // Links agree, but where the sample assumes more than linking proves: `charge_card` is
-        // decorated with `@retry(3)` (a wrapper), and `ORDERS.get` needs the standard-library
-        // stubs that come later.
+        // decorated with `@retry(3)` (a wrapper).
         let differing: Vec<String> = lowered
             .links
             .iter()
@@ -555,7 +554,6 @@ fn the_shop_sample_lowers_to_unfold_cores_sample_graph() {
         assert_eq!(lowered.links.len(), expected.links.len(), "{path}");
         let allowed: &[&str] = match path {
             "shop/service.py" => &["charge_card Unknown(Wrapper)"],
-            "shop/store.py" => &["ORDERS.get Unknown(UnknownReceiver)"],
             _ => &[],
         };
         assert_eq!(differing, allowed, "{path}");
@@ -644,7 +642,7 @@ shop/checkout.py# module [imports json → library python:json] [imports logging
         call:charge_card call [→ project shop/payments.py#charge_card]
     for[0] for head=`for line in order.lines`
       body body
-    call:logger.info call stmt [→ unknown (unknown_receiver)]
+    call:logger.info call stmt [→ library python:logging]
       call:order_label call [→ project shop/format.py#order_label]
     call:audit.record call stmt [→ unknown (unknown_receiver)]
       call:json.dumps call [→ library python:json]
@@ -705,9 +703,9 @@ pipeline/capture.py# module doc [imports logging → library python:logging] [im
       except[0] except head=`except Exception as exc` [types Exception → builtin]
         call:run.failures.append call stmt [→ unknown (unknown_receiver)]
           call:str call [→ builtin]
-        call:logger.exception call stmt [→ unknown (unknown_receiver)]
+        call:logger.exception call stmt [→ library python:logging]
         return[0] return stmt value=`None`
-    call:logger.info call stmt [→ unknown (unknown_receiver)]
+    call:logger.info call stmt [→ library python:logging]
       call:message.headers.get call [→ unknown (unknown_receiver)]
     ternary[0] ternary binds=decision stmt=`decision = Routed(override) if override else route(message)`
       then then head=`override`
@@ -740,18 +738,18 @@ pipeline/capture.py# module doc [imports logging → library python:logging] [im
         call:insert_email call binds=row_id, inserted stmt=`row_id, inserted = insert_email(row)` [→ project pipeline/store.py#insert_email]
         if[0] if
           then then head=`not inserted and row_id is not None`
-            call:logger.info call stmt [→ unknown (unknown_receiver)]
+            call:logger.info call stmt [→ library python:logging]
             return[0] return stmt value=`row`
         if[1] if
           then then head=`row_id is not None`
-            call:logger.info call stmt [→ unknown (unknown_receiver)]
+            call:logger.info call stmt [→ library python:logging]
           else else
-            call:logger.warning call stmt [→ unknown (unknown_receiver)]
+            call:logger.warning call stmt [→ library python:logging]
       else else
         if[0] if
           then then head=`not update_expecting(stored, row)`
             call:update_expecting call role=test [→ project pipeline/store.py#update_expecting]
-            call:logger.info call stmt [→ unknown (unknown_receiver)]
+            call:logger.info call stmt [→ library python:logging]
             return[0] return stmt value=`row`
     call:run.record call stmt [→ unknown (unknown_receiver)]
     return[0] return stmt value=`row`

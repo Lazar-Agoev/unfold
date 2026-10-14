@@ -145,7 +145,8 @@ fn merge_namespace(namespaces: &mut SmallVec<[Namespace; 1]>, namespace: Namespa
 }
 
 /// What evidence knows about a receiver: its class (and whether the access is static), or that
-/// it is external, excluded, an array, or an unbound `this`.
+/// it is external, excluded, an array, or an unbound `this`; and the ECMAScript type whose
+/// methods it has, when a literal or a written type says so.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Receiver {
     pub(crate) class: Option<DeclRef>,
@@ -154,6 +155,9 @@ pub(crate) struct Receiver {
     pub(crate) locations: SmallVec<[ExternalLocation; 1]>,
     /// The library array object (its indexed elements are unknown).
     pub(crate) array: bool,
+    /// The ECMAScript type whose methods it has (`String`, `Array`, `Map`, `JSON`,
+    /// `ObjectConstructor`), as the methods table spells it.
+    pub(crate) builtin: Option<&'static str>,
     pub(crate) is_static: bool,
     pub(crate) unbound_this: bool,
 }

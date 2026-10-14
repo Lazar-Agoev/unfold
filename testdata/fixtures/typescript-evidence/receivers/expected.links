@@ -2,13 +2,13 @@ a.ts# #0 imports `./repo.js` → project repo.ts#
 a.ts#use #0 types `Repo` → project repo.ts#Repo
 a.ts#use #1 types `RepoType` → project repo.ts#Repo
 a.ts#use #2 types `Repo` → project repo.ts#Repo
-a.ts#use #3 types `Map` → library global
+a.ts#use #3 types `Map` → builtin ecmascript
 a.ts#use #4 types `Repo` → project repo.ts#Repo
 a.ts#use/call:r.save #0 calls `r.save` → project repo.ts#Repo.save
 a.ts#use/call:t.save #0 calls `t.save` → project repo.ts#Repo.save
-a.ts#use/call:list.map #0 calls `list.map` → library global
+a.ts#use/call:list.map #0 calls `list.map` → builtin ecmascript
 a.ts#use/call:list%5B%5D.save #0 calls `list[0].save` → unknown unknown_receiver
-a.ts#use/call:m.get #0 calls `m.get` → library global
+a.ts#use/call:m.get #0 calls `m.get` → builtin ecmascript
 a.ts#use/call:makeRepo().save #0 calls `makeRepo().save` → project repo.ts#Repo.save
 a.ts#use/call:makeRepo().save/call:makeRepo #0 calls `makeRepo` → project repo.ts#makeRepo
 a.ts#use/call:(…).save #0 calls `Repo.save` → project repo.ts#Repo.save

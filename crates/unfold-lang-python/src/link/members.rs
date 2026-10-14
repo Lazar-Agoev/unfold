@@ -6,8 +6,27 @@ use smallvec::SmallVec;
 use unfold_engine::evidence::Refusal;
 
 use super::binder::{Binder, Ctx, Seen};
+use super::library::Stub;
 use super::program::{NodeRef, Sym};
 use super::value::Value;
+use crate::stubs::StubClass;
+
+/// The class an instance field holds an instance of.
+#[derive(Debug, Clone, Copy)]
+enum Held {
+    Class(NodeRef),
+    Library(&'static StubClass),
+}
+
+impl Held {
+    fn same(self, other: Self) -> bool {
+        match (self, other) {
+            (Self::Class(left), Self::Class(right)) => left == right,
+            (Self::Library(left), Self::Library(right)) => left.name == right.name,
+            _ => false,
+        }
+    }
+}
 
 impl Binder<'_> {
     pub(crate) fn has_field(&self, class: NodeRef, member: Sym) -> bool {
@@ -92,8 +111,9 @@ impl Binder<'_> {
         Value::default()
     }
 
-    /// An instance field found along the linearization: an instance of one class proven by
-    /// its annotations and a single constructor assignment, unless a descendant may change it.
+    /// An instance field found along the linearization: an instance of one class (or
+    /// standard-library class) proven by its annotations and a single constructor assignment,
+    /// unless a descendant may change it.
     /// `None` when no class in the linearization has the field.
     pub(crate) fn field_value(
         &self,
@@ -129,33 +149,41 @@ impl Binder<'_> {
         {
             return Some(Value::default());
         }
-        let mut classes: SmallVec<[NodeRef; 2]> = SmallVec::new();
+        let mut classes: SmallVec<[Held; 2]> = SmallVec::new();
         for &annotation in &field.annotations {
             let value = self.resolve_seen(annotation, &mut seen.clone(), ctx);
             if !self.class_access_proven(&value, ctx) {
                 return Some(Value::default());
             }
-            classes.extend(value.class);
+            match value.class {
+                Some(class) => classes.push(Held::Class(class)),
+                None => classes.extend(self.annotated_library(annotation, seen, ctx).map(Held::Library)),
+            }
         }
-        let mut assigned = SmallVec::<[NodeRef; 2]>::new();
+        let mut assigned = SmallVec::<[Held; 2]>::new();
         for &(value, _) in &field.writes {
             let Some(value) = value else {
                 return Some(Value::default());
             };
             let value = self.resolve_seen(value, &mut seen.clone(), ctx);
-            match value.class {
-                Some(class) if value.instance && value.refusal.is_none() && !value.ambiguous => {
-                    assigned.push(class);
-                }
+            if value.refusal.is_some() || value.ambiguous {
+                return Some(Value::default());
+            }
+            match (value.class, value.stub) {
+                (Some(class), _) if value.instance => assigned.push(Held::Class(class)),
+                (None, Some(Stub::Instance(class))) => assigned.push(Held::Library(class)),
                 _ => return Some(Value::default()),
             }
         }
         classes.extend(assigned);
         match classes.first() {
-            Some(&class) if classes.iter().all(|&other| other == class) => Some(Value {
-                class: Some(class),
-                instance: true,
-                ..Value::default()
+            Some(&first) if classes.iter().all(|&other| other.same(first)) => Some(match first {
+                Held::Class(class) => Value {
+                    class: Some(class),
+                    instance: true,
+                    ..Value::default()
+                },
+                Held::Library(class) => Value::library_instance(Some(class)),
             }),
             _ => Some(Value::default()),
         }

@@ -15,7 +15,7 @@ use oxc_ast::ast::{
 
 use super::{Binder, KeyDraft, PathDraft, RootDraft};
 use crate::number::js_number;
-use crate::payload::binding::{ClassFacts, Decl, Expr, Lookup, MemberWrite, TypeRef};
+use crate::payload::binding::{BuiltinType, ClassFacts, Decl, Expr, Lookup, MemberWrite, TypeRef};
 
 impl<'a> Binder<'a> {
     fn push_expr(&mut self, expr: Expr) -> u32 {
@@ -65,6 +65,7 @@ impl<'a> Binder<'a> {
             Expression::ParenthesizedExpression(it) => Expr::Paren(self.converted(&it.expression)),
             Expression::TSNonNullExpression(it) => Expr::NonNull(self.converted(&it.expression)),
             Expression::TSSatisfiesExpression(it) => Expr::Satisfies(self.converted(&it.expression)),
+            Expression::AwaitExpression(it) => Expr::Await(self.converted(&it.argument)),
             Expression::TSAsExpression(it) => {
                 let inner = self.converted(&it.expression);
                 let ty = Some(self.ty(&it.type_annotation, self.scope));
@@ -85,6 +86,14 @@ impl<'a> Binder<'a> {
                 .get(&expression.address())
                 .map_or(Expr::Other, |&decl| Expr::Class(decl)),
             Expression::NullLiteral(_) => Expr::Null,
+            Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => {
+                Expr::Literal(BuiltinType::String)
+            }
+            Expression::NumericLiteral(_) => Expr::Literal(BuiltinType::Number),
+            Expression::BigIntLiteral(_) => Expr::Literal(BuiltinType::BigInt),
+            Expression::BooleanLiteral(_) => Expr::Literal(BuiltinType::Boolean),
+            Expression::RegExpLiteral(_) => Expr::Literal(BuiltinType::RegExp),
+            Expression::ArrayExpression(_) => Expr::Literal(BuiltinType::Array),
             Expression::ChainExpression(chain) => match &chain.expression {
                 ChainElement::CallExpression(call) => Expr::Call {
                     callee: Some(self.converted(&call.callee)),
@@ -141,12 +150,12 @@ impl<'a> Binder<'a> {
         }
         let converted = match ty {
             TSType::TSArrayType(_) => TypeRef::Array,
-            TSType::TSStringKeyword(_)
-            | TSType::TSNumberKeyword(_)
-            | TSType::TSBooleanKeyword(_)
-            | TSType::TSBigIntKeyword(_)
-            | TSType::TSSymbolKeyword(_)
-            | TSType::TSObjectKeyword(_) => TypeRef::Primitive,
+            TSType::TSStringKeyword(_) => TypeRef::Primitive(BuiltinType::String),
+            TSType::TSNumberKeyword(_) => TypeRef::Primitive(BuiltinType::Number),
+            TSType::TSBooleanKeyword(_) => TypeRef::Primitive(BuiltinType::Boolean),
+            TSType::TSBigIntKeyword(_) => TypeRef::Primitive(BuiltinType::BigInt),
+            TSType::TSSymbolKeyword(_) => TypeRef::Primitive(BuiltinType::Symbol),
+            TSType::TSObjectKeyword(_) => TypeRef::Primitive(BuiltinType::Object),
             TSType::TSTypeReference(reference) => names(&reference.type_name, false),
             TSType::TSTypeQuery(query) => match &query.expr_name {
                 TSTypeQueryExprName::IdentifierReference(id) => TypeRef::Names {
@@ -341,9 +350,11 @@ fn children(expr: &Expr) -> impl Iterator<Item = u32> {
         Expr::Member { object, .. } | Expr::Element { object, .. } => (Some(object), None),
         Expr::Call { callee } | Expr::New { callee } => (callee, None),
         Expr::Tagged { tag } => (Some(tag), None),
-        Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) | Expr::Instantiation(inner) => {
-            (Some(inner), None)
-        }
+        Expr::Paren(inner)
+        | Expr::NonNull(inner)
+        | Expr::Satisfies(inner)
+        | Expr::Await(inner)
+        | Expr::Instantiation(inner) => (Some(inner), None),
         Expr::Assert { inner, .. } => (Some(inner), None),
         _ => (None, None),
     };
@@ -364,6 +375,7 @@ fn remap(expr: &mut Expr, map: &[u32]) {
         Expr::Paren(inner)
         | Expr::NonNull(inner)
         | Expr::Satisfies(inner)
+        | Expr::Await(inner)
         | Expr::Instantiation(inner)
         | Expr::Assert { inner, .. } => fix(inner),
         _ => {}

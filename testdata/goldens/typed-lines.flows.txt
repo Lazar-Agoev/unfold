@@ -225,7 +225,7 @@
 
 === ts/src/errors.ts#PaymentError.constructor
 ( constructor )   key=ts/src/errors.ts#PaymentError.constructor
-  · super   key=ts/src/errors.ts#PaymentError.constructor/call:super
+  ⋯ 1 line
 ( End )
 
 === ts/src/errors.ts#CardDeclinedError
@@ -253,7 +253,6 @@
 ( reserveInventory )   key=ts/src/inventory.ts#reserveInventory
   IF items.length === 0   key=ts/src/inventory.ts#reserveInventory/if[0] ts/src/inventory.ts#reserveInventory/if[0]/then
       THROW ▸ OutOfStockError → the caller   key=ts/src/inventory.ts#reserveInventory/if[0]/then/throw[0]
-  · Date   key=ts/src/inventory.ts#reserveInventory/return[0]/call:Date
   RETURN { id: "hold-1", items, expiresAt: new Date() } → End   key=ts/src/inventory.ts#reserveInventory/return[0]
 ( End )
 
@@ -410,7 +409,7 @@
 
 === ts/src/user.ts#Session
 ( Session )   key=ts/src/user.ts#Session
-  · Date → expiresAt   key=ts/src/user.ts#Session/call:Date
+  ⋯ 1 line
 ( End )
 
 === ts/src/user.ts#Session.constructor

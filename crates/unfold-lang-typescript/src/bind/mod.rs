@@ -338,6 +338,7 @@ impl<'a> Binder<'a> {
             initializer: None,
             ty: None,
             returns: None,
+            awaits: None,
             inline: None,
             object: None,
             constructor: None,

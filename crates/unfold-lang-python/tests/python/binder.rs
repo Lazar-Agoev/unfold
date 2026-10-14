@@ -1114,3 +1114,174 @@ fn expanded_bases_leave_the_linearization_unknown() {
     )]);
     assert!(!resolved(&compiled, "c.run"));
 }
+
+const REPO: &str = "from typing import Optional\nimport typing\n\n\nclass Repo:\n    def save(self):\n        return 1\n\n\n";
+
+/// Whether the `calls` link labeled `label` reaches `Repo.save`.
+fn saves(compiled: &Compiled, label: &str) -> bool {
+    project(call(compiled, label)).is_some_and(|key| key.as_str() == "m.py#Repo.save")
+}
+
+/// A call's value is the class its target's written return type names, in exactly the written
+/// forms: a class, a class or `None`, a quoted name, and any of these through `await` on an
+/// `async def`. Nothing is read from the bodies.
+#[test]
+fn written_return_types_give_a_call_its_class() {
+    let compiled = graph(&[(
+        "m.py",
+        &format!(
+            "{REPO}def plain() -> Repo:\n    ...\n\n\ndef optional() -> Optional[Repo]:\n    ...\n\n\ndef qualified() -> typing.Optional[Repo]:\n    ...\n\n\ndef union() -> Repo | None:\n    ...\n\n\ndef reversed() -> None | Repo:\n    ...\n\n\ndef quoted() -> \"Repo\":\n    ...\n\n\ndef quoted_optional() -> Optional[\"Repo\"]:\n    ...\n\n\nasync def fetch() -> Repo | None:\n    ...\n\n\nclass Service:\n    def factory(self) -> \"Repo\":\n        ...\n\n    def run(self):\n        self.factory().save()\n        made = self.factory()\n        made.save()\n\n\nasync def use():\n    a = plain()\n    a.save()\n    b = optional()\n    b.save()\n    c = qualified()\n    c.save()\n    d = union()\n    d.save()\n    e = reversed()\n    e.save()\n    f = quoted()\n    f.save()\n    g = quoted_optional()\n    g.save()\n    plain().save()\n    fetched = await fetch()\n    fetched.save()\n    a.missing()\n"
+        ),
+    )]);
+    for label in [
+        "a.save",
+        "b.save",
+        "c.save",
+        "d.save",
+        "e.save",
+        "f.save",
+        "g.save",
+        "plain().save",
+        "self.factory().save",
+        "made.save",
+        "fetched.save",
+    ] {
+        assert!(saves(&compiled, label), "{label}: {:?}", call(&compiled, label));
+    }
+    // The receiver is proven, but `Repo` has no such member.
+    assert_eq!(reason(&compiled, "a.missing"), Some(Reason::UnknownReceiver));
+}
+
+/// Any other annotation leaves the value unknown, as no annotation does: generics, unions of
+/// classes, type variables, `Self`, an `Optional` that isn't `typing`'s, an `async def` called
+/// without `await`, a plain `def` awaited, and a target that isn't exactly one function.
+#[test]
+fn other_return_types_leave_the_value_unknown() {
+    let compiled = graph(&[(
+        "m.py",
+        &format!(
+            "{REPO}from typing import Self, TypeVar\n\nT = TypeVar(\"T\")\n\n\nclass Other:\n    def save(self):\n        return 2\n\n    def clone(self) -> Self:\n        ...\n\n\ndef Maybe(value):\n    return value\n\n\ndef generic() -> list[Repo]:\n    ...\n\n\ndef either() -> Repo | Other:\n    ...\n\n\ndef variable() -> T:\n    ...\n\n\ndef unannotated():\n    return Repo()\n\n\ndef local() -> Maybe[Repo]:\n    ...\n\n\ndef nested() -> Optional[Repo | None]:\n    ...\n\n\nasync def fetch() -> Repo:\n    ...\n\n\ndef plain() -> Repo:\n    ...\n\n\ndef rebound() -> Repo:\n    ...\n\n\nrebound = unannotated\n\n\nclass Base:\n    def factory(self) -> Repo:\n        ...\n\n    def run(self):\n        self.factory().save()\n\n\nclass Child(Base):\n    def factory(self) -> Repo:\n        ...\n\n\nasync def use():\n    a = generic()\n    a.save()\n    b = either()\n    b.save()\n    c = variable()\n    c.save()\n    d = Other().clone()\n    d.save()\n    e = unannotated()\n    e.save()\n    f = local()\n    f.save()\n    g = nested()\n    g.save()\n    pending = fetch()\n    pending.save()\n    awaited = await plain()\n    awaited.save()\n    h = rebound()\n    h.save()\n"
+        ),
+    )]);
+    for label in [
+        "a.save",
+        "b.save",
+        "c.save",
+        "d.save",
+        "e.save",
+        "f.save",
+        "g.save",
+        "pending.save",
+        "awaited.save",
+        "h.save",
+    ] {
+        assert_eq!(reason(&compiled, label), Some(Reason::UnknownReceiver), "{label}");
+    }
+    assert_eq!(reason(&compiled, "self.factory"), Some(Reason::Overridden));
+    assert_eq!(
+        reason(&compiled, "self.factory().save"),
+        Some(Reason::UnknownReceiver)
+    );
+}
+
+/// The outcome and module label of the `calls` link labeled `label`.
+fn library_call(compiled: &Compiled, label: &str) -> (Outcome, Option<String>) {
+    let link = call(compiled, label);
+    (link.to.outcome(), module(link))
+}
+
+/// The standard library's stubs type what the covered modules give: a stub function's written
+/// return type (`Self` read as the class it is looked up on), a constructed stub class, a
+/// standard-library class written as an annotation (type arguments left out) or as a project
+/// function's return type, and literals. Their instances' members are looked up through the
+/// stub classes' linearizations and labeled with the class's module.
+#[test]
+fn stubs_give_standard_library_values_their_class() {
+    let compiled = graph(&[(
+        "m.py",
+        "import asyncio\nimport datetime\nimport logging\nimport os\nimport pathlib\nimport re\nfrom pathlib import Path\nfrom typing import Any\n\nlogger = logging.getLogger(__name__)\n\n\nclass Service:\n    def __init__(self):\n        self.log = logging.getLogger(\"service\")\n        self.items = []\n\n    def run(self):\n        self.log.warning(\"run\")\n        self.items.append(1)\n\n\ndef make() -> logging.Logger:\n    ...\n\n\ndef text() -> str:\n    ...\n\n\ndef table() -> \"dict\":\n    ...\n\n\nasync def main(row: dict, rows: dict[str, Any], name: str, folder: Path):\n    logger.info(\"start\")\n    local = logging.getLogger(__name__)\n    local.debug(\"local\")\n    logging.getLogger().error(\"chained\")\n    re.compile(\"a\").match(\"a\").group()\n    pathlib.Path(\"x\").read_text().strip()\n    Path(\"x\").with_suffix(\".txt\").exists()\n    datetime.datetime.now().isoformat()\n    datetime.UTC.utcoffset(None)\n    os.environ.copy()\n    asyncio.create_task(main({}, {}, \"\", folder)).cancel()\n    row.get(\"k\")\n    rows.get(\"k\")\n    name.upper()\n    folder.iterdir()\n    \"x\".join([])\n    [].append(1)\n    (1, 2).count(1)\n    {}.get(\"k\")\n    {1}.add(2)\n    f\"{name}\".strip()\n    b\"x\".decode()\n    make().info(\"made\")\n    text().upper()\n    table().get(\"k\")\n    str(1).zfill(3)\n    len(name).bit_length()\n",
+    )]);
+    let library = |label| (Outcome::Library, Some(label));
+    let builtin = (Outcome::Builtin, Some("python:builtins"));
+    for (label, expected) in [
+        ("logger.info", library("python:logging")),
+        ("local.debug", library("python:logging")),
+        ("logging.getLogger().error", library("python:logging")),
+        ("self.log.warning", library("python:logging")),
+        ("make().info", library("python:logging")),
+        ("re.compile(\"a\").match", library("python:re")),
+        ("re.compile(\"a\").match(\"a\").group", library("python:re")),
+        ("pathlib.Path(\"x\").read_text", library("python:pathlib")),
+        ("Path(\"x\").with_suffix", library("python:pathlib")),
+        (
+            "Path(\"x\").with_suffix(\".txt\").exists",
+            library("python:pathlib"),
+        ),
+        ("folder.iterdir", library("python:pathlib")),
+        ("datetime.datetime.now().isoformat", library("python:datetime")),
+        ("datetime.UTC.utcoffset", library("python:datetime")),
+        (
+            "asyncio.create_task(main({}, {}, \"\", folder)).cancel",
+            library("python:_asyncio"),
+        ),
+        ("pathlib.Path(\"x\").read_text().strip", builtin),
+        ("self.items.append", builtin),
+        ("row.get", builtin),
+        ("rows.get", builtin),
+        ("name.upper", builtin),
+        ("\"x\".join", builtin),
+        ("[].append", builtin),
+        ("(1, 2).count", builtin),
+        ("{}.get", builtin),
+        ("{1}.add", builtin),
+        ("f\"{name}\".strip", builtin),
+        ("b\"x\".decode", builtin),
+        ("text().upper", builtin),
+        ("table().get", builtin),
+        ("str(1).zfill", builtin),
+        ("len(name).bit_length", builtin),
+    ] {
+        let (outcome, label_of) = library_call(&compiled, label);
+        assert_eq!((outcome, label_of.as_deref()), expected, "{label}");
+    }
+}
+
+/// Anything the stubs don't write stays unknown with its reason: a member the class doesn't
+/// have, a return type the overloads disagree on, a stub function read through the wrong
+/// `await`, a generic project return type, an unannotated parameter, a rebound name, a
+/// third-party value, and an attribute read on a class (whose stub types its instances). A
+/// class with `__getattr__` makes a member it doesn't declare dynamic.
+#[test]
+fn values_the_stubs_dont_write_stay_unknown() {
+    let compiled = graph(&[(
+        "m.py",
+        "import asyncio\nimport datetime\nimport logging\nimport os\nimport re\n\nimport fastapi\n\nlogger = logging.getLogger(__name__)\n\n\ndef names() -> list[str]:\n    ...\n\n\nasync def main(row):\n    \"x\".missing()\n    logger.missing()\n    os.path.join(\"a\", \"b\").upper()\n    awaited = await re.compile(\"a\")\n    awaited.match(\"a\")\n    pending = asyncio.sleep(1)\n    pending.done()\n    names().append(\"x\")\n    row.get(\"k\")\n    rebound = logging.getLogger()\n    rebound = None\n    rebound.info(\"x\")\n    app = fastapi.FastAPI()\n    app.get(\"/\")\n    datetime.datetime.min.isoformat().upper()\n    list.__class_getitem__(int).anything()\n",
+    )]);
+    for label in [
+        "\"x\".missing",
+        "logger.missing",
+        "os.path.join(\"a\", \"b\").upper",
+        "awaited.match",
+        "pending.done",
+        "names().append",
+        "row.get",
+        "rebound.info",
+        "app.get",
+        "datetime.datetime.min.isoformat().upper",
+    ] {
+        assert_eq!(call(&compiled, label).to.outcome(), Outcome::Unknown, "{label}");
+    }
+    assert_eq!(reason(&compiled, "\"x\".missing"), Some(Reason::UnknownReceiver));
+    assert_eq!(reason(&compiled, "logger.missing"), Some(Reason::UnknownReceiver));
+    assert_eq!(reason(&compiled, "row.get"), Some(Reason::UnknownReceiver));
+    assert_eq!(reason(&compiled, "app.get"), Some(Reason::UnknownReceiver));
+    assert_eq!(
+        reason(&compiled, "list.__class_getitem__(int).anything"),
+        Some(Reason::Dynamic)
+    );
+    // The calls themselves are still proven outside the project.
+    assert_eq!(
+        library_call(&compiled, "datetime.datetime.min.isoformat"),
+        (Outcome::Library, Some("python:datetime".to_owned()))
+    );
+}

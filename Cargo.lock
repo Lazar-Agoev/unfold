@@ -2963,6 +2963,8 @@ dependencies = [
  "oxc_ast",
  "oxc_parser",
  "oxc_span",
+ "ruff_python_ast",
+ "ruff_python_parser",
  "rustc-hash",
  "serde",
  "serde_json",

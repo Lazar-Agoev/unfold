@@ -8,6 +8,7 @@ mod compile;
 mod export_store;
 mod gen_ipc;
 mod gen_lib_tables;
+mod gen_py_stubs;
 mod notices;
 mod oracles;
 mod repo;
@@ -38,6 +39,9 @@ enum Command {
     /// Generate the TypeScript front end's tables of known globals, library types, and Node
     /// built-in modules from TypeScript's `lib.*.d.ts` files and `@types/node`.
     GenLibTables(gen_lib_tables::Args),
+    /// Generate the Python front end's table of eight standard modules (`builtins`, `logging`,
+    /// `os`, `json`, `re`, `datetime`, `pathlib`, `asyncio`) from typeshed's stubs.
+    GenPyStubs(gen_py_stubs::Args),
     /// Write THIRD_PARTY_NOTICES.md from the shipped Rust crates and npm packages (`--check`
     /// fails when it is stale).
     Notices(notices::Args),
@@ -54,6 +58,7 @@ fn main() -> ExitCode {
         Command::ExportStore(args) => export_store::run(&args),
         Command::GenIpc(args) => gen_ipc::run(&args),
         Command::GenLibTables(args) => gen_lib_tables::run(&args),
+        Command::GenPyStubs(args) => gen_py_stubs::run(&args),
         Command::Notices(args) => notices::run(&args),
         Command::Oracles(args) => oracles::run(&args),
     };

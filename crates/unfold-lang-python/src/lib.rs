@@ -25,6 +25,7 @@ mod lower;
 mod parse;
 mod payload;
 mod stdlib;
+mod stubs;
 mod tokens;
 mod typed;
 mod values;
@@ -43,7 +44,7 @@ pub use highlight::PythonHighlighter;
 pub const PRODUCER_NAME: &str = "unfold-lang-python";
 
 /// The front end's version: the crate, the pinned Ruff parser, and the payload format.
-pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.7");
+pub const PRODUCER_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+ruff.0.16.10+payload.11");
 
 /// The Python language.
 #[derive(Debug, Default, Clone, Copy)]

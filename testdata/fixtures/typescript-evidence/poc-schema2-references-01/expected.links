@@ -1,4 +1,4 @@
-main.ts#tag #0 types `TemplateStringsArray` → library global
+main.ts#tag #0 types `TemplateStringsArray` → builtin ecmascript
 main.ts#/call:register #0 calls `register` → project main.ts#register
 main.ts#/call:register #1 passes `named` → project main.ts#named
 main.ts#/call:tag #0 calls `tag` → project main.ts#tag

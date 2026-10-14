@@ -199,8 +199,12 @@ pub struct Decl {
     /// A written type: a variable's, parameter's, or property's annotation, a getter's return
     /// type, or a type alias's type.
     pub ty: Option<u32>,
-    /// A callable's written return type.
+    /// A callable's written return type, with `null` and `undefined` dropped from a union of one
+    /// other type and them (`Repo | null` is `Repo`).
     pub returns: Option<u32>,
+    /// For an `async` callable whose written return type is `Promise<T>`, what `await` of a
+    /// call gives: `T`, read like a return type.
+    pub awaits: Option<u32>,
     /// For an `Expression` declaration, or a property assignment whose value is one, its
     /// inline function or class.
     pub inline: Option<u32>,
@@ -361,6 +365,8 @@ pub enum Expr {
     NonNull(u32),
     /// `x satisfies T`.
     Satisfies(u32),
+    /// `await x`.
+    Await(u32),
     /// `x as T` or `<T>x`.
     Assert {
         /// The asserted expression.
@@ -376,8 +382,48 @@ pub enum Expr {
     Class(u32),
     /// The `null` literal.
     Null,
+    /// A literal whose value has a built-in type of its own (a string, template, number,
+    /// bigint, boolean, or regular expression literal, or an array literal).
+    Literal(BuiltinType),
     /// Anything else.
     Other,
+}
+
+/// The ECMAScript interface whose methods a primitive type or a literal's value has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BuiltinType {
+    /// `String`.
+    String,
+    /// `Number`.
+    Number,
+    /// `Boolean`.
+    Boolean,
+    /// `BigInt`.
+    BigInt,
+    /// `Symbol`.
+    Symbol,
+    /// `Object`.
+    Object,
+    /// `RegExp`.
+    RegExp,
+    /// `Array`.
+    Array,
+}
+
+impl BuiltinType {
+    /// The interface's name in the default library.
+    pub fn interface(self) -> &'static str {
+        match self {
+            Self::String => "String",
+            Self::Number => "Number",
+            Self::Boolean => "Boolean",
+            Self::BigInt => "BigInt",
+            Self::Symbol => "Symbol",
+            Self::Object => "Object",
+            Self::RegExp => "RegExp",
+            Self::Array => "Array",
+        }
+    }
 }
 
 /// What `this` or `super` means where it is written.
@@ -396,7 +442,7 @@ pub enum TypeRef {
     /// An array type `T[]`.
     Array,
     /// `string`, `number`, `boolean`, `bigint`, `symbol`, or `object`.
-    Primitive,
+    Primitive(BuiltinType),
     /// A type reference `A`, `A.B<…>`, or a type query `typeof a.b`.
     Names {
         /// The names, first to last.

@@ -114,10 +114,12 @@ impl Binder<'_> {
         while let Some(expr) = pending.pop() {
             match self.program.expr(expr).map(|fact| &fact.kind) {
                 Some(ExprKind::Member { .. }) => found.push(expr),
-                Some(ExprKind::Sequence(items)) => pending.extend(items.iter().rev().map(|&item| ExprRef {
-                    file: expr.file,
-                    expr: item,
-                })),
+                Some(ExprKind::Sequence { items, .. }) => {
+                    pending.extend(items.iter().rev().map(|&item| ExprRef {
+                        file: expr.file,
+                        expr: item,
+                    }));
+                }
                 _ => {}
             }
         }

@@ -9,7 +9,8 @@ use anyhow::{Context, bail};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     BindingPattern, Declaration, ExportDefaultDeclarationKind, ModuleDeclaration, Statement,
-    TSModuleReference, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
+    TSMethodSignatureKind, TSModuleReference, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
+    TSSignature, TSType,
 };
 use oxc_parser::Parser;
 use oxc_span::SourceType;
@@ -26,6 +27,15 @@ pub(crate) struct Symbol {
     pub(crate) class_or_interface: bool,
     /// Some declaration is a type alias.
     pub(crate) type_alias: bool,
+    /// Some declaration is a function (a value namespace's functions are its value's methods).
+    pub(crate) function: bool,
+    /// The method names of its interface declarations, merged.
+    pub(crate) methods: BTreeSet<String>,
+    /// The names its interface declarations extend, as written (`IteratorObject`), merged.
+    pub(crate) extends: BTreeSet<String>,
+    /// The types its variable declarations are written with, when each is a plain type
+    /// reference (`declare var Object: ObjectConstructor`).
+    pub(crate) value_types: BTreeSet<String>,
     /// The exports of its namespace declarations, if it has any.
     pub(crate) namespace: Option<Scope>,
 }
@@ -208,14 +218,25 @@ impl<'a> Walker<'_, 'a> {
         match declaration {
             Declaration::VariableDeclaration(list) => {
                 for declarator in &list.declarations {
+                    let written =
+                        declarator.type_annotation.as_ref().and_then(|annotation| {
+                            match &annotation.type_annotation {
+                                TSType::TSTypeReference(reference) => Some(reference.type_name.to_string()),
+                                _ => None,
+                            }
+                        });
                     for name in binding_names(&declarator.id) {
-                        scope.symbol(name).value = true;
+                        let symbol = scope.symbol(name);
+                        symbol.value = true;
+                        symbol.value_types.extend(written.clone());
                     }
                 }
             }
             Declaration::FunctionDeclaration(function) => {
                 if let Some(id) = &function.id {
-                    scope.symbol(id.name.as_str()).value = true;
+                    let symbol = scope.symbol(id.name.as_str());
+                    symbol.value = true;
+                    symbol.function = true;
                 }
             }
             Declaration::ClassDeclaration(class) => {
@@ -226,7 +247,23 @@ impl<'a> Walker<'_, 'a> {
                 }
             }
             Declaration::TSInterfaceDeclaration(interface) => {
-                scope.symbol(interface.id.name.as_str()).class_or_interface = true;
+                let symbol = scope.symbol(interface.id.name.as_str());
+                symbol.class_or_interface = true;
+                symbol.extends.extend(
+                    interface
+                        .extends
+                        .iter()
+                        .map(|heritage| heritage.type_name.to_string()),
+                );
+                for signature in &interface.body.body {
+                    if let TSSignature::TSMethodSignature(method) = signature
+                        && method.kind == TSMethodSignatureKind::Method
+                        && !method.computed
+                        && let Some(name) = method.key.static_name()
+                    {
+                        symbol.methods.insert(name.into_owned());
+                    }
+                }
             }
             Declaration::TSEnumDeclaration(enumeration) => {
                 scope.symbol(enumeration.id.name.as_str()).value = true;
@@ -441,6 +478,132 @@ impl Model {
         let mut names = BTreeSet::new();
         collect_types(&self.globals, "", &|symbol| symbol.type_alias, &mut names, 0);
         names.into_iter().collect()
+    }
+}
+
+impl Model {
+    /// Each global value's type, for member calls on it: the type its variable declarations
+    /// write when they write exactly one plain reference (`Object` → `ObjectConstructor`), or the
+    /// value namespace itself when it has functions (`Reflect` → `Reflect`), sorted by name.
+    pub(crate) fn global_value_types(&self) -> Vec<(String, String)> {
+        let mut types = Vec::new();
+        for (name, symbol) in &self.globals.symbols {
+            if !symbol.value || !is_plain_identifier(name) {
+                continue;
+            }
+            if let [written] = symbol.value_types.iter().collect::<Vec<_>>()[..] {
+                types.push((name.clone(), written.clone()));
+            } else if !namespace_functions(symbol).is_empty() {
+                types.push((name.clone(), name.clone()));
+            }
+        }
+        types
+    }
+
+    /// The method names of each interface, qualified through namespaces, with those of the
+    /// interfaces it extends; and the function names of each value namespace (`Reflect`). Only
+    /// names with at least one method are listed, sorted by name, each with its methods sorted.
+    pub(crate) fn methods(&self) -> anyhow::Result<Vec<(String, Vec<String>)>> {
+        let mut symbols = BTreeMap::new();
+        qualified_symbols(&self.globals, "", &mut symbols, 0);
+        let mut methods: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (name, symbol) in &symbols {
+            if symbol.class_or_interface {
+                let mut found = BTreeSet::new();
+                inherited_methods(&symbols, name, &mut found, &mut BTreeSet::new());
+                if !found.is_empty() {
+                    methods.insert(name.clone(), found);
+                }
+            }
+        }
+        for (name, symbol) in &symbols {
+            let functions = namespace_functions(symbol);
+            if !symbol.value || functions.is_empty() {
+                continue;
+            }
+            if methods.contains_key(name) {
+                bail!("`{name}` is both an interface with methods and a namespace with functions");
+            }
+            methods.insert(name.clone(), functions);
+        }
+        Ok(methods
+            .into_iter()
+            .map(|(name, found)| (name, found.into_iter().collect()))
+            .collect())
+    }
+}
+
+/// The function names a symbol's namespace exports.
+fn namespace_functions(symbol: &Symbol) -> BTreeSet<String> {
+    symbol.namespace.as_ref().map_or_else(BTreeSet::new, |namespace| {
+        namespace
+            .symbols
+            .iter()
+            .filter(|(name, export)| export.function && is_plain_identifier(name))
+            .map(|(name, _)| name.clone())
+            .collect()
+    })
+}
+
+/// Every symbol of `scope` and its namespaces, by qualified name.
+fn qualified_symbols<'s>(
+    scope: &'s Scope,
+    prefix: &str,
+    out: &mut BTreeMap<String, &'s Symbol>,
+    depth: usize,
+) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    for (name, symbol) in &scope.symbols {
+        if !is_plain_identifier(name) {
+            continue;
+        }
+        let qualified = format!("{prefix}{name}");
+        if let Some(namespace) = &symbol.namespace {
+            qualified_symbols(namespace, &format!("{qualified}."), out, depth + 1);
+        }
+        out.insert(qualified, symbol);
+    }
+}
+
+/// Adds the methods of the interface `name` and of every interface it extends to `out`. An
+/// extended name is looked up in the namespaces around `name`, innermost first, then globally.
+fn inherited_methods(
+    symbols: &BTreeMap<String, &Symbol>,
+    name: &str,
+    out: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+) {
+    if !seen.insert(name.to_owned()) {
+        return;
+    }
+    let Some(symbol) = symbols.get(name) else {
+        return;
+    };
+    out.extend(symbol.methods.iter().cloned());
+    for parent in &symbol.extends {
+        let mut prefix = name;
+        let found = loop {
+            prefix = prefix.rfind('.').map_or("", |dot| &prefix[..dot]);
+            let candidate = if prefix.is_empty() {
+                parent.clone()
+            } else {
+                format!("{prefix}.{parent}")
+            };
+            if symbols
+                .get(&candidate)
+                .is_some_and(|symbol| symbol.class_or_interface)
+            {
+                break Some(candidate);
+            }
+            if prefix.is_empty() {
+                break None;
+            }
+        };
+        if let Some(parent) = found {
+            inherited_methods(symbols, &parent, out, seen);
+        }
     }
 }
 

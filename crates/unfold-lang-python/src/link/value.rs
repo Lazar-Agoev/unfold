@@ -4,17 +4,24 @@
 //! class or an instance of one, an external origin, or a refusal. Resolution follows names to
 //! their bindings (a binding with competing writes is never followed), imports to modules and
 //! their members, attributes through C3 linearizations and instance fields, and `super()`
-//! across every linearization that can reach it. It only ever withholds: a value it cannot
-//! prove is empty, ambiguous, or refused.
+//! across every linearization that can reach it. A call is an instance of the class it
+//! constructs, or of the class its one proven `def`'s written return type names (an `async
+//! def`'s through `await`); nothing is inferred from a body. The standard library's stubs
+//! ([`super::library`]) type what the covered modules' functions and classes give, the
+//! standard-library classes written as annotations or return types, and literals, and their
+//! instances' members are looked up through the stub classes. It only ever withholds: a value
+//! it cannot prove is empty, ambiguous, or refused.
 
 use smallvec::SmallVec;
 use unfold_engine::evidence::Refusal;
 
 use super::binder::{Binder, Ctx, Seen, SeenKey};
+use super::library::{self, Stub};
 use super::modules::Module;
 use super::program::{ExprRef, Imported, NodeRef, Sym};
 use crate::bind::ir::{Argument, ExprKind, NodeKind, WriteKind};
 use crate::stdlib::BUILTIN_NAMES;
+use crate::stubs::StubClass;
 
 /// An origin outside the repository: a module specifier and a dotted member path (`*` for the
 /// module itself).
@@ -69,6 +76,9 @@ pub(crate) struct Value {
     pub(crate) class_parameter_access: bool,
     pub(crate) super_access: bool,
     pub(crate) super_owner: Option<NodeRef>,
+    /// What the standard library's stubs prove it is: an instance of one of their classes, or
+    /// a method looked up on one.
+    pub(crate) stub: Option<Stub>,
 }
 
 impl Value {
@@ -96,6 +106,14 @@ impl Value {
         }
     }
 
+    /// An instance of a standard-library class.
+    pub(crate) fn library_instance(class: Option<&'static StubClass>) -> Self {
+        Self {
+            stub: class.map(Stub::Instance),
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn declared(node: NodeRef, binding: u32) -> Self {
         Self {
             declarations: SmallVec::from_elem(node, 1),
@@ -112,16 +130,21 @@ impl Binder<'_> {
     }
 
     pub(crate) fn resolve_seen(&self, expr: ExprRef, seen: &mut Seen, ctx: &mut Ctx) -> Value {
+        self.resolve_in(expr, false, seen, ctx)
+    }
+
+    /// Resolves an expression; `awaited` when it is the operand of `await`.
+    fn resolve_in(&self, expr: ExprRef, awaited: bool, seen: &mut Seen, ctx: &mut Ctx) -> Value {
         if seen.has(SeenKey::Expr(expr)) || !ctx.enter() {
             return Value::default();
         }
         seen.add(SeenKey::Expr(expr));
-        let value = self.resolve_kind(expr, seen, ctx);
+        let value = self.resolve_kind(expr, awaited, seen, ctx);
         ctx.leave();
         value
     }
 
-    fn resolve_kind(&self, expr: ExprRef, seen: &mut Seen, ctx: &mut Ctx) -> Value {
+    fn resolve_kind(&self, expr: ExprRef, awaited: bool, seen: &mut Seen, ctx: &mut Ctx) -> Value {
         let program = &self.program;
         let Some(fact) = program.expr(expr) else {
             return Value::default();
@@ -154,19 +177,19 @@ impl Binder<'_> {
                 let receiver = self.resolve_seen(local(base), seen, ctx);
                 self.member_value(receiver, program.sym(file, name), seen, ctx)
             }
-            ExprKind::Call {
-                callee,
-                arguments,
-                function,
-            } => self.call_value(expr, local(*callee), arguments, *function, seen, ctx),
+            ExprKind::Call { .. } => self.call_value(expr, awaited, seen, ctx),
             ExprKind::Ternary => Value::ambiguous(),
-            &ExprKind::Await(inner) => self.resolve_seen(local(inner), seen, ctx),
+            &ExprKind::Await(inner) => self.resolve_in(local(inner), true, seen, ctx),
             ExprKind::Index { .. } => Value::refused(Refusal::Dynamic),
-            ExprKind::Str(_)
-            | ExprKind::Sequence(_)
-            | ExprKind::Dict(_)
-            | ExprKind::Chain(_)
-            | ExprKind::Other => Value::default(),
+            ExprKind::Str(_) => Value::library_instance(library::class("builtins.str")),
+            &ExprKind::Sequence { tuple, .. } => Value::library_instance(library::class(if tuple {
+                "builtins.tuple"
+            } else {
+                "builtins.list"
+            })),
+            ExprKind::Dict(_) => Value::library_instance(library::class("builtins.dict")),
+            &ExprKind::Literal(literal) => Value::library_instance(library::literal(literal)),
+            ExprKind::Chain(_) | ExprKind::Other => Value::default(),
         }
     }
 
@@ -186,19 +209,27 @@ impl Binder<'_> {
         }
     }
 
-    fn call_value(
-        &self,
-        call: ExprRef,
-        callee: ExprRef,
-        arguments: &[Argument],
-        function: Option<u32>,
-        seen: &mut Seen,
-        ctx: &mut Ctx,
-    ) -> Value {
+    /// What a call is proven to be: an instance of the proven, concrete class it constructs, of
+    /// the class its one proven function's written return type names ([`Binder::returned`]),
+    /// or of the standard-library class a stub class or function gives ([`library::called`]).
+    /// `awaited` when the call is the operand of `await`.
+    fn call_value(&self, call: ExprRef, awaited: bool, seen: &mut Seen, ctx: &mut Ctx) -> Value {
+        let Some(ExprKind::Call {
+            callee,
+            arguments,
+            function,
+        }) = self.program.expr(call).map(|fact| &fact.kind)
+        else {
+            return Value::default();
+        };
+        let callee = ExprRef {
+            file: call.file,
+            expr: *callee,
+        };
         let value = self.resolve_seen(callee, seen, ctx);
         if let Some(external) = &value.external {
             if external.is("builtins", "super") {
-                return self.super_call(call, arguments, function, ctx);
+                return self.super_call(call, arguments, *function, ctx);
             }
             if external.is("builtins", "getattr") {
                 return Value::refused(Refusal::Dynamic);
@@ -230,11 +261,71 @@ impl Binder<'_> {
                 ..Value::default()
             };
         }
+        if let Some(returned) = self.returned(&value, awaited, seen, ctx) {
+            return returned;
+        }
+        if let Some(class) = library_call(&value, awaited) {
+            return Value::library_instance(Some(class));
+        }
         Value {
             ambiguous: value.ambiguous,
             refusal: value.refusal,
             ..Value::default()
         }
+    }
+
+    /// What a call through `callee` returns: an instance of the class its written return type
+    /// names ([`ReturnFact`](crate::bind::ir::ReturnFact)), when the callee is exactly one
+    /// proven, concrete `def`. An `async def`'s return type is read only through `await`, and
+    /// any other's only without it. The class must be a proven class that is not wrapped, or a
+    /// standard-library class, and an `Optional` must be `typing.Optional`.
+    fn returned(&self, callee: &Value, awaited: bool, seen: &Seen, ctx: &mut Ctx) -> Option<Value> {
+        let [declaration] = callee.declarations.as_slice() else {
+            return None;
+        };
+        if callee.class.is_some()
+            || callee.ambiguous
+            || callee.refusal.is_some()
+            || callee.overridden
+            || !self.class_access_proven(callee, ctx)
+            || callee.binding.is_some_and(|binding| !self.stable(binding, ctx))
+        {
+            return None;
+        }
+        let function = self.concrete_call(*declaration, ctx)?;
+        let Some(NodeKind::Function(fact)) = self.program.node(function).map(|fact| &fact.kind) else {
+            return None;
+        };
+        let returns = fact.returns.filter(|_| fact.asynchronous == awaited)?;
+        let written = |expr| ExprRef {
+            file: function.file,
+            expr,
+        };
+        if let Some(optional) = returns.optional {
+            let identity = self.identity(written(optional), ctx);
+            if !matches!(
+                identity.as_deref(),
+                Some("typing.Optional" | "typing_extensions.Optional")
+            ) {
+                return None;
+            }
+        }
+        let class = self.resolve_seen(written(returns.class), &mut seen.clone(), ctx);
+        if let Some(library) = library_class(&class) {
+            return Some(Value::library_instance(Some(library)));
+        }
+        let proven = class.class.filter(|_| {
+            !class.instance
+                && !class.class_parameter
+                && !class.ambiguous
+                && class.refusal.is_none()
+                && self.class_access_proven(&class, ctx)
+        })?;
+        Some(Value {
+            class: Some(proven),
+            instance: true,
+            ..Value::default()
+        })
     }
 
     /// `super()`: only without arguments, in a method with a named first parameter that is
@@ -418,7 +509,8 @@ impl Binder<'_> {
         }
     }
 
-    /// A value whose written annotation proves an instance of a class.
+    /// A value whose written annotation proves an instance of a class, or of a
+    /// standard-library class ([`Binder::annotated_library`]).
     fn annotated(&self, mut value: Value, annotation: Option<ExprRef>, seen: &Seen, ctx: &mut Ctx) -> Value {
         if let Some(annotation) = annotation {
             let annotated = self.resolve_seen(annotation, &mut seen.clone(), ctx);
@@ -427,9 +519,29 @@ impl Binder<'_> {
             {
                 value.class = Some(class);
                 value.instance = true;
+            } else {
+                value.stub = self.annotated_library(annotation, seen, ctx).map(Stub::Instance);
             }
         }
         value
+    }
+
+    /// The standard-library class a written annotation names, its type arguments left out
+    /// (`str`, `dict[str, Any]`, `logging.Logger`).
+    pub(crate) fn annotated_library(
+        &self,
+        annotation: ExprRef,
+        seen: &Seen,
+        ctx: &mut Ctx,
+    ) -> Option<&'static StubClass> {
+        let written = match self.program.expr(annotation)?.kind {
+            ExprKind::Index { base, .. } => ExprRef {
+                file: annotation.file,
+                expr: base,
+            },
+            _ => annotation,
+        };
+        library_class(&self.resolve_seen(written, &mut seen.clone(), ctx))
     }
 
     /// A parameter: the receiver of an ordinary method (an instance) or a proven `classmethod`
@@ -636,6 +748,13 @@ impl Binder<'_> {
         if let Some(module) = &receiver.module {
             return self.module_member(module, member, seen, ctx);
         }
+        if let Some(Stub::Instance(class)) = receiver.stub {
+            match library_member(class, self.program.text(member)) {
+                Some(found) => return found,
+                None if receiver.external.is_none() => return Value::default(),
+                None => {}
+            }
+        }
         if let Some(external) = &receiver.external {
             let path = dotted(&external.member, self.program.text(member));
             return Value::external(&external.module, &path);
@@ -648,4 +767,42 @@ impl Binder<'_> {
             None => Value::default(),
         }
     }
+}
+
+/// The standard-library class a value is, as the class itself.
+fn library_class(value: &Value) -> Option<&'static StubClass> {
+    if value.ambiguous || value.refusal.is_some() {
+        return None;
+    }
+    match library::external(value.external.as_ref()?)? {
+        Stub::Class(class) => Some(class),
+        _ => None,
+    }
+}
+
+/// The standard-library class an instance of which calling `callee` gives: a method looked up
+/// on an instance, or a stub function or class its external origin denotes.
+fn library_call(callee: &Value, awaited: bool) -> Option<&'static StubClass> {
+    if callee.ambiguous || callee.refusal.is_some() {
+        return None;
+    }
+    let stub = match callee.stub {
+        Some(method @ Stub::Function { .. }) => method,
+        _ => library::external(callee.external.as_ref()?)?,
+    };
+    library::called(stub, awaited)
+}
+
+/// Member `name` of an instance of a standard-library class: an external origin in the class's
+/// module, with what the stubs prove it is. A class that declares `__getattr__` along its
+/// linearization makes a member it doesn't declare dynamic; `None` when it has no such member.
+fn library_member(class: &'static StubClass, name: &str) -> Option<Value> {
+    let Some(found) = library::lookup(class, name) else {
+        return library::lookup(class, "__getattr__").map(|_| Value::refused(Refusal::Dynamic));
+    };
+    Some(Value {
+        external: Some(library::member_origin(class, name)),
+        stub: library::on_instance(class, found).filter(|stub| !matches!(stub, Stub::Class(_))),
+        ..Value::default()
+    })
 }

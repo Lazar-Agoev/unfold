@@ -1,6 +1,6 @@
 //! Python linking: the whole-program binder (`binder`) and its answers to the shared backend
 //! ([`PythonLinked`]), including the type meaning of written type names and the parameters a
-//! call binds itself (`types`).
+//! call binds itself (`types`), and the standard library's written types (`library`).
 //!
 //! Linking reads only cached per-file facts: the binder facts extraction wrote into each
 //! payload ([`crate::bind`]), the written imports, and the census. It never parses, never runs
@@ -15,6 +15,7 @@ mod census;
 pub(crate) mod children;
 mod classes;
 mod decorators;
+mod library;
 mod members;
 mod memo;
 pub(crate) mod modules;
@@ -308,7 +309,7 @@ impl Linked for PythonLinked<'_> {
 
     fn label_for_location(&self, _file: FileId, location: &ExternalLocation) -> String {
         match location {
-            ExternalLocation::Library => BUILTINS.to_owned(),
+            ExternalLocation::Library | ExternalLocation::Builtin => BUILTINS.to_owned(),
             ExternalLocation::Package(name) => module_label(name),
             ExternalLocation::File(path) => path.to_string(),
         }

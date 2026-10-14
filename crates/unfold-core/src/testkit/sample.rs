@@ -586,7 +586,7 @@ fn payments(g: &mut GraphBuilder) -> Payments {
         Some("logger.info(\"charging %s\", card)"),
         None,
     );
-    calls(g, info, unknown(Reason::UnknownReceiver));
+    calls(g, info, library("python:logging"));
     argument(g, info, 0, "\"charging %s\"", None);
     argument(g, info, 1, "card", None);
     exit(
@@ -775,7 +775,7 @@ fn service(g: &mut GraphBuilder, store: &Store, payments: &Payments) {
         Some("logger.warning(\"declined: %s\", error)"),
         None,
     );
-    calls(g, warning, unknown(Reason::UnknownReceiver));
+    calls(g, warning, library("python:logging"));
     argument(g, warning, 0, "\"declined: %s\"", None);
     argument(g, warning, 1, "error", None);
     let early = exit(

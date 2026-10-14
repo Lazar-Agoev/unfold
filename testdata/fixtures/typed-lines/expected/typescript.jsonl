@@ -11,7 +11,7 @@
 {"t":"link","from":"ts/src/cart.ts#Cart","seq":0,"kind":"types","range":[210,216],"text":"CartId","outcome":"project","to":"ts/src/cart.ts#CartId"}
 {"t":"link","from":"ts/src/cart.ts#Cart","seq":1,"kind":"types","range":[227,231],"text":"User","outcome":"project","to":"ts/src/user.ts#User"}
 {"t":"link","from":"ts/src/cart.ts#Cart","seq":2,"kind":"types","range":[242,250],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
-{"t":"link","from":"ts/src/cart.ts#Cart","seq":3,"kind":"types","range":[295,299],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/cart.ts#Cart","seq":3,"kind":"types","range":[295,299],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/cart.ts#CartSummary","seq":0,"kind":"types","range":[532,537],"text":"Money","outcome":"project","to":"ts/src/cart.ts#Money"}
 {"t":"link","from":"ts/src/cart.ts#CartSummary","seq":1,"kind":"types","range":[546,552],"text":"Record","outcome":"library","to":"global"}
 {"t":"link","from":"ts/src/cart.ts#CartSummary","seq":2,"kind":"types","range":[561,569],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
@@ -32,9 +32,9 @@
 {"t":"member","node":"ts/src/cart.ts#CartSummary","index":2,"range":[539,570],"kind":"property","name":"lines","type":"Record<string, CartItem>","type_range":[546,570]}
 {"t":"member","node":"ts/src/cart.ts#Currency","index":0,"range":[646,657],"kind":"value","name":"Usd","value":"\"usd\""}
 {"t":"member","node":"ts/src/cart.ts#Currency","index":1,"range":[661,672],"kind":"value","name":"Eur","value":"\"eur\""}
-{"t":"link","from":"ts/src/errors.ts#PaymentError","seq":0,"kind":"extends","range":[34,39],"text":"Error","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/errors.ts#PaymentError","seq":0,"kind":"extends","range":[34,39],"text":"Error","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/errors.ts#CardDeclinedError","seq":0,"kind":"extends","range":[141,153],"text":"PaymentError","outcome":"project","to":"ts/src/errors.ts#PaymentError"}
-{"t":"link","from":"ts/src/errors.ts#OutOfStockError","seq":0,"kind":"extends","range":[290,295],"text":"Error","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/errors.ts#OutOfStockError","seq":0,"kind":"extends","range":[290,295],"text":"Error","outcome":"builtin","to":"ecmascript"}
 {"t":"signature","node":"ts/src/errors.ts#PaymentError.constructor"}
 {"t":"signature","node":"ts/src/errors.ts#CardDeclinedError.constructor"}
 {"t":"parameter","node":"ts/src/errors.ts#PaymentError.constructor","index":0,"range":[56,71],"kind":"positional","name":"message","type":"string","type_range":[65,71]}
@@ -44,9 +44,9 @@
 {"t":"argument","call":"ts/src/errors.ts#CardDeclinedError.constructor/call:super","index":0,"range":[214,243],"parameter":0}
 {"t":"node","key":"ts/src/inventory.ts#Hold","parent":"ts/src/inventory.ts#","kind":"type","form":"interface","name":"Hold","range":[91,170],"lines":[4,8],"head":[98,112],"body":[113,170],"stmt":[91,170]}
 {"t":"link","from":"ts/src/inventory.ts#Hold","seq":0,"kind":"types","range":[138,146],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
-{"t":"link","from":"ts/src/inventory.ts#Hold","seq":1,"kind":"types","range":[163,167],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/inventory.ts#Hold","seq":1,"kind":"types","range":[163,167],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/inventory.ts#reserveInventory","seq":0,"kind":"types","range":[218,226],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
-{"t":"link","from":"ts/src/inventory.ts#reserveInventory","seq":1,"kind":"types","range":[231,238],"text":"Promise","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/inventory.ts#reserveInventory","seq":1,"kind":"types","range":[231,238],"text":"Promise","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/inventory.ts#reserveInventory","seq":2,"kind":"types","range":[239,243],"text":"Hold","outcome":"project","to":"ts/src/inventory.ts#Hold"}
 {"t":"signature","node":"ts/src/inventory.ts#reserveInventory","returns":"Promise<Hold>","returns_range":[231,244]}
 {"t":"signature","node":"ts/src/inventory.ts#first","returns":"T | undefined","returns_range":[410,423]}
@@ -69,7 +69,7 @@
 {"t":"link","from":"ts/src/orders/create.ts#Request","seq":0,"kind":"types","range":[510,514],"text":"User","outcome":"project","to":"ts/src/user.ts#User"}
 {"t":"link","from":"ts/src/orders/create.ts#Request","seq":1,"kind":"types","range":[532,536],"text":"Cart","outcome":"project","to":"ts/src/cart.ts#Cart"}
 {"t":"link","from":"ts/src/orders/create.ts#createOrder","seq":0,"kind":"types","range":[582,589],"text":"Request","outcome":"project","to":"ts/src/orders/create.ts#Request"}
-{"t":"link","from":"ts/src/orders/create.ts#createOrder","seq":1,"kind":"types","range":[592,599],"text":"Promise","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/orders/create.ts#createOrder","seq":1,"kind":"types","range":[592,599],"text":"Promise","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/orders/create.ts#createOrder","seq":2,"kind":"types","range":[600,605],"text":"Order","outcome":"project","to":"ts/src/orders/create.ts#Order"}
 {"t":"link","from":"ts/src/orders/create.ts#toOrder","seq":0,"kind":"types","range":[893,897],"text":"Cart","outcome":"project","to":"ts/src/cart.ts#Cart"}
 {"t":"link","from":"ts/src/orders/create.ts#toOrder","seq":1,"kind":"types","range":[934,939],"text":"Order","outcome":"project","to":"ts/src/orders/create.ts#Order"}
@@ -132,12 +132,12 @@
 {"t":"node","key":"ts/src/orders/model.ts#Shipment","parent":"ts/src/orders/model.ts#","kind":"type","form":"interface","name":"Shipment","range":[661,750],"lines":[27,29],"head":[668,724],"body":[725,750],"stmt":[661,750]}
 {"t":"node","key":"ts/src/orders/model.ts#Auditable","parent":"ts/src/orders/model.ts#","kind":"type","form":"interface","name":"Auditable","range":[799,851],"lines":[35,37],"head":[806,825],"body":[826,851],"stmt":[799,851]}
 {"t":"link","from":"ts/src/orders/model.ts#Tracked","seq":0,"kind":"extends","range":[175,186],"text":"Timestamped","outcome":"project","to":"ts/src/orders/model.ts#Timestamped"}
-{"t":"link","from":"ts/src/orders/model.ts#Tracked","seq":1,"kind":"types","range":[187,191],"text":"Date","outcome":"library","to":"global"}
-{"t":"link","from":"ts/src/orders/model.ts#Tracked","seq":2,"kind":"types","range":[209,213],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/orders/model.ts#Tracked","seq":1,"kind":"types","range":[187,191],"text":"Date","outcome":"builtin","to":"ecmascript"}
+{"t":"link","from":"ts/src/orders/model.ts#Tracked","seq":2,"kind":"types","range":[209,213],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/orders/model.ts#OrderDraft","seq":0,"kind":"types","range":[328,336],"text":"CartItem","outcome":"project","to":"ts/src/cart.ts#CartItem"}
 {"t":"link","from":"ts/src/orders/model.ts#Order","seq":0,"kind":"extends","range":[464,474],"text":"OrderDraft","outcome":"project","to":"ts/src/orders/model.ts#OrderDraft"}
 {"t":"link","from":"ts/src/orders/model.ts#Order","seq":1,"kind":"extends","range":[476,487],"text":"Timestamped","outcome":"project","to":"ts/src/orders/model.ts#Timestamped"}
-{"t":"link","from":"ts/src/orders/model.ts#Order","seq":2,"kind":"types","range":[488,492],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/orders/model.ts#Order","seq":2,"kind":"types","range":[488,492],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/orders/model.ts#Order","seq":3,"kind":"extends","range":[495,502],"text":"Tracked","outcome":"project","to":"ts/src/orders/model.ts#Tracked"}
 {"t":"link","from":"ts/src/orders/model.ts#Shipment","seq":0,"kind":"extends","range":[695,702],"text":"Address","outcome":"unknown","to":"ambiguous"}
 {"t":"link","from":"ts/src/orders/model.ts#Shipment","seq":1,"kind":"extends","range":[704,724],"text":"Stripe.MetadataParam","outcome":"library","to":"stripe"}
@@ -164,7 +164,7 @@
 {"t":"link","from":"ts/src/payments.ts#Charge","seq":1,"kind":"types","range":[231,251],"text":"Stripe.PaymentIntent","outcome":"library","to":"stripe"}
 {"t":"link","from":"ts/src/payments.ts#chargePayment","seq":0,"kind":"types","range":[349,353],"text":"Cart","outcome":"project","to":"ts/src/cart.ts#Cart"}
 {"t":"link","from":"ts/src/payments.ts#chargePayment","seq":1,"kind":"types","range":[361,365],"text":"User","outcome":"project","to":"ts/src/user.ts#User"}
-{"t":"link","from":"ts/src/payments.ts#chargePayment","seq":2,"kind":"types","range":[368,375],"text":"Promise","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/payments.ts#chargePayment","seq":2,"kind":"types","range":[368,375],"text":"Promise","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/payments.ts#chargePayment","seq":3,"kind":"types","range":[376,382],"text":"Charge","outcome":"project","to":"ts/src/payments.ts#Charge"}
 {"t":"link","from":"ts/src/payments.ts#total","seq":0,"kind":"types","range":[660,664],"text":"Cart","outcome":"project","to":"ts/src/cart.ts#Cart"}
 {"t":"link","from":"ts/src/payments.ts#total","seq":1,"kind":"types","range":[667,672],"text":"Money","outcome":"project","to":"ts/src/cart.ts#Money"}
@@ -187,9 +187,9 @@
 {"t":"argument","call":"ts/src/payments.ts#total/return[0]/call:cart.items.reduce","index":1,"range":[751,752]}
 {"t":"node","key":"ts/src/user.ts#User","parent":"ts/src/user.ts#","kind":"type","form":"interface","name":"User","range":[0,77],"lines":[1,5],"head":[7,21],"body":[22,77],"stmt":[0,77]}
 {"t":"link","from":"ts/src/user.ts#User","seq":0,"kind":"types","range":[67,74],"text":"Address","outcome":"unknown","to":"ambiguous"}
-{"t":"link","from":"ts/src/user.ts#Session","seq":0,"kind":"types","range":[158,162],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/user.ts#Session","seq":0,"kind":"types","range":[158,162],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts/src/user.ts#Session.constructor","seq":0,"kind":"types","range":[210,214],"text":"User","outcome":"project","to":"ts/src/user.ts#User"}
-{"t":"link","from":"ts/src/user.ts#Session.isExpired","seq":0,"kind":"types","range":[277,281],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"ts/src/user.ts#Session.isExpired","seq":0,"kind":"types","range":[277,281],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"signature","node":"ts/src/user.ts#Session.constructor"}
 {"t":"signature","node":"ts/src/user.ts#Session.isExpired","returns":"boolean","returns_range":[284,291]}
 {"t":"parameter","node":"ts/src/user.ts#Session.constructor","index":0,"range":[197,214],"kind":"positional","name":"user","type":"User","type_range":[210,214]}

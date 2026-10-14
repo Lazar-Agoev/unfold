@@ -65,9 +65,11 @@ impl<'a> Binder<'a> {
         let separate = uses_outer_scope(&function.params, self.context).then_some(inner);
         self.parameters = self.parameter_set(outer_parameters, separate);
         self.formal_parameters(decl, &function.params);
-        let returns = self.annotation(function.return_type.as_deref());
-        if self.decl_mut(decl).returns.is_none() {
-            self.decl_mut(decl).returns = returns;
+        let (returns, awaits) = self.returns(function.return_type.as_deref(), function.r#async);
+        let declared = self.decl_mut(decl);
+        if declared.returns.is_none() {
+            declared.returns = returns;
+            declared.awaits = awaits;
         }
         self.parameters = outer_parameters;
         if let Some(body) = &function.body {

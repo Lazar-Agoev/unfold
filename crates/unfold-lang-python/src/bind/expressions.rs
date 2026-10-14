@@ -75,6 +75,8 @@ impl<'a> Builder<'a> {
                     parameters: Vec::new(),
                     first_parameter,
                     body,
+                    asynchronous: false,
+                    returns: None,
                 });
                 let node = self.node(kind, ctx);
                 self.interner.lambda(expr, node);

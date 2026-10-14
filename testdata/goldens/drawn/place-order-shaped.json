@@ -209,8 +209,8 @@
                       "to": "shop/store.py#mark_failed"
                     }
                   ],
-                  "library": 0,
-                  "unknown": 1
+                  "library": 1,
+                  "unknown": 0
                 }
               ]
             },

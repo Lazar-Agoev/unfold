@@ -137,7 +137,7 @@ fn heritage_names_are_bases_and_their_type_arguments_plain_links() {
     assert_eq!(bases("Ambient"), [], "an ambient class is no node");
     assert_eq!(bases("Qualified"), [("ns.Inner", Extends, false)]);
     resolved(link(&links, "ns.Inner"), "a.ts#ns.Inner");
-    external(link(&links, "Error"), "global");
+    builtin(link(&links, "Error"));
     unresolved(link(&links, "Missing"), Reason::UnknownName);
     assert_eq!(
         bases("made"),
@@ -173,6 +173,11 @@ fn resolved(link: &Link, target: &str) {
 #[track_caller]
 fn external(link: &Link, module: &str) {
     assert_eq!(outcome(&link.to), format!("library {module}"), "{link:?}");
+}
+
+#[track_caller]
+fn builtin(link: &Link) {
+    assert_eq!(outcome(&link.to), "builtin ecmascript", "{link:?}");
 }
 
 #[track_caller]
@@ -213,7 +218,7 @@ fn type_links_resolve_through_imports_namespaces_and_the_library() {
     unresolved(link(&links, "Merged"), Reason::Ambiguous);
     external(link(&links, "Stripe.PaymentIntent"), "stripe");
     external(link(&links, "Request"), "express");
-    external(link(&links, "Promise"), "global");
+    builtin(link(&links, "Promise"));
     external(link(&links, "Partial"), "global");
     external(link(&links, "NodeJS.Timeout"), "global");
     unresolved(link(&links, "Missing"), Reason::UnknownName);

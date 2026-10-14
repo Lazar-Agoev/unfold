@@ -20,9 +20,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use unfold_core::RepoPath;
 use unfold_core::validate::Census;
 use unfold_core::vocab::Language;
+use unfold_core::{ModuleLabel, RepoPath};
 use unfold_engine::evidence::{
     ClassShape, ConcreteTarget, Evidence, ExternalLocation, MemberFact, ModuleTarget, OriginDeclaration,
     Stability, ValueContext,
@@ -571,6 +571,11 @@ impl Linked for TypeScriptLinked<'_> {
 
     fn global_label(&self, _file: FileId) -> String {
         labels::GLOBAL.to_owned()
+    }
+
+    /// Exactly `ecmascript`.
+    fn is_builtin(&self, label: &ModuleLabel) -> bool {
+        label.as_str() == labels::ECMASCRIPT
     }
 
     fn inputs_read(&self) -> Vec<RepoPath> {

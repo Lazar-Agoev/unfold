@@ -1,7 +1,7 @@
 //! Fixed texts for the notices: the MIT license body for packages that ship no license file, the
 //! copyright lines of the ones Unfold names explicitly, and the components that come from neither
-//! Cargo nor the npm production tree (Electron and Chromium, `@types/node`, and the code the MCP
-//! SDK's published files carry: check its versions when the SDK is upgraded).
+//! Cargo nor the npm production tree (Electron and Chromium, `@types/node`, typeshed, and the code
+//! the MCP SDK's published files carry: check its versions when the SDK is upgraded).
 
 /// The MIT license after its copyright line.
 pub(super) const MIT_BODY: &str = "\
@@ -33,8 +33,12 @@ pub(super) const MIT_COPYRIGHTS: &[(&str, &str)] = &[
     ("napi", "Copyright (c) 2020 LongYinan"),
 ];
 
+/// typeshed's `LICENSE` at the commit `cargo xtask gen-py-stubs` reads (the Python front end's
+/// standard-library tables come from its stubs).
+pub(super) const TYPESHED_LICENSE: &str = include_str!("typeshed-LICENSE.txt");
+
 /// The explicit notices, in Markdown, before the generated lists. `{typescript_license}` is
-/// replaced by TypeScript's own `LICENSE.txt`.
+/// replaced by TypeScript's own `LICENSE.txt`, and `{typeshed_license}` by typeshed's `LICENSE`.
 pub(super) const EXPLICIT: &str = r#"## Notices for the main components
 
 **Electron and Chromium.** Unfold runs on Electron (MIT License, Copyright (c) Electron
@@ -124,5 +128,16 @@ from DefinitelyTyped). The tables hold names extracted from those files, not the
 Copyright (c) Microsoft Corporation.
 
 {mit_body}
+```
+
+**typeshed's standard-library stubs.** Unfold's tables of the Python standard library (its module
+names, and the functions, classes, and written types of eight modules) are generated from
+typeshed's `stdlib` stubs at commit `a205439338a4ad3debec1eeae7d300e3781c066d`, the copy bundled
+with Pyright 1.1.407 (Apache License 2.0, with parts under the MIT License, Copyright (c) 2015
+Jukka Lehtosalo and contributors). The tables hold names and types extracted from those files, not
+the files themselves.
+
+```text
+{typeshed_license}
 ```
 "#;

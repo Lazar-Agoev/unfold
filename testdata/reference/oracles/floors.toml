@@ -21,7 +21,7 @@ resolved = 3
 [[floor]]
 corpus = "py-orders"
 language = "python"
-matched = 91
+matched = 92
 resolved = 96
 poc = "91 of 96"
 
@@ -35,7 +35,7 @@ poc = "46 of 71"
 [[floor]]
 corpus = "mixed-playground"
 language = "python"
-matched = 91
+matched = 92
 resolved = 96
 poc = "91 of 96"
 
@@ -58,14 +58,14 @@ poc = "185 of 232"
 [[floor]]
 corpus = "typescript-6.0.3-src-upstream"
 language = "typescript"
-matched = 68590
-resolved = 71519
+matched = 69151
+resolved = 71517
 
 [[floor]]
 corpus = "typescript-6.0.3-src"
 language = "typescript"
-matched = 70720
-resolved = 73649
+matched = 71281
+resolved = 73647
 poc = "96.0% (70,717 of 73,649)"
 
 # The proof of concept measured 4,440 of 4,440 in place, with its TypeScript fork's declarations

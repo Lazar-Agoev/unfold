@@ -380,7 +380,7 @@ impl<'a> Program<'a> {
             return None;
         };
         let value = self.writes[*write as usize].value?;
-        let ExprKind::Sequence(items) = &self.expr(value)?.kind else {
+        let ExprKind::Sequence { items, .. } = &self.expr(value)?.kind else {
             return None;
         };
         items

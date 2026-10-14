@@ -139,14 +139,14 @@
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.insert","seq":1,"kind":"types","range":[218,223],"text":"Order","outcome":"project","to":"src/orders_playground/types.py#Order"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.insert/if[0]/then/raise[0]/call:ValueError","seq":0,"kind":"calls","range":[283,293],"text":"ValueError","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.find","seq":0,"kind":"types","range":[410,413],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.find/return[0]/call:self.orders.get","seq":0,"kind":"calls","range":[449,464],"text":"self.orders.get","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.find/return[0]/call:self.orders.get","seq":0,"kind":"calls","range":[449,464],"text":"self.orders.get","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.list","seq":0,"kind":"types","range":[498,502],"text":"list","outcome":"unknown","to":"not_concrete"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.list","seq":1,"kind":"types","range":[504,509],"text":"Order","outcome":"project","to":"src/orders_playground/types.py#Order"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.list/return[0]/call:list","seq":0,"kind":"calls","range":[528,532],"text":"list","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.list/return[0]/call:list/call:self.orders.values","seq":0,"kind":"calls","range":[533,551],"text":"self.orders.values","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.list/return[0]/call:list/call:self.orders.values","seq":0,"kind":"calls","range":[533,551],"text":"self.orders.values","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.remove","seq":0,"kind":"types","range":[587,590],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.remove","seq":1,"kind":"types","range":[595,599],"text":"bool","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.remove/return[0]/call:self.orders.pop","seq":0,"kind":"calls","range":[616,631],"text":"self.orders.pop","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.remove/return[0]/call:self.orders.pop","seq":0,"kind":"calls","range":[616,631],"text":"self.orders.pop","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.cancel","seq":0,"kind":"types","range":[692,695],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/db/repository.py#OrderRepository.cancel/call:self.find","seq":0,"kind":"calls","range":[732,741],"text":"self.find","outcome":"project","to":"src/orders_playground/db/repository.py#OrderRepository.find","bound":1}
 {"t":"signature","node":"src/orders_playground/db/repository.py#OrderRepository.__init__"}
@@ -254,8 +254,8 @@
 {"t":"link","from":"src/orders_playground/features/control.py#","seq":2,"kind":"imports","range":[100,102],"text":"io","outcome":"library","to":"python:io"}
 {"t":"link","from":"src/orders_playground/features/control.py#normalize","seq":0,"kind":"types","range":[142,145],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#normalize","seq":1,"kind":"types","range":[150,153],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/features/control.py#normalize/return[0]/call:value.strip().upper","seq":0,"kind":"calls","range":[166,185],"text":"value.strip().upper","outcome":"unknown","to":"unknown_receiver"}
-{"t":"link","from":"src/orders_playground/features/control.py#normalize/return[0]/call:value.strip().upper/call:value.strip","seq":0,"kind":"calls","range":[166,177],"text":"value.strip","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/control.py#normalize/return[0]/call:value.strip().upper","seq":0,"kind":"calls","range":[166,185],"text":"value.strip().upper","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"src/orders_playground/features/control.py#normalize/return[0]/call:value.strip().upper/call:value.strip","seq":0,"kind":"calls","range":[166,177],"text":"value.strip","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#records","seq":0,"kind":"types","range":[210,214],"text":"list","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#records","seq":1,"kind":"types","range":[215,218],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#records","seq":2,"kind":"types","range":[224,232],"text":"Iterator","outcome":"library","to":"python:collections"}
@@ -279,10 +279,10 @@
 {"t":"link","from":"src/orders_playground/features/control.py#scan/comprehension[2]/body/call:normalize","seq":0,"kind":"calls","range":[544,553],"text":"normalize","outcome":"project","to":"src/orders_playground/features/control.py#normalize","bound":0}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/call:tuple","seq":0,"kind":"calls","range":[597,602],"text":"tuple","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/call:tuple/comprehension[0]/body/call:normalize","seq":0,"kind":"calls","range":[603,612],"text":"normalize","outcome":"project","to":"src/orders_playground/features/control.py#normalize","bound":0}
-{"t":"link","from":"src/orders_playground/features/control.py#scan/for[0]/else/call:cleaned.append","seq":0,"kind":"calls","range":[780,794],"text":"cleaned.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/control.py#scan/for[0]/else/call:cleaned.append","seq":0,"kind":"calls","range":[780,794],"text":"cleaned.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/except[0]","seq":0,"kind":"types","range":[854,864],"text":"IndexError","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/except[0]/call:cleaned.append","seq":0,"kind":"calls","range":[874,888],"text":"cleaned.append","outcome":"unknown","to":"unknown_receiver"}
-{"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append","seq":0,"kind":"calls","range":[916,930],"text":"cleaned.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/except[0]/call:cleaned.append","seq":0,"kind":"calls","range":[874,888],"text":"cleaned.append","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append","seq":0,"kind":"calls","range":[916,930],"text":"cleaned.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append/call:first.lower","seq":0,"kind":"calls","range":[931,942],"text":"first.lower","outcome":"unknown","to":"dynamic"}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/with[0]/call:StringIO","seq":0,"kind":"calls","range":[1000,1008],"text":"StringIO","outcome":"library","to":"python:io"}
 {"t":"link","from":"src/orders_playground/features/control.py#scan/with[0]/body/call:source.readline().strip","seq":0,"kind":"calls","range":[1053,1076],"text":"source.readline().strip","outcome":"unknown","to":"unknown_receiver"}
@@ -300,7 +300,7 @@
 {"t":"link","from":"src/orders_playground/features/control.py#collect","seq":1,"kind":"types","range":[1585,1588],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/control.py#collect/with[0]/call:resource","seq":0,"kind":"calls","range":[1623,1631],"text":"resource","outcome":"unknown","to":"wrapper"}
 {"t":"link","from":"src/orders_playground/features/control.py#collect/with[0]/body/for[0]/call:async_records","seq":0,"kind":"calls","range":[1671,1684],"text":"async_records","outcome":"project","to":"src/orders_playground/features/control.py#async_records","bound":0}
-{"t":"link","from":"src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then/call:results.append","seq":0,"kind":"calls","range":[1734,1748],"text":"results.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then/call:results.append","seq":0,"kind":"calls","range":[1734,1748],"text":"results.append","outcome":"builtin","to":"python:builtins"}
 {"t":"signature","node":"src/orders_playground/features/control.py#normalize","returns":"str","returns_range":[150,153]}
 {"t":"signature","node":"src/orders_playground/features/control.py#records","returns":"Iterator[str]","returns_range":[224,237]}
 {"t":"signature","node":"src/orders_playground/features/control.py#scan","returns":"tuple[list[str], dict[str, str], set[str], tuple[str, ...]]","returns_range":[328,387]}
@@ -400,8 +400,8 @@
 {"t":"link","from":"src/orders_playground/features/decorators.py#/call:cache","seq":0,"kind":"calls","range":[496,501],"text":"cache","outcome":"library","to":"python:functools"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku","seq":0,"kind":"types","range":[527,530],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku","seq":1,"kind":"types","range":[535,538],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper","seq":0,"kind":"calls","range":[551,570],"text":"value.strip().upper","outcome":"unknown","to":"unknown_receiver"}
-{"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper/call:value.strip","seq":0,"kind":"calls","range":[551,562],"text":"value.strip","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper","seq":0,"kind":"calls","range":[551,570],"text":"value.strip().upper","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper/call:value.strip","seq":0,"kind":"calls","range":[551,562],"text":"value.strip","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#/call:overload","seq":0,"kind":"calls","range":[576,584],"text":"overload","outcome":"library","to":"python:typing"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#stringify","seq":0,"kind":"types","range":[606,609],"text":"int","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#stringify","seq":1,"kind":"types","range":[614,617],"text":"str","outcome":"builtin","to":"python:builtins"}
@@ -437,7 +437,7 @@
 {"t":"link","from":"src/orders_playground/features/decorators.py#examples","seq":2,"kind":"types","range":[1366,1369],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/features/decorators.py#examples/call:Labels.from_text","seq":0,"kind":"calls","range":[1385,1401],"text":"Labels.from_text","outcome":"project","to":"src/orders_playground/features/decorators.py#Labels.from_text","bound":1}
 {"t":"link","from":"src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label","seq":0,"kind":"calls","range":[1451,1464],"text":"invoice_label","outcome":"unknown","to":"wrapper"}
-{"t":"link","from":"src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label/call:labels.name","seq":0,"kind":"calls","range":[1465,1476],"text":"labels.name","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label/call:labels.name","seq":0,"kind":"calls","range":[1465,1476],"text":"labels.name","outcome":"project","to":"src/orders_playground/features/decorators.py#Labels.name","bound":1}
 {"t":"link","from":"src/orders_playground/features/decorators.py#examples/return[0]/call:stringify","seq":0,"kind":"calls","range":[1481,1490],"text":"stringify","outcome":"project","to":"src/orders_playground/features/decorators.py#stringify[2]","bound":0}
 {"t":"signature","node":"src/orders_playground/features/decorators.py#traced","returns":"Callable","returns_range":[156,164]}
 {"t":"signature","node":"src/orders_playground/features/decorators.py#traced.decorate","returns":"Callable","returns_range":[200,208]}
@@ -723,9 +723,9 @@
 {"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/call:order_service.list","seq":0,"kind":"calls","range":[341,359],"text":"order_service.list","outcome":"project","to":"src/orders_playground/services/order_service.py#OrderService.list","bound":1}
 {"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/call:datetime.fromisoformat","seq":0,"kind":"calls","range":[384,406],"text":"datetime.fromisoformat","outcome":"library","to":"python:datetime"}
 {"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0]/then/call:order_service.cancel","seq":0,"kind":"calls","range":[513,533],"text":"order_service.cancel","outcome":"project","to":"src/orders_playground/services/order_service.py#OrderService.cancel","bound":1}
-{"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then/call:expired.append","seq":0,"kind":"calls","range":[627,641],"text":"expired.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then/call:expired.append","seq":0,"kind":"calls","range":[627,641],"text":"expired.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then/call:order_service.remove","seq":0,"kind":"calls","range":[701,721],"text":"order_service.remove","outcome":"project","to":"src/orders_playground/services/order_service.py#OrderService.remove","bound":1}
-{"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then/call:order_service.remove/call:expired.pop","seq":0,"kind":"calls","range":[722,733],"text":"expired.pop","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then/call:order_service.remove/call:expired.pop","seq":0,"kind":"calls","range":[722,733],"text":"expired.pop","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:logger.info","seq":0,"kind":"calls","range":[767,778],"text":"logger.info","outcome":"project","to":"src/orders_playground/lib/logger.py#Logger.info","bound":1}
 {"t":"signature","node":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders","returns":"int","returns_range":[169,172]}
 {"t":"argument","call":"src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/call:datetime.now","index":0,"range":[208,220]}
@@ -779,7 +779,7 @@
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders","seq":3,"kind":"types","range":[223,226],"text":"int","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders","seq":4,"kind":"types","range":[431,435],"text":"list","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders","seq":5,"kind":"types","range":[436,445],"text":"Exception","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/with[0]/call:Path().open","seq":0,"kind":"calls","range":[238,253],"text":"Path(path).open","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/with[0]/call:Path().open","seq":0,"kind":"calls","range":[238,253],"text":"Path(path).open","outcome":"library","to":"python:pathlib"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/with[0]/call:Path().open/call:Path","seq":0,"kind":"calls","range":[238,242],"text":"Path","outcome":"library","to":"python:pathlib"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body/call:json.load","seq":0,"kind":"calls","range":[300,309],"text":"json.load","outcome":"library","to":"python:json"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then/call:isinstance","seq":0,"kind":"calls","range":[329,339],"text":"isinstance","outcome":"builtin","to":"python:builtins"}
@@ -789,7 +789,7 @@
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/body/call:order_service.place","seq":0,"kind":"calls","range":[579,598],"text":"order_service.place","outcome":"project","to":"src/orders_playground/services/order_service.py#OrderService.place","bound":1}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]","seq":0,"kind":"types","range":[621,631],"text":"ValueError","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:logger.error","seq":0,"kind":"calls","range":[654,666],"text":"logger.error","outcome":"project","to":"src/orders_playground/lib/logger.py#Logger.error","bound":1}
-{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:failures.append","seq":0,"kind":"calls","range":[723,738],"text":"failures.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:failures.append","seq":0,"kind":"calls","range":[723,738],"text":"failures.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/call:len","seq":0,"kind":"calls","range":[835,838],"text":"len","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/call:logger.info","seq":0,"kind":"calls","range":[854,865],"text":"logger.info","outcome":"project","to":"src/orders_playground/lib/logger.py#Logger.info","bound":1}
 {"t":"link","from":"src/orders_playground/jobs/import_orders.py#import_orders/if[1]/then/raise[0]/call:ExceptionGroup","seq":0,"kind":"calls","range":[933,947],"text":"ExceptionGroup","outcome":"unknown","to":"unknown_name"}
@@ -893,10 +893,10 @@
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email","seq":1,"kind":"types","range":[122,125],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email","seq":2,"kind":"types","range":[127,130],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/if[0]/then/raise[0]/call:ValueError","seq":0,"kind":"calls","range":[189,199],"text":"ValueError","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:outbox.append","seq":0,"kind":"calls","range":[234,247],"text":"outbox.append","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:outbox.append","seq":0,"kind":"calls","range":[234,247],"text":"outbox.append","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:sleep","seq":0,"kind":"calls","range":[261,266],"text":"sleep","outcome":"library","to":"python:time"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:logger.info","seq":0,"kind":"calls","range":[278,289],"text":"logger.info","outcome":"project","to":"src/orders_playground/lib/logger.py#Logger.info","bound":1}
-{"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:outbox.remove","seq":0,"kind":"calls","range":[322,335],"text":"outbox.remove","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/jobs/send_email.py#send_email/call:outbox.remove","seq":0,"kind":"calls","range":[322,335],"text":"outbox.remove","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#flush_outbox/for[0]/call:list","seq":0,"kind":"calls","range":[394,398],"text":"list","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/jobs/send_email.py#flush_outbox/for[0]/body/call:send_email","seq":0,"kind":"calls","range":[416,426],"text":"send_email","outcome":"project","to":"src/orders_playground/jobs/send_email.py#send_email","bound":0}
 {"t":"signature","node":"src/orders_playground/jobs/send_email.py#send_email","returns":"None","returns_range":[136,140]}
@@ -1582,10 +1582,10 @@
 {"t":"link","from":"src/orders_playground/services/events.py#Events.on","seq":1,"kind":"types","range":[179,187],"text":"Callable","outcome":"library","to":"python:collections"}
 {"t":"link","from":"src/orders_playground/services/events.py#Events.on","seq":2,"kind":"types","range":[189,194],"text":"Order","outcome":"project","to":"src/orders_playground/types.py#Order"}
 {"t":"link","from":"src/orders_playground/services/events.py#Events.on/call:subscriptions.setdefault().append","seq":0,"kind":"calls","range":[221,262],"text":"subscriptions.setdefault(name, []).append","outcome":"unknown","to":"unknown_receiver"}
-{"t":"link","from":"src/orders_playground/services/events.py#Events.on/call:subscriptions.setdefault().append/call:subscriptions.setdefault","seq":0,"kind":"calls","range":[221,245],"text":"subscriptions.setdefault","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/services/events.py#Events.on/call:subscriptions.setdefault().append/call:subscriptions.setdefault","seq":0,"kind":"calls","range":[221,245],"text":"subscriptions.setdefault","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/services/events.py#Events.emit","seq":0,"kind":"types","range":[298,301],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/services/events.py#Events.emit","seq":1,"kind":"types","range":[312,317],"text":"Order","outcome":"project","to":"src/orders_playground/types.py#Order"}
-{"t":"link","from":"src/orders_playground/services/events.py#Events.emit/for[0]/call:subscriptions.get","seq":0,"kind":"calls","range":[351,368],"text":"subscriptions.get","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/services/events.py#Events.emit/for[0]/call:subscriptions.get","seq":0,"kind":"calls","range":[351,368],"text":"subscriptions.get","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/services/events.py#Events.emit/for[0]/body/call:handler","seq":0,"kind":"calls","range":[392,399],"text":"handler","outcome":"unknown","to":"not_concrete"}
 {"t":"link","from":"src/orders_playground/services/events.py#/call:Events","seq":0,"kind":"calls","range":[420,426],"text":"Events","outcome":"project","to":"src/orders_playground/services/events.py#Events"}
 {"t":"signature","node":"src/orders_playground/services/events.py#Events.on","returns":"None","returns_range":[207,211]}
@@ -1706,7 +1706,7 @@
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge","seq":0,"kind":"calls","range":[607,627],"text":"self.payments.charge","outcome":"unknown","to":"overridden"}
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:str","seq":0,"kind":"calls","range":[687,690],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4","seq":0,"kind":"calls","range":[691,696],"text":"uuid4","outcome":"library","to":"python:uuid"}
-{"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat","seq":0,"kind":"calls","range":[756,792],"text":"datetime.now(timezone.utc).isoformat","outcome":"unknown","to":"unknown_receiver"}
+{"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat","seq":0,"kind":"calls","range":[756,792],"text":"datetime.now(timezone.utc).isoformat","outcome":"library","to":"python:datetime"}
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat/call:datetime.now","seq":0,"kind":"calls","range":[756,768],"text":"datetime.now","outcome":"library","to":"python:datetime"}
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert","seq":0,"kind":"calls","range":[814,830],"text":"self.repo.insert","outcome":"project","to":"src/orders_playground/db/repository.py#OrderRepository.insert","bound":1}
 {"t":"link","from":"src/orders_playground/services/order_service.py#OrderService.place/call:events.emit","seq":0,"kind":"calls","range":[846,857],"text":"events.emit","outcome":"project","to":"src/orders_playground/services/events.py#Events.emit","bound":1}

@@ -1,6 +1,6 @@
 {"t":"node","key":"a.ts#plain/return[0]/call:Promise.resolve","parent":"a.ts#plain/return[0]","kind":"call","form":"call","name":"Promise.resolve","range":[216,233],"lines":[3,3],"head":[216,231],"flags":["exit_value"]}
-{"t":"link","from":"a.ts#plain","seq":0,"kind":"types","range":[175,180],"text":"Array","outcome":"library","to":"global"}
-{"t":"link","from":"a.ts#plain","seq":1,"kind":"types","range":[191,198],"text":"Promise","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#plain","seq":0,"kind":"types","range":[175,180],"text":"Array","outcome":"builtin","to":"ecmascript"}
+{"t":"link","from":"a.ts#plain","seq":1,"kind":"types","range":[191,198],"text":"Promise","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"a.ts#withThis","seq":0,"kind":"types","range":[261,272],"text":"HTMLElement","outcome":"library","to":"global"}
 {"t":"link","from":"a.ts#withThis","seq":1,"kind":"types","range":[281,286],"text":"Event","outcome":"library","to":"global"}
 {"t":"signature","node":"a.ts#plain","returns":"Promise<void>","returns_range":[191,204]}

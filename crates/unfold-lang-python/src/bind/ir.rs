@@ -149,6 +149,22 @@ pub struct FunctionFact {
     pub first_parameter: Option<NameId>,
     /// The body scope.
     pub body: ScopeId,
+    /// Whether it is an `async def`.
+    pub asynchronous: bool,
+    /// Its return annotation, when it is written in one of the forms a call's value is read
+    /// from.
+    pub returns: Option<ReturnFact>,
+}
+
+/// A return annotation that names one class: `-> Repo`, `-> "Repo"`, `-> Repo | None`, or
+/// `-> Optional[Repo]` (the class a name or member chain, or a quoted dotted name).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnFact {
+    /// The class's name or member chain (synthesized for a quoted name), in the annotation's
+    /// scope.
+    pub class: ExprId,
+    /// For `Optional[…]`, the subscript's value, which linking proves is `typing.Optional`.
+    pub optional: Option<ExprId>,
 }
 
 /// A `class`.
@@ -218,18 +234,46 @@ pub enum ExprKind {
     Await(ExprId),
     /// `a if test else b`.
     Ternary,
-    /// A plain string literal (bytes and f-strings are [`ExprKind::Other`]).
+    /// A plain string literal (bytes and f-strings are [`ExprKind::Literal`]).
     Str(NameId),
     /// A list or tuple display.
-    Sequence(Vec<ExprId>),
+    Sequence {
+        /// Its items.
+        items: Vec<ExprId>,
+        /// Whether it is a tuple display (else a list display).
+        tuple: bool,
+    },
     /// A dict display's values (and `**` expansions).
     Dict(Vec<ExprId>),
+    /// Any other literal or display, by the builtin class it makes.
+    Literal(Literal),
     /// A lambda.
     Lambda(NodeId),
     /// An outer level of a chained assignment, whose value is the next level's value.
     Chain(ExprId),
     /// Anything else.
     Other,
+}
+
+/// A literal or display with no shape of its own in [`ExprKind`], by the builtin class it makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Literal {
+    /// An f-string.
+    Str,
+    /// A bytes literal.
+    Bytes,
+    /// An integer literal.
+    Int,
+    /// A floating-point literal.
+    Float,
+    /// An imaginary literal.
+    Complex,
+    /// A list comprehension.
+    List,
+    /// A set display or comprehension.
+    Set,
+    /// A dict comprehension.
+    Dict,
 }
 
 /// How a write binds.
@@ -386,6 +430,9 @@ impl BindFacts {
                                 && function.parameters.iter().all(|&id| node(id))
                                 && function.first_parameter.is_none_or(name)
                                 && scope(function.body)
+                                && function.returns.is_none_or(|returns| {
+                                    expr(returns.class) && returns.optional.is_none_or(expr)
+                                })
                         }
                         NodeKind::Class(class) => {
                             name(class.name)
@@ -417,9 +464,11 @@ impl BindFacts {
                         } => expr(*callee) && arguments.iter().all(argument) && function.is_none_or(node),
                         ExprKind::Index { base, key } => expr(*base) && key.is_none_or(name),
                         ExprKind::Await(id) | ExprKind::Chain(id) => expr(*id),
-                        ExprKind::Sequence(items) | ExprKind::Dict(items) => items.iter().all(|&id| expr(id)),
+                        ExprKind::Sequence { items, .. } | ExprKind::Dict(items) => {
+                            items.iter().all(|&id| expr(id))
+                        }
                         ExprKind::Lambda(id) => node(*id),
-                        ExprKind::Ternary | ExprKind::Other => true,
+                        ExprKind::Ternary | ExprKind::Literal(_) | ExprKind::Other => true,
                     }
             })
             && self.writes.iter().all(|write| {

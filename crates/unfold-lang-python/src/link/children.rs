@@ -143,7 +143,7 @@ impl Binder<'_> {
                         out.push((origin, member));
                     }
                 }
-                Some(ExprKind::Sequence(items)) => {
+                Some(ExprKind::Sequence { items, .. }) => {
                     pending.extend(items.iter().map(|&item| ExprRef { file, expr: item }));
                 }
                 _ => {}

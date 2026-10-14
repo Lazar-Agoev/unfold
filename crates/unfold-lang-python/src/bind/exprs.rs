@@ -7,10 +7,10 @@
 
 use std::borrow::Cow;
 
-use ruff_python_ast::{ArgOrKeyword, Expr};
+use ruff_python_ast::{ArgOrKeyword, Expr, Number};
 use rustc_hash::FxHashMap;
 
-use super::ir::{Argument, ExprFact, ExprId, ExprKind, NameId, NodeId, ScopeId};
+use super::ir::{Argument, ExprFact, ExprId, ExprKind, Literal, NameId, NodeId, ScopeId};
 use crate::ast::{arguments, string_literal};
 use crate::lower::address;
 
@@ -149,18 +149,30 @@ impl<'a> Interner<'a> {
             Expr::StringLiteral(_) => {
                 string_literal(expr).map_or(ExprKind::Other, |text| ExprKind::Str(self.name(text)))
             }
-            Expr::List(list) => {
-                ExprKind::Sequence(list.elts.iter().map(|item| self.reserve(item, scope)).collect())
-            }
-            Expr::Tuple(tuple) => {
-                ExprKind::Sequence(tuple.elts.iter().map(|item| self.reserve(item, scope)).collect())
-            }
+            Expr::List(list) => ExprKind::Sequence {
+                items: list.elts.iter().map(|item| self.reserve(item, scope)).collect(),
+                tuple: false,
+            },
+            Expr::Tuple(tuple) => ExprKind::Sequence {
+                items: tuple.elts.iter().map(|item| self.reserve(item, scope)).collect(),
+                tuple: true,
+            },
             Expr::Dict(dict) => ExprKind::Dict(
                 dict.items
                     .iter()
                     .map(|item| self.reserve(&item.value, scope))
                     .collect(),
             ),
+            Expr::FString(_) => ExprKind::Literal(Literal::Str),
+            Expr::BytesLiteral(_) => ExprKind::Literal(Literal::Bytes),
+            Expr::NumberLiteral(number) => ExprKind::Literal(match number.value {
+                Number::Int(_) => Literal::Int,
+                Number::Float(_) => Literal::Float,
+                Number::Complex { .. } => Literal::Complex,
+            }),
+            Expr::ListComp(_) => ExprKind::Literal(Literal::List),
+            Expr::Set(_) | Expr::SetComp(_) => ExprKind::Literal(Literal::Set),
+            Expr::DictComp(_) => ExprKind::Literal(Literal::Dict),
             Expr::Lambda(_) => self
                 .lambdas
                 .get(&address(expr))

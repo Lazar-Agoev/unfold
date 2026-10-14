@@ -6,7 +6,7 @@ use.ts#run #3 types `B` → library client-b
 use.ts#run/call:a.send #0 calls `a.send` → library client-a
 use.ts#run/call:b.send #0 calls `b.send` → library client-b
 use.ts#run/call:both.send #0 calls `both.send` → unknown unknown_receiver
-use.ts#run/call:array.map #0 calls `array.map` → library global
+use.ts#run/call:array.map #0 calls `array.map` → builtin ecmascript
 use.ts#Derived #0 extends `B` → library client-b
 use.ts#Derived.execute/call:this.send #0 calls `this.send` → library client-b
 use.ts#Derived.execute/call:super.send #0 calls `super.send` → library client-b

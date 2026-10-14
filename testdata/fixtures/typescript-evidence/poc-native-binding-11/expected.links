@@ -1,7 +1,7 @@
 external.ts#/call:console.log #0 calls `console.log` → library global
-external.ts#/call:Math.max #0 calls `Math.max` → library global
-external.ts#/call:JSON.parse #0 calls `JSON.parse` → library global
-external.ts#/call:Promise.resolve #0 calls `Promise.resolve` → library global
-external.ts#/call:Map #0 calls `Map` → library global
+external.ts#/call:Math.max #0 calls `Math.max` → builtin ecmascript
+external.ts#/call:JSON.parse #0 calls `JSON.parse` → builtin ecmascript
+external.ts#/call:Promise.resolve #0 calls `Promise.resolve` → builtin ecmascript
+external.ts#/call:Map #0 calls `Map` → builtin ecmascript
 external.ts#/call:unknown.method #0 calls `unknown.method` → unknown unknown_receiver
 external.ts#/call:unknown #0 calls `unknown` → unknown unknown_name

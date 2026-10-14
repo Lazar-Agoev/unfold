@@ -1,9 +1,9 @@
 {"t":"node","key":"a.ts#/call:compute","parent":"a.ts#","kind":"call","form":"call","name":"compute","range":[499,508],"lines":[14,14],"head":[499,506]}
 {"t":"node","key":"a.ts#Model.constructor/call:super","parent":"a.ts#Model.constructor","kind":"call","form":"call","name":"super","range":[882,889],"lines":[28,28],"head":[882,887],"stmt":[882,890]}
-{"t":"link","from":"a.ts#Everything","seq":0,"kind":"types","range":[187,195],"text":"Iterator","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#Everything","seq":0,"kind":"types","range":[187,195],"text":"Iterator","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"a.ts#Everything","seq":1,"kind":"types","range":[313,323],"text":"Everything","outcome":"project","to":"a.ts#Everything"}
 {"t":"link","from":"a.ts#Model","seq":0,"kind":"extends","range":[566,570],"text":"Base","outcome":"unknown","to":"unknown_name"}
-{"t":"link","from":"a.ts#Model","seq":1,"kind":"types","range":[613,617],"text":"Date","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#Model","seq":1,"kind":"types","range":[613,617],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"a.ts#Model.constructor","seq":0,"kind":"types","range":[824,828],"text":"User","outcome":"unknown","to":"unknown_name"}
 {"t":"signature","node":"a.ts#Model.constructor"}
 {"t":"signature","node":"a.ts#Model.method","returns":"void","returns_range":[907,911]}

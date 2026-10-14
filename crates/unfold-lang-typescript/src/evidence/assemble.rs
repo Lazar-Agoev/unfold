@@ -134,8 +134,9 @@ impl TypeScriptLinked<'_> {
     /// The evidence for a written type name (a type reference fact): its first name's lookup in
     /// the type meaning (through type-only imports, namespace imports, and script globals), then
     /// each further name as a member in the type meaning. A name with no type declaration in
-    /// scope that is a library class, interface, or global type alias is external, at the
-    /// library, with an unindexed root (so it labels `global`).
+    /// scope that is a library class, interface, or global type alias is external with an
+    /// unindexed root: one of ECMAScript's own types is a builtin (labeled `ecmascript`), and
+    /// any other is at the library (so it labels `global`).
     pub(crate) fn type_facts(&self, reference: TypeName) -> Evidence {
         let file = reference.file;
         let Some(binding) = self.binding(file) else {
@@ -171,12 +172,14 @@ impl TypeScriptLinked<'_> {
             let qualified = names.join(".");
             let library = *lookup != Lookup::Dynamic
                 && (tables::is_library_type(&qualified) || tables::is_library_type_alias(&qualified));
-            let candidates = if library {
+            let candidates = if !library {
+                Vec::new()
+            } else if tables::is_ecmascript_type(&qualified) {
+                vec![Candidate::external(ExternalLocation::Builtin)]
+            } else {
                 vec![Candidate::external(super::receivers::library_location(
                     &qualified,
                 ))]
-            } else {
-                Vec::new()
             };
             return Evidence {
                 candidates: candidates.into_iter().collect(),

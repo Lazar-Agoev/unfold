@@ -5,7 +5,7 @@
 //! - the npm production dependencies of `desktop` and `ui`, which are bundled into the app, from
 //!   `pnpm licenses list` (type-only `@types/*` packages are left out);
 //! - explicit notices for Electron and Chromium, oxc, Ruff, napi-rs, and the TypeScript `lib` files
-//!   the generated tables come from.
+//!   and typeshed stubs the generated tables come from.
 //!
 //! Each package's own license files are reproduced, identical texts once. A package without one gets
 //! the standard text of its license. The output holds no paths or dates, so it is reproducible;
@@ -356,7 +356,8 @@ fn render(crates: &[Component], packages: &[Component], typescript_license: &str
     out.push_str(
         &texts::EXPLICIT
             .replace("{mit_body}", texts::MIT_BODY)
-            .replace("{typescript_license}", typescript_license),
+            .replace("{typescript_license}", typescript_license)
+            .replace("{typeshed_license}", texts::TYPESHED_LICENSE.trim_end()),
     );
 
     // Identical texts are printed once and numbered; tables point at their numbers.

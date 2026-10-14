@@ -136,7 +136,7 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
       "  ▸ orderService.place → order",
       "      ( place )",
       "        ▸ validateOrder → draft",
-      "        · this.payments.charge ?, randomUUID, (…).toISOString   3 calls, 1 unknown",
+      "        · this.payments.charge ?, randomUUID   2 calls, 1 unknown",
       "        ▸ this.repo.insert",
       "        ▸ events.emit",
       "        RETURN order → returns",

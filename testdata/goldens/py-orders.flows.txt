@@ -85,7 +85,7 @@
 
 === src/orders_playground/db/repository.py#OrderRepository.find
 ( find )   key=src/orders_playground/db/repository.py#OrderRepository.find
-  RETURN self.orders.get ? → End   key=src/orders_playground/db/repository.py#OrderRepository.find/return[0]
+  RETURN self.orders.get → End   key=src/orders_playground/db/repository.py#OrderRepository.find/return[0]
 ( End )
 
 === src/orders_playground/db/repository.py#OrderRepository.list
@@ -95,7 +95,6 @@
 
 === src/orders_playground/db/repository.py#OrderRepository.remove
 ( remove )   key=src/orders_playground/db/repository.py#OrderRepository.remove
-  · self.orders.pop ?   key=src/orders_playground/db/repository.py#OrderRepository.remove/return[0]/call:self.orders.pop
   RETURN self.orders.pop(order_id, None) is not None → End   key=src/orders_playground/db/repository.py#OrderRepository.remove/return[0]
 ( End )
 
@@ -118,7 +117,7 @@
 
 === src/orders_playground/features/control.py#normalize
 ( normalize )   key=src/orders_playground/features/control.py#normalize
-  RETURN value.strip().upper ? → End   key=src/orders_playground/features/control.py#normalize/return[0]
+  RETURN value.strip().upper → End   key=src/orders_playground/features/control.py#normalize/return[0]
 ( End )
 
 === src/orders_playground/features/control.py#records
@@ -144,13 +143,13 @@
       IF value == "SKIP"   key=src/orders_playground/features/control.py#scan/for[0]/body/if[1] src/orders_playground/features/control.py#scan/for[0]/body/if[1]/then
           CONTINUE → next   key=src/orders_playground/features/control.py#scan/for[0]/body/if[1]/then/continue[0]
   LOOP ELSE   key=src/orders_playground/features/control.py#scan/for[0]/else
-      · cleaned.append ?   key=src/orders_playground/features/control.py#scan/for[0]/else/call:cleaned.append
+      ⋯ 1 line
   TRY   key=src/orders_playground/features/control.py#scan/try[0] src/orders_playground/features/control.py#scan/try[0]/body
       ⋯ 1 line
   ON ERROR → except IndexError   key=src/orders_playground/features/control.py#scan/try[0]/except[0]
-      · cleaned.append ?   key=src/orders_playground/features/control.py#scan/try[0]/except[0]/call:cleaned.append
+      ⋯ 1 line
   ELSE   key=src/orders_playground/features/control.py#scan/try[0]/else
-      · cleaned.append ? + first.lower ?   key=src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append
+      · first.lower ?   key=src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append/call:first.lower
   FINALLY   key=src/orders_playground/features/control.py#scan/try[0]/finally
       ⋯ 1 line
   WITH with StringIO("a\nb") as source   key=src/orders_playground/features/control.py#scan/with[0] src/orders_playground/features/control.py#scan/with[0]/body
@@ -191,8 +190,7 @@
   ⋯ 1 line
   WITH async with resource() as state   key=src/orders_playground/features/control.py#collect/with[0] src/orders_playground/features/control.py#collect/with[0]/body
       LOOP async for value in async_records() · ▸ async_records   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0] src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body src/orders_playground/features/control.py#collect/with[0]/body/for[0]/call:async_records
-          IF state["open"]   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0] src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then
-              · results.append ?   key=src/orders_playground/features/control.py#collect/with[0]/body/for[0]/body/if[0]/then/call:results.append
+          ⋯ 2 lines · if
   RETURN results → End   key=src/orders_playground/features/control.py#collect/return[0]
 ( End )
 
@@ -229,7 +227,7 @@
 === src/orders_playground/features/decorators.py#normalize_sku
 ( normalize_sku )   key=src/orders_playground/features/decorators.py#normalize_sku
   runs when defined · @cache   key=src/orders_playground/features/decorators.py#/call:cache
-  RETURN value.strip().upper ? → End   key=src/orders_playground/features/decorators.py#normalize_sku/return[0]
+  RETURN value.strip().upper → End   key=src/orders_playground/features/decorators.py#normalize_sku/return[0]
 ( End )
 
 === src/orders_playground/features/decorators.py#stringify
@@ -304,7 +302,8 @@
 ( examples )   key=src/orders_playground/features/decorators.py#examples
   ▸ Labels.from_text → labels   key=src/orders_playground/features/decorators.py#examples/call:Labels.from_text
   ⋯ 1 line
-  · invoice_label ? + labels.name ?   key=src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label
+  ▸ labels.name · into invoice_label(…)   key=src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label/call:labels.name
+  · invoice_label ?   key=src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label
   ▸ stringify   key=src/orders_playground/features/decorators.py#examples/return[0]/call:stringify
   RETURN invoice_label(labels.name()), stringify(1) → End   key=src/orders_playground/features/decorators.py#examples/return[0]
 ( End )
@@ -480,8 +479,7 @@
       · datetime.fromisoformat → created_at   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/call:datetime.fromisoformat
       IF order["status"] == "pending" and created_at < expires_before   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0]/then
           ▸ order_service.cancel   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[0]/then/call:order_service.cancel
-      IF order["status"] != "paid" and created_at < purge_before   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then
-          · expired.append ?   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/for[0]/body/if[1]/then/call:expired.append
+      ⋯ 2 lines · if
   ⋯ 1 line
   LOOP while expired   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body
       IF order_service.remove(expired.pop()) · ▸ order_service.remove   key=src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0] src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then src/orders_playground/jobs/cleanup.py#cleanup_expired_orders/while[0]/body/if[0]/then/call:order_service.remove
@@ -508,7 +506,7 @@
           ▸ order_service.place   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/body/call:order_service.place
       ON ERROR → except ValueError as error   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]
           ▸ logger.error   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:logger.error
-          · failures.append ?   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/except[0]/call:failures.append
+          ⋯ 1 line
       ELSE   key=src/orders_playground/jobs/import_orders.py#import_orders/for[0]/body/try[0]/else
           ⋯ 1 line
   ⋯ 1 line
@@ -567,9 +565,10 @@
 ( send_email )   key=src/orders_playground/jobs/send_email.py#send_email
   IF "@" not in payload["to"]   key=src/orders_playground/jobs/send_email.py#send_email/if[0] src/orders_playground/jobs/send_email.py#send_email/if[0]/then
       RAISE ValueError → the caller   key=src/orders_playground/jobs/send_email.py#send_email/if[0]/then/raise[0]
-  · outbox.append ?, sleep   2 calls, 1 unknown   key=src/orders_playground/jobs/send_email.py#send_email/call:outbox.append src/orders_playground/jobs/send_email.py#send_email/call:sleep
+  ⋯ 1 line
+  · sleep   key=src/orders_playground/jobs/send_email.py#send_email/call:sleep
   ▸ logger.info   key=src/orders_playground/jobs/send_email.py#send_email/call:logger.info
-  · outbox.remove ?   key=src/orders_playground/jobs/send_email.py#send_email/call:outbox.remove
+  ⋯ 1 line
 ( End )
 
 === src/orders_playground/jobs/send_email.py#flush_outbox
@@ -990,7 +989,7 @@
 === src/orders_playground/services/order_service.py#OrderService.place
 ( place )   key=src/orders_playground/services/order_service.py#OrderService.place
   ▸ validate_order → draft   key=src/orders_playground/services/order_service.py#OrderService.place/call:validate_order
-  · self.payments.charge ?, uuid4, datetime.now().isoformat ?   3 calls, 2 unknown   key=src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4 src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat
+  · self.payments.charge ?, uuid4, datetime.now().isoformat   3 calls, 1 unknown   key=src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4 src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat
   ▸ self.repo.insert   key=src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert
   ▸ events.emit   key=src/orders_playground/services/order_service.py#OrderService.place/call:events.emit
   RETURN order → End   key=src/orders_playground/services/order_service.py#OrderService.place/return[0]

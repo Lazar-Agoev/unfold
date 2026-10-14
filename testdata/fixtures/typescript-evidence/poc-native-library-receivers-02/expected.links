@@ -1,8 +1,8 @@
-library-objects.ts#use #0 types `Map` → library global
-library-objects.ts#use #1 types `Set` → library global
-library-objects.ts#use #2 types `Date` → library global
-library-objects.ts#use #3 types `ReadonlyArray` → library global
-library-objects.ts#use/call:map.get #0 calls `map.get` → library global
-library-objects.ts#use/call:set.has #0 calls `set.has` → library global
-library-objects.ts#use/call:date.getTime #0 calls `date.getTime` → library global
-library-objects.ts#use/call:array.forEach #0 calls `array.forEach` → library global
+library-objects.ts#use #0 types `Map` → builtin ecmascript
+library-objects.ts#use #1 types `Set` → builtin ecmascript
+library-objects.ts#use #2 types `Date` → builtin ecmascript
+library-objects.ts#use #3 types `ReadonlyArray` → builtin ecmascript
+library-objects.ts#use/call:map.get #0 calls `map.get` → builtin ecmascript
+library-objects.ts#use/call:set.has #0 calls `set.has` → builtin ecmascript
+library-objects.ts#use/call:date.getTime #0 calls `date.getTime` → builtin ecmascript
+library-objects.ts#use/call:array.forEach #0 calls `array.forEach` → builtin ecmascript

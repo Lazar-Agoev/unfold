@@ -3,8 +3,8 @@
 //!
 //! | Expression | Target |
 //! | --- | --- |
-//! | Identifier | Its symbol's declarations; an import's target through the export tables; a script global of the configuration group; a known library global (external); otherwise nothing |
-//! | Property or literal-key access | A private name's members; else the receiver's class member (through bases); an external receiver's member; a `const` object literal's function member (C-2); else the receiver's namespace member |
+//! | Identifier | Its symbol's declarations; an import's target through the export tables; a script global of the configuration group; an ECMAScript global (a builtin) or another known library global (external); otherwise nothing |
+//! | Property or literal-key access | A private name's members; else a method of the receiver's ECMAScript type (a builtin); the receiver's class member (through bases); an external receiver's member; a `const` object literal's function member (C-2); else the receiver's namespace member |
 //! | `super` | The written base class |
 //! | `this` in a static member | The class |
 //! | Inline function or class | Itself |
@@ -383,6 +383,9 @@ impl TypeScriptLinked<'_> {
             Lookup::Unresolved | Lookup::Namespaced(_) => {
                 match self.unresolved(walk, file, name, lookup, Meanings::VALUE) {
                     Some(target) => target,
+                    None if tables::is_ecmascript_global(name) => {
+                        Target::external([ExternalLocation::Builtin])
+                    }
                     None if tables::is_known_global(name) => Target::external([ExternalLocation::Library]),
                     None => Target::default(),
                 }
@@ -557,6 +560,12 @@ impl TypeScriptLinked<'_> {
         }
         if receiver.excluded {
             return Target::excluded(receiver.locations);
+        }
+        if receiver
+            .builtin
+            .is_some_and(|builtin| tables::is_ecmascript_method(builtin, name))
+        {
+            return Target::external([ExternalLocation::Builtin]);
         }
         if let Some(class) = receiver.class {
             let member = self.lookup_member(walk, class, name, receiver.is_static);

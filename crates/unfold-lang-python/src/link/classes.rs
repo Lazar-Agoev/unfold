@@ -8,6 +8,7 @@
 //! builtin class follows every user class, so a member the user's classes define is found before
 //! anything the builtins could define; a lookup that reaches a builtin finds nothing.
 
+use std::hash::Hash;
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -463,12 +464,13 @@ fn builtins_last(mro: &[NodeRef]) -> bool {
     mro[first..].iter().all(|node| node.is_builtin())
 }
 
-/// The C3 merge of the bases' linearizations and the bases themselves. A candidate is the first
-/// head that appears in no list's tail; counting tail occurrences keeps the merge linear.
-fn merge(class: NodeRef, mros: Vec<Arc<[NodeRef]>>, bases: Vec<NodeRef>) -> Option<Vec<NodeRef>> {
-    let mut lists: Vec<Vec<NodeRef>> = mros.iter().map(|mro| mro.to_vec()).collect();
+/// The C3 merge of the bases' linearizations and the bases themselves (of user classes, or of
+/// the standard library's stub classes by name). A candidate is the first head that appears in
+/// no list's tail; counting tail occurrences keeps the merge linear.
+pub(crate) fn merge<T: Copy + Eq + Hash>(class: T, mros: Vec<Arc<[T]>>, bases: Vec<T>) -> Option<Vec<T>> {
+    let mut lists: Vec<Vec<T>> = mros.iter().map(|mro| mro.to_vec()).collect();
     lists.push(bases);
-    let mut tails: FxHashMap<NodeRef, u32> = FxHashMap::default();
+    let mut tails: FxHashMap<T, u32> = FxHashMap::default();
     for list in &lists {
         for &item in list.iter().skip(1) {
             *tails.entry(item).or_default() += 1;

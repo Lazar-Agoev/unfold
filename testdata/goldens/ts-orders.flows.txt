@@ -33,7 +33,6 @@
 
 === src/config.ts#
 ( src/config.ts )   key=src/config.ts#
-  · Number → PORT, Number   2 calls   key=src/config.ts#/call:Number src/config.ts#/call:Number[1]
 ( End )
 
 === src/db/connection.ts#
@@ -58,14 +57,14 @@
 
 === src/db/repository.ts#OrderRepository
 ( OrderRepository )   key=src/db/repository.ts#OrderRepository
-  · Map → orders   key=src/db/repository.ts#OrderRepository/call:Map
+  ⋯ 1 line
 ( End )
 
 === src/db/repository.ts#OrderRepository.insert
 ( insert )   key=src/db/repository.ts#OrderRepository.insert
   IF this.orders.has(order.id)   key=src/db/repository.ts#OrderRepository.insert/if[0] src/db/repository.ts#OrderRepository.insert/if[0]/then
       THROW Error → the caller   key=src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0]
-  · this.orders.set   key=src/db/repository.ts#OrderRepository.insert/call:this.orders.set
+  ⋯ 1 line
   RETURN order → End   key=src/db/repository.ts#OrderRepository.insert/return[0]
 ( End )
 
@@ -99,19 +98,16 @@
 === src/jobs/cleanup.ts#cleanupExpiredOrders
 ( cleanupExpiredOrders )   key=src/jobs/cleanup.ts#cleanupExpiredOrders
   ▸ orderService.list → orders   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:orderService.list
-  · Date.now   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:Date.now
-  ⋯ 2 lines
+  ⋯ 3 lines
   LOOP for (let index = 0; index < orders.length; index++)   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body
-      ⋯ 1 line
-      · Date.parse → createdAt   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/call:Date.parse
+      ⋯ 2 lines
       IF order.status === "pending" && createdAt < expiresBefore   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0]/then
           ▸ orderService.cancel   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[0]/then/call:orderService.cancel
-      IF order.status !== "paid" && createdAt < purgeBefore   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1] src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1]/then
-          · expired.push   key=src/jobs/cleanup.ts#cleanupExpiredOrders/for[0]/body/if[1]/then/call:expired.push
+      ⋯ 2 lines · if
   ⋯ 1 line
   IF expired.length > 0   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then
       DO   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body
-          · expired.pop → id   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/call:expired.pop
+          ⋯ 1 line
           IF orderService.remove(id) · ▸ orderService.remove   key=src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0] src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then src/jobs/cleanup.ts#cleanupExpiredOrders/if[0]/then/do[0]/body/if[0]/then/call:orderService.remove
       LOOP while (expired.length > 0)
   ▸ logger.info   key=src/jobs/cleanup.ts#cleanupExpiredOrders/call:logger.info
@@ -124,7 +120,7 @@
 
 === src/jobs/import-orders.ts#importOrders
 ( importOrders )   key=src/jobs/import-orders.ts#importOrders
-  · JSON.parse → input + readFile   key=src/jobs/import-orders.ts#importOrders/call:JSON.parse
+  · readFile   key=src/jobs/import-orders.ts#importOrders/call:JSON.parse/call:readFile
   IF !Array.isArray(input)   key=src/jobs/import-orders.ts#importOrders/if[0] src/jobs/import-orders.ts#importOrders/if[0]/then
       THROW Error → the caller   key=src/jobs/import-orders.ts#importOrders/if[0]/then/throw[0]
   ⋯ 2 lines
@@ -135,7 +131,7 @@
           ⋯ 1 line
       ON ERROR → catch (error)   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch
           ▸ logger.error   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch/call:logger.error
-          · failures.push   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/catch/call:failures.push
+          ⋯ 1 line
   ▸ logger.info   key=src/jobs/import-orders.ts#importOrders/call:logger.info
   IF failures.length > 0   key=src/jobs/import-orders.ts#importOrders/if[1] src/jobs/import-orders.ts#importOrders/if[1]/then
       THROW AggregateError → the caller   key=src/jobs/import-orders.ts#importOrders/if[1]/then/throw[0]
@@ -174,11 +170,11 @@
 === src/jobs/report.ts#reportMetrics
 ( reportMetrics )   key=src/jobs/report.ts#reportMetrics
   ▸ orderService.list → orders   key=src/jobs/report.ts#reportMetrics/call:orderService.list
-  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter
+  □ orders.filter · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter
       ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter/callback[0]
-  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]
+  □ orders.filter · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]
       ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[1]/callback[0]
-  □ orders.filter ? · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]
+  □ orders.filter · into logger.info(…)   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]
       ↳ callback (order) =>   key=src/jobs/report.ts#reportMetrics/call:logger.info/call:orders.filter[2]/callback[0]
   ▸ logger.info   key=src/jobs/report.ts#reportMetrics/call:logger.info
 ( End )
@@ -211,18 +207,17 @@
 === src/jobs/send-email.ts#
 ( src/jobs/send-email.ts )   key=src/jobs/send-email.ts#
   imports · ../lib/logger.ts
-  · Set → outbox   key=src/jobs/send-email.ts#/call:Set
 ( End )
 
 === src/jobs/send-email.ts#sendEmail
 ( sendEmail )   key=src/jobs/send-email.ts#sendEmail
   IF !payload.to.includes("@")   key=src/jobs/send-email.ts#sendEmail/if[0] src/jobs/send-email.ts#sendEmail/if[0]/then
       THROW Error → the caller   key=src/jobs/send-email.ts#sendEmail/if[0]/then/throw[0]
-  · outbox.add   key=src/jobs/send-email.ts#sendEmail/call:outbox.add
+  ⋯ 1 line
   □ Promise · AWAIT · new   key=src/jobs/send-email.ts#sendEmail/call:Promise
       ↳ callback (resolve) =>   key=src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
   ▸ logger.info   key=src/jobs/send-email.ts#sendEmail/call:logger.info
-  · outbox.delete   key=src/jobs/send-email.ts#sendEmail/call:outbox.delete
+  ⋯ 1 line
 ( End )
 
 === src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
@@ -278,13 +273,14 @@
 
 === src/lib/logger.ts#logger.info
 ( logger.info )   key=src/lib/logger.ts#logger.info
-  · JSON.stringify → line, sink ?   2 calls, 1 unknown   key=src/lib/logger.ts#logger.info/call:JSON.stringify src/lib/logger.ts#logger.info/call:sink
+  ⋯ 1 line
+  · sink ?   key=src/lib/logger.ts#logger.info/call:sink
 ( End )
 
 === src/lib/logger.ts#logger.error
 ( logger.error )   key=src/lib/logger.ts#logger.error
-  ⋯ 1 line
-  · JSON.stringify → line, sink ?   2 calls, 1 unknown   key=src/lib/logger.ts#logger.error/call:JSON.stringify src/lib/logger.ts#logger.error/call:sink
+  ⋯ 2 lines
+  · sink ?   key=src/lib/logger.ts#logger.error/call:sink
 ( End )
 
 === src/lib/pool.ts#
@@ -440,7 +436,7 @@
 === src/routes/admin.ts#adminStats
 ( adminStats )   key=src/routes/admin.ts#adminStats
   ▸ orderService.list → orders   key=src/routes/admin.ts#adminStats/call:orderService.list
-  □ orders.filter ? · into res.json(…)   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter
+  □ orders.filter · into res.json(…)   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter
       ↳ callback order =>   key=src/routes/admin.ts#adminStats/call:res.json/call:orders.filter/callback[0]
   · res.json   key=src/routes/admin.ts#adminStats/call:res.json
 ( End )
@@ -612,17 +608,18 @@
 
 === src/services/events.ts#
 ( src/services/events.ts )   key=src/services/events.ts#
-  · Map → subscriptions   key=src/services/events.ts#/call:Map
 ( End )
 
 === src/services/events.ts#events.on
 ( events.on )   key=src/services/events.ts#events.on
-  · subscriptions.get, handlers.push ?, subscriptions.set   3 calls, 1 unknown   key=src/services/events.ts#events.on/call:subscriptions.get src/services/events.ts#events.on/call:handlers.push src/services/events.ts#events.on/call:subscriptions.set
+  ⋯ 1 line
+  · handlers.push ?   key=src/services/events.ts#events.on/call:handlers.push
+  ⋯ 1 line
 ( End )
 
 === src/services/events.ts#events.emit
 ( events.emit )   key=src/services/events.ts#events.emit
-  · subscriptions.get   key=src/services/events.ts#events.emit/call:subscriptions.get
+  ⋯ 1 line
   LOOP for (const handler of handlers)   key=src/services/events.ts#events.emit/for[0] src/services/events.ts#events.emit/for[0]/body
       · handler ?   key=src/services/events.ts#events.emit/for[0]/body/call:handler
 ( End )
@@ -677,7 +674,7 @@
 === src/services/order-service.ts#OrderService.place
 ( place )   key=src/services/order-service.ts#OrderService.place
   ▸ validateOrder → draft   key=src/services/order-service.ts#OrderService.place/call:validateOrder
-  · this.payments.charge ?, randomUUID, (…).toISOString   3 calls, 1 unknown   key=src/services/order-service.ts#OrderService.place/call:this.payments.charge src/services/order-service.ts#OrderService.place/call:randomUUID src/services/order-service.ts#OrderService.place/call:(…).toISOString
+  · this.payments.charge ?, randomUUID   2 calls, 1 unknown   key=src/services/order-service.ts#OrderService.place/call:this.payments.charge src/services/order-service.ts#OrderService.place/call:randomUUID
   ▸ this.repo.insert   key=src/services/order-service.ts#OrderService.place/call:this.repo.insert
   ▸ events.emit   key=src/services/order-service.ts#OrderService.place/call:events.emit
   RETURN order → End   key=src/services/order-service.ts#OrderService.place/return[0]

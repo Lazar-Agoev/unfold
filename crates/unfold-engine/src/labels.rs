@@ -8,7 +8,8 @@
 //!    names.
 //! 2. **Origin-rooted:** the package the receiver's bounded provenance comes from
 //!    ([`crate::provenance`]), so `app.get` on `const app = express()` names `express`.
-//! 3. **Ambient global:** an undeclared, unimported identifier root, such as `console`.
+//! 3. **Ambient global:** an undeclared, unimported identifier root, such as `console`, unless
+//!    every candidate is one of the language's builtins (`JSON`), which rule 4 labels.
 //! 4. **Declaration locations:** the labels of the effective candidates' locations, as one plain
 //!    label or a sorted JSON array.
 
@@ -85,7 +86,14 @@ pub(crate) fn external_label(
             .value_ref()
             .and_then(|value| access_root(program, value))
             .is_some_and(|root| root == ValueShape::Name);
-    if root_is_name && evidence.import_binding.is_none() && evidence.root_is_indexed == Some(false) {
+    let builtins = evidence
+        .effective()
+        .all(|candidate| candidate.location == Some(ExternalLocation::Builtin));
+    if root_is_name
+        && evidence.import_binding.is_none()
+        && evidence.root_is_indexed == Some(false)
+        && !builtins
+    {
         return checked(program, file, &linked.global_label(file));
     }
     let text = expr.label(resolver);

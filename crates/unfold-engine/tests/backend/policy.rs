@@ -148,6 +148,12 @@ fn step_8_external_and_mixed_origins() {
     // The standard library is the language's builtins.
     assert_eq!(call("(call (ref console))", "console").to, builtin());
     assert_eq!(call("(call (get (ref Math) max))", "Math.max").to, builtin());
+    // An ambient root whose candidates are all the language's own builtins is labeled by
+    // their location, not as a global.
+    assert_eq!(
+        call("(call (get (ref JSON) parse))", "JSON.parse").to,
+        LinkTarget::Builtin(unfold_core::ModuleLabel::single("alien:core").expect("a label"))
+    );
     // Declared roots are not `global`; their candidates' locations label them.
     assert_library(
         "(const helper) (call (ref helper :pkg=lodash/fp))",

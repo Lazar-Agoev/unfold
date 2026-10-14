@@ -99,6 +99,66 @@ impl<'a> Binder<'a> {
         self.link_annotation(annotation);
         annotation.map(|annotation| self.ty(&annotation.type_annotation, self.scope))
     }
+
+    /// A callable's written return type and what `await` of a call to it gives, as
+    /// `Decl::returns` and `Decl::awaits` hold them: the written type converted like
+    /// [`Binder::annotation`], with `null` and `undefined` dropped from a union of one other type
+    /// and them; and, for an `async` callable whose written return type is `Promise<T>`, `T`,
+    /// read the same way.
+    pub(super) fn returns(
+        &mut self,
+        annotation: Option<&TSTypeAnnotation<'a>>,
+        asynchronous: bool,
+    ) -> (Option<u32>, Option<u32>) {
+        self.link_annotation(annotation);
+        let Some(annotation) = annotation else {
+            return (None, None);
+        };
+        let written = &annotation.type_annotation;
+        let returns = self.ty(non_nullable(written), self.scope);
+        let awaits = promised(written)
+            .filter(|_| asynchronous)
+            .map(|awaited| self.ty(non_nullable(awaited), self.scope));
+        (Some(returns), awaits)
+    }
+}
+
+/// A union of one type with `null` or `undefined` (`Repo | null`, `undefined | Repo`) as that
+/// type; any other type as itself.
+fn non_nullable<'t, 'a>(written: &'t TSType<'a>) -> &'t TSType<'a> {
+    let mut ty = written;
+    while let TSType::TSParenthesizedType(inner) = ty {
+        ty = &inner.type_annotation;
+    }
+    let TSType::TSUnionType(union) = ty else {
+        return written;
+    };
+    let mut others = union
+        .types
+        .iter()
+        .filter(|member| !matches!(member, TSType::TSNullKeyword(_) | TSType::TSUndefinedKeyword(_)));
+    match (others.next(), others.next()) {
+        (Some(only), None) => only,
+        _ => written,
+    }
+}
+
+/// The type argument of a written `Promise<T>`.
+fn promised<'t, 'a>(written: &'t TSType<'a>) -> Option<&'t TSType<'a>> {
+    let mut ty = written;
+    while let TSType::TSParenthesizedType(inner) = ty {
+        ty = &inner.type_annotation;
+    }
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    let TSTypeName::IdentifierReference(name) = &reference.type_name else {
+        return None;
+    };
+    match reference.type_arguments.as_deref()?.params.as_slice() {
+        [argument] if name.name == "Promise" => Some(argument),
+        _ => None,
+    }
 }
 
 impl<'a> Visit<'a> for Binder<'a> {
@@ -339,8 +399,10 @@ impl<'a> Visit<'a> for Binder<'a> {
         let separate = uses_outer_scope(&it.params, self.context).then_some(inner);
         self.parameters = self.parameter_set(outer_parameters, separate);
         self.formal_parameters(index, &it.params);
-        let returns = self.annotation(it.return_type.as_deref());
-        self.decl_mut(index).returns = returns;
+        let (returns, awaits) = self.returns(it.return_type.as_deref(), it.r#async);
+        let decl = self.decl_mut(index);
+        decl.returns = returns;
+        decl.awaits = awaits;
         self.parameters = outer_parameters;
         self.container = self.new_container();
         match &it.body {

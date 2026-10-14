@@ -388,9 +388,8 @@ pub trait Linked: Send + Sync {
     fn global_label(&self, file: FileId) -> String;
 
     /// Whether an outside outcome with `label` is the language's own builtins, which makes the
-    /// link `builtin` rather than `library`. Python: exactly `python:builtins`. The default is
-    /// none, so every outside outcome is `library` (TypeScript, until ECMAScript's standard
-    /// objects have their own table).
+    /// link `builtin` rather than `library`. Python: exactly `python:builtins`; TypeScript:
+    /// exactly `ecmascript`. The default is none, so every outside outcome is `library`.
     fn is_builtin(&self, _label: &ModuleLabel) -> bool {
         false
     }

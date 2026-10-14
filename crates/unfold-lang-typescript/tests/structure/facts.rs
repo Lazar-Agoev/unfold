@@ -236,7 +236,7 @@ fn linking_resolves_imports_calls_and_passed_definitions() {
             "a.ts#f/call:g calls `g` → unknown parameter",
             "a.ts#/call:f calls `f` → project a.ts#f",
             "a.ts#/call:f passes `f` → project a.ts#f",
-            "a.ts#/call:Date calls `Date` → library global",
+            "a.ts#/call:Date calls `Date` → builtin ecmascript",
         ]
     );
 }

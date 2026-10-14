@@ -7,7 +7,7 @@
 {"t":"link","from":"a.ts#Leaf","seq":2,"kind":"extends","range":[398,402],"text":"Base","outcome":"project","to":"a.ts#Base","implements":true}
 {"t":"link","from":"a.ts#Leaf","seq":3,"kind":"types","range":[403,407],"text":"Leaf","outcome":"project","to":"a.ts#Leaf"}
 {"t":"link","from":"a.ts#Leaf","seq":4,"kind":"types","range":[437,441],"text":"Leaf","outcome":"project","to":"a.ts#Leaf"}
-{"t":"link","from":"a.ts#Failure","seq":0,"kind":"extends","range":[505,510],"text":"Error","outcome":"library","to":"global"}
+{"t":"link","from":"a.ts#Failure","seq":0,"kind":"extends","range":[505,510],"text":"Error","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"a.ts#made","seq":0,"kind":"extends","range":[541,545],"text":"Root","outcome":"project","to":"a.ts#Root"}
 {"t":"link","from":"a.ts#Qualified","seq":0,"kind":"extends","range":[669,677],"text":"ns.Inner","outcome":"project","to":"a.ts#ns.Inner"}
 {"t":"signature","node":"a.ts#mixin","returns":"C","returns_range":[709,710]}

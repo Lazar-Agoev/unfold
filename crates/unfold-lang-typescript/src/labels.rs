@@ -6,7 +6,8 @@
 //! | A Node built-in: `fs`, `fs/promises`, `node:fs` | `node:fs`, `node:fs/promises`, `node:fs` (subpaths kept) |
 //! | A package specifier: `express/router`, `@scope/name/sub` | `express`, `@scope/name` |
 //! | A package location `@types/x`, `@types/a__b` | `x`, `@a/b` |
-//! | The default library or a known global | `global` |
+//! | ECMAScript's standard objects (the language's builtins) | `ecmascript` |
+//! | The rest of the default library or a known global (the DOM, Node) | `global` |
 //! | An unindexed repository file | Its repository-relative path |
 //!
 //! A specifier is a package specifier unless it is empty, relative (`.`), or absolute (`/`, or a
@@ -18,6 +19,9 @@ use crate::tables;
 
 /// The label of undeclared, unimported globals.
 pub const GLOBAL: &str = "global";
+
+/// The label of ECMAScript's standard objects, the language's builtins.
+pub const ECMASCRIPT: &str = "ecmascript";
 
 /// Whether `specifier` names a package rather than a path.
 pub fn is_package_specifier(specifier: &str) -> bool {
@@ -58,6 +62,7 @@ pub fn label_for_specifier(specifier: &str) -> String {
 pub fn label_for_location(location: &ExternalLocation) -> String {
     match location {
         ExternalLocation::Library => GLOBAL.to_owned(),
+        ExternalLocation::Builtin => ECMASCRIPT.to_owned(),
         ExternalLocation::File(path) => path.to_string(),
         ExternalLocation::Package(name) => match name.strip_prefix("@types/") {
             Some(typed) => match typed.split_once("__") {
@@ -111,6 +116,7 @@ mod tests {
     fn spells_location_labels() {
         let package = |name: &str| ExternalLocation::Package(name.into());
         assert_eq!(label_for_location(&ExternalLocation::Library), "global");
+        assert_eq!(label_for_location(&ExternalLocation::Builtin), "ecmascript");
         assert_eq!(
             label_for_location(&ExternalLocation::File("legacy/a.ts".into())),
             "legacy/a.ts"

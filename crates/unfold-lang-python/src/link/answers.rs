@@ -246,6 +246,11 @@ impl Binder<'_> {
         })
     }
 
+    /// The concrete body a call through `node` reaches.
+    pub(crate) fn concrete_call(&self, node: NodeRef, ctx: &mut Ctx) -> Option<NodeRef> {
+        self.concrete(node, Context::Call, &mut Seen::default(), ctx)
+    }
+
     fn concrete(&self, node: NodeRef, context: Context, seen: &mut Seen, ctx: &mut Ctx) -> Option<NodeRef> {
         if seen.has(SeenKey::Node(node)) || seen.full() {
             return None;

@@ -1,6 +1,6 @@
-library.ts#call #0 types `Map` → library global
-library.ts#call/call:array.map #0 calls `array.map` → library global
-library.ts#call/call:text.trim #0 calls `text.trim` → library global
-library.ts#call/call:map.get #0 calls `map.get` → library global
-library.ts#/call:values().forEach #0 calls `values().forEach` → library global
+library.ts#call #0 types `Map` → builtin ecmascript
+library.ts#call/call:array.map #0 calls `array.map` → builtin ecmascript
+library.ts#call/call:text.trim #0 calls `text.trim` → builtin ecmascript
+library.ts#call/call:map.get #0 calls `map.get` → builtin ecmascript
+library.ts#/call:values().forEach #0 calls `values().forEach` → builtin ecmascript
 library.ts#/call:values().forEach/call:values #0 calls `values` → project library.ts#values

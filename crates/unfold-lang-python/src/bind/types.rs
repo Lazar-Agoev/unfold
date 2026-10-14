@@ -40,7 +40,7 @@ use unfold_core::text::ByteRange;
 use unicode_normalization::UnicodeNormalization;
 
 use super::build::Builder;
-use super::ir::{ExprId, ExprKind, ScopeId, ScopeKind};
+use super::ir::{ExprId, ExprKind, ReturnFact, ScopeId, ScopeKind};
 
 /// What a written type name is written in, which decides the node its link starts at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,38 +168,10 @@ impl<'a> Builder<'a> {
     /// name inside the quotes, with a synthesized name or member chain to resolve. Any other
     /// string records nothing.
     fn string_annotation(&mut self, literal: &'a ExprStringLiteral, scope: ScopeId) {
-        let [part] = literal.value.as_slice() else {
+        let Some((range, written)) = self.quoted(literal) else {
             return;
         };
-        let start = part.range.start().checked_add(part.flags.opener_len());
-        let end = part.range.end().checked_sub(part.flags.closer_len());
-        let (Some(start), Some(end)) = (start, end) else {
-            return;
-        };
-        if start >= end {
-            return;
-        }
-        let range = TextRange::new(start, end);
-        let written = self
-            .inputs
-            .text
-            .get(range.start().to_usize()..range.end().to_usize())
-            .unwrap_or_default();
-        if written != &*part.value || !is_dotted_name(written) {
-            return;
-        }
-        let mut parts = written.split('.').map(normalized);
-        let Some(root) = parts.next() else {
-            return;
-        };
-        let name = self.interner.name_text(root.clone());
-        let mut expr = self.interner.synthetic(ExprKind::Name(name), scope);
-        for part in parts {
-            let name = self.interner.name_text(part);
-            expr = self
-                .interner
-                .synthetic(ExprKind::Member { base: expr, name }, scope);
-        }
+        let (root, expr) = self.synthesize(written, scope);
         self.types.push(RawTypeName {
             range,
             qualified: written.contains('.'),
@@ -208,6 +180,74 @@ impl<'a> Builder<'a> {
             root,
             site: TypeSite::Annotation,
         });
+    }
+
+    /// The content of a string literal of one part whose whole content is a dotted name, written
+    /// without escapes, with its range.
+    fn quoted(&self, literal: &'a ExprStringLiteral) -> Option<(TextRange, &'a str)> {
+        let [part] = literal.value.as_slice() else {
+            return None;
+        };
+        let start = part.range.start().checked_add(part.flags.opener_len())?;
+        let end = part.range.end().checked_sub(part.flags.closer_len())?;
+        if start >= end {
+            return None;
+        }
+        let range = TextRange::new(start, end);
+        let written = self
+            .inputs
+            .text
+            .get(range.start().to_usize()..range.end().to_usize())
+            .unwrap_or_default();
+        (written == &*part.value && is_dotted_name(written)).then_some((range, written))
+    }
+
+    /// A synthesized name or member chain for the dotted name `written`, evaluated in `scope`,
+    /// with its root name.
+    fn synthesize(&mut self, written: &'a str, scope: ScopeId) -> (Cow<'a, str>, ExprId) {
+        let mut parts = written.split('.').map(normalized);
+        let root = parts.next().unwrap_or_default();
+        let name = self.interner.name_text(root.clone());
+        let mut expr = self.interner.synthetic(ExprKind::Name(name), scope);
+        for part in parts {
+            let name = self.interner.name_text(part);
+            expr = self
+                .interner
+                .synthetic(ExprKind::Member { base: expr, name }, scope);
+        }
+        (root, expr)
+    }
+
+    /// The class a return annotation names when it is written in one of the forms a call's value
+    /// is read from ([`ReturnFact`]): a class, the class or `None` (`Repo | None`, `None | Repo`,
+    /// `Optional[Repo]`), where the class is a name, a member chain, or a quoted dotted name.
+    /// Any other annotation names none. Records no type names: [`Builder::annotation`] has.
+    pub(super) fn returned_class(&mut self, returns: &'a Expr, scope: ScopeId) -> Option<ReturnFact> {
+        let (class, optional) = match returns {
+            Expr::Subscript(subscript)
+                if spelled(&subscript.value) == Some("Optional")
+                    && chain_root(&subscript.value).is_some() =>
+            {
+                (&*subscript.slice, Some(&*subscript.value))
+            }
+            Expr::BinOp(union) if union.op == Operator::BitOr => match (&*union.left, &*union.right) {
+                (Expr::NoneLiteral(_), class) | (class, Expr::NoneLiteral(_)) => (class, None),
+                _ => return None,
+            },
+            class => (class, None),
+        };
+        let class = match class {
+            Expr::StringLiteral(literal) => {
+                let (_, written) = self.quoted(literal)?;
+                self.synthesize(written, scope).1
+            }
+            class => {
+                chain_root(class)?;
+                self.reserve(class, scope)
+            }
+        };
+        let optional = optional.map(|optional| self.reserve(optional, scope));
+        Some(ReturnFact { class, optional })
     }
 
     /// Whether `name`, looked up from `scope` by Python's rules, names a PEP 695 type parameter:
