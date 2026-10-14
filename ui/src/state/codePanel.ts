@@ -1,0 +1,114 @@
+/**
+ * The code panel (docs/designs/viewing-code.md): whether it is open, what it shows, and the line the
+ * pointer is on in it. It belongs to the board it opened on and closes when the window shows another
+ * board, or Home. None of this is saved.
+ *
+ * While it is open, the panel follows the page's selection. A selection the panel makes itself (a click
+ * on a line, `⊕`) is made `quietly`, so the panel stays where it is.
+ */
+
+import { create } from "zustand";
+import type { CodeTarget, Key, ProjectId, RepoPath } from "../ipc/generated";
+import { sameBoard } from "./boards/keys";
+import { getPageView } from "./boards/store";
+import type { PageTarget } from "./boards/types";
+import { useShownBoardStore } from "./shownBoard";
+
+/** One line of a file. */
+interface CodeLineRef {
+  readonly path: RepoPath;
+  readonly line: number;
+}
+
+/** What the panel shows. */
+export interface CodeOpen {
+  readonly project: ProjectId;
+  /** The selection: it heads the path and stays marked. */
+  readonly target: CodeTarget;
+  /** What the path widened the view to; null shows the selection's own lines. */
+  readonly show: CodeTarget | null;
+  /** The card the selection is in: its repair actions show when its code isn't found. */
+  readonly cardId: string | null;
+  /** The gap tick it was opened from, outlined on the canvas. */
+  readonly gap: CodeLineRef | null;
+}
+
+/** The line the pointer is on in the panel: its block (a call's, when on the call's name), or none. */
+export interface CodeHover extends CodeLineRef {
+  readonly key: Key | null;
+}
+
+interface CodePanelState {
+  readonly open: CodeOpen | null;
+  readonly hover: CodeHover | null;
+}
+
+const useCodePanelStore = create<CodePanelState>()(() => ({ open: null, hover: null }));
+
+/** Opens the panel on a selection (or moves it there), showing the selection's own lines. */
+export function openCode(open: Omit<CodeOpen, "show">): void {
+  useCodePanelStore.setState({ open: { ...open, show: null }, hover: null });
+}
+
+/** Widens the view to a step of the path (null: back to the selection's own lines). */
+export function widenCode(show: CodeTarget | null): void {
+  const { open } = useCodePanelStore.getState();
+  if (open) {
+    useCodePanelStore.setState({ open: { ...open, show } });
+  }
+}
+
+export function closeCode(): void {
+  useCodePanelStore.setState({ open: null, hover: null });
+}
+
+export function setCodeHover(hover: CodeHover | null): void {
+  const current = useCodePanelStore.getState().hover;
+  if (current?.key !== hover?.key || current?.line !== hover?.line || current?.path !== hover?.path) {
+    useCodePanelStore.setState({ hover });
+  }
+}
+
+/** What the panel shows now (null while it is closed), outside React. */
+export function getCodeOpen(): CodeOpen | null {
+  return useCodePanelStore.getState().open;
+}
+
+/** What the panel shows (null while it is closed), kept current. */
+export function useCodePanel(): CodeOpen | null {
+  return useCodePanelStore((state) => state.open);
+}
+
+/** The line hovered in the panel, kept current. */
+export function useCodeHover(): CodeHover | null {
+  return useCodePanelStore((state) => state.hover);
+}
+
+// The panel belongs to the board it opened on.
+useShownBoardStore.subscribe((state, previous) => {
+  if (!sameBoard(state.board, previous.board)) {
+    closeCode();
+  }
+});
+
+let held = false;
+
+/**
+ * Runs `change` (which may select something on the page) so that the panel doesn't follow the
+ * selection it makes.
+ */
+export function quietly(target: PageTarget, change: () => void): void {
+  const before = JSON.stringify(getPageView(target).selection);
+  held = true;
+  change();
+  if (JSON.stringify(getPageView(target).selection) === before) {
+    held = false;
+  }
+}
+
+/** Whether the selection that just changed was made `quietly` (and lets go of it). */
+export function takeQuiet(): boolean {
+  const was = held;
+  held = false;
+  return was;
+}

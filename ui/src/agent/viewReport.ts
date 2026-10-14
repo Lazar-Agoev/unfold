@@ -16,7 +16,7 @@ import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-/** The selection as agents read it: a card selected at its own block (a click on its header) is the card. */
+/** The selection as agents read it: a card selected at its own block (a click on its header), or at a field of it, is the card. */
 function viewSelection(page: Page, selection: Selection): ViewSelection {
   switch (selection.kind) {
     case "none":
@@ -29,6 +29,8 @@ function viewSelection(page: Page, selection: Selection): ViewSelection {
       }
       return { kind: "step", card: selection.cardId, key: selection.key };
     }
+    case "field":
+      return { kind: "card", id: selection.cardId };
     case "combined":
       return { kind: "combined", id: selection.combinedId };
     case "link":

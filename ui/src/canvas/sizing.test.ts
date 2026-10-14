@@ -57,15 +57,16 @@ function definition(members: TypeMember[], inherited: TypeDefinition["inherited"
 const description = (text: string): Description => ({ text, author: "person:lazar", signature: "" });
 
 describe("definition cards", () => {
-  it("size a compact card to its header between 240 and 560, with room for the chevron and the mark", () => {
+  it("size a compact card to its header between 240 and 560, with room for the chevron, the mark, and `</>`", () => {
     const short = { mark: { text: "ƒ", word: false }, name: "a", location: "a.ts:1", chevron: true };
     expect(compactCardWidth(short, measure)).toBe(COMPACT_MIN_WIDTH);
     expect(compactCardWidth({ ...short, name: "x".repeat(80) }, measure)).toBe(COMPACT_MAX_WIDTH);
     const method = { ...short, name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts:13" };
     const parts = 14 + 8 + measure(method.name, TITLE_FONT) + measure(method.location, LOCATION_FONT);
-    expect(compactCardWidth(method, measure)).toBe(Math.ceil(26 + parts + 3 * 8));
+    // `</>` at the end is 30px wide.
+    expect(compactCardWidth(method, measure)).toBe(Math.ceil(26 + parts + 4 * 8 + 30));
     // A class's mark is its word, measured as it is drawn.
-    expect(compactCardWidth({ ...method, mark: { text: "class", word: true } }, measure)).toBe(Math.ceil(26 + parts - 8 + measure("class", TYPE_KIND_FONT) + 3 * 8));
+    expect(compactCardWidth({ ...method, mark: { text: "class", word: true } }, measure)).toBe(Math.ceil(26 + parts - 8 + measure("class", TYPE_KIND_FONT) + 4 * 8 + 30));
   });
 
   it("read their header from the drawn flow: the page's name over the code name, and where it is", () => {
@@ -150,11 +151,11 @@ describe("type cards", () => {
     const header = { mark: { text: "interface", word: true }, name: "Cart", location: "cart.ts:12", chevron: false };
     expect(typeCardWidth(header, fieldTexts(cart), measure)).toBeGreaterThanOrEqual(280);
     expect(typeCardWidth(header, [{ name: "x", type: "Record<string, ".repeat(20) }], measure)).toBe(TYPE_MAX_WIDTH);
-    // The whole header fits (padding, border, kind, name, location, and the gaps between them; a type card
-    // has no chevron): the kind is measured as it is drawn, in 13px code.
+    // The whole header fits (padding, border, kind, name, location, `</>`, and the gaps between them; a
+    // type card has no chevron): the kind is measured as it is drawn, in 13px code.
     const job = { mark: { text: "interface", word: true }, name: "OrderJobWithAVeryLongName", location: "types/order-jobs.ts:22", chevron: false };
     const parts = measure("interface", TYPE_KIND_FONT) + measure(job.name, TITLE_FONT) + measure(job.location, LOCATION_FONT);
-    expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBe(Math.ceil(26 + parts + 2 * 8));
+    expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBe(Math.ceil(26 + parts + 3 * 8 + 30));
   });
 
   it("show a base's heading before its members, and a base without members last", () => {

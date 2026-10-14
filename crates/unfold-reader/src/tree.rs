@@ -11,7 +11,7 @@
 use std::ops::Range;
 
 use rustc_hash::FxHashMap;
-use unfold_core::vocab::{CallRole, Language, LinkKind, NodeKind};
+use unfold_core::vocab::{CallRole, Form, Language, LinkKind, NodeKind};
 use unfold_core::{
     Argument, ByteRange, File, FileGraph, Key, Link, Member, Node, Parameter, RepoPath, Signature, owner,
 };
@@ -42,6 +42,11 @@ fn run<T>(items: &[T], key: impl Fn(&T) -> u32, value: u32) -> &[T] {
 
 pub(crate) fn to_u32(value: usize) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+/// Whether `form` is a control block written as an expression.
+pub(crate) fn is_expression(form: Form) -> bool {
+    matches!(form, Form::Ternary | Form::Comprehension)
 }
 
 impl FileTree {
@@ -244,6 +249,37 @@ impl FileTree {
             start,
             end: node.range.end,
         }
+    }
+
+    /// The statement call `id` is written in: its own `stmt`, or that of the nearest block above
+    /// it that has one. A call in a test or a header is in that test or header; a call that runs
+    /// when a definition is created (a decorator, a base, a default) is its own statement. A part
+    /// of a ternary or comprehension is inside an expression, so the climb goes on to the
+    /// statement holding it.
+    pub fn statement(&self, id: u32) -> ByteRange {
+        let call = self.node(id).range;
+        let parent = |id: u32| self.parent(id).map(|parent| self.node(parent));
+        let mut at = Some(id);
+        while let Some(current) = at {
+            let node = self.node(current);
+            if let Some(stmt) = node.stmt {
+                return stmt;
+            }
+            match node.kind() {
+                NodeKind::Call | NodeKind::Exit => {}
+                NodeKind::Decision | NodeKind::Loop if is_expression(node.form) => {}
+                NodeKind::Function
+                    if node.form == Form::Lambda
+                        || parent(current).is_some_and(|parent| parent.kind() == NodeKind::Call) => {}
+                NodeKind::Part if parent(current).is_some_and(|parent| is_expression(parent.form)) => {}
+                NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {
+                    return node.head.filter(|head| head.contains(call)).unwrap_or(call);
+                }
+                NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Type => return call,
+            }
+            at = node.parent;
+        }
+        call
     }
 
     /// Node `id`'s catalog label ([`catalog::label`]).

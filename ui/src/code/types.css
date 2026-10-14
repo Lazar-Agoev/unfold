@@ -6,6 +6,15 @@
 .type-punct,
 .type-builtin { color: var(--color-contour); }
 
+/* A project name that opens its definition in the code panel. */
+.type-link {
+  text-decoration: underline 1px var(--color-accent-soft);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.type-link:hover { color: var(--color-accent-text); }
+
 /* An external name names its package on hover; an unresolved one says why. */
 .type-external {
   color: var(--color-text);

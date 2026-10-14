@@ -179,6 +179,15 @@ impl<'a> Builder<'_, 'a> {
         Some(self.text.as_ref()?.lines(node.stmt.unwrap_or(node.range)))
     }
 
+    /// The lines of the statement `call` is written in ([`FileTree::statement`]); the call's
+    /// own lines when the file's text can't be read.
+    fn statement_lines(&self, call: u32) -> LineSpan {
+        match &self.text {
+            Some(text) => text.lines(self.tree.statement(call)),
+            None => self.node(call).lines,
+        }
+    }
+
     fn actions(&self, id: u32) -> Actions {
         let allows = overlay::allows(self.tree, id);
         Actions {
@@ -535,8 +544,10 @@ impl<'a> Builder<'_, 'a> {
             } else if self.shown(call) {
                 let other = self.other_call(call, feeds);
                 let unknown = unknowns(&other);
+                let lines = self.statement_lines(call);
                 steps.push(self.step(Shape::Thin(ThinRow {
                     calls: vec![other],
+                    lines,
                     unknown,
                 })));
             }
@@ -883,6 +894,7 @@ fn finish(items: Vec<Item>, hidden: &[Hidden], lines: &[u32]) -> Sequence {
         {
             row.unknown += next.unknown;
             row.calls.append(&mut next.calls);
+            row.lines.end = row.lines.end.max(next.lines.end);
             continue;
         }
         steps.push(item.step);

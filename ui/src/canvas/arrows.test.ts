@@ -166,4 +166,8 @@ describe("type arrows", () => {
   it("list an alias's type, its members, then what it inherits, base by base", () => {
     expect(fieldRows({ ...cart, aliased: typed("Item", []) }).map((row) => row.row)).toEqual(["=", "0", "1", "from0/0"]);
   });
+
+  it("open each member as its type's written member: the card's own, or the base's it inherits", () => {
+    expect(fieldRows({ ...cart, aliased: typed("Item", []) }).map((row) => row.field)).toEqual([undefined, { key: CART, index: 0 }, { key: CART, index: 1 }, { key: BASE, index: 0 }]);
+  });
 });

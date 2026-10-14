@@ -1,0 +1,141 @@
+/* The code panel (core-scope.html's `.cpanel`): beside the board, full height. */
+
+.code-panel {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  width: 392px;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--color-border-shell);
+  background: var(--color-editor);
+}
+
+/* The header: the path, Open in editor, and ×. It moves the window, as the top bar beside it does. */
+.code-panel-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: var(--topbar);
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--color-border-shell);
+  background: var(--color-chrome);
+  -webkit-app-region: drag;
+}
+
+.code-panel-header button { -webkit-app-region: no-drag; }
+
+.code-path {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  font: 12px/20px var(--font-code);
+  white-space: nowrap;
+}
+
+.code-path-step {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.code-path-step:last-child { flex-shrink: 1; }
+
+.code-crumb {
+  flex-shrink: 0;
+  padding: 0 3px;
+  border-radius: var(--radius-chip);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.code-path-step:last-child > .code-crumb:last-child {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.code-crumb:hover { background: var(--color-hover); color: var(--color-text); }
+.code-crumb.file { color: var(--color-subtle); }
+.code-crumb.showing { font-weight: 600; color: var(--color-text); }
+.code-path-sep { padding: 0 2px; color: var(--color-placeholder-line); }
+
+/* Why the lines can't be trusted, or aren't there. */
+.code-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-warn-fill);
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-warn);
+}
+
+.code-banner-text { flex: 1; min-width: 0; }
+
+.code-note {
+  padding: 10px 14px;
+  font-size: var(--text-12);
+  line-height: var(--leading-16);
+  color: var(--color-muted);
+}
+
+/* The lines: numbers, then the dedented code, 20px each. */
+.code-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 0 14px;
+  font: 12px/20px var(--font-code);
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+  color: var(--color-syntax-plain);
+  user-select: text;
+}
+
+.code-line {
+  display: grid;
+  grid-template-columns: 44px max-content;
+  min-width: max-content;
+  height: 20px;
+  padding-right: 20px;
+  white-space: pre;
+  cursor: default;
+}
+
+.code-number {
+  padding-right: 16px;
+  text-align: right;
+  color: var(--color-placeholder-line);
+  user-select: none;
+}
+
+/* The selection's lines: a quiet tint with an accent edge. */
+.code-line.marked {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.code-line.marked .code-number { color: var(--color-text); }
+
+/* A call's own expression; each run carries it, so it reads as one fill. */
+.code-mark { background: var(--color-mark); }
+
+/* `⊕` beside a definition with no card on the page. */
+.code-add {
+  margin-left: 10px;
+  padding: 0 3px;
+  border-radius: var(--radius-chip);
+  color: var(--color-muted);
+}
+
+.code-add:hover { background: var(--color-hover); color: var(--color-accent-text); }

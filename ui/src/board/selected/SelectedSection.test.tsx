@@ -7,6 +7,7 @@ import { queryClient } from "../../ipc/client";
 import type { CallContract, Card, CardView, Page, TypeDefinition } from "../../ipc/generated";
 import { engineKey } from "../../ipc/queries";
 import * as store from "../../state/boards/store";
+import { closeCode, getCodeOpen } from "../../state/codePanel";
 import { installFakeEngine, fixture, type FakeEngine } from "../../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
 import { SelectedSection } from "./SelectedSection";
@@ -114,6 +115,7 @@ beforeEach(() => {
 
 afterEach(() => {
   store.resetBoards();
+  closeCode();
   engine.uninstall();
 });
 
@@ -214,6 +216,26 @@ describe("Selected · an arrow", () => {
       ["Throws", "PaymentDeclinedcaught"],
     ]);
     expect(engine.callsOf("call_contract")).toEqual([{ project: P, key: CHARGE_CALL }]);
+  });
+
+  it("opens a project type's definition in the code panel from its name", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: ({ key }) => card(key),
+        call_contract: () => ({
+          ...CHARGE,
+          returns: { type: { text: "Receipt | None", spans: [{ start: 0, end: 7, to: { outcome: "project", key: "key-receipt" } }] }, awaited: false, lands: { kind: "binds", target: "receipt" } },
+          raises: [{ exit: "key-raise", line: 30, type: { text: "PaymentDeclined", spans: [{ start: 0, end: 15, to: { outcome: "library", module: "stripe" } }] } }],
+        }),
+      },
+    });
+    selectNow(LINE);
+    renderSelected();
+    fireEvent.click(await screen.findByRole("button", { name: "Receipt" }));
+    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "block", key: "key-receipt" }, show: null, cardId: null, gap: null });
+    // A library's type has no source here: it only names its package.
+    expect(screen.queryByRole("button", { name: "PaymentDeclined" })).toBeNull();
   });
 
   it("says when the call sends nothing, where nothing lands, and that a raise isn't caught", async () => {

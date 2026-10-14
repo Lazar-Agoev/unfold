@@ -10,7 +10,7 @@
 
 import { useQuery, type Query, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { call, onEngineEvent } from "./commands";
-import type { CardView, CommandArgs, CommandName, CommandResult, DrawnFlow, EventType, ProjectId, Sequence, WorkspaceEvent, WorkspaceView } from "./generated";
+import type { CardView, CodeView, CommandArgs, CommandName, CommandResult, DrawnFlow, EventType, ProjectId, Sequence, WorkspaceEvent, WorkspaceView } from "./generated";
 import type { UnfoldError } from "./unfold";
 
 /** The query key of one command call. */
@@ -117,6 +117,12 @@ function cardTouches(query: Query, changed: (path: string) => boolean): boolean 
   return view === undefined || cardFiles(view).some(changed);
 }
 
+/** Whether a cached code panel view shows a file `changed` picks (or isn't loaded yet). */
+function codeTouches(query: Query, changed: (path: string) => boolean): boolean {
+  const file = (query.state.data as CodeView | undefined)?.file;
+  return file === undefined || changed(file);
+}
+
 /** Whether a cached card is an app's or entrance's start card (or isn't loaded yet, so may be one). */
 function startCard(query: Query): boolean {
   return (query.state.data as CardView | undefined)?.type !== "definition";
@@ -175,6 +181,8 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           case "type_definition":
           case "type_uses":
           case "entrances":
+          case "code_view":
+            // The code panel crops again once the compile caught up with a changed file.
             return true;
           default:
             return false;
@@ -194,8 +202,16 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
         if (args["project"] !== project) {
           return false;
         }
-        // A card checks its files' bytes before showing them: an edited file shows as changed at once.
-        return command === "card" && (truncated || cardTouches(query, (path) => paths.has(path)));
+        // A card and the code panel check their files' bytes before showing them: an edited file shows
+        // as changed at once.
+        switch (command) {
+          case "card":
+            return truncated || cardTouches(query, (path) => paths.has(path));
+          case "code_view":
+            return truncated || codeTouches(query, (path) => paths.has(path));
+          default:
+            return false;
+        }
       });
       return;
     }
@@ -220,6 +236,8 @@ export function applyEngineEvent(client: QueryClient, event: WorkspaceEvent): vo
           case "entrances":
           case "project_summary":
           case "relations":
+          case "code_view":
+            // The code panel may show an app's or entrance's lines in `unfold.toml`.
             return true;
           default:
             return false;

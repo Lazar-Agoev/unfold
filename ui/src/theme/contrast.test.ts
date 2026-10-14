@@ -40,6 +40,8 @@ const TEXT_PAIRS: readonly (readonly [string, string])[] = [
     "placeholder",
   ].map((ground) => ["muted", ground] as const),
   ["subtle", "surface"],
+  ["syntax-plain", "editor"],
+  ["syntax-plain", "mark"],
   ...["home", "chrome", "sidebar", "surface", "selection", "hover"].map((ground) => ["accent-text", ground] as const),
   ["on-accent", "accent"],
   ["on-danger", "danger"],

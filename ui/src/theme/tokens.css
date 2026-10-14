@@ -95,6 +95,9 @@
   --color-syntax-number: #b4530a;
   --color-syntax-comment: #8c8c8c;
   --color-syntax-external: #db2777;
+  /* The code panel's ground, and a call's expression marked in it */
+  --color-editor: #fbfbfc;
+  --color-mark: #fff0b8;
 
   /* Flow diagram */
   --color-decision: #d97706;

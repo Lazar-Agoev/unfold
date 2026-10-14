@@ -1,0 +1,20 @@
+/* `</>` (core-scope.html's `.cx`): a small mono tag that opens code in the panel. */
+
+.code-button {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--color-card-rule);
+  border-radius: var(--radius-mono);
+  background: var(--color-surface);
+  font: 600 10px/1 var(--font-code);
+  color: var(--color-subtle);
+  cursor: pointer;
+}
+
+.code-button:hover {
+  border-color: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}

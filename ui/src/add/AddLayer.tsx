@@ -1,6 +1,7 @@
 /**
  * The Add box: one box over the board. Typing searches names in the board's project, as one ranked
- * list. Focus stays in its input: ↑ ↓ move the selection, Enter adds to the page, Escape closes.
+ * list, and its files after them. Focus stays in its input: ↑ ↓ move the selection, Enter adds a name
+ * to the page or opens a file in the code panel, Escape closes.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -184,7 +185,7 @@ export function AddLayer({ page }: { readonly page: PageTarget }) {
             aria-autocomplete="list"
             aria-activedescendant={selected && typed !== "" ? optionId(listId, selectedIndex) : undefined}
             aria-label="Find"
-            placeholder="Find functions, types, and entrances"
+            placeholder="Find functions, types, entrances, and files"
             spellCheck={false}
             autoComplete="off"
             value={query}

@@ -139,6 +139,20 @@ describe("FlowView", () => {
     expect(onOpenLines).toHaveBeenCalledWith("shop/checkout.py", [15, 17]);
   });
 
+  it("opens a thin row's lines from its `</>`, in the file of the flow drawing it", () => {
+    const onViewRow = vi.fn();
+    const onSelect = vi.fn();
+    const { container } = show("08-api", { onViewRow, onSelect });
+    const row = all(container, ".flow-thin")[0];
+    const button = row?.querySelector<HTMLElement>(".flow-code");
+    if (!button) {
+      throw new Error("the row has a `</>`");
+    }
+    fireEvent.click(button);
+    expect(onViewRow).toHaveBeenCalledWith("shop/api.py", expect.objectContaining({ lines: [6, 15] }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("marks AWAIT and SOMETIMES, and draws a sometimes call dashed", () => {
     const awaited = show("02-place-order-ts");
     expect(all(awaited.container, ".flow-tag").map((item) => item.textContent)).toEqual(["await", "await", "await"]);
@@ -146,5 +160,86 @@ describe("FlowView", () => {
     const sometimes = show("05-route-message");
     expect(all(sometimes.container, ".flow-call.sometimes").map((item) => item.dataset["key"])).toEqual(["mail/route.py#route_message/call:fetch_profile"]);
     expect(all(sometimes.container, ".flow-tag.sometimes")).toHaveLength(1);
+  });
+});
+
+/** The outlines drawn over a flow: their kind and where they are. */
+function outlines(container: HTMLElement): { readonly lit: boolean; readonly at: string }[] {
+  return all(container, ".flow-outline").map((item) => ({ lit: item.classList.contains("lit"), at: `${item.style.left},${item.style.top},${item.style.width},${item.style.height}` }));
+}
+
+function at(rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number } | undefined): string {
+  return rect ? `${rect.x}px,${rect.y}px,${rect.width}px,${rect.height}px` : "none";
+}
+
+describe("FlowView and the code panel", () => {
+  it("outlines the selected block on its own shape", () => {
+    const key = "shop/service.py#place_order/call:save_order";
+    const { geometry, container } = show("01-place-order", { selected: { kind: "block", key } });
+    expect(outlines(container)).toEqual([{ lit: false, at: at(geometry.blocks.get(key)) }]);
+    expect(container.querySelector(".flow-outline")?.className).toBe("flow-outline box");
+  });
+
+  it("outlines what holds a block that isn't drawn on its own: a hidden control block's gap tick, a collapsed combined step", () => {
+    const hidden = show("06-checkout", { selected: { kind: "block", key: "shop/checkout.py#checkout/for[0]" } });
+    const tick = all(hidden.container, ".flow-gap")[0];
+    expect(outlines(hidden.container)).toEqual([{ lit: false, at: `${tick?.style.left},${tick?.style.top},${tick?.style.width},${tick?.style.height}` }]);
+    expect(hidden.container.querySelector(".flow-outline")?.className).toBe("flow-outline tick");
+    hidden.container.remove();
+    const combined = show("place-order-shaped", { selected: { kind: "block", key: "shop/service.py#place_order/call:save_order" } });
+    expect(outlines(combined.container)).toEqual([{ lit: false, at: at(combined.geometry.items.get("save")) }]);
+  });
+
+  it("outlines the gap tick that counts a line when nothing selected is drawn here", () => {
+    const { geometry, container } = show("01-place-order", { selected: { kind: "block", key: "elsewhere" }, outline: { path: "shop/service.py", line: 24 } });
+    const tick = geometry.pieces.find((piece) => piece.kind === "gap" && piece.gap.lines[0] === 24);
+    expect(outlines(container)).toEqual([{ lit: false, at: at(tick?.rect) }]);
+  });
+
+  it("lights a hovered line's block, or the gap tick of a line no block covers", () => {
+    const key = "shop/service.py#place_order/call:load_order";
+    const block = show("01-place-order", { hover: { key, path: "shop/service.py", line: 11 } });
+    expect(outlines(block.container)).toEqual([{ lit: true, at: at(block.geometry.blocks.get(key)) }]);
+    block.container.remove();
+    const gap = show("01-place-order", { hover: { key: null, path: "shop/service.py", line: 17 } });
+    const tick = gap.geometry.pieces.find((piece) => piece.kind === "gap" && piece.gap.lines[0] === 17);
+    expect(outlines(gap.container)).toEqual([{ lit: true, at: at(tick?.rect) }]);
+    gap.container.remove();
+    const elsewhere = show("01-place-order", { hover: { key: null, path: "shop/other.py", line: 17 } });
+    expect(outlines(elsewhere.container)).toEqual([]);
+  });
+
+  it("opens a block's code from its `</>` without selecting it twice", () => {
+    const onViewCode = vi.fn();
+    const onSelect = vi.fn();
+    const { container } = show("place-order-shaped", { onViewCode, onSelect });
+    const call = container.querySelector('.flow-call[data-key="shop/service.py#place_order/call:load_order"]');
+    const button = call?.querySelector<HTMLElement>(":scope > .flow-code");
+    expect(button?.textContent).toBe("</>");
+    if (button) {
+      fireEvent.click(button);
+    }
+    expect(onViewCode).toHaveBeenCalledWith({ kind: "block", key: "shop/service.py#place_order/call:load_order" });
+    expect(onSelect).not.toHaveBeenCalled();
+    const combined = container.querySelector<HTMLElement>('.flow-combined[data-item="save"] > .flow-code');
+    if (combined) {
+      fireEvent.click(combined);
+    }
+    expect(onViewCode).toHaveBeenLastCalledWith({ kind: "combined", item: "save" });
+    // Every block has one: frames, parts, exits, rows of other calls, and combined steps.
+    expect(all(container, ".flow-code").length).toBeGreaterThan(5);
+    expect(container.querySelector(".flow-pill.start .flow-code")).toBeNull();
+  });
+
+  it("has no `</>` until something opens code", () => {
+    const { container } = show("01-place-order");
+    expect(all(container, ".flow-code")).toHaveLength(0);
+  });
+
+  it("opens a block's menu on a right-click", () => {
+    const onBlockMenu = vi.fn();
+    show("01-place-order", { onBlockMenu });
+    fireEvent.contextMenu(screen.getByText("load_order"));
+    expect(onBlockMenu).toHaveBeenCalledWith(expect.anything(), { kind: "block", key: "shop/service.py#place_order/call:load_order" });
   });
 });

@@ -53,8 +53,8 @@ pub enum Target {
         lines: [u32; 2],
         /// The lines to mark, for a citation.
         mark: Option<[u32; 2]>,
-        /// A combined step's title, which labels it in the path; otherwise the path says which
-        /// lines (`line 24`).
+        /// A combined step's title, which labels it in the path after `⊞`; otherwise the path
+        /// says which lines (`line 24`).
         title: Option<String>,
     },
     /// A written member of a class or type card, by the card's key and the member's index.
@@ -216,7 +216,8 @@ pub struct Mark {
 pub struct PathStep {
     /// What the step says: a file's path, a definition's name, a control block's header, the
     /// text that opens a part, a call's written callee, an exit's keyword, an app's or
-    /// entrance's name, a combined step's title, a field's name, or the lines (`line 24`).
+    /// entrance's name, a combined step's title after `⊞`, a field's name, or the lines
+    /// (`line 24`).
     pub label: String,
     /// The block, app, or entrance the step widens the view to. Absent for the file (which
     /// widens to the whole file) and for a step that is only lines or a field.

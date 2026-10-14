@@ -7,12 +7,18 @@
  * Compact, its arrows leave from its edge. Expanded, it says its one sentence and lists its code in
  * order, each row with where it is, and each arrow leaves from its row. Code that isn't found is
  * always listed, dashed and labeled with its state (missing, not analyzed, not a start, stale).
+ *
+ * Its `</>` opens its lines in `unfold.toml` in the code panel, and a line of it hovered there lights
+ * the card.
  */
 
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
+import { CodeButton } from "../../code/CodeButton";
+import { viewCode } from "../../code/open";
 import type { Card, StartCard } from "../../ipc/generated";
 import { select, type PageTarget } from "../../state/boards";
+import { useCodeHover } from "../../state/codePanel";
 import { codePort, NODE_PORT } from "../arrows";
 import { TARGET_STATE_WORDS, startRowName, startRowPlace, startRows, type CardShape } from "../cardText";
 import { useMeasure } from "../measure";
@@ -52,6 +58,7 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
   const width = useMemo(() => startCardWidth(start, shape, measure), [start, shape, measure]);
   const rows = startRows(start, shape);
   const portSet = useMemo(() => new Set(ports), [ports]);
+  const lit = useCodeHover()?.key === start.key;
 
   const portsKey = ports.join("\u0000");
   useLayoutEffect(() => {
@@ -60,7 +67,7 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
 
   return (
     <article
-      className={`board-card start-card${selected ? " selected" : ""}`}
+      className={`board-card start-card${selected ? " selected" : ""}${lit ? " lit" : ""}`}
       data-card-id={card.id}
       data-key={start.key}
       style={{ width }}
@@ -79,6 +86,12 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
         <strong className="start-name">{start.name}</strong>
         {start.on !== undefined ? <OnText on={start.on} entrance={start.kind === "entrance"} /> : null}
         {expanded && start.about !== undefined ? <p className="start-about">{start.about}</p> : null}
+        <CodeButton
+          className="card-view-code"
+          onView={() => {
+            viewCode(target, { kind: "card", cardId: card.id, key: null }, new Map([[card.id, start]]));
+          }}
+        />
         <HeaderPorts ids={ports.filter((id) => id === NODE_PORT)} />
       </header>
       <ReviewBanner target={target} cardId={card.id} view={start} />

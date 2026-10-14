@@ -39,6 +39,8 @@ export type Selection =
   | { readonly kind: "none" }
   /** A card, or a block drawn in it (`key`), in its own flow or in a call it opens in place. */
   | { readonly kind: "card"; readonly cardId: string; readonly key: Key | null }
+  /** A field of a type card: the type that writes it (the card's, or a base it inherits from) and its index among that type's written members. */
+  | { readonly kind: "field"; readonly cardId: string; readonly key: Key; readonly index: number }
   | { readonly kind: "combined"; readonly combinedId: string }
   /** A connection. */
   | { readonly kind: "link"; readonly linkId: string }

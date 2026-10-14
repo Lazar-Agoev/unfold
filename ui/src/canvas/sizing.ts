@@ -43,6 +43,8 @@ const GAP = 8;
 const GLYPH = 8;
 /** The chevron at the start of a header: 16px less its -2px margin (cards.css `.card-expand`). */
 const CHEVRON = 14;
+/** The header's `</>` at its end (codeButton.css): three 6px characters, its padding, and its border. */
+const CODE_BUTTON = 30;
 /** A header (cards.css keeps it 43px with its rule, 44 with the card's border). */
 const BLOCK_HEADER = 44;
 /** A header's block padding (each side) and the rule under it. */
@@ -64,10 +66,10 @@ export function headerText(header: Header, chevron: boolean): HeaderText {
   return { mark: headerMark(header), name: header.name ?? header.label, location: headerLocation(header), chevron };
 }
 
-/** The width a header needs: padding, border, chevron, mark, name, and location. */
+/** The width a header needs: padding, border, chevron, mark, name, location, and `</>`. */
 function headerWidth(header: HeaderText, measure: Measure): number {
   const mark = header.mark.word ? measure(header.mark.text, TYPE_KIND_FONT) : GLYPH;
-  const text = mark + GAP + measure(header.name, TITLE_FONT) + GAP + measure(header.location, LOCATION_FONT);
+  const text = mark + GAP + measure(header.name, TITLE_FONT) + GAP + measure(header.location, LOCATION_FONT) + GAP + CODE_BUTTON;
   return Math.ceil(PADDING * 2 + BORDER + (header.chevron ? CHEVRON + GAP : 0) + text);
 }
 

@@ -150,6 +150,18 @@ export interface FieldRow {
   readonly type: TypeText | undefined;
   /** For an inherited member, the index of the base it comes from. */
   readonly base?: number;
+  /**
+   * The member as the code panel opens it: the type that writes it (the card's, or the project base it
+   * is inherited from) and its index among that type's written members. Absent for an alias's aliased
+   * type.
+   */
+  readonly field?: FieldRef;
+}
+
+/** A written member of a class or type: the type's key and the member's index among its written members. */
+export interface FieldRef {
+  readonly key: Key;
+  readonly index: number;
 }
 
 /**
@@ -159,10 +171,12 @@ export interface FieldRow {
 export function fieldRows(definition: TypeDefinition): FieldRow[] {
   return [
     ...(definition.aliased ? [{ row: "=", member: null, type: definition.aliased }] : []),
-    ...definition.members.map((member, index) => ({ row: String(index), member, type: member.type })),
-    ...definition.inherited.flatMap((group, base) =>
-      group.members.map((member, index) => ({ row: `from${base}/${index}`, member, type: member.type, base })),
-    ),
+    ...definition.members.map((member, index) => ({ row: String(index), member, type: member.type, field: { key: definition.key, index } })),
+    ...definition.inherited.flatMap((group, base) => {
+      // A base that lists members is a project type, and its one span names its definition.
+      const from = group.from.spans[0]?.to.key;
+      return group.members.map((member, index) => ({ row: `from${base}/${index}`, member, type: member.type, base, ...(from !== undefined ? { field: { key: from, index } } : {}) }));
+    }),
   ];
 }
 

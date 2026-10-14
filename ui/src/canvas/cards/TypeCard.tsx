@@ -10,18 +10,23 @@
  * "from <Type>" for each base. A card of 12 fields or more lists the first 8 and "N more".
  *
  * Each field with a type arrow has its port at its row's right edge (a field behind "N more" at that
- * row); calls from a class leave from the header's edge.
+ * row); calls from a class leave from the header's edge. Its header's `</>` opens its code in the code
+ * panel, and a line of it hovered there lights the card. A field selects on a click, and it or its
+ * `</>` opens that field's line (an inherited one in its base).
  */
 
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { CodeButton } from "../../code/CodeButton";
+import { viewCode } from "../../code/open";
 import { TypeText } from "../../code/TypeText";
 import { memberName, memberValue } from "../../code/typeKinds";
 import type { Card, CardView, InheritedGroup, TypeDefinition } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
-import { cardKey, select, type PageTarget } from "../../state/boards";
+import { cardKey, select, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { isMissing } from "../../state/cards";
-import { NODE_PORT, fieldPort, fieldRows, type FieldRow } from "../arrows";
+import { useCodeHover } from "../../state/codePanel";
+import { NODE_PORT, fieldPort, fieldRows, type FieldRef, type FieldRow } from "../arrows";
 import { useMeasure } from "../measure";
 import { fieldTexts, headerText, listedFields, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
@@ -37,7 +42,15 @@ export interface TypeCardProps {
   readonly selected: boolean;
 }
 
-interface FieldsProps {
+/** Selecting a field, and opening its line in the code panel. */
+interface FieldActions {
+  /** The selected field, when it is on this card. */
+  readonly selected: FieldRef | null;
+  readonly onSelect: (field: FieldRef) => void;
+  readonly onView: (field: FieldRef) => void;
+}
+
+interface FieldsProps extends FieldActions {
   readonly definition: TypeDefinition;
   readonly ports: ReadonlySet<string>;
   /** Whether every field is listed (after "N more"). */
@@ -69,12 +82,12 @@ function FromBase({ group }: { readonly group: InheritedGroup }) {
   );
 }
 
-/** One field: its name, its written type, its value, and its port. */
-function FieldRowView({ field, ports }: { readonly field: FieldRow; readonly ports: ReadonlySet<string> }) {
+/** One field: its name, its written type, its value, and its port; a member selects, with its `</>`. */
+function FieldRowView({ field, ports, actions }: { readonly field: FieldRow; readonly ports: ReadonlySet<string>; readonly actions: FieldActions }) {
   const { row, member, type } = field;
   const port = fieldPort(row);
   const value = member ? memberValue(member) : null;
-  return (
+  const cells = (
     <>
       <span className="tcard-name">
         {member?.readonly ? <span className="type-def-readonly">readonly </span> : null}
@@ -87,9 +100,41 @@ function FieldRowView({ field, ports }: { readonly field: FieldRow; readonly por
       </span>
     </>
   );
+  const ref = field.field;
+  if (!ref) {
+    return <div className="tcard-field">{cells}</div>;
+  }
+  const selected = actions.selected?.key === ref.key && actions.selected.index === ref.index;
+  return (
+    <div
+      className={`tcard-field member${selected ? " selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={(event) => {
+        event.stopPropagation();
+        actions.onSelect(ref);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          actions.onSelect(ref);
+        }
+      }}
+    >
+      {cells}
+      <CodeButton
+        className="tcard-code"
+        onView={() => {
+          actions.onView(ref);
+        }}
+      />
+    </div>
+  );
 }
 
-function Fields({ definition, ports, all, onShowAll }: FieldsProps) {
+function Fields({ definition, ports, all, onShowAll, ...actions }: FieldsProps) {
   const rows = fieldRows(definition);
   const { entries, hidden } = listedFields(definition, all);
   if (entries.length === 0) {
@@ -105,7 +150,7 @@ function Fields({ definition, ports, all, onShowAll }: FieldsProps) {
           return group ? <FromBase key={`from${entry.base}`} group={group} /> : null;
         }
         const field = rows[entry.index];
-        return field ? <FieldRowView key={field.row} field={field} ports={ports} /> : null;
+        return field ? <FieldRowView key={field.row} field={field} ports={ports} actions={actions} /> : null;
       })}
       {hidden > 0 ? (
         <button
@@ -133,6 +178,9 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
   const updateNodeInternals = useUpdateNodeInternals();
   const [all, setAll] = useState(false);
   const menu = useCardMenu(target, card.id, header.kind === "class");
+  const lit = useCodeHover()?.key === key;
+  const selectedField = usePageView(target, ({ selection }) => (selection.kind === "field" && selection.cardId === card.id ? selection : null));
+  const fieldSelection = (field: FieldRef): Selection => ({ kind: "field", cardId: card.id, ...field });
   const definition = typeQuery.data;
   // A class expands to its class-level code; a type declaration has only its fields.
   const expandable = header.kind === "class";
@@ -148,7 +196,23 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
   const missing = typeQuery.isError && isMissing(typeQuery.error);
   let body: ReactNode;
   if (definition) {
-    body = <Fields definition={definition} ports={portSet} all={all} onShowAll={() => { setAll(true); }} />;
+    body = (
+      <Fields
+        definition={definition}
+        ports={portSet}
+        all={all}
+        onShowAll={() => {
+          setAll(true);
+        }}
+        selected={selectedField}
+        onSelect={(field) => {
+          select(target, fieldSelection(field));
+        }}
+        onView={(field) => {
+          viewCode(target, fieldSelection(field), new Map([[card.id, drawn]]));
+        }}
+      />
+    );
   } else if (typeQuery.isError) {
     body = <CardNote warn>{missing ? "This type is missing from the graph." : typeQuery.error.message}</CardNote>;
   } else {
@@ -156,7 +220,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
   }
   return (
     <article
-      className={`board-card type-card${selected ? " selected" : ""}${missing ? " missing" : ""}`}
+      className={`board-card type-card${selected ? " selected" : ""}${lit ? " lit" : ""}${missing ? " missing" : ""}`}
       data-card-id={card.id}
       data-key={key}
       data-loading={typeQuery.isPending ? "true" : undefined}
@@ -177,6 +241,12 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
         <span className="card-location" title={`${header.path}:${header.line}`}>
           {text.location}
         </span>
+        <CodeButton
+          className="card-view-code"
+          onView={() => {
+            viewCode(target, { kind: "card", cardId: card.id, key: null }, new Map([[card.id, drawn]]));
+          }}
+        />
         <HeaderPorts ids={ports.filter((id) => id === NODE_PORT)} />
       </header>
       <ReviewBanner target={target} cardId={card.id} view={drawn} />

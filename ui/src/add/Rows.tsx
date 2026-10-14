@@ -1,16 +1,29 @@
 /**
  * A row of Add's list: the result's kind in small gray text, its name, and where it is: a
- * definition's `file:line`, an entrance's app and what starts it, an app's command.
+ * definition's `file:line`, an entrance's app and what starts it, an app's command. A file's path is
+ * its name.
  */
 
 import type { ResultItem } from "./search";
 
-/** A result's accessible name: `function OrderService.place, src/orders/service.ts`. */
-export function resultText({ hit }: ResultItem): string {
+/** A result's accessible name: `function OrderService.place, src/orders/service.ts`, `file tests/test_orders.py`. */
+export function resultText(item: ResultItem): string {
+  if (item.kind === "file") {
+    return `file ${item.hit.path}`;
+  }
+  const { hit } = item;
   return hit.path === "" ? `${hit.kind} ${hit.name}` : `${hit.kind} ${hit.qualifiedName}, ${hit.path}`;
 }
 
 export function ResultRow({ item }: { readonly item: ResultItem }) {
+  if (item.kind === "file") {
+    return (
+      <div className="add-row">
+        <span className="add-row-kind">file</span>
+        <span className="add-row-name">{item.hit.path}</span>
+      </div>
+    );
+  }
   const { hit } = item;
   const start = hit.path === "";
   const where = start ? hit.qualifiedName : hit.line === null ? hit.path : `${hit.path}:${hit.line}`;

@@ -1,9 +1,9 @@
 /**
  * Selected: what is selected on the page, pinned to the bottom of the board sidebar under a rule. A
- * card, a block drawn in one, a combined step, a connection, a frame, a resource card, a note, a
- * proposed step, a call's arrow between cards, or the calls an arrow stands for; a hint when nothing
- * is. It takes at most half the sidebar's height and scrolls on its own; its collapse is remembered per
- * window.
+ * card, a block drawn in one, a field of a type card (its card), a combined step, a connection, a
+ * frame, a resource card, a note, a proposed step, a call's arrow between cards, or the calls an arrow
+ * stands for; a hint when nothing is. It takes at most half the sidebar's height and scrolls on its
+ * own; its collapse is remembered per window.
  */
 
 import { IconButton, SectionLabel } from "../../components";
@@ -30,6 +30,13 @@ function SelectedBody({ target }: { readonly target: PageTarget }) {
     }
     if (card && selection.key !== null) {
       return <SelectedBlock key={`${card.id}:${selection.key}`} target={target} card={card} blockKey={selection.key} />;
+    }
+  }
+  if (page && selection.kind === "field") {
+    // A field shows its type card.
+    const card = findCard(page, selection.cardId);
+    if (card) {
+      return <SelectedCard key={card.id} target={target} card={card} />;
     }
   }
   if (page && selection.kind === "combined") {

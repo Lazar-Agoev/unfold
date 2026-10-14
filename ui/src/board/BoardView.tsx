@@ -1,7 +1,8 @@
 /**
  * The shown board: the top bar over the stage, where the active page's canvas sits with the banners at
- * its top and the dock at its bottom. Only the shown board is mounted; each page has its own React Flow
- * store, so switching pages starts from that page's camera.
+ * its top and the dock at its bottom, and the code panel beside both while it is open (the canvas
+ * narrows for it). Only the shown board is mounted; each page has its own React Flow store, so switching
+ * pages starts from that page's camera.
  *
  * It applies Edit › Undo and Redo to the board (the preload keeps them for a focused text field).
  */
@@ -11,7 +12,9 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardCanvas, arrangeBoard, useBoardArrows } from "../canvas";
 import { isModalOpen, showToast } from "../components";
 import { onShellEvent } from "../ipc";
+import { CodePanel } from "../code/CodePanel";
 import { boardKey, canUndo, findPage, redo, requestCardFocus, undo, useOpenBoard, usePageView, type BoardRef, type PageTarget } from "../state/boards";
+import { useCodePanel } from "../state/codePanel";
 import { BoardBanner } from "./BoardBanner";
 import { Dock } from "./Dock";
 import { TopBar } from "./TopBar";
@@ -107,23 +110,27 @@ export function BoardView({ board }: { readonly board: BoardRef }) {
   const page = useOpenBoard(board, (open) => open.activePage);
   const { project, id } = board;
   const target = useMemo(() => (page !== undefined ? { board: { project, id }, page } : null), [project, id, page]);
+  const code = useCodePanel();
   useMenuUndo(board);
 
   return (
     <div className="board-view" data-board-key={boardKey(board)} tabIndex={-1}>
-      {target ? (
-        <>
-          <TopBar target={target} />
-          <div className="board-stage">
-            {/* Each page has its own React Flow store, so switching pages starts from that page's camera. */}
-            <ReactFlowProvider key={target.page}>
-              <PageStage target={target} />
-            </ReactFlowProvider>
-          </div>
-        </>
-      ) : (
-        <p className="board-empty">Opening the board…</p>
-      )}
+      <div className="board-main">
+        {target ? (
+          <>
+            <TopBar target={target} />
+            <div className="board-stage">
+              {/* Each page has its own React Flow store, so switching pages starts from that page's camera. */}
+              <ReactFlowProvider key={target.page}>
+                <PageStage target={target} />
+              </ReactFlowProvider>
+            </div>
+          </>
+        ) : (
+          <p className="board-empty">Opening the board…</p>
+        )}
+      </div>
+      {target && code ? <CodePanel key={target.page} target={target} open={code} /> : null}
     </div>
   );
 }

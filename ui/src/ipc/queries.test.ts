@@ -270,3 +270,40 @@ describe("resetEngineQueries", () => {
     expect(left.sort()).toEqual(["app_info::", "get_settings::"]);
   });
 });
+
+describe("the code panel's view", () => {
+  /** The panel showing `createOrder` in ORDERS, a file in PAY, and one still loading, in P; and ORDERS in Q. */
+  function seedViews(): void {
+    client = new QueryClient();
+    const view = (file: string) => ({ file, state: "current", lines: [], path: [], definitions: [] });
+    seed("code_view", { project: P, target: { kind: "block", key: CREATE } }, view(ORDERS));
+    seed("code_view", { project: P, target: { kind: "file", path: PAY } }, view(PAY));
+    seedEmpty("code_view", { project: P, target: { kind: "block", key: MISSING } });
+    seed("code_view", { project: Q, target: { kind: "block", key: CREATE } }, view(ORDERS));
+  }
+
+  function staleViews(): number {
+    return client
+      .getQueryCache()
+      .getAll()
+      .filter((query) => query.state.isInvalidated).length;
+  }
+
+  it("is asked for again whenever the project's graph changes, so it crops again", () => {
+    seedViews();
+    applyEngineEvent(client, UPDATED);
+    expect(staleViews()).toBe(3);
+  });
+
+  it("shows a changed file at once: files_changed refreshes the views of that file (and those not loaded yet)", () => {
+    seedViews();
+    applyEngineEvent(client, { type: "files_changed", project: P, paths: [ORDERS], truncated: false });
+    expect(staleViews()).toBe(2);
+  });
+
+  it("follows unfold.toml: entrances_changed refreshes the project's views", () => {
+    seedViews();
+    applyEngineEvent(client, { type: "entrances_changed", project: Q });
+    expect(staleViews()).toBe(1);
+  });
+});

@@ -3,6 +3,8 @@ import type { SearchHit } from "../ipc/generated";
 
 const boards = vi.hoisted(() => ({ addRef: vi.fn() }));
 vi.mock("../state/boards", () => boards);
+const open = vi.hoisted(() => ({ viewFile: vi.fn() }));
+vi.mock("../code/open", () => open);
 
 const { addResult } = await import("./activate");
 
@@ -16,9 +18,15 @@ beforeEach(() => {
 
 describe("addResult", () => {
   it("puts the result's card on the page, named after it", () => {
-    addResult({ id: "definition:k", hit: HIT, ref: { block: "k" } }, PAGE);
+    addResult({ kind: "card", id: "definition:k", hit: HIT, ref: { block: "k" } }, PAGE);
     expect(boards.addRef).toHaveBeenCalledWith(PAGE, { block: "k" }, "place_order");
-    addResult({ id: "entrance:e", hit: { ...HIT, key: "e", name: "Place an order", kind: "entrance" }, ref: { entrance: "e" } }, PAGE);
+    addResult({ kind: "card", id: "entrance:e", hit: { ...HIT, key: "e", name: "Place an order", kind: "entrance" }, ref: { entrance: "e" } }, PAGE);
     expect(boards.addRef).toHaveBeenLastCalledWith(PAGE, { entrance: "e" }, "Place an order");
+  });
+
+  it("opens a file in the code panel, whole", () => {
+    addResult({ kind: "file", id: "file:tests/test_orders.py", hit: { project: "p-a", path: "tests/test_orders.py", name: "test_orders.py", key: "tests/test_orders.py", definitions: 2, score: 1 } }, PAGE);
+    expect(open.viewFile).toHaveBeenCalledWith("p-a", "tests/test_orders.py");
+    expect(boards.addRef).not.toHaveBeenCalled();
   });
 });

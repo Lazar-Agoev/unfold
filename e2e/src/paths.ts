@@ -11,6 +11,9 @@ export const desktopDir = join(repoRoot, "desktop");
 
 export const playgroundsDir = join(repoRoot, "testdata", "playgrounds");
 
+/** The compiler's blessed output for each playground (`<name>.jsonl`, graph records one per line). */
+export const goldensDir = join(repoRoot, "testdata", "goldens");
+
 /** The Electron binary the desktop package depends on (the `electron` module exports its path). */
 export function electronExecutable(): string {
   const require = createRequire(join(desktopDir, "package.json"));

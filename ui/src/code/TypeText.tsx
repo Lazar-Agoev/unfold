@@ -3,11 +3,11 @@
  * name goes. A project name reads as a name; a library one has a dotted underline whose tooltip names
  * its package; a builtin one reads like punctuation; an unknown one has a dashed underline whose
  * tooltip says why. Between names, words read as text and punctuation (`[]`, `<>`,
- * `|`) in the contour gray.
+ * `|`) in the contour gray. Given `onOpen`, a project name is a link that opens its definition.
  */
 
 import { Tooltip } from "../components";
-import type { TypeSpan, TypeText as TypeTextModel } from "../ipc/generated";
+import type { Key, TypeSpan, TypeText as TypeTextModel } from "../ipc/generated";
 import { reasonText } from "./text";
 import "./types.css";
 
@@ -39,12 +39,28 @@ export function typeSegments(type: TypeTextModel): TypeSegment[] {
   return segments;
 }
 
-function SpanText({ segment }: { readonly segment: Extract<TypeSegment, { kind: "span" }> }) {
+type OpenType = (key: Key) => void;
+
+function SpanText({ segment, onOpen }: { readonly segment: Extract<TypeSegment, { kind: "span" }>; readonly onOpen: OpenType | undefined }) {
   const { span, text } = segment;
   const { to } = span;
   switch (to.outcome) {
-    case "project":
-      return <span className="type-name">{text}</span>;
+    case "project": {
+      const { key } = to;
+      return onOpen && key !== undefined ? (
+        <button
+          type="button"
+          className="type-name type-link"
+          onClick={() => {
+            onOpen(key);
+          }}
+        >
+          {text}
+        </button>
+      ) : (
+        <span className="type-name">{text}</span>
+      );
+    }
     case "library":
       return (
         <Tooltip content={`From ${to.module ?? to.note ?? "a package"}`} side="bottom" align="start">
@@ -66,12 +82,12 @@ function SpanText({ segment }: { readonly segment: Extract<TypeSegment, { kind: 
   }
 }
 
-export function TypeText({ type }: { readonly type: TypeTextModel }) {
+export function TypeText({ type, onOpen }: { readonly type: TypeTextModel; readonly onOpen?: OpenType }) {
   return (
     <span className="type-text">
       {typeSegments(type).map((segment, position) =>
         segment.kind === "span" ? (
-          <SpanText key={position} segment={segment} />
+          <SpanText key={position} segment={segment} onOpen={onOpen} />
         ) : (
           <span key={position} className={segment.kind === "word" ? "type-word" : "type-punct"}>
             {segment.text}

@@ -2,10 +2,12 @@
  * Selected for a call's arrow: the call as written (`charge_card(order["card"], total)`) and its line,
  * then its contract, by the call's block key: what it sends (each argument beside the parameter it
  * fills), what comes back and where it lands, and what the callee raises ("caught" when a handler
- * around the call catches it).
+ * around the call catches it). A project type's name opens its definition in the code panel.
  */
 
-import type { CallContract, ContractRaise, ContractReturn, ContractSend } from "../../ipc/generated";
+import { viewDefinition } from "../../code/open";
+import { TypeText } from "../../code/TypeText";
+import type { CallContract, ContractRaise, ContractReturn, ContractSend, Key, ProjectId } from "../../ipc/generated";
 import { useEngineQuery } from "../../ipc/queries";
 import { type PageTarget, type SelectedLine as Line } from "../../state/boards";
 import { RelationRow } from "./Relations";
@@ -46,6 +48,11 @@ function raisedText(raise: ContractRaise): string {
   return raise.type?.text ?? raise.value ?? "?";
 }
 
+/** What a raise throws, its type's names opening their definitions. */
+function Raised({ raise, onOpen }: { readonly raise: ContractRaise; readonly onOpen: (key: Key) => void }) {
+  return raise.type ? <TypeText type={raise.type} onOpen={onOpen} /> : <>{raisedText(raise)}</>;
+}
+
 function Side({ value }: { readonly value: ContractText }) {
   return <span className={value.dim ? "relation-dim" : undefined}>{value.text}</span>;
 }
@@ -72,8 +79,11 @@ function Send({ send, label }: { readonly send: ContractSend; readonly label: st
   );
 }
 
-function Contract({ contract }: { readonly contract: CallContract }) {
+function Contract({ project, contract }: { readonly project: ProjectId; readonly contract: CallContract }) {
   const { returns } = contract;
+  const open = (key: Key) => {
+    viewDefinition(project, key);
+  };
   return (
     <div className="selected-relations link call">
       {contract.sends.length === 0 ? (
@@ -84,13 +94,13 @@ function Contract({ contract }: { readonly contract: CallContract }) {
         contract.sends.map((send, index) => <Send key={index} send={send} label={index === 0 ? "Sends" : ""} />)
       )}
       <RelationRow label="Returns">
-        <Side value={returns.type ? { text: returns.type.text, dim: false } : { text: "?", dim: true }} />
+        {returns.type ? <TypeText type={returns.type} onOpen={open} /> : <Side value={{ text: "?", dim: true }} />}
         <Arrow />
         <Side value={landingText(returns)} />
       </RelationRow>
       {contract.raises.map((raise, index) => (
         <RelationRow key={raise.exit} label={index === 0 ? "Throws" : ""} title={raisedText(raise)}>
-          {raisedText(raise)}
+          <Raised raise={raise} onOpen={open} />
           {raise.caughtBy !== undefined ? <span className="relation-note">caught</span> : null}
         </RelationRow>
       ))}
@@ -106,7 +116,7 @@ export function SelectedLine({ target, line }: { readonly target: PageTarget; re
         <h3 className="selected-name">{contract.data?.text ?? "…"}</h3>
         <span className="selected-location ui">{contract.data ? `Call · line ${contract.data.line}` : "Call"}</span>
       </div>
-      {contract.data ? <Contract contract={contract.data} /> : <p className="selected-note">{contract.isError ? contract.error.message : "Reading the call…"}</p>}
+      {contract.data ? <Contract project={target.board.project} contract={contract.data} /> : <p className="selected-note">{contract.isError ? contract.error.message : "Reading the call…"}</p>}
     </>
   );
 }

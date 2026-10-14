@@ -123,7 +123,7 @@ fn lines_fields_and_files_are_targets_too() {
     assert_eq!(lines["mark"]["lines"], json!([33, 34]));
     assert_eq!(
         lines["path"].as_array().expect("path").last().expect("a step")["label"],
-        "Queue it"
+        "⊞ Queue it"
     );
 
     let field = view(

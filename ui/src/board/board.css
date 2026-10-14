@@ -1,13 +1,20 @@
-/* The board view: the top bar over the stage. */
+/* The board view: the top bar over the stage, and the code panel beside both. */
 
 .board-view {
   position: relative;
   display: flex;
   flex: 1;
-  flex-direction: column;
   min-width: 0;
   background: var(--color-canvas);
   outline: none;
+}
+
+.board-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
 }
 
 /* Top bar */

@@ -1,27 +1,38 @@
 /**
- * A card's flow wired to its page: what `FlowView` selects becomes the page's selection, and opening
- * a call in place or a combined step edits the board (one undo step each).
+ * A card's flow wired to its page: what `FlowView` selects becomes the page's selection, opening a call
+ * in place or a combined step edits the board (one undo step each), and a block's or a thin row's `</>`
+ * or a gap tick opens its code in the code panel.
  */
 
-import type { Key } from "../ipc/generated";
+import { viewCode, viewLines, viewRow } from "../code/open";
+import type { CardView, Key, RepoPath, ThinRow } from "../ipc/generated";
 import { editCombined, editPage, select, toggleOpen, type PageTarget, type Selection } from "../state/boards";
 import type { FlowSelection, FlowViewProps } from "./FlowView";
 
-/** `FlowView`'s callbacks for card `cardId` on a page: selection, opening calls in place, and combined steps' toggles. */
-export function flowActions(target: PageTarget, cardId: string): Pick<FlowViewProps, "onSelect" | "onToggleOpen" | "onToggleCombined"> {
+/** The page's selection for what `FlowView` selects in card `cardId`. */
+function pageSelection(cardId: string, selection: FlowSelection): Selection {
+  switch (selection.kind) {
+    case "block":
+      return { kind: "card", cardId, key: selection.key };
+    case "combined":
+      return { kind: "combined", combinedId: selection.item };
+    case "proposed":
+      return { kind: "proposal", proposalId: selection.item };
+  }
+}
+
+/**
+ * `FlowView`'s callbacks for card `cardId` (drawn as `view`) on a page: selection, opening calls in
+ * place, combined steps' toggles, `</>` on a block or a thin row, and gap ticks.
+ */
+export function flowActions(
+  target: PageTarget,
+  cardId: string,
+  view: CardView,
+): Pick<FlowViewProps, "onSelect" | "onToggleOpen" | "onToggleCombined" | "onViewCode" | "onViewRow" | "onOpenLines"> {
   return {
     onSelect: (selection: FlowSelection) => {
-      switch (selection.kind) {
-        case "block":
-          select(target, { kind: "card", cardId, key: selection.key });
-          break;
-        case "combined":
-          select(target, { kind: "combined", combinedId: selection.item });
-          break;
-        case "proposed":
-          select(target, { kind: "proposal", proposalId: selection.item });
-          break;
-      }
+      select(target, pageSelection(cardId, selection));
     },
     onToggleOpen: (path: readonly Key[]) => {
       editPage(target, (page) => {
@@ -30,6 +41,15 @@ export function flowActions(target: PageTarget, cardId: string): Pick<FlowViewPr
     },
     onToggleCombined: (item: string, collapsed: boolean) => {
       editCombined(target, item, { collapsed });
+    },
+    onViewCode: (selection: FlowSelection) => {
+      viewCode(target, pageSelection(cardId, selection), new Map([[cardId, view]]));
+    },
+    onViewRow: (path: RepoPath, row: ThinRow) => {
+      viewRow(target, cardId, path, row);
+    },
+    onOpenLines: (path: RepoPath, lines: readonly [number, number]) => {
+      viewLines(target, path, lines);
     },
   };
 }

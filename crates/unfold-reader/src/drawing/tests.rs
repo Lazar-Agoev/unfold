@@ -3,7 +3,7 @@
 //! playgrounds' drawn-flow goldens.
 
 use rustc_hash::FxHashMap;
-use unfold_core::testkit::{GraphBuilder, assert_golden, project, sample, unknown};
+use unfold_core::testkit::{GraphBuilder, assert_golden, builtin, project, sample, unknown};
 use unfold_core::vocab::{Flag, Form, Language, Outcome, Reason};
 use unfold_core::{Key, LineSpan};
 
@@ -1407,6 +1407,39 @@ fn a_thin_row_counts_the_unknowns_inside_its_calls() {
         panic!("the calls fold into a thin row");
     };
     assert_eq!(row.unknown, 4);
+}
+
+/// A thin row covers the lines from its first call's statement to its last one's. A call with no
+/// statement of its own (here, inside a hidden builtin) is in the nearest one above it, like the
+/// code panel shows it.
+#[test]
+fn a_thin_row_spans_its_calls_statements() {
+    const CODE: &str = "def log(msg):\n    print(\n        msg.get(\"a\"),\n    )\n    logger.debug(msg)\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "log.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "log", 1, 5, "def log(msg)");
+    let print = c.call(function, "print", 2, "print(", builtin("print"));
+    let statement = c.lines(2, 4);
+    c.set(print).range = statement;
+    c.set(print).stmt = Some(statement);
+    c.call(print, "msg.get", 3, "msg.get(\"a\")", unknown(Reason::NotFound));
+    c.call(
+        function,
+        "logger.debug",
+        5,
+        "logger.debug(msg)",
+        unknown(Reason::NotFound),
+    );
+    let flow = drawn(&g, "log.py#log");
+    assert_eq!(
+        plain(&flow),
+        "( log )\n  · msg.get ?, logger.debug ?   2 calls, 2 unknown\n( End )\n"
+    );
+    let Shape::Thin(row) = &flow.steps.steps[0].shape else {
+        panic!("the calls fold into a thin row");
+    };
+    assert_eq!(row.lines, LineSpan { start: 2, end: 5 });
 }
 
 /// A combined step that breaks out of a `switch` says where it goes.

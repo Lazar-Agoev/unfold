@@ -67,8 +67,8 @@ export type FlowPiece =
   /** A call box; `path` opens it in place (the open path to its flow, then its key). Its callbacks are pieces of their own, inside it. */
   | (PieceBase & { readonly kind: "call"; readonly box: CallBox; readonly path: readonly Key[]; readonly rows: readonly CallRow[] })
   | (PieceBase & { readonly kind: "callback"; readonly callback: Callback; readonly path: readonly Key[] })
-  /** A thin row; `key` (its first call's) lists or folds it. */
-  | (PieceBase & { readonly kind: "thin"; readonly row: ThinRow; readonly key: Key; readonly listed: boolean })
+  /** A thin row; `key` (its first call's) lists or folds it. Its lines are in `path`. */
+  | (PieceBase & { readonly kind: "thin"; readonly row: ThinRow; readonly key: Key; readonly listed: boolean; readonly path: RepoPath })
   /** An exit pill; `destination` is where it goes in words, absent when a wire shows it. A project call as its value is a chip opened by `path`. */
   | (PieceBase & { readonly kind: "exit"; readonly exit: ExitStep; readonly destination: string | null; readonly path: readonly Key[] })
   /** A control block's frame. `path` is the open path for the chips in its title (its header calls). */
@@ -542,7 +542,7 @@ class Builder {
         placed = this.call(step, x, y, scope, dim);
         break;
       case "thin":
-        placed = this.thin(step, x, y, dim);
+        placed = this.thin(step, x, y, dim, scope.flow.header.path);
         break;
       case "decision":
         placed = step.form === "switch" || step.form === "match" ? this.cases(step, step.id, x, y, scope, dim) : this.decision(step, step.id, x, y, scope, dim);
@@ -731,12 +731,12 @@ class Builder {
   }
 
   /** A thin row: its calls in a line (wrapping), or listed one per row. */
-  private thin(row: ThinRow, x: number, y: number, dim: boolean): Placed {
+  private thin(row: ThinRow, x: number, y: number, dim: boolean, file: RepoPath): Placed {
     const first = row.calls[0];
     const key = first?.key ?? "";
     const listed = this.listed.has(key);
     const rect: MutableRect = { x, y, width: 0, height: 0 };
-    this.pieces.push({ kind: "thin", rect, dim, row, key, listed });
+    this.pieces.push({ kind: "thin", rect, dim, row, key, listed, path: file });
     if (listed) {
       const header = this.caps("Library and unknown calls", FONT.callbackWord, 9, 0.07);
       const widths = row.calls.map((call) => this.thinItemWidth(call, true));

@@ -106,7 +106,9 @@ pub(super) fn resolve(
                 steps.extend(chain(tree, enclosing(tree, *lines)).map(Step::Block));
             }
             steps.push(Step::Named {
-                label: title.clone().unwrap_or_else(|| lines_label(*lines)),
+                label: title
+                    .as_ref()
+                    .map_or_else(|| lines_label(*lines), |title| format!("⊞ {title}")),
                 key: None,
             });
             Some(Resolved {
@@ -211,7 +213,7 @@ fn block(tree: Rc<FileTree>, id: u32) -> Resolved {
                 lines: Some(Span::Bytes(node.range)),
                 expression: Some(node.range),
             };
-            (Span::Bytes(statement(&tree, id)), expression, region, own)
+            (Span::Bytes(tree.statement(id)), expression, region, own)
         }
         NodeKind::Exit => {
             let statement = Span::Bytes(node.stmt.unwrap_or(node.range));
@@ -264,50 +266,6 @@ fn part_lines(tree: &FileTree, id: u32) -> ByteRange {
         },
         None => node.range,
     }
-}
-
-/// The statement call `id` is written in: its own `stmt`, or that of the nearest block above it
-/// that has one. A call in a test or a header shows that test or header; a call that runs when
-/// a definition is created (a decorator, a base, a default) shows itself. A part of a ternary
-/// or comprehension is inside an expression, so the climb goes on to the statement holding it.
-fn statement(tree: &FileTree, id: u32) -> ByteRange {
-    let call = tree.node(id).range;
-    let mut at = Some(id);
-    while let Some(current) = at {
-        let node = tree.node(current);
-        if let Some(stmt) = node.stmt {
-            return stmt;
-        }
-        match node.kind() {
-            NodeKind::Call | NodeKind::Exit => {}
-            NodeKind::Decision | NodeKind::Loop if is_expression(node.form) => {}
-            NodeKind::Function if node.form == Form::Lambda || parent_is_call(tree, current) => {}
-            NodeKind::Part if parent_is_expression(tree, current) => {}
-            NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {
-                return node.head.filter(|head| head.contains(call)).unwrap_or(call);
-            }
-            NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Type => return call,
-        }
-        at = node.parent;
-    }
-    call
-}
-
-/// Whether `form` is a control block written as an expression.
-pub(super) fn is_expression(form: Form) -> bool {
-    matches!(form, Form::Ternary | Form::Comprehension)
-}
-
-/// Whether node `id`'s parent is a ternary or comprehension.
-fn parent_is_expression(tree: &FileTree, id: u32) -> bool {
-    tree.parent(id)
-        .is_some_and(|parent| is_expression(tree.node(parent).form))
-}
-
-/// Whether node `id` is written in a call's arguments.
-fn parent_is_call(tree: &FileTree, id: u32) -> bool {
-    tree.parent(id)
-        .is_some_and(|parent| tree.kind(parent) == NodeKind::Call)
 }
 
 /// The innermost block of `tree` other than a call or an exit whose lines hold all of `lines`.

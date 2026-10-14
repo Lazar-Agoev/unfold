@@ -37,7 +37,7 @@ function combined(id: string, extra: Partial<Combined> = {}): Combined {
 /** A definition's card as drawn, with `steps` steps in a row. */
 function drawnCard(id: string, steps: number): CardView {
   const actions = { after: true, start: false, open: false };
-  const row = (index: number): Step => ({ id: index, state: "reached", kind: "thin", calls: [], unknown: 0 });
+  const row = (index: number): Step => ({ id: index, state: "reached", kind: "thin", calls: [], lines: [index + 1, index + 1], unknown: 0 });
   return {
     type: "definition",
     flow: {

@@ -2,11 +2,18 @@
  * Renders a laid-out drawn flow (`layoutFlow`) with the looks of diagram-blocks-examples.html's DRAWN
  * panels and core-scope.html's board window: every piece absolutely placed at its rect, the wires in
  * one SVG over them. It decides nothing: selection, opening calls in place, combined steps' toggles,
- * listing thin rows, and gap ticks' lines all go to the callbacks.
+ * listing thin rows, gap ticks' lines, a block's or a thin row's `</>`, and a block's menu all go to
+ * the callbacks.
+ *
+ * The selection is outlined on the drawn thing that holds it (`FlowGeometry.blocks`: a call in a
+ * collapsed combined step outlines the step, a hidden control block its gap tick), and so is `outline`'s
+ * gap tick when the selection isn't drawn here. A line hovered in the code panel lights its block, or
+ * the gap tick that counts it.
  */
 
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import type { CallBox, Key, RepoPath } from "../ipc/generated";
+import { CodeButton } from "../code/CodeButton";
+import type { CallBox, Key, RepoPath, ThinRow } from "../ipc/generated";
 import { Icon } from "../icons";
 import { callbackText, insetPlace, thinCount, type CallRow, type FlowGeometry, type FlowPiece, type FlowWire, type Point, type Rect } from "./layout";
 import { callMeta, combinedSummary, exitWord, frameWord, gapWords, hasMeta, outcomeWords, sectionWords } from "./words";
@@ -18,11 +25,32 @@ export type FlowSelection =
   | { readonly kind: "combined"; readonly item: string }
   | { readonly kind: "proposed"; readonly item: string };
 
+/** A line of a file. */
+export interface FlowLine {
+  readonly path: RepoPath;
+  readonly line: number;
+}
+
+/** A line hovered in the code panel: its block (null for a line no block covers), and the line. */
+interface FlowHover extends FlowLine {
+  readonly key: Key | null;
+}
+
 export interface FlowViewProps {
   readonly geometry: FlowGeometry;
   /** What shows selected. */
   readonly selected?: FlowSelection | null;
+  /** A line whose gap tick is outlined when nothing selected is drawn here. */
+  readonly outline?: FlowLine | null;
+  /** A line hovered in the code panel. */
+  readonly hover?: FlowHover | null;
   readonly onSelect?: (selection: FlowSelection) => void;
+  /** Opens a block's (or a combined step's) code in the code panel: its `</>`. */
+  readonly onViewCode?: (selection: FlowSelection) => void;
+  /** Opens a thin row's lines (in `path`) in the code panel: its `</>`. */
+  readonly onViewRow?: (path: RepoPath, row: ThinRow) => void;
+  /** Opens a block's (or a combined step's) menu. */
+  readonly onBlockMenu?: (event: MouseEvent, selection: FlowSelection) => void;
   /** Opens or closes the call or callback at an open path (outermost first) in place. */
   readonly onToggleOpen?: (path: readonly Key[]) => void;
   /** Opens (`collapsed: false`) or collapses a combined step. */
@@ -37,6 +65,8 @@ interface Handlers {
   readonly selected: FlowSelection | null;
   readonly select: (selection: FlowSelection) => void;
   readonly toggleOpen: (path: readonly Key[]) => void;
+  readonly viewCode: ((selection: FlowSelection) => void) | undefined;
+  readonly menu: ((event: MouseEvent, selection: FlowSelection) => void) | undefined;
 }
 
 function place(rect: Rect) {
@@ -55,8 +85,9 @@ function stop(event: MouseEvent | KeyboardEvent): void {
   event.stopPropagation();
 }
 
-/** Props that make an element select `selection` on a click, Enter, or Space. */
+/** Props that make an element select `selection` on a click, Enter, or Space, and open its menu. */
 function selectable(handlers: Handlers, selection: FlowSelection) {
+  const { menu } = handlers;
   return {
     role: "button",
     tabIndex: 0,
@@ -64,6 +95,14 @@ function selectable(handlers: Handlers, selection: FlowSelection) {
       stop(event);
       handlers.select(selection);
     },
+    ...(menu && selection.kind !== "proposed"
+      ? {
+          onContextMenu: (event: MouseEvent) => {
+            stop(event);
+            menu(event, selection);
+          },
+        }
+      : {}),
     onKeyDown: (event: KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -72,6 +111,19 @@ function selectable(handlers: Handlers, selection: FlowSelection) {
       }
     },
   } as const;
+}
+
+/** A block's `</>`, shown while it is hovered or selected. */
+function ViewCode({ handlers, selection }: { readonly handlers: Handlers; readonly selection: FlowSelection }) {
+  const { viewCode } = handlers;
+  return viewCode ? (
+    <CodeButton
+      className="flow-code"
+      onView={() => {
+        viewCode(selection);
+      }}
+    />
+  ) : null;
 }
 
 function Chevron({ open, name, onToggle }: { readonly open: boolean; readonly name: string; readonly onToggle: () => void }) {
@@ -121,6 +173,7 @@ function Chip({ box, path, handlers }: { readonly box: CallBox; readonly path: r
       {box.actions.open ? <Chevron open={box.inset !== undefined} name={box.name ?? box.callee} onToggle={() => {
             handlers.toggleOpen(own);
           }} /> : null}
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: box.key }} />
     </span>
   );
 }
@@ -162,6 +215,7 @@ function CallPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
           ))}
         </div>
       ) : null}
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: box.key }} />
     </div>
   );
 }
@@ -183,7 +237,17 @@ function CallRowView({ row, handlers }: { readonly row: CallRow; readonly handle
   );
 }
 
-function ThinPiece({ piece, handlers, onToggleRow }: { readonly piece: Extract<FlowPiece, { kind: "thin" }>; readonly handlers: Handlers; readonly onToggleRow: ((key: Key) => void) | undefined }) {
+function ThinPiece({
+  piece,
+  handlers,
+  onToggleRow,
+  onViewRow,
+}: {
+  readonly piece: Extract<FlowPiece, { kind: "thin" }>;
+  readonly handlers: Handlers;
+  readonly onToggleRow: ((key: Key) => void) | undefined;
+  readonly onViewRow: ((path: RepoPath, row: ThinRow) => void) | undefined;
+}) {
   const { row, listed } = piece;
   const count = thinCount(row);
   const toggle = () => onToggleRow?.(piece.key);
@@ -232,6 +296,14 @@ function ThinPiece({ piece, handlers, onToggleRow }: { readonly piece: Extract<F
         );
       })}
       {!listed && count !== null ? <span className="flow-thin-count">{count}</span> : null}
+      {onViewRow ? (
+        <CodeButton
+          className="flow-code"
+          onView={() => {
+            onViewRow(piece.path, row);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -256,6 +328,7 @@ function ExitPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
       ) : null}
       {value?.kind === "text" ? <span className="flow-exit-value">{value.text}</span> : null}
       {piece.destination !== null ? <span className="flow-exit-destination">→ {piece.destination}</span> : null}
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: exit.key }} />
     </div>
   );
 }
@@ -274,6 +347,7 @@ function FramePiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { 
           {frame.binds !== undefined ? <span className="flow-binds">→ {frame.binds}</span> : null}
         </div>
       )}
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: frame.key }} />
     </div>
   );
 }
@@ -303,6 +377,7 @@ function HeadPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
       {piece.chips.map((box) => (
         <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />
       ))}
+      {lane ? <ViewCode handlers={handlers} selection={{ kind: "block", key: lane.key }} /> : null}
     </div>
   );
 }
@@ -318,6 +393,7 @@ function SectionPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, 
         {words.clause !== null ? <span className="flow-frame-header">{words.clause}</span> : null}
         {words.note !== null ? <span className="flow-section-note">{words.note}</span> : null}
       </div>
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: lane.key }} />
     </section>
   );
 }
@@ -383,6 +459,7 @@ function CombinedPiece({
           ))}
         </div>
       ) : null}
+      <ViewCode handlers={handlers} selection={{ kind: "combined", item: step.item }} />
     </div>
   );
 }
@@ -423,11 +500,12 @@ function Piece({ piece, handlers, props }: { readonly piece: FlowPiece; readonly
           {callback.actions.open ? <Chevron open={callback.inset !== undefined} name={callback.name ?? callback.label} onToggle={() => {
             handlers.toggleOpen(piece.path);
           }} /> : null}
+          <ViewCode handlers={handlers} selection={{ kind: "block", key: callback.key }} />
         </div>
       );
     }
     case "thin":
-      return <ThinPiece piece={piece} handlers={handlers} onToggleRow={props.onToggleRow} />;
+      return <ThinPiece piece={piece} handlers={handlers} onToggleRow={props.onToggleRow} onViewRow={props.onViewRow} />;
     case "exit":
       return <ExitPiece piece={piece} handlers={handlers} />;
     case "frame":
@@ -454,6 +532,7 @@ function Piece({ piece, handlers, props }: { readonly piece: FlowPiece; readonly
           <div className={classes("flow-inset-title", isBlock(handlers.selected, header.key) && "selected")} data-key={header.key} {...selectable(handlers, { kind: "block", key: header.key })}>
             <span className={classes("flow-inset-name", header.name !== undefined && "named")}>{header.name ?? header.label}</span>
             <span className="flow-inset-place">{insetPlace(piece.flow)}</span>
+            <ViewCode handlers={handlers} selection={{ kind: "block", key: header.key }} />
           </div>
         </div>
       );
@@ -518,20 +597,65 @@ function WireView({ wire }: { readonly wire: FlowWire }) {
   );
 }
 
+/** The gap tick of a flow that counts a line. */
+function gapRect(geometry: FlowGeometry, at: FlowLine): Rect | undefined {
+  for (const piece of geometry.pieces) {
+    if (piece.kind === "gap" && piece.path === at.path && piece.gap.lines[0] <= at.line && at.line <= piece.gap.lines[1]) {
+      return piece.rect;
+    }
+  }
+  return undefined;
+}
+
+/** The drawn box that holds a selection: its own, or the one holding it. */
+function selectedRect(geometry: FlowGeometry, selected: FlowSelection | null): Rect | undefined {
+  if (!selected) {
+    return undefined;
+  }
+  return selected.kind === "block" ? geometry.blocks.get(selected.key) : geometry.items.get(selected.item);
+}
+
+/** The corners an outline takes, from the piece it goes around. */
+const OUTLINE_SHAPES: Readonly<Partial<Record<FlowPiece["kind"], string>>> = {
+  start: "round",
+  end: "round",
+  exit: "round",
+  frame: "card",
+  section: "tab",
+  combined: "tab",
+  inset: "inset",
+  gap: "tick",
+  call: "box",
+  head: "box",
+  proposed: "box",
+};
+
+function Outline({ geometry, rect, lit }: { readonly geometry: FlowGeometry; readonly rect: Rect; readonly lit: boolean }) {
+  const kind = geometry.pieces.find((piece) => piece.rect === rect)?.kind;
+  const shape = (kind && OUTLINE_SHAPES[kind]) ?? "chip";
+  return <div className={classes("flow-outline", shape, lit && "lit")} style={place(rect)} aria-hidden="true" />;
+}
+
 /** A drawn flow, laid out by `layoutFlow`: its pieces at their rects and its wires over them. */
 export function FlowView(props: FlowViewProps) {
-  const { geometry, selected = null, onSelect, onToggleOpen } = props;
+  const { geometry, selected = null, outline = null, hover = null, onSelect, onToggleOpen, onViewCode, onBlockMenu } = props;
   const handlers: Handlers = {
     selected,
     select: (selection) => onSelect?.(selection),
     toggleOpen: (path) => onToggleOpen?.(path),
+    viewCode: onViewCode,
+    menu: onBlockMenu,
   };
+  const outlined = selectedRect(geometry, selected) ?? (outline ? gapRect(geometry, outline) : undefined);
+  const lit = hover ? ((hover.key !== null ? geometry.blocks.get(hover.key) : undefined) ?? gapRect(geometry, hover)) : undefined;
   return (
     <div className="flow" style={{ width: geometry.width, height: geometry.height }}>
       {/* A geometry's pieces and wires are a list in paint order: their place in it is their identity. */}
       {geometry.pieces.map((piece, index) => (
         <Piece key={index} piece={piece} handlers={handlers} props={props} />
       ))}
+      {lit && lit !== outlined ? <Outline geometry={geometry} rect={lit} lit /> : null}
+      {outlined ? <Outline geometry={geometry} rect={outlined} lit={false} /> : null}
       <svg className="flow-wires" width={geometry.width} height={geometry.height} aria-hidden="true">
         {geometry.wires.map((wire, index) => (
           <WireView key={index} wire={wire} />

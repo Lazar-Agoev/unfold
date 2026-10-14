@@ -460,7 +460,7 @@ fn combined_steps_rows_and_gap_ticks_show_their_lines() {
     assert_eq!(combined.mark, None);
     assert_eq!(
         steps(&combined),
-        ["shop/service.py", "place_order", "*Save it and reserve stock*"]
+        ["shop/service.py", "place_order", "*⊞ Save it and reserve stock*"]
     );
 
     let tick = view(&shop, lines(SERVICE, [24, 24]));

@@ -10,10 +10,10 @@ use unfold_core::highlight::{HighlightSpan, Highlighter};
 use unfold_core::vocab::{Form, NodeKind};
 use unfold_core::{ByteRange, LineIndex, RepoPath, Utf16Index};
 
-use super::select::{MarkSpec, Span, is_expression};
+use super::select::{MarkSpec, Span};
 use super::{CallName, CodeLine, DefinitionLine, LineRange, Mark, Token};
 use crate::error::{ReaderError, Result};
-use crate::tree::{FileTree, to_u32};
+use crate::tree::{FileTree, is_expression, to_u32};
 
 /// A file's text with its line and UTF-16 indexes.
 pub(super) struct Text<'a> {

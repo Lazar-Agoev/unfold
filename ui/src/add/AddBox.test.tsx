@@ -6,6 +6,7 @@ import type { SearchHit, SearchResults } from "../ipc";
 import type * as Boards from "../state/boards";
 import { openBoard } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
+import { closeCode, getCodeOpen } from "../state/codePanel";
 import { closeAdd, openAdd } from "../state/overlays";
 import { showBoard, useShownBoardStore } from "../state/shownBoard";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
@@ -42,7 +43,7 @@ const RESULTS: SearchResults = {
     total: 3,
     truncated: false,
   },
-  files: { hits: [], total: 0, truncated: false },
+  files: { hits: [{ project: ORDERS, path: "tests/test_orders.py", name: "test_orders.py", key: "tests/test_orders.py", definitions: 3, score: 900 }], total: 1, truncated: false },
 };
 
 let engine: FakeEngine;
@@ -68,6 +69,7 @@ beforeEach(async () => {
 afterEach(() => {
   act(() => {
     closeAdd();
+    closeCode();
   });
   engine.uninstall();
 });
@@ -118,15 +120,15 @@ describe("the Add box", () => {
     expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
   });
 
-  it("lists names in the board's project as one ranked list, each row with its kind, and no files yet", async () => {
+  it("lists names in the board's project as one ranked list, each row with its kind, then its files", async () => {
     openBox();
     type("order");
     const list = await screen.findByRole("listbox", { name: "Results" });
-    expect(engine.callsOf("search")).toEqual([{ query: "order", kinds: ["definitions", "entrances"], projects: [ORDERS] }]);
+    expect(engine.callsOf("search")).toEqual([{ query: "order", kinds: ["definitions", "entrances", "files"], projects: [ORDERS] }]);
     const rows = within(list).getAllByRole("option");
-    expect(rows.map((row) => row.querySelector(".add-row-kind")?.textContent)).toEqual(["entrance", "function", "function", "class"]);
-    expect(rows.map((row) => row.querySelector(".add-row-name")?.textContent)).toEqual(["Place an order", "place_order", "load_order", "Order"]);
-    expect(rows.map((row) => row.querySelector(".add-row-meta")?.textContent)).toEqual(["Shop API · POST /orders/{order_id}", "shop/service.py:9", "shop/store.py:12", "shop/types.py:4"]);
+    expect(rows.map((row) => row.querySelector(".add-row-kind")?.textContent)).toEqual(["entrance", "function", "function", "class", "file"]);
+    expect(rows.map((row) => row.querySelector(".add-row-name")?.textContent)).toEqual(["Place an order", "place_order", "load_order", "Order", "tests/test_orders.py"]);
+    expect(rows.map((row) => row.querySelector(".add-row-meta")?.textContent ?? null)).toEqual(["Shop API · POST /orders/{order_id}", "shop/service.py:9", "shop/store.py:12", "shop/types.py:4", null]);
     expect(rows[0]?.getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByRole("tab")).toBeNull();
   });
@@ -141,6 +143,20 @@ describe("the Add box", () => {
       expect(adds.addRef).toHaveBeenCalledWith(PAGE, { block: "place-order-key" }, "place_order");
     });
     expect(screen.queryByRole("dialog", { name: "Add" })).toBeNull();
+  });
+
+  it("opens a file in the code panel on Enter, whole", async () => {
+    openBox();
+    type("order");
+    await screen.findByRole("listbox", { name: "Results" });
+    for (let row = 0; row < 4; row += 1) {
+      press("ArrowDown");
+    }
+    press("Enter");
+    await waitFor(() => {
+      expect(getCodeOpen()).toEqual({ project: ORDERS, target: { kind: "file", path: "tests/test_orders.py" }, show: null, cardId: null, gap: null });
+    });
+    expect(adds.addRef).not.toHaveBeenCalled();
   });
 
   it("adds an entrance's card on Enter", async () => {

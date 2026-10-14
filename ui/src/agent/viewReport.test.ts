@@ -113,6 +113,7 @@ describe("currentView", () => {
     for (const [selection, reported] of [
       [{ kind: "card", cardId: "a", key: null }, { kind: "card", id: "a" }],
       [{ kind: "card", cardId: "a", key: "src/a.ts#function:a" }, { kind: "card", id: "a" }],
+      [{ kind: "field", cardId: "a", key: "src/a.ts#Order", index: 1 }, { kind: "card", id: "a" }],
       [{ kind: "combined", combinedId: "a-checks" }, { kind: "combined", id: "a-checks" }],
       [{ kind: "link", linkId: "a-to-b" }, { kind: "link", id: "a-to-b" }],
       [{ kind: "frame", frameId: "server" }, { kind: "frame", id: "server" }],

@@ -7,6 +7,7 @@ import { queryClient } from "../ipc/client";
 import type { Card, CardView, DrawnFlow, Key, StartCard, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import * as store from "../state/boards/store";
+import { closeCode, getCodeOpen } from "../state/codePanel";
 import { setShowAllCalls } from "../state/showAllCalls";
 import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
@@ -168,6 +169,8 @@ function present<T>(value: T | null | undefined): T {
 
 const cardElement = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`.board-card[data-card-id="${id}"]`);
 const loaded = (container: HTMLElement, id: string) => present(container.querySelector<HTMLElement>(`.board-card[data-card-id="${id}"]:not([data-loading])`));
+/** A type card's field cells and "from <Type>" headings, in order. */
+const cellsIn = (card: Element | null | undefined) => [...(card?.querySelectorAll(".tcard-fields :is(.tcard-name, .tcard-type, .type-def-from)") ?? [])].map((cell) => cell.textContent);
 const portsOf = (element: Element | null | undefined) => [...(element?.querySelectorAll(".card-port") ?? [])].map((port) => port.getAttribute("data-handleid"));
 
 beforeEach(() => {
@@ -363,7 +366,7 @@ describe("type cards", () => {
     expect(card.querySelector(".tcard-kind")?.textContent).toBe("interface");
     expect(card.querySelector(".card-title")?.textContent).toBe("Cart");
     expect(card.querySelector(".card-location")?.textContent).toBe("src/cart.ts:12");
-    const cells = [...(card.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
+    const cells = cellsIn(card);
     expect(cells).toEqual(["owner?", "User", "items", "CartItem[]", "readonly createdAt", "Date", "coupon", "string = …", "from Draft", "lines", "CartItem[]"]);
     expect(card.querySelector(".type-name")?.textContent).toBe("CartItem");
   });
@@ -376,7 +379,7 @@ describe("type cards", () => {
     const { container } = renderBoard();
     const cellsOf = async (id: string) =>
       waitFor(() => {
-        const cells = [...(cardElement(container, id)?.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
+        const cells = cellsIn(cardElement(container, id));
         expect(cells.length).toBeGreaterThan(0);
         return cells;
       });
@@ -400,6 +403,27 @@ describe("type cards", () => {
     });
   });
 
+  it("select a field on a click, and open its line, an inherited one in its base, from its `</>`", async () => {
+    closeCode();
+    open([{ id: "cart", ref: { block: CART }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    const rows = await waitFor(() => {
+      const found = [...(cardElement(container, "cart")?.querySelectorAll<HTMLElement>(".tcard-field") ?? [])];
+      expect(found).toHaveLength(5);
+      return found;
+    });
+    fireEvent.click(present(rows[1]));
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "field", cardId: "cart", key: CART, index: 1 });
+    await waitFor(() => {
+      expect(cardElement(container, "cart")?.classList.contains("selected")).toBe(true);
+      expect(cardElement(container, "cart")?.querySelectorAll(".tcard-field")[1]?.classList.contains("selected")).toBe(true);
+    });
+    fireEvent.click(present(rows[4]?.querySelector<HTMLElement>(".tcard-code")));
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "field", cardId: "cart", key: DRAFT, index: 0 });
+    expect(getCodeOpen()).toEqual({ project: P, target: { kind: "field", key: DRAFT, index: 0 }, show: null, cardId: "cart", gap: null });
+    closeCode();
+  });
+
   it("anchor a type arrow at its field's row", async () => {
     open([
       { id: "cart", ref: { block: CART }, at: [0, 0] },
@@ -421,7 +445,7 @@ describe("class cards", () => {
       { id: "price-open", ref: { block: PRICE }, at: [0, 400], view: "expanded" },
     ]);
     const { container } = renderBoard();
-    const fieldsOf = (id: string) => [...(cardElement(container, id)?.querySelector(".tcard-fields")?.children ?? [])].map((cell) => cell.textContent);
+    const fieldsOf = (id: string) => cellsIn(cardElement(container, id));
     await waitFor(() => {
       expect(fieldsOf("price")).toEqual(["amount", "number"]);
       expect(cardElement(container, "price-open")?.querySelector(".flow")).not.toBeNull();

@@ -2401,7 +2401,8 @@ export type PathStep = {
 /**
  * What the step says: a file's path, a definition's name, a control block's header, the
  * text that opens a part, a call's written callee, an exit's keyword, an app's or
- * entrance's name, a combined step's title, a field's name, or the lines (`line 24`).
+ * entrance's name, a combined step's title after `⊞`, a field's name, or the lines
+ * (`line 24`).
  */
 label: string, 
 /**
@@ -3536,6 +3537,10 @@ export type ThinRow = {
  * The calls, in the order they run.
  */
 calls: Array<OtherCall>, 
+/**
+ * The lines it covers: from its first call's statement to its last one's.
+ */
+lines: [number, number], 
 /**
  * How many of them (and of the calls inside them) are unknown.
  */

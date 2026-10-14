@@ -23,6 +23,21 @@
 
 .board-card.missing { border-style: dashed; }
 
+/* A card holding the line hovered in the code panel: the lighter outline. */
+.board-card.lit {
+  outline: 2px solid var(--color-accent-soft);
+  outline-offset: 2px;
+}
+
+/* The header's `</>`: always on an expanded card; on the others while hovered or selected. */
+.board-card .card-view-code { visibility: hidden; }
+.board-card:is(:hover, .selected, .expanded) .card-view-code { visibility: visible; }
+.start-card .card-view-code {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
 /* A card an agent changed while it is still working (design §4.10): a soft authored outline. */
 .react-flow__node.agent-working > .board-card {
   outline: 2px solid var(--color-authored-line);
@@ -358,6 +373,29 @@
   font-feature-settings: "calt" 0, "liga" 0;
   color: var(--color-text);
 }
+
+/* A field is a row across both columns; a member selects, and shows its `</>` while hovered or selected. */
+.tcard-field {
+  position: relative;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.tcard-field.member { cursor: pointer; }
+.tcard-field.member:hover { background: var(--color-hover); }
+.tcard-field.member.selected { background: var(--color-selection); }
+.tcard-field.member:focus-visible { outline: 2px solid var(--color-accent-soft); outline-offset: -2px; }
+
+.tcard-field .tcard-code {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  display: none;
+  height: 18px;
+}
+
+.tcard-field:is(:hover, .selected, :focus-within) > .tcard-code { display: grid; }
 
 .tcard-name,
 .tcard-type { padding: 2px 0; }

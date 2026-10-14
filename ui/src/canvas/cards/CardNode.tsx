@@ -52,6 +52,6 @@ export const CardNode = memo(function CardNode({ id, data }: NodeProps<CardNodeT
   // The card itself and the page's default view, not the page: another card's edit doesn't redraw this one.
   const card = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.cards.find((item) => item.id === id));
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "compact";
-  const selected = usePageView(target, (view) => view.selection.kind === "card" && view.selection.cardId === id);
+  const selected = usePageView(target, ({ selection }) => (selection.kind === "card" || selection.kind === "field") && selection.cardId === id);
   return card ? <DrawnCard target={target} card={card} view={cardView(card, defaultView)} ports={ports} selected={selected} /> : null;
 });

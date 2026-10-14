@@ -326,6 +326,9 @@ pub struct OtherCall {
 pub struct ThinRow {
     /// The calls, in the order they run.
     pub calls: Vec<OtherCall>,
+    /// The lines it covers: from its first call's statement to its last one's.
+    #[cfg_attr(feature = "ts", ts(type = "[number, number]"))]
+    pub lines: LineSpan,
     /// How many of them (and of the calls inside them) are unknown.
     pub unknown: u32,
 }
