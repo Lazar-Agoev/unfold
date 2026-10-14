@@ -77,7 +77,7 @@ describe("routing an edit", () => {
   it("goes to the window when it holds the board, and comes back with the page's revision", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
 
     const outcome = bridge.edit(EDIT);
     const sent = await request(holder, 1);
@@ -90,7 +90,7 @@ describe("routing an edit", () => {
   it("loads a board the window doesn't hold without showing it, then edits it there", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
-    views.report(entry.id, report([]));
+    views.report(report([]));
 
     const outcome = bridge.edit(EDIT);
     const opening = await request(entry, 1);
@@ -100,7 +100,7 @@ describe("routing an edit", () => {
     expect(editing.type).toBe("agent_edit");
     bridge.settle(entry.id, "edit", editing.requestId, SAVED);
     expect((await outcome).ok).toBe(true);
-    expect(views.holder(BOARD)).toBe(entry.id);
+    expect(views.holds(BOARD)).toBe(true);
   });
 
   it("opens the window when it is closed, after the launch restore, and sends the request once its UI has loaded", async () => {
@@ -130,13 +130,13 @@ describe("routing an edit", () => {
     const refusal = { ok: false, code: "board_problem", message: "The board file isn't a board." };
     bridge.settle(entry.id, "open", opening.requestId, refusal);
     expect(await outcome).toEqual(refusal);
-    expect(views.holder(BOARD)).toBeUndefined();
+    expect(views.holds(BOARD)).toBe(false);
   });
 
   it("loads the board again when the window's report still listed a board it no longer holds", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
-    views.report(entry.id, report([BOARD]));
+    views.report(report([BOARD]));
 
     const outcome = bridge.edit(EDIT);
     const first = await request(entry, 1);
@@ -147,13 +147,13 @@ describe("routing an edit", () => {
     const editing = await request(entry, 3);
     bridge.settle(entry.id, "edit", editing.requestId, SAVED);
     expect((await outcome).ok).toBe(true);
-    expect(views.holder(BOARD)).toBe(entry.id);
+    expect(views.holds(BOARD)).toBe(true);
   });
 
   it("passes on the window's refusal", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const outcome = bridge.edit(EDIT);
     const sent = await request(holder, 1);
     const refusal = { ok: false, code: "board_problem", message: "The key is gone." };
@@ -166,7 +166,7 @@ describe("expected revisions", () => {
   it("reads the page first and refuses an edit when it changed since the agent read it", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
 
     const refused = bridge.edit({ ...EDIT, expectRevision: "00000000" });
     const read = await request(holder, 1);
@@ -189,7 +189,7 @@ describe("expected revisions", () => {
   it("loads the board again when the window's report still listed a board it no longer holds, then reads it", async () => {
     const { bridge, views, open } = setup();
     const entry = open();
-    views.report(entry.id, report([BOARD]));
+    views.report(report([BOARD]));
 
     const outcome = bridge.edit({ ...EDIT, expectRevision: pageRevision(PAGE) });
     const first = await request(entry, 1);
@@ -213,7 +213,7 @@ describe("reading a held page", () => {
     expect(await bridge.read({ board: BOARD, page: "page-1" })).toMatchObject({ ok: false, code: "board_not_open" });
     expect(requests(holder)).toEqual([]);
 
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const outcome = bridge.read({ board: BOARD, page: "page-1" });
     const sent = await request(holder, 1);
     const read = { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: true } };
@@ -224,11 +224,11 @@ describe("reading a held page", () => {
   it("forgets a board the window's report still listed after it stopped holding it", async () => {
     const { bridge, views, open } = setup();
     const stale = open();
-    views.report(stale.id, report([BOARD]));
+    views.report(report([BOARD]));
     const outcome = bridge.read({ board: BOARD, page: "page-1" });
     bridge.settle(stale.id, "read", (await request(stale, 1)).requestId, { ok: false, code: "board_not_open", message: "Not here." });
     expect(await outcome).toMatchObject({ ok: false, code: "board_not_open" });
-    expect(views.holder(BOARD)).toBeUndefined();
+    expect(views.holds(BOARD)).toBe(false);
   });
 });
 
@@ -237,7 +237,7 @@ describe("answers", () => {
     vi.useFakeTimers();
     const { bridge, views, open } = setup(5_000);
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const read = bridge.read({ board: BOARD, page: "page-1" });
     await vi.advanceTimersByTimeAsync(5_000);
     expect(await read).toEqual({ ok: false, code: "timeout", message: "The Unfold window didn't answer within 5 s." });
@@ -251,18 +251,18 @@ describe("answers", () => {
   it("fails the requests of a window that closes before it answers", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const outcome = bridge.edit(EDIT);
     await request(holder, 1);
     holder.window.close();
     expect(await outcome).toMatchObject({ ok: false, code: "window_closed" });
-    expect(views.holder(BOARD)).toBeUndefined();
+    expect(views.holds(BOARD)).toBe(false);
   });
 
   it("takes an answer only from the window asked, for the request's kind, and checks its shape", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const outcome = bridge.edit(EDIT);
     const sent = await request(holder, 1);
     bridge.settle(holder.id + 1, "edit", sent.requestId, SAVED);
@@ -284,7 +284,7 @@ describe("boards as a whole", () => {
     expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement", pages: ["Page 1"] });
     bridge.settle(entry.id, "create", sent.requestId, CREATED);
     expect(await outcome).toEqual({ ...CREATED, windowId: entry.id });
-    expect(views.holder(BOARD)).toBe(entry.id);
+    expect(views.holds(BOARD)).toBe(true);
   });
 
   it("opens the window to create a board when it is closed", async () => {
@@ -299,7 +299,7 @@ describe("boards as a whole", () => {
     expect(sent).toMatchObject({ type: "agent_create_board", project: BOARD.project, title: "Order placement" });
     bridge.settle(created.id, "create", sent.requestId, CREATED);
     expect(await outcome).toEqual({ ...CREATED, windowId: created.id });
-    expect(views.holder(BOARD)).toBe(created.id);
+    expect(views.holds(BOARD)).toBe(true);
   });
 
   it("passes on the window's refusal to create a board, which no one holds then", async () => {
@@ -309,7 +309,7 @@ describe("boards as a whole", () => {
     const refusal = { ok: false, code: "invalid_folder", message: "A folder is one name." };
     bridge.settle(entry.id, "create", (await request(entry, 1)).requestId, refusal);
     expect(await outcome).toEqual(refusal);
-    expect(views.holder(BOARD)).toBeUndefined();
+    expect(views.holds(BOARD)).toBe(false);
   });
 
   it("edits a board's pages in the window, opening the board there first", async () => {
@@ -334,7 +334,7 @@ describe("boards as a whole", () => {
   it("shows a board: the window switches to it and comes to the front, or loads it without showing it", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
 
     const shown = bridge.show({ board: BOARD, page: "page-1", item: "create-order" }, false);
     const sent = await request(holder, 1);
@@ -359,7 +359,7 @@ describe("repairing", () => {
   it("has the window that holds the board apply the repair, and comes back with the page's revision", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const repair = { board: BOARD, page: "page-1", agent: EDIT.agent, repair: { page: "page-1", kind: "remove_card", card: "a" }, items: [] };
     const outcome = bridge.repair(repair);
     const sent = await request(holder, 1);
@@ -378,7 +378,7 @@ describe("finishing", () => {
   it("remembers the boards each agent edited or repaired until it finishes them", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
-    views.report(holder.id, report([BOARD]));
+    views.report(report([BOARD]));
     const codex = { author: "agent:codex", name: "Codex" } as const;
     const edited = bridge.edit(EDIT);
     bridge.settle(holder.id, "edit", (await request(holder, 1)).requestId, SAVED);

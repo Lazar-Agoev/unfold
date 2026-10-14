@@ -11,7 +11,7 @@ import { readFile } from "./sandbox";
 import { enterText } from "./window";
 
 /** A page of a board file, as the journeys read it. */
-export interface SavedPage {
+interface SavedPage {
   readonly cards: readonly { readonly id: string; readonly description?: SavedText }[];
   readonly names?: readonly { readonly key: string; readonly text: string; readonly author: string }[];
   readonly combined?: readonly { readonly id: string; readonly title: string; readonly members: readonly string[]; readonly collapsed: boolean }[];
@@ -57,7 +57,7 @@ export async function chooseOnBlock(page: Page, block: Locator, item: string): P
  * Opens the canvas's menu on empty canvas with room below and to the right for a resource card (the
  * card goes where the menu opened), and chooses `item`.
  */
-export async function chooseOnEmptyCanvas(page: Page, item: string): Promise<void> {
+async function chooseOnEmptyCanvas(page: Page, item: string): Promise<void> {
   const spot = await boardView(page)
     .locator(".react-flow__pane")
     .evaluate((pane) => {

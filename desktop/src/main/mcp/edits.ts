@@ -11,7 +11,7 @@ import { z } from "zod";
 import type { AgentBoardRef, AgentCardRef, AgentEditSuccess, AgentItemResult, AgentItemStatus, AgentOp } from "../../shared/agent-api";
 import type { ToolContext } from "./context";
 import type { ProjectRow } from "./engine-types";
-import { cardText, count, joined, keyName } from "./format";
+import { cardText, count, joined } from "./format";
 import { cant, textResult, ToolError, windowRefusal, type ToolResult } from "./results";
 import { isLink, resolveBoard, type TargetArgs } from "./target";
 
@@ -61,14 +61,19 @@ export function defined<T>(value: T): Defined<T> {
   return value as Defined<T>;
 }
 
-/** The keys of a project's apps and entrances (`entrances`), as written in its `unfold.toml`. */
-export async function startKeys(context: ToolContext, project: string): Promise<ReadonlySet<string>> {
+/** A project's apps and entrances (`entrances`), as written in its `unfold.toml`: each name by its key. */
+export async function startNames(context: ToolContext, project: string): Promise<ReadonlyMap<string, string>> {
   const view = await context.engine("entrances", { project });
-  return new Set(view.apps.flatMap((app) => [app.key, ...app.entrances.map((entrance) => entrance.key)]).filter((key) => key !== undefined));
+  return new Map(
+    view.apps.flatMap((app) => [
+      ...(app.key !== undefined ? [[app.key, app.name ?? app.key] as const] : []),
+      ...app.entrances.flatMap((entrance) => (entrance.key !== undefined ? [[entrance.key, `${entrance.name ?? entrance.key} of ${app.name ?? "an app"}`] as const] : [])),
+    ]),
+  );
 }
 
 /** What a card for `key` shows: an app's start or an entrance (one of `starts`), else a block. */
-export function cardRef(starts: ReadonlySet<string>, key: string): AgentCardRef {
+export function cardRef(starts: ReadonlyMap<string, string>, key: string): AgentCardRef {
   return starts.has(key) ? { entrance: key } : { block: key };
 }
 
@@ -182,7 +187,7 @@ export function itemLine(item: AgentItemResult): string {
       const details = [
         item.step !== undefined ? `from step ${item.step}` : null,
         item.channel !== undefined ? `channel ${item.channel}` : null,
-        item.carries !== undefined ? `carries ${keyName(item.carries)} (key ${item.carries})` : null,
+        item.carries !== undefined ? `carries ${item.carries}` : null,
         item.name !== undefined ? `label “${item.name}”` : null,
       ].filter((detail) => detail !== null);
       return `- ${what} ${item.from} → ${item.to} (${joined([`link id ${item.id}`, item.status])})${details.length > 0 ? `: ${details.join(", ")}` : ""}`;
@@ -196,7 +201,7 @@ export function itemLine(item: AgentItemResult): string {
     }
     case "resource": {
       const columns = (item.columns ?? []).map((column) => `${column.name}${column.key !== undefined ? ` (${column.key}${column.references !== undefined ? ` → ${column.references}` : ""})` : ""}`);
-      const details = [item.type !== undefined ? `backed by ${keyName(item.type)} (key ${item.type})` : null, columns.length > 0 ? `columns ${columns.join(", ")}` : null].filter(
+      const details = [item.type !== undefined ? `backed by ${item.type}` : null, columns.length > 0 ? `columns ${columns.join(", ")}` : null].filter(
         (detail) => detail !== null,
       );
       return `- ${item.resource} “${item.name}” (${joined([`resource id ${item.id}`, item.status, item.frame !== undefined && `in frame ${item.frame}`])})${details.length > 0 ? `: ${details.join("; ")}` : ""}`;

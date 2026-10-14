@@ -296,8 +296,8 @@ describe("the agent channel", () => {
     const entry = open();
     const report = { board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] };
     expect(await invoke(entry, "report_view", report)).toEqual({ ok: true, value: null });
-    expect(agents.views.get(entry.id)).toEqual(report);
-    expect(agents.views.holder(BOARD)).toBe(entry.id);
+    expect(agents.views.current()).toEqual(report);
+    expect(agents.views.holds(BOARD)).toBe(true);
     expect(await invoke(entry, "report_view", { ...report, selection: { kind: "card" } })).toMatchObject({
       ok: false,
       error: { code: "invalid_command" },

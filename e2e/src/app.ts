@@ -60,7 +60,7 @@ export class UnfoldApp {
     return this.closed;
   }
 
-  /** The app's window, ready to drive (sized, with the event recorder installed). */
+  /** The app's window, ready to drive (sized). */
   async firstWindow(): Promise<Page> {
     const page = await this.electron.firstWindow();
     await prepareWindow(this, page);

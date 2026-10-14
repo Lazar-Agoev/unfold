@@ -1,5 +1,5 @@
 /**
- * The agent bridge (design §5.1, §5.5): how the main process has the window act for an agent. The
+ * The agent bridge (design §5.1, §5.5): how the main process has the one window act for an agent. The
  * window makes an agent's edits the way it makes the person's, on the boards whose sessions it holds
  * (from its view reports). An edit of a board it doesn't hold loads that board's session first,
  * without changing what the person sees (opening the window when it is closed); a new board's file is
@@ -169,7 +169,7 @@ export class AgentBridge {
       const result = read?.ok === false ? read : ((await this.ask(entry, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure);
       // A report that still listed a board the window no longer holds: load it again, once.
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
-        this.views.released(entry.id, request.board);
+        this.views.release(request.board);
         continue;
       }
       if (!result.ok) {
@@ -192,7 +192,7 @@ export class AgentBridge {
     const result = (await this.ask(entry, "read", { type: "agent_read", ...target })) as AgentReadSuccess | AgentFailure;
     if (!result.ok && result.code === "board_not_open") {
       // Its report still listed a board it no longer holds.
-      this.views.released(entry.id, target.board);
+      this.views.release(target.board);
     }
     return result.ok ? { ...result, revision: pageRevision(result.page) } : result;
   }
@@ -211,7 +211,7 @@ export class AgentBridge {
     if (!result.ok) {
       return result;
     }
-    this.views.holds(entry.id, target.board);
+    this.views.hold(target.board);
     return { ok: true, windowId: entry.id };
   }
 
@@ -225,7 +225,7 @@ export class AgentBridge {
     if (!result.ok) {
       return result;
     }
-    this.views.holds(entry.id, result.board);
+    this.views.hold(result.board);
     return { ...result, windowId: entry.id };
   }
 
@@ -306,9 +306,9 @@ export class AgentBridge {
     pending.resolve(checked(kind, result));
   }
 
-  /** A window closed: its view is forgotten and the requests waiting on it fail. */
+  /** The window closed: its view is forgotten and the requests waiting on it fail. */
   windowClosed(windowId: number): void {
-    this.views.forget(windowId);
+    this.views.clear();
     for (const [requestId, pending] of this.pending) {
       if (pending.windowId === windowId) {
         clearTimeout(pending.timer);
@@ -335,16 +335,16 @@ export class AgentBridge {
       }
       const result = (await this.ask(entry, kind, event)) as AgentFailure | { readonly ok: true };
       if (!result.ok && result.code === "board_not_open" && attempt === 0) {
-        this.views.released(entry.id, target.board);
+        this.views.release(target.board);
         continue;
       }
       return result;
     }
   }
 
+  /** The window, when it holds the board's session. */
   private holderOf(board: AgentBoardRef): WindowEntry | undefined {
-    const holder = this.views.holder(board);
-    return holder === undefined ? undefined : this.window.get(holder);
+    return this.views.holds(board) ? this.window.current() : undefined;
   }
 
   private recordWork(author: string, board: AgentBoardRef): void {

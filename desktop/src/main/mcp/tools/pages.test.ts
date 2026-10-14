@@ -177,7 +177,7 @@ describe("read_page", () => {
       "- table “orders” (resource id orders): at [800, 200]; columns id (primary), customer_id text (foreign → customers.id); anchors db/schema.sql:3–9; by you",
     );
     expect(lines).toContain(
-      `- writes connection createOrder (create-order) → orders (orders) (link id save-order): from the call ${PLACE_CALL}; anchors OrderRepository (key src/db/repository.ts#OrderRepository); by Codex (an agent); label by Codex (an agent): “the order”`,
+      `- writes connection createOrder (create-order) → orders (orders) (link id save-order): from the call ${PLACE_CALL}; anchors src/db/repository.ts#OrderRepository; by Codex (an agent); label by Codex (an agent): “the order”`,
     );
     expect(lines).toContain("- note note-1, attached to createOrder (create-order) at offset [0, -40], by you: “The client gets a job id, not the order.”");
     expect(lines).toContain("- Place an order (post-orders) → createOrder (create-order): starts at createOrder");

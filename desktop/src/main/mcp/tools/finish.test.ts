@@ -41,7 +41,14 @@ const ANCHOR_1: HealthItem = { page: "page-1", kind: "missing", target: { resour
 
 function app(...items: HealthItem[]) {
   const test = harness({
-    engine: { board_health: () => health(...items) },
+    engine: {
+      board_health: () => health(...items),
+      // The blocks charge's definition owns, by key (labels are the engine's; nothing here reads keys).
+      code_text: ({ key }) =>
+        key === "src/pay.ts#charge"
+          ? { text: "", labels: [{ label: "if[0]", key: "src/pay.ts#charge/if[0]" }, { label: "return[0]", key: "src/pay.ts#charge/return[0]" }] }
+          : { text: "", labels: [] },
+    },
     window: (request: AgentShellEvent) => {
       switch (request.type) {
         case "agent_read":
@@ -79,12 +86,12 @@ describe("repair", () => {
     ]);
     expect(text.split("\n")).toEqual([
       `Unfold · ts-orders › Orders › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
-      `Reconnected the card OrderService.place to ${PLACE_ORDER}.`,
+      `Reconnected the card place to ${PLACE_ORDER}.`,
       `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`,
       "Next: check again to see what's left.",
     ]);
     const removed = await test.call(repair, { ...AT, item: "place", repair: "remove" });
-    expect(removed.text).toContain("Removed (code stays as it is) the card OrderService.place.");
+    expect(removed.text).toContain("Removed (code stays as it is) the card place.");
     expect(repairs(test)[1]).toMatchObject({ repair: { page: "page-1", kind: "remove", target: { card: "place" } }, items: [] });
   });
 
@@ -93,7 +100,7 @@ describe("repair", () => {
     const person = await test.call(repair, { ...AT, item: "place", repair: "resign" });
     expect(person).toMatchObject({
       isError: true,
-      text: "Can't re-sign the card OrderService.place: Lazar (a person) wrote the description of OrderService.place, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
+      text: "Can't re-sign the card place: Lazar (a person) wrote the description of the card place, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
     });
     const own = await test.call(repair, { ...AT, item: "charge", repair: "resign" });
     expect(own.isError).toBe(false);
@@ -110,7 +117,7 @@ describe("repair", () => {
     // The agent's connection cites the card a person described: accepting its anchor accepts the card's code too.
     const shared = await test.call(repair, { ...AT, item: "save", repair: "accept" });
     expect(shared.text).toBe(
-      "Can't accept the current code for the writes connection charge → orders: Lazar (a person) wrote the description of OrderService.place, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
+      "Can't accept the current code for the writes connection charge → orders: Lazar (a person) wrote the description of the card place, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.",
     );
     const own = await test.call(repair, { ...AT, item: "pay", repair: "accept" });
     expect(own.isError).toBe(false);
@@ -120,7 +127,7 @@ describe("repair", () => {
   it("says which repairs an item offers, and which anchor to pick", async () => {
     const test = app(MISSING_PLACE, ANCHOR_0, ANCHOR_1);
     expect((await test.call(repair, { ...AT, item: "place", repair: "resign" })).text).toBe(
-      "Can't resign the card OrderService.place: its problems offer reconnect, remove. Pass one of those; check shows each problem.",
+      "Can't resign the card place: its problems offer reconnect, remove. Pass one of those; check shows each problem.",
     );
     expect((await test.call(repair, { ...AT, item: "nothing", repair: "resign" })).text).toBe(
       "Can't repair “nothing”: nothing on the page “Placing an order” with that id has a health problem. check lists the page's problems, each with its item and repairs.",
@@ -129,7 +136,7 @@ describe("repair", () => {
       "Can't reconnect the table “orders”: 2 of its anchors have problems. Pass anchor, one of: 0 (Anchor a is gone.); 1 (Anchor b is gone.).",
     );
     expect((await test.call(repair, { ...AT, item: "place", repair: "reconnect" })).text).toBe(
-      "Can't reconnect the card OrderService.place: to is missing. Pass to: the code's new key (search or get_relations finds it), or for an anchor an evidence file's lines.",
+      "Can't reconnect the card place: to is missing. Pass to: the code's new key (search or get_relations finds it), or for an anchor an evidence file's lines.",
     );
     const anchored = await test.call(repair, { ...AT, item: "orders", repair: "reconnect", anchor: 1, to: { file: "db/schema.sql", lines: [3, 9] } });
     expect(anchored.isError).toBe(false);
@@ -150,7 +157,7 @@ describe("finish_work", () => {
     const { text } = await test.call(finishWork, { summary: "Fixed the boards after the rename" });
     expect(test.requests.filter((request) => request.type === "agent_finish")).toEqual([{ type: "agent_finish", board: BOARD, agent: { author: "agent:claude", name: "Claude" }, summary: "Fixed the boards after the rename" }]);
     expect(text.split("\n").slice(1)).toEqual([
-      `Finished on “${BOARD.id}” (board id ${BOARD.id}): its working marks are cleared, and “Claude · Fixed the boards after the rename” shows in its window.`,
+      `Finished on “${BOARD.id}” (board id ${BOARD.id}): its working marks are cleared, and “Claude finished” shows in its window with your summary.`,
       "Next: tell the person in the chat what you made, and which parts go beyond what Unfold compiled.",
     ]);
     // Finished: the next call falls back to the board in view.

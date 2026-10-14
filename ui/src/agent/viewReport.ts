@@ -1,14 +1,16 @@
 /**
  * What this window shows, reported to the main process (`report_view`, design §5.6) so agents work on
- * the view of the window used last by default: the shown board and page, the selection, the items in
- * view, and the boards whose sessions the window holds (`held`). Sent ~150 ms after any of them
- * changes, and at once when the window gains focus.
+ * its view by default: the shown board and page, the selection, what the code panel shows (its block
+ * and lines, viewing-code.md § Agents), the items in view, and the boards whose sessions the window
+ * holds (`held`). Sent ~150 ms after any of them changes, and at once when the window gains focus.
  */
 
-import type { ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
+import type { QueryKey } from "@tanstack/react-query";
+import type { CodePanelReport, ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
 import type { Rect, Size } from "../canvas/layout";
-import { queryClient } from "../ipc/client";
-import { windowCommand, type CardView, type Page } from "../ipc";
+import { codeViewArgs } from "../code/view";
+import { engineKey, queryClient, windowCommand, type CardView, type CodeView, type Page } from "../ipc";
+import { getCodeOpen, onCodePanelChange, type CodeOpen } from "../state/codePanel";
 import { displayedRects, findPage, getOpenBoard, getPageView, useBoards, type Camera, type PageTarget, type Selection } from "../state/boards";
 import { cardArgsOf, cardQuery, overlayIds } from "../state/cards";
 import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
@@ -97,6 +99,28 @@ function loadedCard(target: PageTarget, cardId: string): CardView | undefined {
   return args ? queryClient.getQueryData<CardView>(cardQuery(args).queryKey) : undefined;
 }
 
+/** What the code panel shows: what it opened on, and, once its view has loaded, the file and lines on screen. */
+export function codeReport(open: CodeOpen, view: CodeView | undefined): CodePanelReport {
+  const { target } = open;
+  const first = view?.lines[0]?.number;
+  const last = view?.lines.at(-1)?.number;
+  const file = view?.file ?? (target.kind === "lines" || target.kind === "file" ? target.path : undefined);
+  return {
+    ...(target.kind === "block" || target.kind === "field" || target.kind === "start" ? { key: target.key } : {}),
+    ...(target.kind === "lines" ? { span: target.lines } : {}),
+    ...(file !== undefined ? { file } : {}),
+    ...(first !== undefined && last !== undefined ? { lines: [first, last] as const } : {}),
+    widened: open.show !== null,
+    ...(view ? { state: view.state } : {}),
+  };
+}
+
+/** What the code panel shows now, from the window's cache; absent while it is closed. */
+function loadedCode(): CodePanelReport | undefined {
+  const open = getCodeOpen();
+  return open ? codeReport(open, queryClient.getQueryData<CodeView>(engineKey("code_view", codeViewArgs(open)))) : undefined;
+}
+
 /** The window's view now; `canvas` is the canvas's size on screen (null when none is shown). */
 export function currentView(canvas: Size | null): ViewReport {
   const held = Object.values(useBoards.getState().boards).map(({ ref }) => ({ project: ref.project, id: ref.id }));
@@ -108,10 +132,12 @@ export function currentView(canvas: Size | null): ViewReport {
   }
   const target: PageTarget = { board: ref, page: page.id };
   const view = getPageView(target);
+  const code = loadedCode();
   return {
     board: { project: ref.project, id: ref.id },
     page: page.id,
     selection: viewSelection(page, view.selection),
+    ...(code ? { code } : {}),
     visible: visibleItems(page, displayedRects(board, page.id), view.camera, canvas, (cardId) => loadedCard(target, cardId)),
     held,
   };
@@ -148,7 +174,17 @@ export function installViewReports(): () => void {
     sent = "";
     send();
   };
-  const stops = [useShownBoardStore.subscribe(schedule), useBoards.subscribe(schedule)];
+  const stops = [
+    useShownBoardStore.subscribe(schedule),
+    useBoards.subscribe(schedule),
+    onCodePanelChange(schedule),
+    // The code panel's lines arrive with its view.
+    queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && (event.query.queryKey as QueryKey)[1] === "code_view") {
+        schedule();
+      }
+    }),
+  ];
   window.addEventListener("focus", onFocus);
   window.addEventListener("resize", schedule);
   schedule();

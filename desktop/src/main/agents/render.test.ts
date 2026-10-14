@@ -44,17 +44,17 @@ class FakeEngine {
   }
 }
 
-function setup(options: { holder?: number; timeoutMs?: number; idleMs?: number } = {}) {
+function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number } = {}) {
   const engine = new FakeEngine();
   const views = new ViewTracker();
-  if (options.holder !== undefined) {
-    views.holds(options.holder, BOARD);
+  if (options.held === true) {
+    views.hold(BOARD);
   }
   const bridge = {
     views,
     read: vi.fn(({ page }: { page: string }) => Promise.resolve({ ok: true as const, page: { ...PAGE, id: page, title: `Page ${page}` }, board: INFO, revision: "abcd1234" })),
     open: vi.fn(() => {
-      views.holds(7, BOARD);
+      views.hold(BOARD);
       return Promise.resolve({ ok: true as const, windowId: 7 });
     }),
   };
@@ -122,7 +122,7 @@ describe("imageFrame", () => {
 
 describe("screenshot", () => {
   it("draws the held page with its health in an offscreen render window, frames it, and captures it", async () => {
-    const { engine, bridge, renderer } = setup({ holder: 3 });
+    const { engine, bridge, renderer } = setup({ held: true });
     const shot = renderer.screenshot({ board: BOARD, page: "page-1" });
 
     const window = await created();
@@ -144,7 +144,7 @@ describe("screenshot", () => {
       requestId: expect.any(Number) as number,
     });
     expect(bridge.read).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
-    expect(engine.calls).toEqual([[3, "board_health", { project: BOARD.project, id: BOARD.id }]]);
+    expect(engine.calls).toEqual([[7, "board_health", { project: BOARD.project, id: BOARD.id }]]);
 
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 800, height: 400 } });
     const frame = await request(window, 2);
@@ -187,7 +187,7 @@ describe("screenshot", () => {
   });
 
   it("passes on the render window's refusal", async () => {
-    const { renderer } = setup({ holder: 3 });
+    const { renderer } = setup({ held: true });
     const shot = renderer.screenshot({ board: BOARD, page: "page-1", item: "inner" });
     const window = await loaded();
     const refusal = { ok: false, code: "item_hidden", message: "`inner` is inside the collapsed frame `api`." };
@@ -196,7 +196,7 @@ describe("screenshot", () => {
   });
 
   it("scales a large page down to the cap, at scale 2 in a window of its own, and fits a window the screen kept smaller", async () => {
-    const { engine, renderer } = setup({ holder: 3 });
+    const { engine, renderer } = setup({ held: true });
     FakeBrowserWindow.largest = { width: 1000, height: 1000 };
     const first = renderer.screenshot({ board: BOARD, page: "page-1" });
     const small = await loaded(0);
@@ -224,7 +224,7 @@ describe("screenshot", () => {
   });
 
   it("runs requests one at a time in one window", async () => {
-    const { renderer } = setup({ holder: 3 });
+    const { renderer } = setup({ held: true });
     const first = renderer.screenshot({ board: BOARD, page: "page-1" });
     const second = renderer.screenshot({ board: BOARD, page: "page-2" });
     const window = await loaded();
@@ -244,7 +244,7 @@ describe("screenshot", () => {
   });
 
   it("gives up on a window that doesn't answer, closing it, and starts a new one for the next request", async () => {
-    const { engine, renderer } = setup({ holder: 3, timeoutMs: 400 });
+    const { engine, renderer } = setup({ held: true, timeoutMs: 400 });
     const first = renderer.screenshot({ board: BOARD, page: "page-1" });
     const stuck = await loaded();
     expect(await first).toMatchObject({ ok: false, code: "render_timeout", message: expect.stringMatching(/^Unfold couldn't draw the page within/) as string });
@@ -258,7 +258,7 @@ describe("screenshot", () => {
   });
 
   it("fails the request when the render window closes, ignores stray answers, and refuses malformed ones", async () => {
-    const { renderer } = setup({ holder: 3 });
+    const { renderer } = setup({ held: true });
     const closed = renderer.screenshot({ board: BOARD, page: "page-1" });
     const window = await loaded();
     await request(window, 1);
@@ -274,7 +274,7 @@ describe("screenshot", () => {
   });
 
   it("closes the render window once it has been idle", async () => {
-    const { engine, renderer } = setup({ holder: 3, idleMs: 20 });
+    const { engine, renderer } = setup({ held: true, idleMs: 20 });
     const shot = renderer.screenshot({ board: BOARD, page: "page-1" });
     const window = await loaded();
     renderer.settle((await request(window, 1)).requestId, { ok: false, code: "empty_page", message: "Empty." });
@@ -302,10 +302,10 @@ describe("check", () => {
   });
 
   it("opens the board again when the window its report named no longer holds it", async () => {
-    const { engine, bridge, renderer } = setup({ holder: 3 });
+    const { engine, bridge, renderer } = setup({ held: true });
     bridge.read.mockImplementationOnce(() => {
       // The real bridge forgets the board the window no longer holds.
-      bridge.views.released(3, BOARD);
+      bridge.views.release(BOARD);
       return Promise.resolve({ ok: false, code: "board_not_open", message: "Not here." } as never);
     });
     const checked = renderer.check({ board: BOARD, page: "page-1" });
@@ -318,7 +318,7 @@ describe("check", () => {
   });
 
   it("checks every page of a board in order", async () => {
-    const { renderer } = setup({ holder: 3 });
+    const { renderer } = setup({ held: true });
     const checked = renderer.checkBoard({ board: BOARD });
     const window = await loaded();
     renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [STRAYS] });
@@ -336,17 +336,18 @@ describe("check", () => {
   });
 
   it("opens the board again when the window its report named no longer holds it", async () => {
-    const { engine, bridge, renderer } = setup({ holder: 3 });
-    // As the real bridge does: the window that holds the board, else a new one.
+    const { engine, bridge, renderer } = setup({ held: true });
+    // The window's report still listed the board: its first health read finds it gone.
+    let opened = 0;
     bridge.open.mockImplementation(() => {
-      const holder = bridge.views.holder(BOARD);
-      if (holder === undefined) {
-        bridge.views.holds(7, BOARD);
-      }
-      return Promise.resolve({ ok: true as const, windowId: holder ?? 7 });
+      opened += 1;
+      bridge.views.hold(BOARD);
+      return Promise.resolve({ ok: true as const, windowId: 7 });
     });
+    let reads = 0;
     engine.answers.set("board_health", () => {
-      if (engine.calls.at(-1)?.[0] === 3) {
+      reads += 1;
+      if (reads === 1) {
         throw new EngineRequestError({ code: "board_not_open", message: "The board isn't open." });
       }
       return HEALTH;
@@ -356,8 +357,9 @@ describe("check", () => {
     renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [] });
     renderer.settle((await request(window, 2)).requestId, { ok: true, checks: [] });
     expect(await checked).toMatchObject({ ok: true, pages: [{ page: "page-1" }, { page: "page-2" }] });
-    expect(engine.calls.filter(([, command]) => command === "board_health").map(([windowId]) => windowId)).toEqual([3, 7]);
-    expect(bridge.views.holder(BOARD)).toBe(7);
+    expect(reads).toBe(2);
+    expect(opened).toBe(2);
+    expect(bridge.views.holds(BOARD)).toBe(true);
   });
 
   it("passes on why the board couldn't be opened or checked", async () => {

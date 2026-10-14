@@ -101,7 +101,7 @@ group("add_resources", () => {
         ],
       },
     ]);
-    expect(text).toContain("- table “orders” (resource id orders; created): backed by Order (key src/types.ts#Order); columns id (primary)");
+    expect(text).toContain("- table “orders” (resource id orders; created): backed by src/types.ts#Order; columns id (primary)");
 
     const refusal = "page `page-1`, resource `orders`: Can't add the table \"orders\": the column \"customer_id\" doesn't appear in its anchors (OrderRepository in src/db/repository.ts). Cite where the column is defined, or leave it out.";
     const grounded = app({ ok: false, code: "board_problem", message: refusal });
@@ -132,9 +132,27 @@ group("connect", () => {
       ],
     });
     expect(text).toContain(
-      `- queue connection create-order → orders-worker (link id enqueue-order; created): from step ${CREATE_ORDER}/if[0]/then/call:ordersQueue.add, channel orders, carries OrderJob (key src/types.ts#OrderJob), label “place-order job”`,
+      `- queue connection create-order → orders-worker (link id enqueue-order; created): from step ${CREATE_ORDER}/if[0]/then/call:ordersQueue.add, channel orders, carries src/types.ts#OrderJob, label “place-order job”`,
     );
     expect((await test.call(connect, { connections: [{ kind: "writes", from: "a", to: "b" }] })).isError).toBe(true);
+  });
+
+  it("passes on the refusals of the rules the window and the save enforce: no compiled call repeated, calls from an unknown call, cite what it names", async () => {
+    const refusals: AgentFailure[] = [
+      {
+        ok: false,
+        code: "invalid_op",
+        message:
+          "the http connection from createOrder to OrderService.place repeats a compiled call: createOrder calls OrderService.place (orderService.place), and Unfold already draws that arrow. Connections are for what the graph can't show: HTTP, queues, data, and where an unknown call goes. get_relations says what Unfold draws.",
+      },
+      { ok: false, code: "board_problem", message: "Can't connect createOrder to place (calls): the call orderService.place (line 32) resolves to OrderService.place, so Unfold already draws it. A calls connection starts at a call Unfold can't follow." },
+      { ok: false, code: "board_problem", message: "Can't connect createOrder to orders-worker (queue): it has no anchors. A queue connection cites its receiving side: the entrance, the handler's registration, or where the queue is created." },
+    ];
+    for (const refused of refusals) {
+      const test = app(refused);
+      const answer = await test.call(connect, { connections: [{ kind: "http", from: "create-order", to: "place", description: "It calls it." }] });
+      expect(answer).toMatchObject({ isError: true, text: refused.message });
+    }
   });
 });
 

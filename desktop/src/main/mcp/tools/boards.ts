@@ -12,8 +12,8 @@ import { z } from "zod";
 import type { AgentBoardOp, AgentBoardOpResult, AgentBoardRef, AgentPageSummary } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
 import type { Page, ProjectRow } from "../engine-types";
-import { cardText, keyName } from "../format";
-import { startKeys } from "../edits";
+import { startNames } from "../edits";
+import { cardText } from "../format";
 import { cant, textResult, ToolError, windowRefusal } from "../results";
 import { pagePlace, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
@@ -28,7 +28,7 @@ const boardArg = z.string().min(1).describe("A board's id (from list_boards) or 
 // create_board
 
 /** Puts an entrance and its handlers on the board's first page, as Trace on a New Board does. */
-async function traced(context: ToolContext, board: AgentBoardRef, page: string, entrance: string): Promise<string[]> {
+async function traced(context: ToolContext, board: AgentBoardRef, page: string, entrance: string, name: string): Promise<string[]> {
   const edit = await context.bridge.edit({
     board,
     page,
@@ -37,10 +37,10 @@ async function traced(context: ToolContext, board: AgentBoardRef, page: string, 
     ops: [{ op: "add_cards", cards: [{ ref: { entrance }, follow: { callees: 1 } }] }],
   });
   if (!edit.ok) {
-    return [`Couldn't trace ${keyName(entrance)} onto it: ${edit.message} add_cards with the entrance's key places it.`];
+    return [`Couldn't trace ${name} onto it: ${edit.message} add_cards with the entrance's key places it.`];
   }
   const cards = edit.items.flatMap((item) => (item.kind === "card" ? [item] : []));
-  return [`Traced ${keyName(entrance)} on the first page (rev ${edit.revision}):`, ...cards.map((card) => `- ${cardText(card)}`), ...edit.warnings.map((warning) => `Warning: ${warning}`)];
+  return [`Traced ${name} on the first page (rev ${edit.revision}):`, ...cards.map((card) => `- ${cardText(card)}`), ...edit.warnings.map((warning) => `Warning: ${warning}`)];
 }
 
 export const createBoard = defineTool({
@@ -52,14 +52,15 @@ export const createBoard = defineTool({
     project: z.string().min(1).describe("The project's name or id, or a link to one of its boards"),
     title: z.string().trim().min(1).max(200).describe("The board's title"),
     folder: z.string().min(1).optional().describe("The board folder's name (absent: the top level)"),
-    trace: z.string().startsWith("entrance:").optional().describe("An entrance's key to trace onto the first page"),
+    trace: z.string().min(1).optional().describe("An app's or entrance's key (from list_entrances) to trace onto the first page"),
     pages: z.array(z.string().trim().min(1).max(200)).min(1).max(20).optional().describe("The pages' titles, in order"),
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   async run({ project, title, folder, trace, pages }, context) {
     const row = await context.project(project);
     // Refuse an unknown entrance before anything is created.
-    if (trace !== undefined && !(await startKeys(context, row.id)).has(trace)) {
+    const traceName = trace === undefined ? undefined : (await startNames(context, row.id)).get(trace);
+    if (trace !== undefined && traceName === undefined) {
       throw cant("trace the entrance", `${row.name} has no app or entrance with the key ${trace}`, "list_entrances lists its apps and entrances with their keys.");
     }
     const created = await context.bridge.create({
@@ -72,7 +73,7 @@ export const createBoard = defineTool({
       throw windowRefusal(created);
     }
     const [first] = created.pages;
-    const traceLines = trace !== undefined && first ? await traced(context, created.board, first.id, trace) : [];
+    const traceLines = trace !== undefined && traceName !== undefined && first ? await traced(context, created.board, first.id, trace, traceName) : [];
     const read = first ? await readPage(context, created.board, first.id) : null;
     return textResult(
       context.header(read ? pagePlace(row, read) : { project: row.name, board: created.info.title }),
@@ -213,7 +214,7 @@ export const editPages = defineTool({
   name: "edit_pages",
   title: "Edit pages",
   description:
-    'Adds, renames, moves, and deletes pages of a board, as one undo step in Unfold (which loads the board without moving the person\'s view), saved at once. board is a board\'s id or a link (default: the board in view). ops apply in order: add (title; after: a page id, default last), rename (page, title), move (page, to: its new position, 0 first), and delete (page; a board keeps at least one). Deleting a page that holds text a person wrote (a description, label, title, or note) is refused unless replacePeopleText is true: set it only when the person asked for that page to go. A page\'s title says what it explains, in 1 to 6 words ("Placing an order"). The result lists the pages in order with their ids; pass a page\'s id to the tools that build it.',
+    'Adds, renames, moves, and deletes pages of a board, as one undo step in Unfold (which loads the board without moving the person\'s view), saved at once. board is a board\'s id or a link (default: the board in view). ops apply in order: add (title; after: a page id, default last), rename (page, title), move (page, to: its new position, 0 first), and delete (page; a board keeps at least one). Deleting a page that holds text a person wrote (a description, name, title, or note) is refused unless replacePeopleText is true: set it only when the person asked for that page to go. A page\'s title says what it explains, in 1 to 6 words ("Placing an order"). The result lists the pages in order with their ids; pass a page\'s id to the tools that build it.',
   input: z.object({
     board: boardArg.optional(),
     project: z.string().min(1).optional().describe("The board's project, when its id isn't enough"),
@@ -248,9 +249,8 @@ export const editPages = defineTool({
 
 /** An item of a page as the person sees it: `the card createOrder`, `the frame “Request checks”`. */
 function itemName(page: Page, id: string): string {
-  const card = page.cards.find((item) => item.id === id);
-  if (card) {
-    return `the card ${keyName("block" in card.ref ? card.ref.block : card.ref.entrance)}`;
+  if (page.cards.some((item) => item.id === id)) {
+    return `the card ${id}`;
   }
   const named =
     page.combined.find((item) => item.id === id)?.title ??

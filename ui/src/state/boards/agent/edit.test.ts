@@ -240,7 +240,7 @@ describe("working marks", () => {
     expect(readWorking()).toEqual({ agents: ["Claude"], items: ["create-order"] });
     finishAgentWork({ board: REF, agent: CLAUDE, summary: "Described createOrder" });
     expect(readWorking()).toEqual({ agents: [], items: [] });
-    expect(toast.showToast).toHaveBeenCalledWith({ title: "Claude · Described createOrder" });
+    expect(toast.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Claude finished", body: "Described createOrder" }));
   });
 
   it("aren't saved and aren't undo steps", async () => {

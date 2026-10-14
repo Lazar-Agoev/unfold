@@ -37,7 +37,7 @@ describe("read_call", () => {
     const { text } = await app.call(readCall, { call: CALL, project: "ts-orders" });
     expect(app.engineCalls.at(-1)).toEqual(["call_contract", { project: PROJECT, key: CALL }]);
     expect(text.split("\n").slice(1)).toEqual([
-      `The call chargePayment at line 27 (key ${CALL}) → chargePayment (key payments.ts#chargePayment).`,
+      `The call chargePayment at line 27 (key ${CALL}) → the project definition payments.ts#chargePayment.`,
       "Sends (4):",
       "- cart → cart: Cart (Cart: cart.ts#Cart)",
       "- req.user → user: User (User: user.ts#User)",

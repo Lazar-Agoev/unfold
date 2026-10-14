@@ -7,7 +7,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { dock } from "./board";
 
-export function addBox(page: Page): Locator {
+function addBox(page: Page): Locator {
   return page.getByRole("dialog", { name: "Add" });
 }
 

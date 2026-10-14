@@ -10,7 +10,7 @@
 import type { AgentConnectionSpec, AgentItemResult, AgentItemStatus, AgentLinkResult, ConnectOp } from "@unfold/desktop/agent-api";
 import { tableColumns } from "../../../canvas/resources/columns";
 import type { Connection, Page } from "../../../ipc/generated";
-import { findBlock } from "../../cards";
+import { findBlock, flowBlocks } from "../../cards";
 import { cardKey, findCard, findCombined, isFreeId, isItemId } from "../document";
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
@@ -83,6 +83,27 @@ function checkRelates(ctx: OpContext, page: Page, spec: AgentConnectionSpec): vo
   }
 }
 
+/**
+ * Refuses a connection that repeats a compiled call: a project call of the from card's code (its step,
+ * or any call without one) to the to card's definition, which Unfold already draws as an arrow. A
+ * `calls` connection is the save's to check: it must start at an unknown call.
+ */
+function checkNotCompiled(ctx: OpContext, page: Page, spec: AgentConnectionSpec, what: string): void {
+  const from = findCard(page, spec.from);
+  const to = findCard(page, spec.to);
+  const model = from ? ctx.data.model(ctx.board.project, cardKey(from)) : undefined;
+  if (!from || !to || spec.kind === "calls" || model?.type !== "definition") {
+    return;
+  }
+  const target = cardKey(to);
+  const call = flowBlocks(model.flow).find((block) => block.to?.outcome === "project" && block.to.key === target && (spec.step === undefined || block.key === spec.step));
+  if (call) {
+    throw invalid(
+      `${what} repeats a compiled call: ${cardName(ctx, from)} calls ${cardName(ctx, to)} (${call.label}), and Unfold already draws that arrow. Connections are for what the graph can't show: HTTP, queues, data, and where an unknown call goes. get_relations says what Unfold draws.`,
+    );
+  }
+}
+
 /** What a spec says, checked against the page: its ends, step, columns, channel, carried type, and anchors. */
 function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): ConnectionClaim {
   checkEnd(page, spec.from, "from");
@@ -103,6 +124,7 @@ function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): Connect
       throw invalid(`The step “${spec.step}” isn't a call of ${cardName(ctx, card)}: a step is a call of the from card's block (read_code lists them with their keys).`);
     }
   }
+  checkNotCompiled(ctx, page, spec, what);
   if (spec.kind === "relates") {
     checkRelates(ctx, page, spec);
   } else if (spec.fromColumn !== undefined || spec.toColumn !== undefined || spec.cardinality !== undefined) {

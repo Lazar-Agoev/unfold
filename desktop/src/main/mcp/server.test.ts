@@ -113,6 +113,9 @@ const SIGNATURES = [
   "add_project",
   "compile_project",
   "update_project_settings",
+  "set_app",
+  "set_entrance",
+  "remove_entrance",
   "create_board",
   "organize_boards",
   "edit_pages",
@@ -131,12 +134,13 @@ const SIGNATURES = [
   "set_view",
   "arrange_page",
   "remove_items",
+  "shape_card",
+  "propose",
   "frame_cards",
   "add_resources",
   "connect",
   "add_notes",
   "describe",
-  "propose",
   "repair",
   "finish_work",
 ];
@@ -327,14 +331,15 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
     expect(guide).toContain("# Working in Unfold");
     expect(text(await client.callTool({ name: "get_guide", arguments: { topic: "diagrams" } }))).toContain("# Diagrams: pages that read well");
 
-    expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("No Unfold window has reported");
+    expect(text(await client.callTool({ name: "get_current_view", arguments: {} }))).toContain("Unfold's window hasn't reported what it shows");
     const report: ViewReport = { board: BOARD, page: "page-1", selection: { kind: "card", id: "create-order" }, visible: ["create-order", "checks"], held: [BOARD] };
-    views.report(1, report);
+    views.report(report);
     const view = text(await client.callTool({ name: "get_current_view", arguments: {} })).split("\n");
     expect(view).toEqual([
       `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Ids: project ${PROJECT}, board ${BOARD.id}, page page-1.`,
       `Selected: card create-order: ${CREATE_ORDER} (expanded).`,
+      "The code panel is closed.",
       "The page has 1 cards. In view: 2 items:",
       `- card create-order: ${CREATE_ORDER} (expanded)`,
       '- combined step checks: "Check the request"',
@@ -389,7 +394,7 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 
   it("calls each tool that reads, checks, builds, and repairs boards", async () => {
     const { url, views } = await start();
-    views.report(1, { board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
+    views.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
     const client = await connect(url, era);
     const at = { board: BOARD.id, project: "ts-orders", page: "page-1" };
     const calls: [string, Record<string, unknown>][] = [
@@ -443,7 +448,8 @@ describe.each(["current", "initialize"] as const)("the MCP server, on %s", (era)
 });
 
 describe("the tools", () => {
-  it("are exactly the 33, in their order", () => {
+  it("are exactly the 37, in their order", () => {
+    expect(TOOLS).toHaveLength(37);
     expect(TOOLS.map((tool) => tool.name)).toEqual(SIGNATURES);
   });
 
@@ -452,10 +458,10 @@ describe("the tools", () => {
     for (const name of ["list_boards", "read_page", "check", "get_screenshot"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: true });
     }
-    for (const name of ["add_cards", "set_view", "arrange_page", "frame_cards", "add_resources", "connect", "add_notes", "describe", "propose", "finish_work"]) {
+    for (const name of ["add_cards", "set_view", "arrange_page", "shape_card", "frame_cards", "add_resources", "connect", "add_notes", "describe", "propose", "finish_work", "set_app", "set_entrance"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
     }
-    for (const name of ["remove_items", "repair"]) {
+    for (const name of ["remove_items", "repair", "remove_entrance"]) {
       expect(hints(name), name).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
     }
   });

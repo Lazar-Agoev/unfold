@@ -6,9 +6,9 @@
  */
 
 import type { Anchor, AnchorSpec, HealthItem, Page, RepairKind, RepairSpec, Target } from "./engine-types";
-import { keyName } from "./format";
 import { cardKey } from "./page-code";
-import { cant } from "./results";
+import type { ToolContext } from "./context";
+import { cant, ToolError } from "./results";
 
 /** The repairs `repair` applies, by the names it takes. */
 export const REPAIRS = ["reconnect", "remove", "remove_description", "resign", "accept"] as const;
@@ -51,8 +51,7 @@ export function targetId(target: Target): string {
 /** What an item is about, in words: `the card createOrder`, `the name “Check the order”`, `the table “orders”`. */
 export function targetText(page: Page, target: Target): string {
   if ("card" in target) {
-    const card = page.cards.find((item) => item.id === target.card);
-    return card ? `the card ${keyName(cardKey(card))}` : `the card ${target.card}`;
+    return `the card ${target.card}`;
   }
   if ("combined" in target) {
     const combined = page.combined.find((item) => item.id === target.combined);
@@ -60,7 +59,7 @@ export function targetText(page: Page, target: Target): string {
   }
   if ("name" in target) {
     const name = page.names.find((item) => item.key === target.name);
-    return name ? `the name “${name.text}”` : `the name of ${keyName(target.name)}`;
+    return name ? `the name “${name.text}” on ${target.name}` : `the name on ${target.name}`;
   }
   if ("connection" in target) {
     const link = page.links.find((item) => item.id === target.connection);
@@ -110,23 +109,21 @@ function resourceWords(resource: NonNullable<Page["resources"]>[number]): Words[
   return [{ what: `the ${resource.kind} “${resource.name}”`, author: resource.author }, ...describe(`“${resource.name}”`, resource.description)];
 }
 
-/** A card's words: its description; accepting its code also keeps the combined steps and names inside it attached. */
-function cardWords(page: Page, card: Card, repair: "resign" | "accept"): Words[] {
-  const own = describe(keyName(cardKey(card)), card.description);
-  if (repair === "resign") {
-    return own;
-  }
-  const inside = (key: string) => key.startsWith(`${cardKey(card)}/`);
-  const combined = page.combined.filter((entry) => entry.members.some(inside)).flatMap(combinedWords);
-  const names = page.names.filter((name) => inside(name.key)).flatMap(nameWords);
-  return [...own, ...combined, ...names];
+/**
+ * A card's words: its description, and the combined steps and names on `blocks` (the blocks its
+ * definition owns, when accepting its code vouches for them; none when re-signing).
+ */
+function cardWords(page: Page, card: Card, blocks: ReadonlySet<string>): Words[] {
+  const combined = page.combined.filter((entry) => entry.members.some((key) => blocks.has(key))).flatMap(combinedWords);
+  const names = page.names.filter((name) => blocks.has(name.key)).flatMap(nameWords);
+  return [...describe(`the card ${card.id}`, card.description), ...combined, ...names];
 }
 
 /** The texts re-signing or accepting an item's target vouches for, with their authors. */
-function targetWords(page: Page, target: Target, repair: "resign" | "accept"): Words[] {
+function targetWords(page: Page, target: Target, blocks: ReadonlySet<string>): Words[] {
   if ("card" in target) {
     const card = page.cards.find((entry) => entry.id === target.card);
-    return card ? cardWords(page, card, repair) : [];
+    return card ? cardWords(page, card, blocks) : [];
   }
   if ("combined" in target) {
     const combined = page.combined.find((entry) => entry.id === target.combined);
@@ -157,10 +154,10 @@ function targetWords(page: Page, target: Target, repair: "resign" | "accept"): W
  * accepting it for one item accepts it for every card, combined step, name, resource card, and
  * connection that references the key.
  */
-function heldWords(page: Page, key: string): Words[] {
+function heldWords(page: Page, key: string, blocks: ReadonlySet<string>): Words[] {
   const cites = (anchors: readonly Anchor[] | undefined) => (anchors ?? []).some((anchor) => "key" in anchor && anchor.key === key);
   return [
-    ...page.cards.filter((card) => cardKey(card) === key).flatMap((card) => cardWords(page, card, "accept")),
+    ...page.cards.filter((card) => cardKey(card) === key).flatMap((card) => cardWords(page, card, blocks)),
     ...page.combined.filter((combined) => combined.members.includes(key)).flatMap(combinedWords),
     ...page.names.filter((name) => name.key === key).flatMap(nameWords),
     ...(page.resources ?? []).filter((resource) => resource.type === key || cites(resource.anchors)).flatMap(resourceWords),
@@ -168,10 +165,33 @@ function heldWords(page: Page, key: string): Words[] {
   ];
 }
 
-/** A person's words among what re-signing or accepting an item vouches for (D6), or null when only agents wrote it. */
-export function personWords(page: Page, item: HealthItem, repair: "resign" | "accept"): Words | null {
+/**
+ * The blocks whose names and combined steps accepting an item's code vouches for: those its
+ * definition owns (by their keys, from `code_text`), when the repair is an accept of a definition's
+ * code; none otherwise.
+ */
+export async function acceptedBlocks(context: ToolContext, project: string, page: Page, item: HealthItem, repair: "resign" | "accept"): Promise<ReadonlySet<string>> {
+  const key = repair === "accept" ? reference(page, item) : null;
+  if (key === null) {
+    return new Set();
+  }
+  try {
+    return new Set((await context.engine("code_text", { project, key })).labels.map((label) => label.key));
+  } catch (error) {
+    if (error instanceof ToolError) {
+      return new Set();
+    }
+    throw error;
+  }
+}
+
+/**
+ * A person's words among what re-signing or accepting an item vouches for (D6), or null when only
+ * agents wrote it. `blocks` are the blocks accepting it vouches for ({@link acceptedBlocks}).
+ */
+export function personWords(page: Page, item: HealthItem, repair: "resign" | "accept", blocks: ReadonlySet<string>): Words | null {
   const accepted = repair === "accept" ? reference(page, item) : null;
-  const words = [...targetWords(page, item.target, repair), ...(accepted !== null ? heldWords(page, accepted) : [])];
+  const words = [...targetWords(page, item.target, blocks), ...(accepted !== null ? heldWords(page, accepted, blocks) : [])];
   return words.find((entry) => entry.author?.startsWith("agent:") !== true) ?? null;
 }
 

@@ -34,24 +34,6 @@ export function stateText(state: ProjectState): string {
 }
 
 /**
- * A readable name for a key, as boards show one: `OrderService.place`, `createOrder.if`, an app's or
- * entrance's slugs (`server/place-an-order`), the path for a module.
- */
-export function keyName(key: string): string {
-  if (key.startsWith("entrance:")) {
-    return key.slice("entrance:".length);
-  }
-  // Names escape `#` (`%23`), so the last one ends the path, which may hold one.
-  const hash = key.lastIndexOf("#");
-  const names = key
-    .slice(hash + 1)
-    .split("/")
-    .map((step) => step.slice(step.indexOf(":") + 1).replace(/\[\d+\]$/, ""))
-    .filter((name) => name.length > 0);
-  return names.slice(-2).join(".") || (hash < 0 ? key : key.slice(0, hash));
-}
-
-/**
  * Who wrote something, for the agent: `you` (the calling agent), `Codex (an agent)`, `Lazar (a
  * person)`, or `a person` when no author is recorded.
  */

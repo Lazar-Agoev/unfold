@@ -126,34 +126,6 @@ export async function panUntilHittable(page: Page, target: Locator): Promise<voi
     .toBe(true);
 }
 
-/**
- * Selects an arrow (from `arrow`) with a click at the middle of its curve, once the camera holds still.
- * A level arrow's box has no height, so this clicks the point rather than the element.
- */
-export async function clickArrow(page: Page, line: Locator): Promise<void> {
-  await expect(async () => {
-    await cameraSettled(page);
-    await panUntilHittable(page, line);
-    const point = await line.evaluate((element) => {
-      if (!(element instanceof SVGPathElement)) {
-        return null;
-      }
-      const middle = element.getPointAtLength(element.getTotalLength() / 2);
-      const screen = element.getScreenCTM();
-      if (!screen) {
-        return null;
-      }
-      const { x, y } = new DOMPoint(middle.x, middle.y).matrixTransform(screen);
-      return { x, y };
-    });
-    if (!point) {
-      throw new Error("the arrow isn't drawn");
-    }
-    await page.mouse.click(point.x, point.y);
-    await expect(line).toHaveAttribute("aria-pressed", "true", { timeout: 2_000 });
-  }).toPass();
-}
-
 // --- The board's sidebar ----------------------------------------------------------------------
 
 /** The board's title in the sidebar header. */

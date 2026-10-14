@@ -7,24 +7,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { UnfoldApp } from "./app";
-import { escapeRegExp, expectConnection, invoke } from "./window";
-
-/** A row of `workspace`'s projects, as the journeys read it. */
-interface ProjectRowInfo {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-  readonly live: boolean;
-  readonly state: { readonly kind: string };
-}
-
-interface WorkspaceInfo {
-  readonly projects: readonly ProjectRowInfo[];
-}
-
-export function workspace(page: Page): Promise<WorkspaceInfo> {
-  return invoke<WorkspaceInfo>(page, "workspace");
-}
+import { escapeRegExp, expectConnection } from "./window";
 
 // --- Sidebar ----------------------------------------------------------------------------------
 
@@ -67,7 +50,7 @@ export async function projectMenu(page: Page, name: string, item: string | RegEx
 }
 
 /** Chooses an item of the open menu named `menu`. */
-export async function chooseMenuItem(page: Page, menu: string, item: string | RegExp): Promise<void> {
+async function chooseMenuItem(page: Page, menu: string, item: string | RegExp): Promise<void> {
   const open = page.getByRole("menu", { name: menu });
   await expect(open).toBeVisible();
   await open.getByRole("menuitem", { name: item, exact: true }).click();

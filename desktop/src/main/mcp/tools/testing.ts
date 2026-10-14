@@ -198,9 +198,9 @@ export function harness(options: HarnessOptions = {}) {
     confirmations,
     /** The engine commands called, by name, in order. */
     commands: () => engineCalls.map(([command]) => command),
-    /** Window 1 reports a view. */
+    /** The window reports a view. */
     report: (report: ViewReport) => {
-      views.report(1, report);
+      views.report(report);
     },
   };
 }

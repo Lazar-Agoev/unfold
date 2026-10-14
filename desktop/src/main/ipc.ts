@@ -112,12 +112,12 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
       workspace.setShowAllCalls(on);
       return null;
     },
-    report_view: (entry, args) => {
+    report_view: (_entry, args) => {
       const report = parseViewReport(args);
       if (!report) {
-        throw invalid("report_view: pass {board?, page?, selection, visible, held}.");
+        throw invalid("report_view: pass {board?, page?, selection, code?, visible, held}.");
       }
-      agents.views.report(entry.id, report);
+      agents.views.report(report);
       return null;
     },
     agent_edit_result: (entry, args) => {

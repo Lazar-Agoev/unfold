@@ -67,7 +67,7 @@ describe("the agent channel", () => {
       expect(engine.windowCalls).toEqual([{ command: "agent_open_board_result", args: { requestId: 6, result: { ok: true } } }]);
     });
     engine.emit({ type: "agent_finish", board: BOARD, agent: CLAUDE, summary: "Done" });
-    expect(toast.showToast).toHaveBeenCalledWith({ title: "Claude · Done" });
+    expect(toast.showToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Claude finished", body: "Done" }));
   });
 
   it("answers board requests: creating, editing pages, and showing", async () => {

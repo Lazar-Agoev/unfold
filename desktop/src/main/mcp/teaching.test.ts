@@ -14,7 +14,7 @@ const CODEX_LEAD = 512;
 const HEADER_ROOM = 200;
 
 /** Words the guide uses that look like a tool's name but name something else. */
-const OTHER_WORDS: ReadonlySet<string> = new Set(["node_modules", "customer_id"]);
+const OTHER_WORDS: ReadonlySet<string> = new Set(["node_modules"]);
 
 /**
  * A word written like a tool's name: lowercase, with underscores, and not a step of a key
@@ -61,6 +61,12 @@ function schemaValues(schema: unknown, into: Set<string>): Set<string> {
 }
 
 const TOOL_NAMES: ReadonlySet<string> = new Set(TOOLS.map((tool) => tool.name));
+/** A tool's call written with an object argument: `add_cards({board, page, cards: …})`, `check({board})`. */
+const CALL_WITH_ARGUMENTS = new RegExp(`\\b(${[...TOOL_NAMES].join("|")})\\(\\{`, "g");
+/** Each tool's top-level arguments, by tool name. */
+const ARGUMENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  [...registered()].map(([name, input]) => [name, new Set(Object.keys((z.toJSONSchema(input) as { properties?: object }).properties ?? {}))]),
+);
 /** The tools' names and every value their arguments take (op names, repair names, kinds). */
 const VOCABULARY: ReadonlySet<string> = new Set([...TOOL_NAMES, ...[...registered().values()].flatMap((input) => [...schemaValues(z.toJSONSchema(input), new Set())])]);
 
@@ -72,6 +78,60 @@ function unknownWords(text: string, known: ReadonlySet<string>): string[] {
 /** The calls in `text` that aren't tools. */
 function unknownCalls(text: string): string[] {
   return [...text.matchAll(CALL)].map((match) => match[1] ?? "").filter((name) => !TOOL_NAMES.has(name));
+}
+
+/**
+ * The names written at the top level of the object that opens at `text[open]`: `key: value` and
+ * shorthand `key`. Quoted text and `<placeholders>` are skipped, and nested objects and lists aren't
+ * read.
+ */
+function topLevelNames(text: string, open: number): string[] {
+  const names: string[] = [];
+  let depth = 0;
+  let expectName = false;
+  for (let index = open; index < text.length; index += 1) {
+    const char = text.charAt(index);
+    if (char === '"') {
+      index = text.indexOf('"', index + 1);
+      if (index < 0) {
+        break;
+      }
+    } else if (char === "<") {
+      index = text.indexOf(">", index + 1);
+      if (index < 0) {
+        break;
+      }
+    } else if ("{[(".includes(char)) {
+      depth += 1;
+      expectName = depth === 1;
+    } else if ("}])".includes(char)) {
+      depth -= 1;
+      if (depth === 0) {
+        break;
+      }
+    } else if (char === "," && depth === 1) {
+      expectName = true;
+    } else if (expectName && /[A-Za-z_]/.test(char)) {
+      const name = /^[A-Za-z_]\w*/.exec(text.slice(index))?.[0] ?? "";
+      names.push(name);
+      index += name.length - 1;
+      expectName = false;
+    } else if (!/\s/.test(char)) {
+      expectName = false;
+    }
+  }
+  return names;
+}
+
+/** The arguments written in `text`'s calls (`tool({name: …})`) that their tool doesn't take, as `tool.name`. */
+function unknownArguments(text: string): string[] {
+  return [...text.matchAll(CALL_WITH_ARGUMENTS)].flatMap((match) => {
+    const tool = match[1] ?? "";
+    const taken = ARGUMENTS.get(tool) ?? new Set<string>();
+    return topLevelNames(text, match.index + match[0].length - 1)
+      .filter((name) => !taken.has(name))
+      .map((name) => `${tool}.${name}`);
+  });
 }
 
 /** The guide topics `text` names that don't exist. */
@@ -88,8 +148,9 @@ describe("the instructions (design §7.2)", () => {
     expect(first.endsWith('Call get_guide({topic: "start"}) before any other Unfold tool.')).toBe(true);
   });
 
-  it("name only tools and topics that exist", () => {
+  it("name only tools, arguments, and topics that exist", () => {
     expect(unknownWords(INSTRUCTIONS, VOCABULARY)).toEqual([]);
+    expect(unknownArguments(INSTRUCTIONS)).toEqual([]);
     expect(unknownTopics(INSTRUCTIONS)).toEqual([]);
   });
 });
@@ -135,9 +196,10 @@ describe("the guide (design §7.3)", () => {
     }
   });
 
-  it("calls only tools, names only tools and their arguments' values, and points only at topics that exist", () => {
+  it("calls only tools with arguments they take, names only tools and their arguments' values, and points only at topics that exist", () => {
     for (const [topic, text] of topics) {
       expect(unknownCalls(text), topic).toEqual([]);
+      expect(unknownArguments(text), topic).toEqual([]);
       expect(unknownWords(text, new Set([...VOCABULARY, ...OTHER_WORDS])), topic).toEqual([]);
       expect(unknownTopics(text), topic).toEqual([]);
     }

@@ -22,7 +22,9 @@ import type {
   AgentReadResult,
 } from "@unfold/desktop/agent-api";
 import { produce } from "immer";
+import { createElement } from "react";
 import { showToast } from "../../../components/Toast";
+import { Icon } from "../../../icons";
 import type { Page } from "../../../ipc/generated";
 import { toUnfoldError } from "../../../ipc/unfold";
 import { cardKey, findPage } from "../document";
@@ -39,6 +41,7 @@ import { applyAddNotes } from "./notes";
 import { applyPropose } from "./proposals";
 import { applyRemoveItems } from "./remove";
 import { prepareAddResources } from "./resources";
+import { applyShapeCard } from "./shape";
 import { applyDescribe } from "./text";
 import { finishWorking, markWorking } from "./working";
 
@@ -70,6 +73,8 @@ async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
       return (page, run) => applyAddNotes(page, op, run);
     case "propose":
       return (page, run) => applyPropose(page, op, run);
+    case "shape_card":
+      return (page, run) => applyShapeCard(page, op, run);
   }
 }
 
@@ -211,9 +216,13 @@ export async function openBoardForAgent(request: AgentOpenRequest): Promise<Agen
   }
 }
 
-/** An agent finished its work on a board: its working marks clear, and its summary shows as a toast. */
+/** An agent finished its work on a board: its working marks clear, and a toast says so with its summary ("Claude finished"). */
 export function finishAgentWork(finish: AgentFinish): void {
   finishWorking(refOf(finish), finish.agent.author);
   const summary = finish.summary.trim();
-  showToast({ title: summary.length > 0 ? `${finish.agent.name} · ${summary}` : `${finish.agent.name} finished` });
+  showToast({
+    leading: createElement(Icon, { name: "agent", size: 10 }),
+    title: `${finish.agent.name} finished`,
+    ...(summary.length > 0 ? { body: summary } : {}),
+  });
 }

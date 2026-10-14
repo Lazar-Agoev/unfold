@@ -79,6 +79,15 @@ export function useCodePanel(): CodeOpen | null {
   return useCodePanelStore((state) => state.open);
 }
 
+/** Calls `listener` when what the panel shows changes (it opens, moves, widens, or closes); returns the unsubscribe function. */
+export function onCodePanelChange(listener: () => void): () => void {
+  return useCodePanelStore.subscribe((state, previous) => {
+    if (state.open !== previous.open) {
+      listener();
+    }
+  });
+}
+
 /** The line hovered in the panel, kept current. */
 export function useCodeHover(): CodeHover | null {
   return useCodePanelStore((state) => state.hover);

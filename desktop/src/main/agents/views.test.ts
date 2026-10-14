@@ -35,6 +35,18 @@ describe("parseViewReport", () => {
     expect(parseViewReport({ selection: { kind: "none" }, visible: [], held: [] })).toEqual({ selection: { kind: "none" }, visible: [], held: [] });
   });
 
+  it("accepts what the code panel shows: a block, lines of a file, or a file, before and after its lines load", () => {
+    const panels = [
+      { key: "src/a.ts#a/if[0]", file: "src/a.ts", lines: [3, 9], widened: false, state: "current" },
+      { key: "src/a.ts#a", widened: false },
+      { span: [12, 14], file: "src/a.ts", lines: [12, 14], widened: true, state: "changed" },
+      { file: "db/schema.sql", widened: false, state: "notAnalyzed" },
+    ];
+    for (const code of panels) {
+      expect(parseViewReport({ ...REPORT, code })?.code).toEqual(code);
+    }
+  });
+
   it("refuses malformed reports", () => {
     for (const report of [
       null,
@@ -54,6 +66,11 @@ describe("parseViewReport", () => {
       { ...REPORT, visible: ["a", 1] },
       { ...REPORT, held: [ORDERS, { id: "b" }] },
       { ...REPORT, held: undefined },
+      { ...REPORT, code: { key: "k" } },
+      { ...REPORT, code: { key: 3, widened: false } },
+      { ...REPORT, code: { lines: [0, 3], widened: false } },
+      { ...REPORT, code: { span: [1], widened: false } },
+      { ...REPORT, code: { widened: false, state: "stale" } },
     ]) {
       expect(parseViewReport(report)).toBeNull();
     }
@@ -63,35 +80,32 @@ describe("parseViewReport", () => {
 describe("ViewTracker", () => {
   it("keeps the window's last report until it closes", () => {
     const views = new ViewTracker();
-    expect(views.lastUsed()).toBeUndefined();
-    views.report(1, { ...REPORT, held: [] });
-    views.report(1, REPORT);
-    expect(views.lastUsed()).toBe(1);
-    expect(views.get(1)).toEqual(REPORT);
-    views.forget(1);
-    expect(views.get(1)).toBeUndefined();
-    expect(views.lastUsed()).toBeUndefined();
-
-    // The window opened again, with a new id.
-    views.report(2, REPORT);
-    expect(views.lastUsed()).toBe(2);
+    expect(views.current()).toBeUndefined();
+    views.report({ ...REPORT, held: [] });
+    views.report(REPORT);
+    expect(views.current()).toEqual(REPORT);
+    views.clear();
+    expect(views.current()).toBeUndefined();
+    expect(views.holds(ORDERS)).toBe(false);
   });
 
-  it("finds the window that holds a board from the reported boards, and follows boards loaded for an agent", () => {
+  it("knows the boards the window holds from its report, and follows boards loaded for an agent", () => {
     const views = new ViewTracker();
-    views.report(1, REPORT);
-    views.report(2, { ...REPORT, held: [] });
-    expect(views.holder(EMAILS)).toBe(1);
-    expect(views.holder({ project: "p-orders0000", id: "other.json" })).toBeUndefined();
+    views.report(REPORT);
+    expect(views.holds(EMAILS)).toBe(true);
+    expect(views.holds({ project: "p-orders0000", id: "other.json" })).toBe(false);
 
-    views.holds(2, EMAILS);
-    expect(views.holder(EMAILS)).toBe(2);
-    expect(views.get(1)?.held).toEqual([ORDERS]);
+    views.release(EMAILS);
+    expect(views.holds(EMAILS)).toBe(false);
+    expect(views.current()?.held).toEqual([ORDERS]);
 
-    views.released(2, EMAILS);
-    expect(views.holder(EMAILS)).toBeUndefined();
+    views.hold(EMAILS);
+    views.hold(EMAILS);
+    expect(views.current()?.held).toEqual([ORDERS, EMAILS]);
 
-    views.holds(3, ORDERS);
-    expect(views.get(3)).toEqual({ selection: { kind: "none" }, visible: [], held: [ORDERS] });
+    // Loaded before the window's first report.
+    const fresh = new ViewTracker();
+    fresh.hold(ORDERS);
+    expect(fresh.current()).toEqual({ selection: { kind: "none" }, visible: [], held: [ORDERS] });
   });
 });

@@ -13,7 +13,7 @@ import type { ToolContext } from "../context";
 import type { HealthItem, Page } from "../engine-types";
 import { anchorArg } from "../edits";
 import { authorText } from "../format";
-import { personWords, repairNames, repairSpec, REPAIRS, targetId, targetText, type RepairName } from "../health";
+import { acceptedBlocks, personWords, repairNames, repairSpec, REPAIRS, targetId, targetText, type RepairName } from "../health";
 import { cant, textResult, ToolError, windowRefusal } from "../results";
 import { currentView, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
@@ -84,7 +84,7 @@ export const repair = defineTool({
     const chosen = chosenItem(read.page, health.health.items, target.item, name, anchor);
     const what = targetText(read.page, chosen.target);
     if (name === "resign" || name === "accept") {
-      const words = personWords(read.page, chosen, name);
+      const words = personWords(read.page, chosen, name, await acceptedBlocks(context, target.project.id, read.page, chosen, name));
       if (words) {
         throw new ToolError(
           `Can't ${name === "resign" ? "re-sign" : "accept the current code for"} ${what}: ${authorText(words.author, context.agent)} wrote ${words.what}, so signing off on it is theirs to do. Tell them in the chat what changed in the code, and whether the text still reads right to you.`,
@@ -139,7 +139,7 @@ export const finishWork = defineTool({
     }
     return textResult(
       context.header(),
-      ...boards.map((ref, index) => `Finished on “${titles[index] ?? ref.id}” (board id ${ref.id}): its working marks are cleared, and “${context.agent.name} · ${summary}” shows in its window.`),
+      ...boards.map((ref, index) => `Finished on “${titles[index] ?? ref.id}” (board id ${ref.id}): its working marks are cleared, and “${context.agent.name} finished” shows in its window with your summary.`),
       "Next: tell the person in the chat what you made, and which parts go beyond what Unfold compiled.",
     );
   },

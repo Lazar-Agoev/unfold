@@ -1,53 +1,16 @@
 /**
  * Driving the window at the transport level: engine commands through `window.unfold` (exactly what the
- * UI uses), the events it receives, and its engine connection. Waits are on state (locators,
- * `expect.poll`), never fixed sleeps.
+ * UI uses) and its engine connection. Waits are on state (locators, `expect.poll`), never fixed sleeps.
  */
 
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import type { UnfoldEvent } from "@unfold/desktop/unfold-api";
 import type { UnfoldApp } from "./app";
 
-/** The engine and shell events the recorder keeps, with the time each arrived. */
-const RECORDED = [
-  "workspace_changed",
-  "project_state",
-  "project_reset",
-  "graph_updated",
-  "files_changed",
-  "boards_changed",
-  "board_reloaded",
-  "problems_changed",
-  "config_changed",
-  "project_added",
-  "menu_command",
-] as const;
-
-type RecordedType = (typeof RECORDED)[number];
-
-/** Sizes the window and installs the event recorder once its page has loaded. */
+/** Sizes the window once its page has loaded. */
 export async function prepareWindow(app: UnfoldApp, page: Page): Promise<void> {
   await page.waitForLoadState("domcontentloaded");
   await app.resize(page, 1500, 950);
-  await installRecorder(page);
-}
-
-/** Records every {@link RECORDED} event in `window.__e2e` (idempotent). */
-async function installRecorder(page: Page): Promise<void> {
-  await page.waitForFunction(() => typeof window.unfold === "object");
-  await page.evaluate((types) => {
-    if (window.__e2e) {
-      return;
-    }
-    const recorder: { events: { at: number; event: UnfoldEvent }[] } = { events: [] };
-    window.__e2e = recorder;
-    for (const type of types) {
-      window.unfold.on(type, (event) => {
-        recorder.events.push({ at: Date.now(), event });
-      });
-    }
-  }, [...RECORDED]);
 }
 
 /** A command rejected by the engine or the main process. */
@@ -86,40 +49,6 @@ export async function invoke<T>(page: Page, command: string, args: Record<string
     [command, args] as const,
   );
   return settle(result) as T;
-}
-
-/** Every recorded event of `type`, oldest first, with its arrival time. */
-export async function events(page: Page, type: RecordedType): Promise<{ readonly at: number; readonly event: UnfoldEvent }[]> {
-  return page.evaluate((wanted) => (window.__e2e?.events ?? []).filter((entry) => entry.event.type === wanted), type);
-}
-
-/** How many events of `type` arrived so far: a mark to wait for later ones. */
-export async function eventMark(page: Page, type: RecordedType): Promise<number> {
-  return (await events(page, type)).length;
-}
-
-/** Waits for an event of `type` after `mark` that `matches`, and returns it with its arrival time. */
-export async function waitForEvent(
-  page: Page,
-  type: RecordedType,
-  mark: number,
-  matches: (event: UnfoldEvent) => boolean = () => true,
-  timeout = 30_000,
-): Promise<{ readonly at: number; readonly event: UnfoldEvent }> {
-  let found: { at: number; event: UnfoldEvent } | undefined;
-  await expect
-    .poll(
-      async () => {
-        found = (await events(page, type)).slice(mark).find((entry) => matches(entry.event));
-        return found !== undefined;
-      },
-      { timeout, message: `waiting for ${type}` },
-    )
-    .toBe(true);
-  if (!found) {
-    throw new Error(`no ${type}`);
-  }
-  return found;
 }
 
 /** The window's engine connection state. */

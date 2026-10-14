@@ -267,6 +267,20 @@ describe("connect", () => {
     expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "gone", to: "worker" }] }])).message).toContain("There is no card, resource card, or frame");
   });
 
+  it("refuses a connection that repeats a compiled call, from its step or from anywhere in the card without one", async () => {
+    const place: Card = { id: "place", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [400, 0] };
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [...cards, place])])));
+    const stepped = await refusal([{ op: "connect", connections: [{ kind: "http", from: "create-order", to: "place", step: `${CREATE}/call:orderService.place` }] }]);
+    expect(stepped).toMatchObject({ code: "invalid_op" });
+    expect(stepped.message).toBe(
+      "the http connection from createOrder to src/services/order-service.ts#OrderService.place repeats a compiled call: createOrder calls src/services/order-service.ts#OrderService.place (orderService.place), and Unfold already draws that arrow. Connections are for what the graph can't show: HTTP, queues, data, and where an unknown call goes. get_relations says what Unfold draws.",
+    );
+    expect((await refusal([{ op: "connect", connections: [{ kind: "other", from: "create-order", to: "place", label: "places it" }] }])).message).toContain("repeats a compiled call");
+    // From another call of the card, the line isn't the compiled one.
+    const queued = await edit([{ op: "connect", connections: [{ kind: "queue", from: "create-order", to: "place", step: STEP }] }]);
+    expect(queued.items).toMatchObject([{ kind: "link", status: "created", connection: "queue" }]);
+  });
+
   it("leaves a person's connection as it is unless the person asked, then makes it the agent's", async () => {
     const drawn: Connection = { id: "talks", from: "create-order", to: "worker", kind: "other", label: { text: "sends jobs", author: "person:maya", signature: "" }, author: "person:maya" };
     open({ links: [drawn] });

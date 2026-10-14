@@ -1,14 +1,15 @@
 /**
- * `get_current_view` (design §5.6, §6.2): what the person is looking at in the window they used
- * last, from that window's view report, with the page as the window holds it (unsaved edits
- * included): the selection (a proposed step, or a step shown in a call opened in place with the
- * definition that owns it, among the rest), and the items in view. Loaded with
- * the session's first tools. It reads; it never moves the person's view.
+ * `get_current_view` (design §5.6, §6.2; viewing-code.md § Agents): what the person is looking at in
+ * the window, from its view report, with the page as the window holds it (unsaved edits included):
+ * the selection (a proposed step, or a step shown in a call opened in place with the definition that
+ * owns it, among the rest), what the code panel shows (its block and lines), and the items in view.
+ * Loaded with the session's first tools. It reads; it never moves the person's view.
  */
 
 import { z } from "zod";
-import type { ViewSelection } from "../../../shared/agent-api";
+import type { CodePanelReport, ViewSelection } from "../../../shared/agent-api";
 import type { Page } from "../engine-types";
+import { place } from "../format";
 import { cardKey, cardView } from "../page-code";
 import { textResult, windowRefusal } from "../results";
 import { defineTool } from "../tool";
@@ -70,21 +71,45 @@ function selectionText(page: Page, selection: ViewSelection): string {
   }
 }
 
+/** Why the code panel's lines can't be trusted, by its state. */
+const UNTRUSTED: Readonly<Record<string, string>> = {
+  changed: "the file changed since the last compile",
+  doesNotParse: "the file doesn't parse now",
+  notAnalyzed: "Unfold doesn't compile this file",
+  notFound: "its code isn't found",
+};
+
+/** What the code panel shows, in a line: its block (or the lines it opened on) and the lines on screen. */
+function codeText(code: CodePanelReport | undefined): string {
+  if (!code) {
+    return "The code panel is closed.";
+  }
+  const opened =
+    code.key !== undefined
+      ? `the block ${code.key}`
+      : code.span !== undefined && code.file !== undefined
+        ? `the lines ${place(code.file, code.span[0], code.span[1])}`
+        : `the file ${code.file ?? "(loading)"}`;
+  const shown = code.lines !== undefined && code.file !== undefined ? `, showing ${place(code.file, code.lines[0], code.lines[1])}` : "";
+  const widened = code.widened ? " (the person widened it past the selection's own lines)" : "";
+  const why = code.state !== undefined ? UNTRUSTED[code.state] : undefined;
+  return `The code panel shows ${opened}${shown}${widened}${why !== undefined ? `; ${why}, so read it before relying on it` : ""}. ${code.key !== undefined ? "read_code with that key" : "read_file with those lines"} reads it.`;
+}
+
 export const getCurrentView = defineTool({
   name: "get_current_view",
   title: "Get current view",
   description:
-    "What the person is looking at in the Unfold window they used last: the project, board, and page (with its revision), the selection (a card, a step (one shown in a call opened in place names the definition that owns it), a combined step, a proposed step, a frame, a resource card, a note, a connection, or an arrow between two cards with the calls it draws), and the items in view, each with its id. Call it when the person says \"this\", \"here\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view.",
+    "What the person is looking at in the Unfold window: the project, board, and page (with its revision), the selection (a card, a step (one shown in a call opened in place names the definition that owns it), a combined step, a proposed step, a frame, a resource card, a note, a connection, or an arrow between two cards with the calls it draws), what the code panel shows (its block's key, or the lines it opened on, and the file and lines on screen), and the items in view, each with its id. Call it when the person says \"this\", \"here\", \"this code\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view, and never opens or moves the code panel: it is the person's.",
   input: z.object({}),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
   async run(_args, context) {
-    const windowId = context.views.lastUsed();
-    const report = windowId === undefined ? undefined : context.views.get(windowId);
+    const report = context.views.current();
     if (!report) {
       return textResult(
         context.header(),
-        "No Unfold window has reported what it shows: Unfold is starting, or no window is open. Ask the person to open a board, or start from list_projects.",
+        "Unfold's window hasn't reported what it shows: Unfold is starting, or its window is closed. Ask the person to open a board, or start from list_projects.",
       );
     }
     if (!report.board || report.page === undefined) {
@@ -111,6 +136,7 @@ export const getCurrentView = defineTool({
       `Ids: project ${report.board.project}, board ${report.board.id}, page ${page.id}.`,
       read.board.unsaved ? "The window has edits it hasn't saved yet." : null,
       selectionText(page, report.selection),
+      codeText(report.code),
       `The page has ${page.cards.length} cards. In view: ${report.visible.length} items${listed.length < report.visible.length ? ` (the first ${listed.length} listed)` : ""}${report.visible.length > 0 ? ":" : "."}`,
       ...listed.map((id) => `- ${describeItem(page, id)}`),
       "Next: read_page reads the whole page. From now on, pass these board and page ids to other tools.",

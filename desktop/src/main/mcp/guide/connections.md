@@ -1,133 +1,123 @@
 # Connections: what the graph can't show
 
-The graph links a call only when it can prove the target. It never links a queue's
-producer to its worker, an event to its handlers, a client's request to the route, code
-to the tables it writes, or a call to the subclass that runs at runtime. A connection
-is a typed line you draw for one of those, citing the code that shows it. It's drawn in
-the authored color with its kind's line and a chip, and carries your agent mark. It
-never changes a compiled arrow, Called by, Reached from, or a drawn flow.
+The graph links a call only when it can prove the target. It never links a client's
+request to the route, a job to its worker, an event to its handler, code to the tables
+it writes, or an unknown call to what runs at runtime. A connection is a typed line you
+draw for one of those, citing the code that shows it. It is drawn as authored and never
+changes a compiled arrow or a drawn flow.
 
 ## Before you draw
-- **Read both sides.** read_code on the sending function gives each call's line and
-  key; read_code, list_entrances, or read_file gives the receiving side.
-- **Is it compiled already?** If read_code says the call resolves, Unfold draws its
-  arrow when both cards are on the page. Never restate a compiled call.
+- **Read both sides.** read_code on the sending function gives each call's key;
+  read_code, list_entrances, or read_file gives the receiving side.
+- **Is it compiled already?** A call to a project definition is drawn as an arrow when
+  both cards are on the page. A connection that repeats one is refused; get_relations
+  says what Unfold draws.
 - **Can you cite the receiving side?** If not, don't draw it: say in chat what you
   found and what you couldn't confirm.
 
-## Kinds
-| kind | Use for | from → to | Anchors (yours) | Chip |
-| --- | --- | --- | --- | --- |
-| http | A client's request to a route | The calling card (step: the call) → the route's entrance card | Required: the route's entrance | HTTP · POST /orders |
-| queue | A job or message through a queue or topic | The sending card (step: the add or send call) → the worker entrance, or a queue resource card | Required: where the queue is created, or the worker entrance | queue · orders |
-| writes | Inserting, updating, or deleting | The writing card (step: the write) → a table, cache, or storage card | Optional: the step is the evidence | writes · orders |
-| reads | Querying or loading | The reading card (step: the read) → a table, cache, or storage card | Optional: the step is the evidence | reads · orders (the head points at the code) |
-| calls | Where a call Unfold can't follow goes at runtime | The card with the call (step: that call) → the function it reaches | Required: why it goes there | runtime call |
-| relates | A relationship between two tables | Table → table, with fromColumn, toColumn, cardinality | None (columns are checked) | its cardinality (N : 1); crow's feet on the line |
-| other | Anything else, such as an event emitted and handled, or an RPC | Any → any | Optional; for an event, the handler's registration | its label (required) |
+## The seven kinds
+| kind | For | from (step) → to | Anchors |
+| --- | --- | --- | --- |
+| http | A request to another service: a route, an RPC, tRPC, or GraphQL call | The calling card (step: the call) → the route's entrance card, or the handler | Required: the route's entrance, or the handler's registration |
+| queue | A job, message, or event through a queue or a bus | The sender or emitter (step: the add, send, or emit call) → a queue card, the worker's entrance, or the handler | Required: where the queue is created, the worker's entrance, or the handler's registration |
+| writes | Inserting, updating, or deleting | The code (step: the call that writes) → a table, cache, or storage card | The step is the evidence |
+| reads | Querying or loading | The code (step: the call that reads) → a table, cache, or storage card | The step is the evidence |
+| calls | Where an unknown call goes at runtime | The card with the call (step: that call) → the function it reaches | Required: why it goes there, such as a factory or an injection |
+| relates | Two tables joined by a value | Table → table, with fromColumn, toColumn, and cardinality | None: the columns are checked |
+| other | Anything else, such as a call to an outside service | Any → any | Optional; a label is required |
 
-Ends (from and to) are ids of cards, resource cards, or frames on the page. from is the
-side that acts: the caller, the sender, the emitter, the code that reads or writes.
-When a frame is collapsed, its members' connections attach to it.
+from and to are ids of cards, resource cards, or frames on the page. from is the side
+that acts. A connection to a collapsed frame's member attaches to the frame.
 
-## The step: where the line leaves
-step is the key of the call inside from's code that talks: read_code lists each
-call's key. With a step, the line leaves from that call when the card is expanded, the
-way compiled arrows do; a compact card's line leaves from its edge. Only a code card has
-steps: when from is an entrance, a resource card, or a frame, leave step out.
+## The step
+step is the key of the call in from's code where the line leaves, from read_code. On an
+expanded card the line starts at that call; on a compact card, at its edge. Only code
+cards have steps: from an entrance, a resource card, or a frame, leave step out.
 
 ## Channel
-- When to is an entrance, Unfold fills the channel in from it: an http route's
-  `METHOD path`, a worker's queue. Leave channel out; the result shows what it filled.
-- Otherwise pass channel only when the step's or an anchor's text names it, such as
-  the queue's name in `new Queue<OrderJob>("orders", …)`. The save checks it.
+- When to is an entrance card, Unfold fills the channel in from its `on` (`POST
+  /orders`, `queue orders`). Leave channel out.
+- Otherwise pass channel only when the step's or an anchor's code names it, such as
+  "orders" in `new Queue<OrderJob>("orders", …)`. The save checks it.
 
 ## What it carries
-carries is the key of a type declaration or class the code writes for what travels,
-such as `OrderJob` in `ordersQueue: Queue<OrderJob>`. The save checks that the step's
-function or an anchor's code uses that type. It shows in the chip
-(`queue · orders · OrderJob`), and clicking it opens the type's definition.
+carries is the key of the type that travels. The save checks that the step's function
+or an anchor's code names that type in a written annotation: `processOrder(job:
+Job<OrderJob>)` names OrderJob, and so does the module that declares `ordersQueue:
+Queue<OrderJob>`. Carry the request only; a reply through a queue is a second
+connection.
 
-## Anchors: what counts as evidence
-An anchor is `{key}` (a block: a function, class, variable, statement, or one call;
-or an entrance's key) or `{file, lines: [from, to]}` (lines of an evidence file; setup
-topic). Cite the receiving side:
-- http: the route's entrance key;
-- queue: the variable where the queue is created, and the worker entrance if it's on
-  the page;
-- an event (other): the call that registers the handler (`events.on("order.placed", …)`);
-- calls: what makes the call go there at runtime (the factory that returns the
-  subclass, the place it's injected);
-- an RPC (other): the handler's registration.
+## Anchors
+An anchor is `{key}` (a block's, app's, or entrance's key) or `{file, lines: [from,
+to]}` (lines of an evidence file; setup topic). Cite the receiving side:
+- http: the route's entrance;
+- queue: the call that creates the queue, the worker's entrance, or the call that
+  registers the handler (`events.on("order.placed", …)`);
+- calls: what makes the call go there (the factory that returns the subclass, the
+  place it's injected).
 
-A name that merely looks alike, a comment, a test, or your inference is not evidence.
-Unfold signs each connection over its step and anchors: when that code changes, the
-connection goes to review (repairs topic).
+A name that looks alike, a comment, a test, or your inference is not evidence. Unfold
+signs each connection over its step and anchors: when that code changes, it goes to
+review (repairs topic).
 
 ## A line or a queue card
-- One producer and one consumer: a queue connection straight from the producer's step
-  to the worker entrance.
-- Several producers or consumers, or a queue worth describing: a queue resource card
-  anchored where the queue is created (add_resources), a queue connection from each
-  producer to it, and one from it to each worker entrance (anchored to the entrance).
+- One producer and one consumer: a queue connection from the producer's step straight
+  to the worker's entrance.
+- Several, or a queue worth describing: a queue resource card anchored where the queue
+  is created (add_resources), a connection from each producer to it, and one from it to
+  each worker entrance.
 - Tables, caches, storage, and outside services are resource cards: connect code to
-  them with writes and reads, or other with a label for an outside service (createOrder
-  posts to Slack: other, label "posts to #orders", to an external card "slack").
+  them with writes, reads, or other.
 
 ## Label and description
 - label: what travels, in 1 to 5 words ("place-order job"). Required for other.
-- description (required): the evidence in one sentence ("createOrder adds a
-  place-order job to the orders queue.").
+- description (required): the evidence in one sentence.
 
 ## Relationships
-relates joins two different tables by their columns: fromColumn on from's table,
-toColumn on to's, and a cardinality (one-to-one, one-to-many, many-to-one,
-many-to-many). Draw one only where the code relates the tables by a value the types
-don't link (data-models topic).
+relates joins two different tables: fromColumn on from's table, toColumn on to's, and a
+cardinality (one-to-one, one-to-many, many-to-one, many-to-many). Only where a column
+holds the other table's key as a plain value (data-models topic).
 
 ## Runtime calls
-calls is the connection most likely to be read as proof, so the save holds it to the
-call: its step must be the call itself (the call's own key from read_code, such as
-`…/call:this.payments.charge`), and that
-call must be unresolved or external. A call that
-resolves is refused: Unfold already draws it. The compiled call stays dashed in the
-card; the connection adds where it goes, with its evidence.
+calls is the connection most likely to be read as proof, so its step must be the
+unknown call itself (`?` in read_code). A project or library call is refused. The call
+stays `?` on the card; the connection adds where it goes, with its evidence.
 
 ## When the save refuses
-The edit is undone and nothing changes. The message says what to do:
+The edit is undone and the message says what to do:
 - "it has no anchors": cite the receiving side.
-- "the channel … doesn't appear in its step or anchors": anchor where the channel is
-  named, or leave channel out.
-- "… isn't used in … or in its anchors": carry a type the sending code or an anchor
-  writes, or leave carries out.
-- "it has no step" / "its step (line N) isn't a call" / "… resolves to …, so Unfold
-  already draws it": a calls connection needs the unresolved call itself as its step.
+- "the channel … doesn't appear in its step or anchors": anchor where it's named, or
+  leave channel out.
+- "… isn't used in … or in its anchors": carry a type the code names, or leave
+  carries out.
+- "its step … is a …, not a call" or "… resolves to …, so Unfold already draws it":
+  give a call's key; for calls, the unknown call.
 - "… isn't a column of the table …": use one of the columns listed.
-connect with an existing id updates that connection; the same kind, ends, step, and
-columns again is kept, not duplicated. A person's connection keeps their words: pass
-them as they are.
+- "… repeats a compiled call": nothing to draw; the arrow is already there.
+
+connect with an existing id updates that connection. A person's connection keeps their
+words: pass them as they are.
 
 ## In ts-orders
-Each of these exists in the code and passes the save's checks:
-| kind | from (step) | to | anchors |
+Each of these is in the code and passes the save's checks:
+| kind | from, at the step | to | anchors |
 | --- | --- | --- | --- |
-| queue | createOrder at `ordersQueue.add("place-order", …)`, src/routes/orders.ts:28 | The orders worker entrance (channel orders, filled in) | `ordersQueue` in src/queues/queues.ts:5; carries OrderJob |
-| queue | processOrder at `emailQueue.add("confirmation", …)`, src/jobs/process-order.ts:10 | The emails worker entrance | `emailQueue` in src/queues/queues.ts:6; carries EmailJob |
-| other (label "order.placed event") | OrderService.place at `events.emit("order.placed", order)`, src/services/order-service.ts:23 | notifyCustomer | `events.on("order.placed", notifyCustomer)`, src/services/notifier.ts:25 |
-| calls | OrderService.place at `this.payments.charge(draft)`, src/services/order-service.ts:15 (unresolved: overridden by a subclass) | StripeProvider.charge | createProvider, which returns `new StripeProvider()` (src/services/payment.ts:19) |
-| writes | OrderService.place at `this.repo.insert(order)`, src/services/order-service.ts:22 | The orders table | None needed |
+| queue | createOrder, at `ordersQueue.add("place-order", …)` (src/routes/orders.ts:28) | The Process an order entrance (channel `queue orders`, filled in) | `entrance:worker/process-an-order`; carries `src/types.ts#OrderJob` |
+| queue | processOrder, at `emailQueue.add("confirmation", …)` (src/jobs/process-order.ts:10) | The Send an email entrance | `entrance:worker/send-an-email` |
+| queue (an event) | OrderService.place, at `events.emit("order.placed", order)` (src/services/order-service.ts:23) | notifyCustomer | `src/services/notifier.ts#/call:events.on` |
+| calls | OrderService.place, at `this.payments.charge(draft)` (line 15; unknown: overridden by a subclass) | StripeProvider.charge | `src/services/payment.ts#createProvider`, which returns `new StripeProvider()` |
+| writes | OrderService.place, at `this.repo.insert(order)` (line 22) | An orders table | None needed |
 
 The first, as a call:
 ```
 connect({board, page, connections: [{
-  kind: "queue", from: "create-order", to: "orders",
-  step: <the key of createOrder's ordersQueue.add call, from read_code>,
+  kind: "queue", from: <createOrder's card id>, to: <Process an order's card id>,
+  step: "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add",
   carries: "src/types.ts#OrderJob",
-  anchors: [{key: <the key of the call that creates ordersQueue>}],
+  anchors: [{key: "entrance:worker/process-an-order"}],
   label: "place-order job",
-  description: "createOrder adds a place-order job to the orders queue."}]})
+  description: "createOrder adds a place-order job to the orders queue, which the worker handles."}]})
 ```
-The result names the connection with its id, the channel Unfold filled in (orders),
-and the carried type. In the chat, say what you drew and why it isn't compiled:
-"Unfold sees ordersQueue.add as a call into bullmq; nothing static links it to the
-worker, so the queue line is mine, citing where the queue is created."
+In chat, say what you drew and why it isn't compiled: "Unfold sees ordersQueue.add as a
+call into bullmq; nothing static links it to the worker, so the queue line is mine,
+citing the worker's entrance."

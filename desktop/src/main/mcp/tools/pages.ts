@@ -14,7 +14,7 @@ import { z } from "zod";
 import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
 import type { ToolContext } from "../context";
 import type { Anchor, BoardHealthView, BoardSummary, Connection, Frame, Page, Proposal, Resource } from "../engine-types";
-import { authorText, callPathText, clip, count, joined, keyName, place, typeText } from "../format";
+import { authorText, callPathText, clip, count, joined, place, typeText } from "../format";
 import { cardView, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
 import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
@@ -50,7 +50,7 @@ async function pagesText(context: ToolContext, board: BoardSummary): Promise<str
 async function boardLines(context: ToolContext, board: BoardSummary): Promise<string[]> {
   const ref = { project: board.project, id: board.id };
   const view = currentView(context);
-  const held = context.views.holder(ref) !== undefined;
+  const held = context.views.holds(ref);
   const facts = [
     board.folder !== null ? `in ${board.folder}` : null,
     `edited ${new Date(board.updatedAtMs).toISOString()}`,
@@ -121,7 +121,7 @@ function cardName({ model, key }: CardCode): string {
   if (model?.type === "definition") {
     return model.flow.header.name ?? model.flow.header.label;
   }
-  return model?.type === "start" ? model.name : keyName(key);
+  return model?.type === "start" ? model.name : key;
 }
 
 /** Where a card's code is: `function at src/routes/orders.ts:25`, `entrance of shop-api`. */
@@ -183,9 +183,9 @@ function frameLines(page: Page, code: PageCode, agent: AgentIdentity): string[] 
   return frames.filter((frame) => !nested.has(frame.id)).flatMap((frame) => line(frame, 0));
 }
 
-/** An anchor as results cite it: `OrderRepository (key …)`, `db/schema.sql:3–9`. */
+/** An anchor as results cite it: its key, or `db/schema.sql:3–9`. */
 function anchorText(anchor: Anchor): string {
-  return "key" in anchor ? `${keyName(anchor.key)} (key ${anchor.key})` : place(anchor.file, anchor.lines[0], anchor.lines[1]);
+  return "key" in anchor ? anchor.key : place(anchor.file, anchor.lines[0], anchor.lines[1]);
 }
 
 /** A resource card's line: its kind, name, id, place, type, columns, anchors, frame, and words. */
@@ -197,7 +197,7 @@ function resourceLine(resource: Resource, frames: ReadonlyMap<string, string>, a
   const frame = frames.get(resource.id);
   return `- ${resource.kind} “${resource.name}” (resource id ${resource.id}): ${joined([
     `at [${resource.at.join(", ")}]`,
-    resource.type !== undefined ? `backed by ${keyName(resource.type)} (key ${resource.type})` : null,
+    resource.type !== undefined ? `backed by ${resource.type}` : null,
     columns.length > 0 ? `${resource.type !== undefined ? "marks" : "columns"} ${columns.join(", ")}` : null,
     resource.anchors.length > 0 ? `anchors ${resource.anchors.map(anchorText).join(", ")}` : "no anchors",
     frame !== undefined ? `in frame ${frame}` : null,
@@ -213,7 +213,7 @@ function linkLine(page: Page, code: PageCode, link: Connection, agent: AgentIden
     link.fromColumn !== undefined || link.toColumn !== undefined ? `columns ${link.fromColumn ?? "?"} → ${link.toColumn ?? "?"}` : null,
     link.cardinality,
     link.channel !== undefined ? `channel ${link.channel}` : null,
-    link.carries !== undefined ? `carries ${keyName(link.carries)} (key ${link.carries})` : null,
+    link.carries !== undefined ? `carries ${link.carries}` : null,
     link.anchors !== undefined && link.anchors.length > 0 ? `anchors ${link.anchors.map(anchorText).join(", ")}` : "no anchors",
     `by ${authorText(link.author, agent)}`,
     wordsText("label", link.label, agent),
@@ -231,7 +231,7 @@ const ANCHOR_HEALTH: Readonly<Record<string, string>> = { missing: "anchor missi
  * session answers `board_health`); empty otherwise, or when the health can't be read.
  */
 async function proposalHealth(context: ToolContext, board: AgentBoardRef, page: Page): Promise<ProposalHealth> {
-  if ((page.proposals ?? []).length === 0 || context.views.holder(board) === undefined) {
+  if ((page.proposals ?? []).length === 0 || !context.views.holds(board)) {
     return new Map();
   }
   try {

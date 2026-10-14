@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { codeViewArgs } from "../code/view";
+import { engineKey, queryClient } from "../ipc";
 import type { Card, CardView, Page } from "../ipc/generated";
 import * as store from "../state/boards/store";
+import { closeCode, openCode, widenCode, type CodeOpen } from "../state/codePanel";
 import { showBoard, useShownBoardStore } from "../state/shownBoard";
-import { installFakeEngine, type FakeEngine } from "../test/engine";
+import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
-import { REPORT_DELAY_MS, currentView, installViewReports, visibleItems } from "./viewReport";
+import { REPORT_DELAY_MS, codeReport, currentView, installViewReports, visibleItems } from "./viewReport";
 
 const P = "p-orders0000";
 const ID = ".unfold/boards/orders.json";
@@ -52,6 +55,8 @@ const drawn = (cardId: string) => DRAWN.get(cardId);
 let engine: FakeEngine;
 
 beforeEach(() => {
+  closeCode();
+  queryClient.clear();
   store.resetBoards();
   useShownBoardStore.setState({ board: null });
   engine = installFakeEngine();
@@ -127,6 +132,33 @@ describe("currentView", () => {
   });
 });
 
+describe("the code panel in the report", () => {
+  const CREATE = "src/routes/orders.ts#createOrder";
+  const block: CodeOpen = { project: P, target: { kind: "block", key: CREATE }, show: null, cardId: "a", gap: null };
+
+  it("says what the panel opened on, and the file and lines it shows once they load", () => {
+    expect(codeReport(block, undefined)).toEqual({ key: CREATE, widened: false });
+    expect(codeReport(block, fixture("code_view", "code_view_create_order"))).toEqual({ key: CREATE, file: "src/routes/orders.ts", lines: [25, 35], widened: false, state: "current" });
+    const span: CodeOpen = { ...block, target: { kind: "lines", path: "src/routes/orders.ts", lines: [32, 33] }, show: { kind: "file", path: "src/routes/orders.ts" } };
+    expect(codeReport(span, undefined)).toEqual({ span: [32, 33], file: "src/routes/orders.ts", widened: true });
+    expect(codeReport({ ...block, target: { kind: "file", path: "db/schema.sql" } }, undefined)).toEqual({ file: "db/schema.sql", widened: false });
+    expect(codeReport({ ...block, target: { kind: "start", key: "entrance:server" } }, undefined)).toEqual({ key: "entrance:server", widened: false });
+  });
+
+  it("is in the window's view while the panel is open on the shown board", () => {
+    store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
+    showBoard(REF);
+    expect(currentView(null).code).toBeUndefined();
+    openCode({ project: P, target: block.target, cardId: "a", gap: null });
+    expect(currentView(null).code).toEqual({ key: CREATE, widened: false });
+    queryClient.setQueryData(engineKey("code_view", codeViewArgs(block)), fixture("code_view", "code_view_create_order"));
+    expect(currentView(null).code).toEqual({ key: CREATE, file: "src/routes/orders.ts", lines: [25, 35], widened: false, state: "current" });
+    widenCode({ kind: "file", path: "src/routes/orders.ts" });
+    // Widened, its lines are the file's, which haven't loaded.
+    expect(currentView(null).code).toEqual({ key: CREATE, widened: true });
+  });
+});
+
 describe("installViewReports", () => {
   it("reports a change once it settles, only when the view changed, and at once on focus", async () => {
     vi.useFakeTimers();
@@ -149,6 +181,25 @@ describe("installViewReports", () => {
     expect(engine.windowCalls).toHaveLength(2);
     window.dispatchEvent(new Event("focus"));
     expect(engine.windowCalls).toHaveLength(3);
+    stop();
+  });
+
+  it("reports when the code panel opens, and again when its lines load", async () => {
+    vi.useFakeTimers();
+    store.adoptBoardState(boardState(P, ID, boardDocument([PAGE])));
+    showBoard(REF);
+    const stop = installViewReports();
+    await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
+    const target = { kind: "block", key: "src/routes/orders.ts#createOrder" } as const;
+    openCode({ project: P, target, cardId: "a", gap: null });
+    await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
+    expect(engine.windowCalls.at(-1)?.args).toMatchObject({ code: { key: target.key, widened: false } });
+    queryClient.setQueryData(engineKey("code_view", codeViewArgs({ project: P, target, show: null, cardId: "a", gap: null })), fixture("code_view", "code_view_create_order"));
+    await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
+    expect(engine.windowCalls.at(-1)?.args).toMatchObject({ code: { key: target.key, file: "src/routes/orders.ts", lines: [25, 35], state: "current" } });
+    closeCode();
+    await vi.advanceTimersByTimeAsync(REPORT_DELAY_MS);
+    expect(engine.windowCalls.at(-1)?.args).not.toHaveProperty("code");
     stop();
   });
 });

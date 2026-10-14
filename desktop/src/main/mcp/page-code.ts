@@ -63,7 +63,7 @@ export function cardView(page: Pick<Page, "defaultView">, card: Pick<Card, "view
 }
 
 /** The page's overlay as `card` and `flow_text` take it: its names, combined steps, and proposed steps. */
-function overlayArgs(page: Page): OverlayArgs {
+export function overlayArgs(page: Page): OverlayArgs {
   return {
     names: page.names.map(({ key, text }) => ({ key, text })),
     combined: page.combined.map(({ id, title, members, collapsed }) => ({ id, title, members, collapsed })),

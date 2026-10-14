@@ -61,14 +61,14 @@ describe("create_board", () => {
     const [created, edit] = app.requests;
     expect(created).toMatchObject({ type: "agent_create_board", project: PROJECT, title: "Order placement", folder: "orders", pages: ["Placing an order", "Async path"] } satisfies Partial<AgentCreateRequest> & { type: string });
     expect(edit).toMatchObject({ type: "agent_edit", board: BOARD, page: "page-1", title: "Trace", ops: [{ op: "add_cards", cards: [{ ref: { entrance: ENTRANCE }, follow: { callees: 1 } }] }] });
-    expect(app.views.holder(BOARD)).toBe(1);
+    expect(app.views.holds(BOARD)).toBe(true);
     expect(text.split("\n")).toEqual([
       `Unfold · ts-orders › Order placement › Placing an order · rev ${pageRevision(PAGE)} · as Claude`,
       `Created the board “Order placement” (board id ${BOARD.id}) in the folder orders. Unfold loaded it; the person's view didn't move.`,
       "Pages:",
       "1. Placing an order (page id page-1)",
       "2. Async path (page id page-2)",
-      `Traced server/place-an-order on the first page (rev ${pageRevision(PAGE)}):`,
+      `Traced Place an order of Server on the first page (rev ${pageRevision(PAGE)}):`,
       "- Place an order (card id post-orders, created)",
       "- createOrder (card id create-order, created); stopped: ordersQueue.add (line 28) is external, bullmq",
       "Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.",
@@ -212,7 +212,7 @@ describe("show", () => {
     expect(app.requests[1]).toMatchObject({ board: BOARD, page: "page-1", item: "create-order" });
     expect(app.focused).toEqual([1]);
     expect(text.split("\n").slice(1)).toEqual([
-      "Showed the card createOrder on the page “Placing an order” of “Order placement”, selected and centered; its window came to the front.",
+      "Showed the card create-order on the page “Placing an order” of “Order placement”, selected and centered; its window came to the front.",
       `Ids: board ${BOARD.id}, page page-1.`,
     ]);
   });

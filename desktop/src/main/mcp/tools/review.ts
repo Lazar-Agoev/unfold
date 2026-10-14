@@ -13,7 +13,7 @@ import type { ToolContext } from "../context";
 import type { PageCheckKind } from "../../../shared/render-api";
 import type { HealthItem, HealthKind, Page } from "../engine-types";
 import { authorText, count } from "../format";
-import { personWords, repairNames, targetId, targetText, type RepairName } from "../health";
+import { acceptedBlocks, personWords, repairNames, targetId, targetText, type RepairName } from "../health";
 import { textResult, ToolError, type ToolResult } from "../results";
 import { isLink, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
@@ -49,10 +49,21 @@ const CHECK_WORDS: Readonly<Record<PageCheckKind, string>> = {
   strays: "strays",
 };
 
+/** The blocks accepting each health item's code vouches for (D6), for the items that offer accept. */
+type Vouched = ReadonlyMap<HealthItem, ReadonlySet<string>>;
+
+async function vouched(context: ToolContext, board: AgentBoardRef, page: Page | undefined, items: readonly HealthItem[]): Promise<Vouched> {
+  if (!page) {
+    return new Map();
+  }
+  const accepts = items.filter((item) => repairNames(item).includes("accept"));
+  return new Map(await Promise.all(accepts.map(async (item) => [item, await acceptedBlocks(context, board.project, page, item, "accept")] as const)));
+}
+
 /** The `repair` call for one of an item's repairs, or why it is the person's to do (D6). */
-function repairCall(page: Page, board: AgentBoardRef, item: HealthItem, repair: RepairName, agent: AgentIdentity): string {
+function repairCall(page: Page, board: AgentBoardRef, item: HealthItem, repair: RepairName, agent: AgentIdentity, blocks: Vouched): string {
   if (repair === "resign" || repair === "accept") {
-    const words = personWords(page, item, repair);
+    const words = personWords(page, item, repair, repair === "accept" ? (blocks.get(item) ?? new Set()) : new Set());
     if (words) {
       return `${repair} is ${authorText(words.author, agent)}'s to do: they wrote ${words.what}`;
     }
@@ -69,10 +80,10 @@ function repairCall(page: Page, board: AgentBoardRef, item: HealthItem, repair: 
 }
 
 /** A page's health items and page checks, each with its fix. */
-function checkLines(page: Page, board: AgentBoardRef, checks: PageChecks, agent: AgentIdentity): string[] {
+function checkLines(page: Page, board: AgentBoardRef, checks: PageChecks, agent: AgentIdentity, blocks: Vouched): string[] {
   const health = checks.health.map((item) => {
     const anchor = item.anchor !== undefined ? `, anchor ${item.anchor}` : "";
-    const fixes = repairNames(item).map((repair) => repairCall(page, board, item, repair, agent));
+    const fixes = repairNames(item).map((repair) => repairCall(page, board, item, repair, agent, blocks));
     return `- ${HEALTH_WORDS[item.kind]}: ${targetText(page, item.target)} (item ${targetId(item.target)}${anchor}): ${item.message}${fixes.length > 0 ? `\n  Fix: ${fixes.join(" · ")}` : ""}`;
   });
   const found = checks.checks.map((check) => `- ${CHECK_WORDS[check.kind]}: ${check.message}${check.items.length > 0 ? ` (ids ${check.items.join(", ")})` : ""}\n  Fix: ${check.suggestion}`);
@@ -113,9 +124,10 @@ export const check = defineTool({
         throw renderRefusal(checked);
       }
       const reads = await Promise.all(checked.pages.map((checks) => readPage(context, target.board, checks.page)));
+      const blocks = await Promise.all(checked.pages.map((checks, index) => vouched(context, target.board, reads[index]?.page, checks.health)));
       const sections = checked.pages.map((checks, index) => {
         const read = reads[index];
-        const lines = clean(checks) || !read ? ["Nothing to fix."] : checkLines(read.page, target.board, checks, context.agent);
+        const lines = clean(checks) || !read ? ["Nothing to fix."] : checkLines(read.page, target.board, checks, context.agent, blocks[index] ?? new Map<HealthItem, ReadonlySet<string>>());
         return [`Page “${checks.pageTitle}” (page id ${checks.page}${read ? `, rev ${read.revision}` : ""}):`, ...lines];
       });
       const problems = checked.pages.filter((checks) => !clean(checks)).length;
@@ -132,10 +144,11 @@ export const check = defineTool({
       throw renderRefusal(checked);
     }
     const read = await readPage(context, target.board, pageId);
+    const blocks = await vouched(context, target.board, read.page, checked.health);
     return textResult(
       context.header({ project: target.project.name, board: read.title, page: read.page.title, revision: read.revision }),
       `Ids: board ${target.board.id}, page ${pageId}.`,
-      ...(clean(checked) ? ["Nothing to fix: no health problems, and the page checks found nothing."] : checkLines(read.page, target.board, checked, context.agent)),
+      ...(clean(checked) ? ["Nothing to fix: no health problems, and the page checks found nothing."] : checkLines(read.page, target.board, checked, context.agent, blocks)),
       clean(checked) ? "Next: get_screenshot, to look at it the way the person will." : "Next: fix with the calls above, then check again and get_screenshot.",
     );
   },

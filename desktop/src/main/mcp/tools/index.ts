@@ -7,7 +7,9 @@ import type { Tool } from "../tool";
 import { createBoard, editPages, organizeBoards, show } from "./boards";
 import { addCards, arrangePage, removeItems, setView } from "./build";
 import { readCall } from "./calls";
+import { shapeCard } from "./card";
 import { getRelations, readCode } from "./code";
+import { removeEntrance, setApp, setEntrance } from "./entrances";
 import { readFile } from "./files";
 import { finishWork, repair } from "./finish";
 import { getGuide } from "./guide";
@@ -27,6 +29,9 @@ export const TOOLS: readonly Tool[] = [
   addProject,
   compileProject,
   updateProjectSettings,
+  setApp,
+  setEntrance,
+  removeEntrance,
   createBoard,
   organizeBoards,
   editPages,
@@ -45,12 +50,13 @@ export const TOOLS: readonly Tool[] = [
   setView,
   arrangePage,
   removeItems,
+  shapeCard,
+  propose,
   frameCards,
   addResources,
   connect,
   addNotes,
   describe,
-  propose,
   repair,
   finishWork,
 ];

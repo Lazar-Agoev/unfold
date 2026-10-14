@@ -318,6 +318,42 @@ export interface ProposeOp {
   readonly replacePeopleText?: boolean;
 }
 
+/** A name `shape_card` sets on a block (any block, by its full key); null takes the page's name for it off. */
+export interface AgentNameSpec {
+  readonly key: string;
+  readonly text: string | null;
+}
+
+/**
+ * A combined step `shape_card` makes, or updates when the page has one with exactly these blocks:
+ * consecutive blocks of one body, or one whole control block, by their full keys, in written order.
+ */
+export interface AgentCombineSpec {
+  readonly members: readonly string[];
+  readonly title: string;
+  /** Drawn as one step (absent: collapsed for a new one, unchanged for an existing one). */
+  readonly collapsed?: boolean;
+}
+
+/**
+ * Shapes one card of the page, as one undo step: its title (the page's name for its definition), its
+ * description, names on blocks, combined steps, and the calls it opens in place. Names and combined
+ * steps apply page-wide, by key. The save checks every key and the overlay rules. Changing or removing
+ * a person's words is refused unless `replacePeopleText`.
+ */
+export interface ShapeCardOp {
+  readonly op: "shape_card";
+  /** The card's id. */
+  readonly card: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly names?: readonly AgentNameSpec[];
+  readonly combine?: readonly AgentCombineSpec[];
+  /** The calls and callbacks it opens in place, replacing the ones it opens now (empty: none). */
+  readonly open?: readonly AgentCallPath[];
+  readonly replacePeopleText?: boolean;
+}
+
 /** An agent's operation on a page, tagged by `op`. */
 export type AgentOp =
   | AddCardsOp
@@ -329,7 +365,8 @@ export type AgentOp =
   | AddResourcesOp
   | ConnectOp
   | AddNotesOp
-  | ProposeOp;
+  | ProposeOp
+  | ShapeCardOp;
 
 // ---------------------------------------------------------------------------------------------
 // Results
@@ -377,7 +414,7 @@ export interface AgentCardResult {
   readonly frame?: string;
   /** How it shows (`set_view`; absent for a type card, which keeps its fields). */
   readonly view?: AgentView;
-  /** The calls and callbacks it opens in place, as saved (`set_view`). */
+  /** The calls and callbacks it opens in place, as saved (`set_view`, `shape_card`). */
   readonly open?: readonly AgentCallPath[];
 }
 
@@ -717,11 +754,32 @@ export type ViewSelection =
    */
   | { readonly kind: "arrow"; readonly from: string; readonly to: string; readonly calls: readonly string[] };
 
-/** What the window shows: its board and page (none on Home), selection, and the items in view; and the boards it holds. */
+/** Whether the code panel's lines can be trusted: `current`, or why not. */
+export type CodePanelState = "current" | "changed" | "doesNotParse" | "notAnalyzed" | "notFound";
+
+/** What the code panel shows (viewing-code.md § Agents), so "this code" means the same to the agent and the person. */
+export interface CodePanelReport {
+  /** The block it opened on: a block's key, a type's key (for one of its fields), or an app's or entrance's key; absent when it opened on lines of a file or a whole file. */
+  readonly key?: string;
+  /** The lines it opened on, when it opened on lines of a file (a combined step, a thin row, a citation). */
+  readonly span?: readonly [number, number];
+  /** The file it shows. */
+  readonly file?: string;
+  /** The first and last line it shows; absent until its lines load, or when it shows none. */
+  readonly lines?: readonly [number, number];
+  /** Whether the person widened it past the selection's own lines, to an enclosing block or the file. */
+  readonly widened: boolean;
+  /** Whether its lines can be trusted; absent until they load. */
+  readonly state?: CodePanelState;
+}
+
+/** What the window shows: its board and page (none on Home), selection, the items in view, and the code panel; and the boards it holds. */
 export interface ViewReport {
   readonly board?: AgentBoardRef;
   readonly page?: string;
   readonly selection: ViewSelection;
+  /** What the code panel shows, while it is open. */
+  readonly code?: CodePanelReport;
   /** The ids of the page's cards, combined steps, connections, frames, resource cards, and notes in view. */
   readonly visible: readonly string[];
   /** Every board whose session the window holds (each board opened while the app runs), the one shown included. */

@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { authorText, cardText, joined, keyName, place, typeText } from "./format";
+import { authorText, cardText, joined, place, typeText } from "./format";
 
 describe("names", () => {
-  it("name keys as boards do", () => {
-    expect(keyName("src/services/order-service.ts#OrderService.place")).toBe("OrderService.place");
-    expect(keyName("src/routes/orders.ts#createOrder/if[0]")).toBe("createOrder.if");
-    expect(keyName("src/routes/orders.ts#createOrder/if[0]/then/call:req.header")).toBe("then.req.header");
-    expect(keyName("entrance:server/place-an-order")).toBe("server/place-an-order");
-    expect(keyName("src/routes/orders.ts#")).toBe("src/routes/orders.ts");
-    // A path may hold `#`; names escape it.
-    expect(keyName("src/#lib/cart.ts#Cart")).toBe("Cart");
+  it("write places", () => {
     expect(place("src/a.ts", 3, 9)).toBe("src/a.ts:3–9");
     expect(place("package.json", null)).toBe("package.json");
   });

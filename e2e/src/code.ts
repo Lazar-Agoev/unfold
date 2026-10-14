@@ -70,7 +70,7 @@ export async function expectPath(page: Page, labels: readonly string[], showing:
  * Whether the canvas outlines `target` on its own shape: with the selection's outline, or (`lit`) the
  * lighter one a line hovered in the panel draws. An outline is drawn at the rect of what it goes around.
  */
-export async function isOutlined(target: Locator, lit: boolean): Promise<boolean> {
+async function isOutlined(target: Locator, lit: boolean): Promise<boolean> {
   return target.evaluate((element, wanted) => {
     const box = element.getBoundingClientRect();
     const outlines = element.closest(".flow")?.querySelectorAll(".flow-outline") ?? [];
@@ -90,7 +90,7 @@ export async function expectOutlined(target: Locator, lit = false): Promise<void
 // --- The compiled graph -----------------------------------------------------------------------
 
 /** A block of a playground's graph, as its golden records it. */
-export interface GraphNode {
+interface GraphNode {
   readonly key: string;
   readonly parent?: string;
   readonly kind: string;

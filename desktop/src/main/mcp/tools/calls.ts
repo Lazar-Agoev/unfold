@@ -8,7 +8,7 @@
 import { z } from "zod";
 import type { ToolContext } from "../context";
 import type { CallContract, ContractRaise, ContractSend, Landing, LinkEnd, ProjectRow } from "../engine-types";
-import { count, keyName, typeText } from "../format";
+import { count, typeText } from "../format";
 import { cant, textResult, ToolError } from "../results";
 import { currentView, projectOrView } from "../target";
 import { defineTool } from "../tool";
@@ -39,7 +39,7 @@ function sendLine(send: ContractSend): string {
 function calleeText(callee: LinkEnd): string {
   switch (callee.outcome) {
     case "project":
-      return callee.key === undefined ? "a project definition" : `${keyName(callee.key)} (key ${callee.key})`;
+      return callee.key === undefined ? "a project definition" : `the project definition ${callee.key}`;
     case "library":
       return `the library ${callee.note ?? callee.module ?? "call"}`;
     case "builtin":

@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import type { AgentItemResult, AgentMove } from "../../../shared/agent-api";
-import { applyEdit, cardRef, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs, startKeys } from "../edits";
+import { applyEdit, cardRef, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs, startNames } from "../edits";
 import { ToolError } from "../results";
 import { isLink } from "../target";
 import { defineTool } from "../tool";
@@ -42,7 +42,7 @@ export const addCards = defineTool({
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   async run({ board, page, project, cards, expectRevision: revision }, context) {
     const target = await editTarget(context, { board, page, project });
-    const starts = await startKeys(context, target.project.id);
+    const starts = await startNames(context, target.project.id);
     const specs = cards.map(({ key, ...spec }) => ({ ref: cardRef(starts, key), ...defined(spec) }));
     const edit = await applyEdit(context, target, { title: "Add cards", op: { op: "add_cards", cards: specs }, expectRevision: revision });
     return editResult(

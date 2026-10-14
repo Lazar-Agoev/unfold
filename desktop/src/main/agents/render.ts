@@ -365,16 +365,13 @@ export class PageRenderer {
    */
   private async source(board: AgentBoardRef, page: string, open: boolean): Promise<PageSource | AgentFailure> {
     for (let attempt = 0; ; attempt += 1) {
-      let holder = this.options.bridge.views.holder(board);
-      if (holder === undefined && open) {
-        const opened = await this.options.bridge.open({ board, page });
-        if (!opened.ok) {
-          return opened;
-        }
-        holder = opened.windowId;
-      }
-      if (holder === undefined) {
+      if (!open && !this.options.bridge.views.holds(board)) {
         return this.fromFile(board, page);
+      }
+      // The window holds it, or loads it now.
+      const opened = await this.options.bridge.open({ board, page });
+      if (!opened.ok) {
+        return opened;
       }
       const read = await this.options.bridge.read({ board, page });
       // A report that still listed a board the window no longer holds (the bridge forgets it): read the file, or load it again, once.
@@ -387,7 +384,7 @@ export class PageRenderer {
       if (!read.ok) {
         return read;
       }
-      const health = await this.health(holder, board);
+      const health = await this.health(opened.windowId, board);
       if (!health.ok && open) {
         return health;
       }
@@ -426,7 +423,7 @@ export class PageRenderer {
       if (health.ok || health.code !== "board_not_open" || attempt > 0) {
         return health;
       }
-      this.options.bridge.views.released(opened.windowId, board);
+      this.options.bridge.views.release(board);
     }
   }
 

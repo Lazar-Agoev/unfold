@@ -22,7 +22,7 @@ export async function openSettings(page: Page): Promise<Locator> {
 }
 
 /** What a tool answered: its text blocks joined, its images, and whether it is an error. */
-export interface ToolAnswer {
+interface ToolAnswer {
   readonly text: string;
   readonly images: readonly { readonly data: string; readonly mimeType: string }[];
   readonly isError: boolean;

@@ -7,7 +7,7 @@ import type { UnfoldError } from "../ipc/unfold";
 import type { CodeOpen } from "../state/codePanel";
 
 /** The `code_view` arguments for what the panel shows. */
-function codeViewArgs(open: CodeOpen): CodeViewArgs {
+export function codeViewArgs(open: CodeOpen): CodeViewArgs {
   return { project: open.project, target: open.target, ...(open.show ? { show: open.show } : {}) };
 }
 

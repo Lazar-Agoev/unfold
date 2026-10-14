@@ -22,7 +22,7 @@ export type PageImages = Pick<PageRenderer, "screenshot" | "check" | "checkBoard
 
 /** What the MCP server needs of the app. */
 export interface McpServices {
-  /** Routes reads, edits, opens, and finishes to the windows. */
+  /** Routes reads, edits, opens, and finishes to the window. */
   readonly bridge: AgentBridge;
   /** Draws pages for images and runs the page checks. */
   readonly renderer: PageImages;
