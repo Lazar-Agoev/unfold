@@ -108,7 +108,8 @@ export type AgentDirection = "right" | "down";
  * Arranges the page from the inside out (each frame, deepest first, by call depth and connections in
  * its direction; then the page, each frame one node), or only the frame `frame`, whose box keeps its
  * top-left; then applies the moves in order. `direction` lays out the page's top level for this call,
- * or, with `frame`, becomes that frame's direction.
+ * or, with `frame`, becomes that frame's direction. With moves and neither `frame` nor `direction`, it
+ * only applies the moves: nothing is arranged, so earlier moves stay.
  */
 export interface ArrangeOp {
   readonly op: "arrange";
@@ -346,8 +347,10 @@ export interface ShapeCardOp {
   readonly op: "shape_card";
   /** The card's id. */
   readonly card: string;
-  readonly title?: string;
-  readonly description?: string;
+  /** The card's title (the page's name for its definition); null takes it off. */
+  readonly title?: string | null;
+  /** The card's description; null takes it off. */
+  readonly description?: string | null;
   readonly names?: readonly AgentNameSpec[];
   readonly combine?: readonly AgentCombineSpec[];
   /** The calls and callbacks it opens in place, replacing the ones it opens now (empty: none). */

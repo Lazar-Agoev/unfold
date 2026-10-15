@@ -122,12 +122,19 @@ export const shapeCard = defineTool({
   name: "shape_card",
   title: "Shape card",
   description:
-    'Shapes one expanded card in one call, so its code-shaped flow reads as the few named steps a person would draw: title (names the card), description (one sentence on what it does and why), names ({block: text} on any block: a call, a branch as a yes-or-no question, a loop, an except part, an exit, a callback; null takes a name off), combine ([{steps, title, collapsed}]: consecutive steps of one body, or one whole control block, under one title; never overlapping or nesting; collapsed by default, and it keeps its ways out and its unknown-call count), and open ([[blocks]]: the calls or callbacks it opens in place, each a path of 1 to 3, outermost first, the next a call of what the one before opens; at most 64; it replaces what the card opens, [] closes them). Short labels from read_code (try[0]/except[0], call:save_order) name the card\'s own blocks; name a block of a call it opens in place by its full key (in open, each next block may be a short label of what the one before opens). Name only what the code doesn\'t say; naming a library or unknown call lifts it into a step, and it stays marked ? (a name never resolves a call). Names and combined steps apply page-wide, wherever that code is drawn. Changing or removing a person\'s name, title, or description is refused unless replacePeopleText is true: set it only when the person asked. An app\'s or entrance\'s card, or a type card, draws no flow: on it, shape_card writes only description. One undo step; the result is the shaped card as the person sees it. A refusal of a key or an overlay rule lists the blocks you can choose from. Read get_guide("diagrams") first.',
+    'Shapes one expanded card the page is about, in one call, so its code-shaped flow reads as the few named steps a person would draw. Shape each expanded card once, and leave compact cards unshaped. title renames the card only when its code name says nothing about what it does (main, run, handle): Unfold shows the code name beside it, and about 3 titled cards on a page is the most. description: one sentence on what it does and why, on the 1 to 3 cards the page is about. null takes a title or description off. names ({block: text} on any block: a call, a branch as a yes-or-no question, a loop, an except part, an exit, a callback; null takes a name off), combine ([{steps, title, collapsed}]: consecutive steps of one body, or one whole control block, under one title; never overlapping or nesting; collapsed by default, and it keeps its ways out and its unknown-call count), and open ([[blocks]]: the calls or callbacks it opens in place, each a path of 1 to 3, outermost first, the next a call of what the one before opens; at most 64; it replaces what the card opens, [] closes them). Short labels from read_code (try[0]/except[0], call:save_order) name the card\'s own blocks; name a block of a call it opens in place by its full key (in open, each next block may be a short label of what the one before opens). Name only what the code doesn\'t say; naming a library or unknown call lifts it into a step, and it stays marked ? (a name never resolves a call). Names and combined steps apply page-wide. Changing or removing a person\'s name, title, or description is refused unless replacePeopleText is true: set it only when the person asked. An app\'s or entrance\'s card, or a type card, draws no flow: on it, shape_card writes only description, and an entrance needs none (its on and about say it). One undo step; the result is the shaped card as the person sees it. A refusal of a key or an overlay rule lists the blocks you can choose from. Read get_guide("diagrams") first.',
   input: z.strictObject({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id (read_page lists them), or a link to it"),
-    title: z.string().trim().min(1).max(120).optional().describe("The card's title: the page's name for its definition"),
-    description: z.string().trim().min(1).max(400).optional().describe("One sentence on what the card does and why (the only field an app's, entrance's, or type card takes)"),
+    title: z.string().trim().min(1).max(120).nullable().optional().describe("The card's title, only when its code name says nothing; null takes it off"),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(400)
+      .nullable()
+      .optional()
+      .describe("One sentence on what the card does and why (the only field an app's, entrance's, or type card takes); null takes it off"),
     names: z.record(block, z.string().trim().min(1).max(120).nullable()).optional().describe("Names by block (a short label of the card's own code, or a key); null takes a name off"),
     combine: z
       .array(
@@ -184,7 +191,7 @@ export const shapeCard = defineTool({
       throw error;
     }
     if (onlyDescribed) {
-      return editResult(context, target, edit, [itemsHeading("shaped", edit.items), ...edit.items.map(itemLine)], "shape_card the next card the page is about, then compose the page; arrange_page and check.");
+      return editResult(context, target, edit, [itemsHeading("shaped", edit.items), ...edit.items.map(itemLine)], "shape_card the next expanded card the page is about, if any; arrange_page and check.");
     }
     const flow = await shapedFlow(context, target, edit, cardId, key);
     return editResult(
@@ -192,7 +199,7 @@ export const shapeCard = defineTool({
       target,
       edit,
       [itemsHeading("shaped", edit.items), ...edit.items.map(itemLine), "The card as the person sees it now:", flow],
-      "shape_card the next card the page is about, then frame_cards, add_resources, and connect to compose the page; arrange_page and check.",
+      "shape_card the next expanded card the page is about, if any; add_resources and connect only for what code can't show; arrange_page and check.",
     );
   },
 });

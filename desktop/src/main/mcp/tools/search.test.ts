@@ -132,9 +132,20 @@ describe("list_entrances", () => {
     expect(lines).toContain(
       "- Place an order: key entrance:server/place-an-order; on POST /orders; code src/routes/middleware.ts#requireUser (found), src/routes/middleware.ts#validateBody (found), src/routes/orders.ts#createOrder (found)",
     );
-    expect(lines.at(-1)).toBe("Next: read_code with an app's or entrance's key shows its code; create_board with trace makes a board from it.");
+    expect(lines.at(-1)).toBe(
+      "Next: read_code with an app's or entrance's key shows its code; create_board with trace (one key or several) makes a board from them, and add_cards with their keys and follow puts them on a page.",
+    );
     const filtered = await app.call(listEntrances, { project: "ts-orders", filter: "POST" });
     expect(filtered.text).toContain("Server (key entrance:server; run npm run start; code src/server.ts# (found)), entrances matching “POST” (1):");
+  });
+
+  it("tells the agent to propose apps and entrances when the project declares none", async () => {
+    const app = harness({ engine: { entrances: () => ({ ...recorded<EntrancesView>(entrances), apps: [] }) } });
+    const { text } = await app.call(listEntrances, { project: "ts-orders" });
+    expect(text.split("\n").slice(1)).toEqual([
+      "ts-orders declares no apps in unfold.toml.",
+      'Next: propose its apps and entrances to the person (get_guide("setup") says how); with their yes, set_app and set_entrance, then trace them: Unfold draws the arrows from each entrance.',
+    ]);
   });
 
   it("asks the engine for one app by the name or key given, pages it, and passes on the engine's refusal", async () => {

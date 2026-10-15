@@ -112,6 +112,9 @@ function useFontEpoch(): number {
 export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
 export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** A title the page gave a definition, in words (cards.css `.card-title.authored`), and the code name after it (`.card-code-name`). */
+export const AUTHORED_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
+export const CODE_NAME_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A header's tag after the name (`ASYNC`, cards.css `.card-tag`), in small caps. */
 export const TAG_FONT = '700 9px "Inter Variable", system-ui, sans-serif';
 /** What an expanded card says from its code (cards.css): the signature, the doc, and the imports and what runs when it is defined. */

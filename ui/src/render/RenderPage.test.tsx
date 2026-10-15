@@ -19,6 +19,7 @@ const P = "p-orders0000";
 const BOARD = { project: P, id: ".unfold/boards/b.json" };
 const KEY = "src/routes/orders.ts#createOrder";
 const GONE = 'src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0]';
+const START = "entrance:orders-api/place-an-order";
 
 if (!("DOMMatrixReadOnly" in globalThis)) {
   // React Flow reads the viewport transform through DOMMatrixReadOnly; jsdom lacks it.
@@ -67,6 +68,10 @@ beforeEach(() => {
       card: ({ key }) => {
         if (key === KEY) {
           return fixture("card", "card_create_order");
+        }
+        if (key === START) {
+          const code = [{ key: KEY, state: "found" as const, label: "createOrder", path: "src/routes/orders.ts", line: 3 }];
+          return { type: "start", key: START, kind: "entrance", app: "Orders API", name: "Place an order", on: "POST /orders", code };
         }
         // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw { code: "not_found", message: "no such key" };
@@ -164,8 +169,9 @@ describe("the render window", () => {
         {
           kind: "strays",
           items: ["create-order", "gone"],
-          message: "createOrder and gone have no line, connection, or frame to the rest of the page.",
-          suggestion: "connect them, put them in a frame (frame_cards), or take them off the page (remove_items).",
+          message: "createOrder and gone have no line to the rest of the page.",
+          suggestion:
+            "Add the code that joins it (add_cards with follow: the code an entrance starts, a caller, or a callee), connect a store or an outside service with a cited connection, or take it off the page (remove_items).",
         },
       ],
     });
@@ -188,6 +194,14 @@ describe("the render window", () => {
       ["evidence", ["orders", "writes"]],
       ["strays", ["gone", "sessions"]],
     ]);
+  });
+
+  it("counts the start arrow it draws from an entrance's card to its code: neither card is a stray", async () => {
+    const sent = job("check", {}, { cards: [...cards(), { id: "place-an-order", ref: { entrance: START }, at: [0, 400] }] });
+    const { container } = draw(sent);
+    const result = await answerTo(sent.requestId);
+    expect(container.querySelector('.react-flow__edge[data-id^="place-an-order|"]')).not.toBeNull();
+    expect(result.ok && "checks" in result ? result.checks.map((check) => [check.kind, check.items]) : result).toEqual([["strays", ["gone"]]]);
   });
 
   it("answers for a page whose collapsed frame holds every card, drawn as one node", async () => {

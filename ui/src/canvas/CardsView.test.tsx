@@ -148,6 +148,16 @@ function model(key: Key): CardView | undefined {
   return models[key];
 }
 
+/** What the reader draws for `key` when the page's name for it is `name` (none: as `model` draws it). */
+function titledModel(key: Key, name: string | undefined): CardView {
+  const found = model(key);
+  if (!found) {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error
+    throw { code: "not_found", message: "no such key" };
+  }
+  return found.type === "definition" && name !== undefined ? { ...found, flow: { ...found.flow, header: { ...found.flow.header, name } } } : found;
+}
+
 /** The project's entrances: the missing code key of Place an order has one candidate. */
 const ENTRANCES: EntrancesView = {
   resolved: true,
@@ -252,6 +262,33 @@ describe("definition cards", () => {
     // An agent wrote it: Selected says who; the card draws no mark.
     expect(card.querySelector(".agent-mark")).toBeNull();
     expect(card.querySelector(".flow, .card-code")).toBeNull();
+  });
+
+  it("show a title the page gave them in words, with the code name after it; without one, the code name alone", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({ handlers: { card: ({ key }) => titledModel(key, key === PLACE ? "Place the order" : undefined), save_board: () => boardState(P, ID) } });
+    open([
+      { id: "place", ref: { block: PLACE }, at: [0, 0] },
+      { id: "load", ref: { block: LOAD }, at: [0, 300] },
+    ]);
+    const { container } = renderBoard();
+    const card = await waitFor(() => loaded(container, "place"));
+    const title = present(card.querySelector(".card-title"));
+    expect(title.textContent).toBe("Place the order");
+    expect(title.classList.contains("authored")).toBe(true);
+    expect(title.getAttribute("title")).toBe("Place the order (place_order)");
+    const code = present(card.querySelector(".card-code-name"));
+    expect(code.textContent).toBe("place_order");
+    // After the title, before where it is.
+    expect(code.previousElementSibling).toBe(title);
+    expect(code.nextElementSibling?.classList.contains("card-location")).toBe(true);
+    expect(card.getAttribute("aria-label")).toBe("Place the order (place_order)");
+    expect(card.querySelector('[aria-label="Expand Place the order (place_order)"]')).not.toBeNull();
+
+    const plain = await waitFor(() => loaded(container, "load"));
+    expect(plain.querySelector(".card-title")?.textContent).toBe("load_order");
+    expect(plain.querySelector(".card-title.authored, .card-code-name")).toBeNull();
+    expect(plain.getAttribute("aria-label")).toBe("load_order");
   });
 
   it("show the whole description, wrapped, when expanded too", async () => {
@@ -640,5 +677,21 @@ describe("class cards", () => {
       expect(cardElement(container, "price")?.querySelector(".flow")).not.toBeNull();
     });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("expanded");
+  });
+
+  it("show a title the page gave them with the code name after it while compact too", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: { card: ({ key }) => titledModel(key, "Money"), type_definition: ({ key }) => present(DEFINITIONS[key]), save_board: () => boardState(P, ID) },
+    });
+    open([{ id: "price", ref: { block: PRICE }, at: [0, 0] }]);
+    const { container } = renderBoard();
+    await waitFor(() => {
+      expect(cellsIn(cardElement(container, "price"))).toEqual(["amount", "number"]);
+    });
+    const card = present(cardElement(container, "price"));
+    expect(card.querySelector(".card-title.authored")?.textContent).toBe("Money");
+    expect(card.querySelector(".card-code-name")?.textContent).toBe("Price");
+    expect(card.getAttribute("aria-label")).toBe("class Money (Price)");
   });
 });

@@ -1,6 +1,6 @@
 /**
  * Pieces every card shares: the ports arrows and connections attach to (invisible: no port dots are
- * drawn), the header's mark, the chevron that makes a card compact or expanded, the description strip
+ * drawn), the header's mark and title, the chevron that makes a card compact or expanded, the description strip
  * (edited in place on double-click), and the note line a card body shows while it loads or when what
  * it draws is unavailable.
  */
@@ -13,6 +13,7 @@ import { useAuthor } from "../../state/author";
 import { describeCard, editPage, setCardView, type PageTarget } from "../../state/boards";
 import type { HeaderMark } from "../cardText";
 import { LINK_SIDES } from "../linkSides";
+import type { HeaderText } from "../sizing";
 
 /** The handle every arrow into a card attaches to: its header's left edge. */
 export const TARGET_HANDLE = "in";
@@ -77,6 +78,31 @@ export function CardMark({ mark }: { readonly mark: HeaderMark }) {
     <span className={mark.word ? "tcard-kind" : "card-glyph"} aria-hidden={mark.word ? undefined : "true"}>
       {mark.text}
     </span>
+  );
+}
+
+/** A header's title as one label (an element's `aria-label` or tooltip): a title the page gave it, then the code name (`Pull orders (sync_business)`). */
+export function titleLabel(text: Pick<HeaderText, "name" | "code">): string {
+  return text.code !== undefined ? `${text.name} (${text.code})` : text.name;
+}
+
+/**
+ * A definition's title in its card's header: its code name, in the code font; or a title the page gave
+ * it, in words (the UI font, so it never reads as code), then the code name, smaller and muted. The
+ * title gives way to the code name when the header is too narrow for both.
+ */
+export function CardTitle({ text }: { readonly text: Pick<HeaderText, "name" | "code"> }) {
+  return (
+    <>
+      <h3 className={`card-title${text.code !== undefined ? " authored" : ""}`} title={titleLabel(text)}>
+        {text.name}
+      </h3>
+      {text.code !== undefined ? (
+        <span className="card-code-name" title={text.code}>
+          {text.code}
+        </span>
+      ) : null}
+    </>
   );
 }
 

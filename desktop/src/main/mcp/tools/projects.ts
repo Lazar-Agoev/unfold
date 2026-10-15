@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { ToolContext } from "../context";
 import type { AppView, BoardSummary, GraphStatus, Language, ProjectConfig, ProjectRow, ProjectSummary } from "../engine-types";
 import { count, stateText } from "../format";
-import { textResult } from "../results";
+import { PROPOSE_ENTRANCES, textResult } from "../results";
 import { defineTool } from "../tool";
 
 /** The most boards `get_project` lists; `list_boards` lists them all. */
@@ -141,7 +141,7 @@ export const getProject = defineTool({
       ...settingsText(config),
       `${count(boards.boards.length, "board")}${shown.length < boards.boards.length ? ` (the first ${shown.length}; list_boards lists them all)` : ""}:`,
       ...shown.map(boardLine),
-      "Next: list_entrances to see how it starts, search to find code, or read_page to read a board.",
+      apps?.length === 0 ? PROPOSE_ENTRANCES : "Next: list_entrances to see how it starts, search to find code, or read_page to read a board.",
     );
   },
 });

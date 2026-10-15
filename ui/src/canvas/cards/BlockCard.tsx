@@ -1,8 +1,9 @@
 /**
  * A definition's card (a module, class, or function, an inline function too), as the reader drew it.
  * Its header is the chevron that makes it compact or expanded, its
- * mark (`ƒ`, `λ`, `M`, or `class`), its name (the page's, else its code name: `callback to …` for an
- * inline function), and where it is; a line saying its file changed since the last compile (or doesn't
+ * mark (`ƒ`, `λ`, `M`, or `class`), its name (its code name, `callback to …` for an inline function; or
+ * a title the page gave it, in words, with the code name after it, `CardTitle`), and where it is; a
+ * line saying its file changed since the last compile (or doesn't
  * parse), whose words are then the last compile's, the review banner (which alone says when its code is
  * missing from the graph), and the description, all of it, follow.
  *
@@ -44,7 +45,7 @@ import { useMeasure } from "../measure";
 import { compactCardWidth, expandedCardWidth, headerText } from "../sizing";
 import { blockMenuEntries, type CombineRequest, type ProposeRequest } from "./blockMenu";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardMark, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
+import { CardHandles, CardMark, CardNote, CardTitle, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, titleLabel } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 
 export interface BlockCardProps {
@@ -271,7 +272,8 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
   const [listed, setListed] = useState<ReadonlySet<Key>>(NO_ROWS);
   const geometry = useMemo(() => (expanded && flow ? layoutFlow(flow, { measure, listed }) : null), [expanded, flow, measure, listed]);
   const text = useMemo(() => (flow ? headerText(flow.header, true) : null), [flow]);
-  const name = text?.name ?? key;
+  // Its title and, beside a title the page gave it, its code name; its key while nothing is drawn.
+  const name = text ? titleLabel(text) : key;
   const width = useMemo(() => {
     if (!flow || !text) {
       return undefined;
@@ -327,9 +329,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
       <header className="card-header card-drag">
         <ExpandToggle target={target} cardId={card.id} expanded={expanded} name={name} />
         {text ? <CardMark mark={text.mark} /> : null}
-        <h3 className="card-title" title={name}>
-          {name}
-        </h3>
+        <CardTitle text={text ?? { name: key }} />
         {text?.async === true ? <span className="card-tag">async</span> : null}
         {text ? (
           <span className="card-location" title={flow ? `${flow.header.path}:${flow.header.line}` : undefined}>

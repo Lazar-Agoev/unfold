@@ -70,6 +70,19 @@ describe("check", () => {
     ]);
   });
 
+  it("says a page with too many of an agent's words in words", async () => {
+    const wordy = { kind: "wordy", items: ["n1", "n2", "n3"], message: "An agent left 3 notes on the page; about 2 is the most a page reads well with.", suggestion: "remove_items the notes that restate a card." } as const;
+    const test = harness({ window, renderer: { check: () => Promise.resolve({ ok: true, title: "Orders", ...CHECKS, health: [], checks: [wordy] }) } });
+    test.report({ board: BOARD, page: "page-1", selection: { kind: "none" }, visible: [], held: [BOARD] });
+    const { text } = await test.call(check);
+    expect(text.split("\n").slice(2, 6)).toEqual([
+      "Health: no problems.",
+      "Page checks (1):",
+      "- too many words: An agent left 3 notes on the page; about 2 is the most a page reads well with. (ids n1, n2, n3)",
+      "  Fix: remove_items the notes that restate a card.",
+    ]);
+  });
+
   it("checks every page of a board named without a page", async () => {
     const test = harness({
       window,

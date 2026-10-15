@@ -16,7 +16,8 @@
 //! evidence file's lines (from the start of the first through the end of the last), always
 //! verified against the hash the graph recorded. A resource card's description and a
 //! connection's description and label are signed over the claim's bytes; a claim that cites
-//! nothing is not signed.
+//! nothing is not signed. A frame's description is signed again when cards are added to or taken
+//! out of it, unless it was already outdated ([`sign`]).
 //!
 //! **Grounding.** A save checks every claim that is new or changed (in what it says or cites,
 //! not its position or text), whoever wrote it:
@@ -182,6 +183,14 @@ fn member_cards<'p>(page: &'p Page, frame: &'p Frame) -> Vec<&'p Card> {
     cards.sort_by(|a, b| a.id.cmp(&b.id));
     cards.dedup_by(|a, b| a.id == b.id);
     cards
+}
+
+/// The ids of frame `frame`'s member cards ([`member_cards`]).
+fn member_ids<'p>(page: &'p Page, frame: &'p Frame) -> Vec<&'p str> {
+    member_cards(page, frame)
+        .into_iter()
+        .map(|card| card.id.as_str())
+        .collect()
 }
 
 /// The signature frame `frame`'s description gets now: over its member cards' signatures.
@@ -544,10 +553,26 @@ fn put<'s>(
     Ok(())
 }
 
+/// Whether frame `frame`'s description is signed again over its member cards: the frame was on
+/// `previous` with other member cards (some added or taken out, its frames' included), and the
+/// description held for the ones it had there. One that was already outdated keeps its
+/// signature: a change of members never vouches for changed code.
+fn regrouped(page: &Page, previous: Option<&Page>, graph: &BoardGraph, frame: &Frame) -> bool {
+    let (Some(description), Some(old)) = (&frame.description, previous) else {
+        return false;
+    };
+    let Some(before) = old.frame(&frame.id) else {
+        return false;
+    };
+    member_ids(old, before) != member_ids(page, frame)
+        && !outdated(description.signature, frame_signed(old, graph, before))
+}
+
 /// Fills in the channels entrances give ([`entrance_channel`]) and signs the page's claims from
 /// verified source: resource cards with their descriptions, connections that cite code with
 /// their descriptions and labels, and frame descriptions. A resource card or connection whose
-/// parts changed since `previous` is signed again; signed text stays as it is (it goes outdated
+/// parts changed since `previous` is signed again, and so is the description of a frame whose
+/// member cards changed ([`regrouped`]); other signed text stays as it is (it goes outdated
 /// when its code changed).
 pub(super) fn sign(page: &mut Page, previous: Option<&Page>, graph: &BoardGraph) -> Result<(), BoardError> {
     let channels: Vec<(usize, String)> = page
@@ -605,8 +630,13 @@ pub(super) fn sign(page: &mut Page, previous: Option<&Page>, graph: &BoardGraph)
         )?;
     }
     for index in 0..page.frames.len() {
-        let current = frame_signed(page, graph, &page.frames[index]);
+        let frame = &page.frames[index];
+        let regrouped = regrouped(page, previous, graph, frame);
+        let current = frame_signed(page, graph, frame);
         let frame = &mut page.frames[index];
+        if regrouped && let Some(description) = &mut frame.description {
+            description.signature = None;
+        }
         let what = format!("the description of frame `{}`", frame.id);
         let description = frame.description.as_mut().map(|text| &mut text.signature);
         put(current, description, &what)?;

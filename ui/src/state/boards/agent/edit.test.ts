@@ -393,7 +393,7 @@ describe("arrange", () => {
       { id: "create-order", ref: { block: CREATE }, at: [2000, 2000] },
       { id: "insert-order", ref: { block: INSERT }, at: [5000, 0] },
     ]);
-    const result = await edit([{ op: "arrange", moves: [{ id: "insert-order", below: "create-order" }] }]);
+    const result = await edit([{ op: "arrange", direction: "right", moves: [{ id: "insert-order", below: "create-order" }] }]);
     const cards = new Map(onPage().cards.map((card) => [card.id, card.at]));
     // createOrder calls slack.post, so slack.post sits in the next column.
     expect(cards.get("slack-post")?.[0]).toBeGreaterThan(cards.get("create-order")?.[0] ?? 0);
@@ -402,6 +402,58 @@ describe("arrange", () => {
     expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedCardSize({ model: model(CREATE), view: "compact" }, measureText).height + STACK_GAP]);
     expect(result.items.map((item) => (item.kind === "card" ? item.id : "")).sort()).toEqual(["create-order", "insert-order", "slack-post"]);
     expect((await refusal([{ op: "arrange", moves: [{ id: "nope", at: [0, 0] }] }])).code).toBe("invalid_op");
+  });
+
+  it("with moves alone only moves: everything else stays, earlier moves stay, and the notes on the lines it moves follow them", async () => {
+    const link = (id: string, from: string, to: string): Connection => ({ id, from, to, kind: "other", label: { text: id, author: "agent:claude", signature: "" }, author: "agent:claude" });
+    open(
+      {
+        links: [link("posts", "create-order", "slack-post"), link("saves", "create-order", "insert-order")],
+        notes: [
+          { id: "on-posts", text: "Posts.", at: [-900, 0], attach: "posts", author: "agent:claude" },
+          { id: "on-saves", text: "Saves.", at: [-900, 0], attach: "saves", author: "agent:claude" },
+          { id: "free", text: "Read me.", at: [3000, 3000], author: "agent:claude" },
+        ],
+      },
+      [
+        { id: "slack-post", ref: { block: SLACK }, at: [0, 0] },
+        { id: "create-order", ref: { block: CREATE }, at: [2000, 2000] },
+        { id: "insert-order", ref: { block: INSERT }, at: [5000, 0] },
+      ],
+    );
+    const at = (id: string) => onPage().cards.find((card) => card.id === id)?.at ?? onPage().notes?.find((note) => note.id === id)?.at;
+    const result = await edit([{ op: "arrange", moves: [{ id: "insert-order", at: [8000, 8000] }] }]);
+    expect(at("insert-order")).toEqual([8000, 8000]);
+    expect([at("slack-post"), at("create-order"), at("free"), at("on-posts")]).toEqual([[0, 0], [2000, 2000], [3000, 3000], [-900, 0]]);
+    // The note on the line to the moved card is beside that line again.
+    expect(at("on-saves")).not.toEqual([-900, 0]);
+    expect(result.items).toMatchObject([{ kind: "card", id: "insert-order", status: "updated", at: [8000, 8000] }]);
+    expect(result.items).toHaveLength(1);
+
+    // The next nudge keeps the first.
+    await edit([{ op: "arrange", moves: [{ id: "slack-post", below: "insert-order" }] }]);
+    expect([at("insert-order"), at("create-order")]).toEqual([[8000, 8000], [2000, 2000]]);
+    expect(at("slack-post")?.[0]).toBe(8000);
+  });
+
+  it("still arranges first, then moves, with a frame or a direction", async () => {
+    const cards: Card[] = [
+      { id: "slack-post", ref: { block: SLACK }, at: [0, 0] },
+      { id: "create-order", ref: { block: CREATE }, at: [2000, 2000] },
+      { id: "insert-order", ref: { block: INSERT }, at: [5000, 0] },
+    ];
+    open({ frames: [{ id: "server", title: "Server", members: ["slack-post", "create-order"], look: "box", author: "agent:claude" }] }, cards);
+    await edit([{ op: "arrange", frame: "server", moves: [{ id: "insert-order", at: [9000, 9000] }] }]);
+    const framed = new Map(onPage().cards.map((card) => [card.id, card.at]));
+    // createOrder calls slack.post: inside the frame, slack.post sits in the next column.
+    expect(framed.get("slack-post")?.[0]).toBeGreaterThan(framed.get("create-order")?.[0] ?? 0);
+    expect(framed.get("insert-order")).toEqual([9000, 9000]);
+
+    open({}, cards);
+    await edit([{ op: "arrange", direction: "down", moves: [{ id: "insert-order", at: [9000, 9000] }] }]);
+    const down = new Map(onPage().cards.map((card) => [card.id, card.at]));
+    expect(down.get("slack-post")?.[1]).toBeGreaterThan(down.get("create-order")?.[1] ?? 0);
+    expect(down.get("insert-order")).toEqual([9000, 9000]);
   });
 });
 

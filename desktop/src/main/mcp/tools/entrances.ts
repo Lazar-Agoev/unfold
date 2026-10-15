@@ -15,7 +15,7 @@ import type { EntryEdit, ProjectRow, SettingsEdit } from "../engine-types";
 import { textResult, type ToolResult } from "../results";
 import { defineTool } from "../tool";
 
-const SHARED = "unfold.toml is shared through the repository: write apps and entrances only when the person asks, and tell them the file changed.";
+const SHARED = "unfold.toml is shared through the repository: write apps and entrances only when the person asks or says yes to the ones you proposed, and tell them the file changed.";
 
 /** The fields the agent gave, without those left out (which the engine keeps as the file says). */
 function given<T extends object>(fields: T): { [K in keyof T]?: Exclude<T[K], undefined> } {

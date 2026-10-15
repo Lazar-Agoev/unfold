@@ -242,6 +242,8 @@ describe("crossings", () => {
         // Out of its own card and into its own end.
         line("own", "beta", "orders", [[500, 50], [900, 50]]),
         line("framed", "zone", "gamma", [[300, 850], [1300, 100]]),
+        // delta's own arrow, whose path the canvas couldn't measure.
+        line("held", "delta", "gamma"),
       ],
     );
     const checks = run(page(cards, { frames, resources, notes }), geometry);
@@ -302,20 +304,20 @@ describe("density", () => {
 });
 
 describe("words", () => {
-  it("finds frames, combined steps, and resource cards without descriptions, in page order", () => {
+  it("finds resource cards without descriptions, in page order; frames and combined steps need none", () => {
     const { cards, boxes, lines } = quiet(["alpha", "beta"]);
     const extra: Partial<Page> = {
       frames: [undescribed(frame("api", ["alpha", "beta"]))],
       combined: [combined("checks"), undescribed(combined("reply", { title: "Reply" }))],
-      resources: [undescribed(resource("orders"))],
+      resources: [undescribed(resource("orders")), resource("customers"), undescribed(resource("jobs", { kind: "queue" }))],
     };
-    const linked = [...lines, line("w", "alpha", "orders")];
-    const checks = run(page(cards, extra), drawn({ ...boxes, orders: box(0, 400) }, linked));
+    const linked = [...lines, line("w", "alpha", "orders"), line("r", "beta", "customers"), line("q", "beta", "jobs")];
+    const checks = run(page(cards, extra), drawn({ ...boxes, orders: box(0, 400), customers: box(400, 400), jobs: box(800, 400) }, linked));
     expect(checks).toEqual([
       {
         kind: "missingWords",
-        items: ["api", "orders", "reply"],
-        message: 'No description on the frame "API", the table "orders", and the combined step "Reply".',
+        items: ["orders", "jobs"],
+        message: 'No description on the table "orders" and the queue "jobs".',
         suggestion: "describe each in one sentence: what it is and why, not how.",
       },
     ]);
@@ -349,7 +351,10 @@ describe("evidence", () => {
 });
 
 describe("strays", () => {
-  it("finds cards and resource cards with no line, connection, or frame", () => {
+  const suggestion =
+    "Add the code that joins it (add_cards with follow: the code an entrance starts, a caller, or a callee), connect a store or an outside service with a cited connection, or take it off the page (remove_items).";
+
+  it("finds cards and resource cards with no line, a card in a frame too", () => {
     const cards = [card("alpha"), card("beta"), card("gamma"), card("delta")];
     const resources = [resource("orders")];
     const frames = [frame("api", ["delta"])];
@@ -358,11 +363,28 @@ describe("strays", () => {
     expect(checks).toEqual([
       {
         kind: "strays",
-        items: ["gamma", "orders"],
-        message: 'gamma and the table "orders" have no line, connection, or frame to the rest of the page.',
-        suggestion: "connect them, put them in a frame (frame_cards), or take them off the page (remove_items).",
+        items: ["gamma", "delta", "orders"],
+        message: 'gamma, delta, and the table "orders" have no line to the rest of the page.',
+        suggestion,
       },
     ]);
+  });
+
+  it("doesn't join a card through a line to the frame it is in", () => {
+    const cards = [card("alpha"), card("beta")];
+    const resources = [resource("orders")];
+    const frames = [frame("worker", ["beta"])];
+    const links = [link("writes", "worker", "orders", { kind: "writes", author: AGENT })];
+    const boxes = { alpha: box(0, 0), beta: box(400, 0), orders: box(800, 0) };
+    const checks = run(page(cards, { resources, frames, links }), drawn(boxes, [line("writes", "worker", "orders")]));
+    expect(checks).toEqual([{ kind: "strays", items: ["alpha", "beta"], message: "alpha and beta have no line to the rest of the page.", suggestion }]);
+  });
+
+  it("joins an entrance's card and its code's card by the start arrow between them", () => {
+    const cards = [card("place-an-order", { ref: { entrance: "entrance:shop-api/place-an-order" } }), card("place"), card("alone")];
+    const boxes = { "place-an-order": box(0, 0), place: box(400, 0), alone: box(800, 400) };
+    const checks = run(page(cards), drawn(boxes, [line("place-an-order|code:0|place", "place-an-order", "place")]));
+    expect(checks).toEqual([{ kind: "strays", items: ["alone"], message: "alone has no line to the rest of the page.", suggestion }]);
   });
 
   it("leaves a page about one card alone, and counts links the canvas didn't draw", () => {
@@ -372,14 +394,105 @@ describe("strays", () => {
   });
 });
 
+describe("wordy", () => {
+  /** The page's name for a card's definition (`card` keys it `src/app.ts#<id>`). */
+  function title(id: string, author = AGENT): Page["names"][number] {
+    return { key: `src/app.ts#${id}`, text: `The ${id} step`, author, signature: "" };
+  }
+
+  function described(id: string, extra: Partial<Card> = {}, author = AGENT): Card {
+    return card(id, { description: { text: `What ${id} does.`, author, signature: "" }, ...extra });
+  }
+
+  /** A type's card as drawn: it shows its fields in every view. */
+  function typeCard(id: string): CardView {
+    const view = drawnCard(id, 0);
+    return view.type === "definition" ? { ...view, flow: { ...view.flow, header: { ...view.flow.header, kind: "type", form: "interface" } } } : view;
+  }
+
+  const wordy = (checks: ReturnType<typeof run>) => checks.filter((check) => check.kind === "wordy");
+
+  it("finds an agent's titles on more than 3 definition cards, in any view, naming them", () => {
+    const { cards, boxes, lines } = quiet(["alpha", "beta", "gamma", "delta", "price"]);
+    const shown = cards.map((item) => (item.id === "beta" ? { ...item, view: "expanded" as const } : item));
+    const names = [title("alpha"), title("beta"), title("gamma"), title("delta"), title("price")];
+    // The type card's name doesn't count: shape_card titles definitions only.
+    const views = new Map([["price", typeCard("price")]]);
+    expect(wordy(run(page(shown, { names }), drawn(boxes, lines), views))).toEqual([
+      {
+        kind: "wordy",
+        items: ["alpha", "beta", "gamma", "delta"],
+        message: "An agent titled 4 cards: alpha, beta, gamma, and delta; about 3 is the most a page reads well with.",
+        suggestion: "Title only the few cards whose code name says nothing (main, run, _tick); shape_card with title: null takes yours off. Unfold shows the code name beside a title.",
+      },
+    ]);
+    // Three is within the limit; a name on a block inside a card isn't the card's title.
+    const three = [title("alpha"), title("beta"), title("gamma"), { ...title("delta"), key: "src/app.ts#delta/call:save" }];
+    expect(wordy(run(page(shown, { names: three }), drawn(boxes, lines), views))).toEqual([]);
+  });
+
+  it("finds an agent's descriptions on more than 3 compact cards: definitions', apps', and entrances', not types' or expanded ones", () => {
+    const ids = ["alpha", "beta", "api", "place-an-order", "open", "price"];
+    const { boxes, lines } = quiet(ids);
+    const cards = [
+      described("alpha"),
+      described("beta"),
+      described("api", { ref: { entrance: "entrance:shop-api" } }),
+      described("place-an-order", { ref: { entrance: "entrance:shop-api/place-an-order" } }),
+      described("open", { view: "expanded" }),
+      described("price"),
+    ];
+    const views = new Map([["price", typeCard("price")]]);
+    expect(wordy(run(page(cards), drawn(boxes, lines), views))).toEqual([
+      {
+        kind: "wordy",
+        items: ["alpha", "beta", "api", "place-an-order"],
+        message: "An agent described 4 compact cards: alpha, beta, api, and place-an-order; about 3 is the most a page reads well with.",
+        suggestion: "Describe the one to three cards the page is about; shape_card with description: null takes yours off the others.",
+      },
+    ]);
+    // Three is within the limit.
+    expect(wordy(run(page(cards.slice(1)), drawn(boxes, lines), views))).toEqual([]);
+  });
+
+  it("finds more than 2 of an agent's notes", () => {
+    const { cards, boxes, lines } = quiet(["alpha", "beta"]);
+    const notes = [note("n1"), note("n2", { attach: "alpha" }), note("n3")];
+    expect(wordy(run(page(cards, { notes }), drawn(boxes, lines)))).toEqual([
+      {
+        kind: "wordy",
+        items: ["n1", "n2", "n3"],
+        message: "An agent left 3 notes on the page; about 2 is the most a page reads well with.",
+        suggestion:
+          "Keep the one or two caveats or open questions a reader would miss; remove_items the notes that restate a card, an entrance, a schedule, or a status (say those in the chat).",
+      },
+    ]);
+    expect(wordy(run(page(cards, { notes: notes.slice(1) }), drawn(boxes, lines)))).toEqual([]);
+  });
+
+  it("never counts a person's titles, descriptions, or notes", () => {
+    const ids = ["alpha", "beta", "gamma", "delta", "epsilon"];
+    const { boxes, lines } = quiet(ids);
+    const cards = ids.map((id) => described(id, {}, PERSON));
+    const names = ids.map((id) => title(id, PERSON));
+    const notes = ids.map((id) => note(`n-${id}`, { author: PERSON }));
+    expect(run(page(cards, { names, notes }), drawn(boxes, lines))).toEqual([]);
+    // With an agent's words at the limits beside them, still nothing.
+    const mixed = { names: [...names.slice(3), title("alpha"), title("beta"), title("gamma")], notes: [...notes, note("a1"), note("a2")] };
+    const agents = cards.map((item, index) => (index < 3 ? described(item.id) : item));
+    expect(run(page(agents, mixed), drawn(boxes, lines))).toEqual([]);
+  });
+});
+
 describe("pageChecks", () => {
   it("is deterministic and lists findings in the checklist's order", () => {
     const cards = [card("alpha", { view: "expanded" }), card("beta"), card("gamma")];
     const resources = [resource("orders", { anchors: [] })];
+    const notes = [note("n1"), note("n2"), note("n3")];
     const geometry = drawn({ alpha: box(0, 0), beta: box(100, 0), gamma: box(800, 0), orders: box(0, 400) }, [line("l", "alpha", "beta")]);
     const views = new Map([["alpha", drawnCard("alpha", 14)]]);
-    const first = run(page(cards, { resources }), geometry, views);
-    expect(kinds(first)).toEqual(["overlap", "density", "evidence", "strays"]);
-    expect(run(page(cards, { resources }), geometry, views)).toEqual(first);
+    const first = run(page(cards, { resources, notes }), geometry, views);
+    expect(kinds(first)).toEqual(["overlap", "density", "evidence", "strays", "wordy"]);
+    expect(run(page(cards, { resources, notes }), geometry, views)).toEqual(first);
   });
 });

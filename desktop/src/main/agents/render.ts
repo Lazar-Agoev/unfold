@@ -43,7 +43,7 @@ const FRAME_TIMEOUT_MS = 15_000;
 /** How long the render window stays open without a request. */
 const IDLE_MS = 60_000;
 
-const CHECK_KINDS: ReadonlySet<string> = new Set<PageCheckKind>(["overlap", "crossings", "density", "missingWords", "evidence", "strays"]);
+const CHECK_KINDS: ReadonlySet<string> = new Set<PageCheckKind>(["overlap", "crossings", "density", "missingWords", "evidence", "strays", "wordy"]);
 
 /** An image's scale: CSS pixels to image pixels. */
 export type ImageScale = 1 | 2;

@@ -18,7 +18,9 @@ import { memberName, memberValue } from "../code/typeKinds";
 import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
 import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import {
+  AUTHORED_TITLE_FONT,
   CODE_FONT,
+  CODE_NAME_FONT,
   DESCRIPTION_FONT,
   DOC_FONT,
   FRAME_TITLE_FONT,
@@ -56,10 +58,16 @@ const RULE = 1;
 /** A header's line. */
 const TITLE_LINE = 16;
 
-/** The text of a definition card's header: its mark, name, `ASYNC` tag, location, and whether it has the chevron. */
+/**
+ * The text of a definition card's header: its mark, its title, the code name beside a title the page
+ * gave it, its `ASYNC` tag, location, and whether it has the chevron.
+ */
 export interface HeaderText {
   readonly mark: HeaderMark;
+  /** What titles the card: the page's name for its definition, else its code name. */
   readonly name: string;
+  /** The code name, shown after `name` when the page's name for the definition differs from it; absent otherwise. */
+  readonly code?: string;
   readonly async: boolean;
   readonly location: string;
   readonly chevron: boolean;
@@ -67,7 +75,8 @@ export interface HeaderText {
 
 /** A definition card's header text from its drawn flow's header. */
 export function headerText(header: Header, chevron: boolean): HeaderText {
-  return { mark: headerMark(header), name: header.name ?? header.label, async: header.async, location: headerLocation(header), chevron };
+  const named = header.name !== undefined && header.name !== header.label;
+  return { mark: headerMark(header), name: header.name ?? header.label, ...(named ? { code: header.label } : {}), async: header.async, location: headerLocation(header), chevron };
 }
 
 /** A header's tag (cards.css `.card-tag`): its small caps with 0.06em of letter spacing, its padding, and its border. */
@@ -75,11 +84,16 @@ function tagWidth(word: string, measure: Measure): number {
   return measure(word.toUpperCase(), TAG_FONT) + word.length * 0.06 * 9 + 4 * 2 + 2;
 }
 
-/** The width a header needs: padding, border, chevron, mark, name, `ASYNC`, location, and `</>`. */
+/** The width a header's title needs: the code name in the code font, or a title the page gave it in the UI font with the code name after it. */
+function titleWidth(header: HeaderText, measure: Measure): number {
+  return header.code !== undefined ? measure(header.name, AUTHORED_TITLE_FONT) + GAP + measure(header.code, CODE_NAME_FONT) : measure(header.name, TITLE_FONT);
+}
+
+/** The width a header needs: padding, border, chevron, mark, title (and the code name beside one the page gave it), `ASYNC`, location, and `</>`. */
 function headerWidth(header: HeaderText, measure: Measure): number {
   const mark = header.mark.word ? measure(header.mark.text, TYPE_KIND_FONT) : GLYPH;
   const tag = header.async ? GAP + tagWidth("async", measure) : 0;
-  const text = mark + GAP + measure(header.name, TITLE_FONT) + tag + GAP + measure(header.location, LOCATION_FONT) + GAP + CODE_BUTTON;
+  const text = mark + GAP + titleWidth(header, measure) + tag + GAP + measure(header.location, LOCATION_FONT) + GAP + CODE_BUTTON;
   return Math.ceil(PADDING * 2 + BORDER + (header.chevron ? CHEVRON + GAP : 0) + text);
 }
 

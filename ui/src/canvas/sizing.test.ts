@@ -3,7 +3,7 @@ import { layoutFlow } from "../flow/layout";
 import type { CardView, Description, DrawnFlow, StartCard, TypeDefinition, TypeMember } from "../ipc/generated";
 import { fixture } from "../test/engine";
 import { CARD_MAX_WIDTH, fallbackSize } from "./layout";
-import { LOCATION_FONT, TITLE_FONT, TYPE_KIND_FONT, estimateText } from "./measure";
+import { AUTHORED_TITLE_FONT, CODE_NAME_FONT, LOCATION_FONT, TITLE_FONT, TYPE_KIND_FONT, estimateText } from "./measure";
 import {
   COMPACT_MAX_WIDTH,
   COMPACT_MIN_WIDTH,
@@ -77,6 +77,35 @@ describe("definition cards", () => {
     expect(compactCardWidth(headerText({ ...ts, name: "x".repeat(30) }, true), measure)).toBeGreaterThan(compactCardWidth(headerText({ ...ts, name: "x".repeat(30), async: false }, true), measure));
     expect(headerText({ ...place.header, name: "Place the order" }, false).name).toBe("Place the order");
     expect(headerText(cli.header, true).mark).toEqual({ text: "M", word: false });
+  });
+
+  it("keep the code name beside a title the page gave them, and make room for both", () => {
+    expect(headerText({ ...place.header, name: "Place the order" }, true)).toEqual({
+      mark: { text: "ƒ", word: false },
+      name: "Place the order",
+      code: "place_order",
+      async: false,
+      location: "shop/service.py:9",
+      chevron: true,
+    });
+    // No title, or one that is the code name: the code name alone.
+    expect("code" in headerText(place.header, true)).toBe(false);
+    expect("code" in headerText({ ...place.header, name: "place_order" }, true)).toBe(false);
+
+    // The title in the UI font, a gap, and the code name in the code font, clamped like any compact header.
+    const titled = { mark: { text: "ƒ", word: false }, name: "Charge a card", code: "StripeProvider.charge", async: false, location: "services/payment.ts:13", chevron: true };
+    const parts = 14 + 8 + measure(titled.name, AUTHORED_TITLE_FONT) + 8 + measure(titled.code, CODE_NAME_FONT) + measure(titled.location, LOCATION_FONT);
+    expect(compactCardWidth(titled, measure)).toBe(Math.ceil(26 + parts + 4 * 8 + 30));
+    expect(compactCardWidth({ ...titled, name: "x".repeat(80) }, measure)).toBe(COMPACT_MAX_WIDTH);
+
+    // Estimates before a card is drawn, and a compact class's (a type card's) width, make room too.
+    const named = { ...place.header, name: "Place the order" };
+    const plain = estimatedCardSize({ model: { type: "definition", flow: place }, view: "compact" }, measure);
+    const withTitle = estimatedCardSize({ model: { type: "definition", flow: { ...place, header: named } }, view: "compact" }, measure);
+    expect(withTitle.width).toBe(compactCardWidth(headerText(named, true), measure));
+    expect(withTitle.width).toBeGreaterThan(plain.width);
+    const klass = { ...place.header, kind: "class" as const, form: "class" as const, label: "OrderService.PlaceOrderWithRetries" };
+    expect(typeCardWidth(headerText({ ...klass, name: "Order service" }, true), [], measure)).toBeGreaterThan(typeCardWidth(headerText({ ...klass, name: "OrderService.PlaceOrderWithRetries" }, true), [], measure));
   });
 
   it("wrap the whole description, line by line; a type card shows one line", () => {

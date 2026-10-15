@@ -4,11 +4,12 @@
 //! file) whose sources are written to a temporary folder.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use unfold_core::key::Callee;
 use unfold_core::testkit::{GraphBuilder, NodeRef, library, project, target, unknown};
 use unfold_core::vocab::{Form, InputRole, Language, LinkKind as GraphLink, MemberKind, Reason, TargetState};
-use unfold_core::{Graph, Key, Member, RepoPath};
+use unfold_core::{ContentHash, Graph, Key, Member, RepoPath};
 
 use super::*;
 
@@ -273,6 +274,19 @@ fn write_sources(dir: &Path, schema: &str) {
     }
 }
 
+/// The board graph of the folder after source file `path` of `graph` is edited to `text` and
+/// compiled again. The edit keeps every range, so only the file's hash changes.
+fn recompiled(dir: &Path, graph: &Graph, path: &str, text: &str) -> BoardGraph {
+    std::fs::write(dir.join(path), text).unwrap();
+    let mut graph = graph.clone();
+    for file in &mut graph.files {
+        if file.file.path.as_str() == path {
+            Arc::make_mut(file).file.hash = Some(ContentHash::of(text.as_bytes()));
+        }
+    }
+    BoardGraph::from_graph(&graph, dir)
+}
+
 fn agent() -> Author {
     Author::agent("claude").unwrap()
 }
@@ -356,6 +370,29 @@ fn column(name: &str) -> Column {
 
 fn connection(id: &str, kind: ConnectionKind, from: &str, to: &str) -> Connection {
     Connection::new(id, kind, from, to, agent())
+}
+
+/// A described frame holding `members`.
+fn frame(id: &str, members: &[&str]) -> Frame {
+    Frame {
+        id: id.to_owned(),
+        title: id.to_owned(),
+        description: Some(text("Takes orders")),
+        members: members.iter().map(|member| (*member).to_owned()).collect(),
+        look: FrameLook::Box,
+        icon: None,
+        direction: None,
+        collapsed: false,
+        author: agent(),
+    }
+}
+
+/// The signature of frame `id`'s description on `board`'s page.
+fn frame_signature(board: &Board, id: &str) -> Option<Signature> {
+    board.pages[0]
+        .frame(id)
+        .and_then(|frame| frame.description.as_ref())
+        .and_then(|description| description.signature)
 }
 
 /// A board whose one page shows `createOrder`, `charge`, the worker, and the route.
@@ -771,6 +808,116 @@ fn claims_are_repaired_by_anchor_resigned_or_removed() {
     assert!(page.resources.is_empty() && page.links.is_empty());
     let note = page.note("note").unwrap();
     assert_eq!((note.attach.as_deref(), note.at), (None, [400.0, 10.0]));
+}
+
+#[test]
+fn frame_descriptions_are_signed_again_when_cards_join_or_leave() {
+    let (_dir, graph, loaded) = orders(SCHEMA);
+    let route = entrance_key(&graph, "Route");
+    // Over the member cards' signatures, by card id.
+    let over = |keys: &[&str]| {
+        let hexes: Vec<String> = keys
+            .iter()
+            .map(|key| loaded.signature(key).unwrap().0.to_string())
+            .collect();
+        Some(Signature::of(hexes.join("\n").as_bytes()))
+    };
+    // `api` frames the route and createOrder; `server` holds `api`, so they are its cards too.
+    let mut board = board(&graph);
+    board.pages[0].frames = vec![frame("api", &["route", "create"]), frame("server", &["api"])];
+    let (saved, health) = save(board, None, &loaded).unwrap();
+    for id in ["api", "server"] {
+        assert_eq!(frame_signature(&saved, id), over(&[CREATE, &route]));
+    }
+
+    // A card joins `api`: both descriptions are signed again over their cards now, and stay
+    // current.
+    let mut joined = saved.clone();
+    joined.pages[0].frames[0].members.push("charge".to_owned());
+    let (joined, joined_health) = save(joined, Some((&saved, &health)), &loaded).unwrap();
+    assert!(joined_health.is_healthy(), "{:#?}", joined_health.items);
+    for id in ["api", "server"] {
+        assert_eq!(frame_signature(&joined, id), over(&[CHARGE, CREATE, &route]));
+    }
+
+    // A card taken out of `api` (it stays on the page): the same.
+    let mut left = joined.clone();
+    left.pages[0].frames[0]
+        .members
+        .retain(|member| member != "create");
+    let (left, left_health) = save(left, Some((&joined, &joined_health)), &loaded).unwrap();
+    assert!(left_health.is_healthy(), "{:#?}", left_health.items);
+    for id in ["api", "server"] {
+        assert_eq!(frame_signature(&left, id), over(&[CHARGE, &route]));
+    }
+
+    // And a card removed from the page.
+    let mut removed = left.clone();
+    apply_repair(
+        &mut removed.pages[0],
+        &loaded,
+        &Repair::Remove(Target::Card("charge".to_owned())),
+    )
+    .unwrap();
+    let (removed, removed_health) = save(removed, Some((&left, &left_health)), &loaded).unwrap();
+    assert!(removed_health.is_healthy(), "{:#?}", removed_health.items);
+    for id in ["api", "server"] {
+        assert_eq!(frame_signature(&removed, id), over(&[&route]));
+    }
+}
+
+#[test]
+fn frame_descriptions_go_outdated_when_their_cards_code_changes() {
+    let (dir, graph, loaded) = orders(SCHEMA);
+    let mut board = board(&graph);
+    board.pages[0].frames = vec![frame("api", &["route", "charge"])];
+    let (saved, health) = save(board, None, &loaded).unwrap();
+    assert!(health.is_healthy(), "{:#?}", health.items);
+    let signed = frame_signature(&saved, "api");
+
+    // `charge` changes and is compiled again: with the same cards, the description is outdated.
+    let edited = ROUTES.replace("charge(draft: Draft)", "charge(draft: Order)");
+    let changed = recompiled(dir.path(), &graph, "routes.ts", &edited);
+    let rows = |health: &Health| -> Vec<(HealthKind, Target, String, Vec<RepairKind>)> {
+        health
+            .items
+            .iter()
+            .map(|item| {
+                (
+                    item.kind,
+                    item.target.clone(),
+                    item.message.clone(),
+                    item.repairs.clone(),
+                )
+            })
+            .collect()
+    };
+    let outdated = vec![(
+        HealthKind::Outdated,
+        Target::Frame("api".to_owned()),
+        "Code changed since this description was written".to_owned(),
+        vec![RepairKind::Resign, RepairKind::RemoveDescription],
+    )];
+    let health = board_health(&saved, &changed);
+    assert_eq!(rows(&health), outdated);
+
+    // A card joining it too doesn't vouch for the new code: the description keeps its signature
+    // and stays outdated.
+    let mut joined = saved.clone();
+    joined.pages[0].frames[0].members.push("create".to_owned());
+    let (joined, joined_health) = save(joined, Some((&saved, &health)), &changed).unwrap();
+    assert_eq!(frame_signature(&joined, "api"), signed);
+    assert_eq!(rows(&joined_health), outdated);
+
+    // Re-signed, it holds for its cards' code now.
+    let mut page = joined.pages[0].clone();
+    apply_repair(
+        &mut page,
+        &changed,
+        &Repair::Resign(Target::Frame("api".to_owned())),
+    )
+    .unwrap();
+    assert!(health_of(&page, &changed).is_healthy());
 }
 
 #[test]

@@ -1,9 +1,9 @@
 /**
  * `shape_card`: a card's whole shaping as one operation — its
- * title (the page's name for its definition), its description, names on blocks, combined steps, and
- * the calls it opens in place; an app's or entrance's card, or a type card, which draw no flow
- * (`flowless`, which the MCP server reads too), take only a description, and anything else on them is
- * refused here. Names and combined steps apply page-wide, by key. It uses the edits
+ * title (the page's name for its definition), its description (null takes either off), names on
+ * blocks, combined steps, and the calls it opens in place; an app's or entrance's card, or a type
+ * card, which draw no flow (`flowless`, which the MCP server reads too), take only a description, and
+ * anything else on them is refused here. Names and combined steps apply page-wide, by key. It uses the edits
  * people's block menu uses, and the save checks every key and the overlay rules (combined steps are
  * consecutive steps of one body or one whole control block, never overlapping or nesting; open paths
  * are project calls or callbacks, at most 3 deep and 64 per card), so nothing here repeats a rule. New
@@ -92,11 +92,11 @@ export function applyShapeCard(page: Page, op: ShapeCardOp, ctx: OpContext): Age
   }
   const before = snapshot(page, card);
   if (op.description !== undefined) {
-    const text = words(op.description, "description");
+    const text = op.description === null ? null : words(op.description, "description");
     if (card.description && card.description.text !== text) {
       guardPeopleText(`the description of ${name}`, card.description.author, op.replacePeopleText);
     }
-    setCardDescription(page, card.id, text, ctx.agent.author);
+    setCardDescription(page, card.id, text ?? "", ctx.agent.author);
   }
   if (refusal !== undefined) {
     return [cardResult(ctx, card, snapshot(page, card) === before ? "kept" : "updated")];

@@ -311,7 +311,7 @@ commands, and show what those refuse.
 | A combined step and its description | The source from its first block's start (a definition's first decorator) to its last block's end |
 | A resource card | Its table type's range, then each anchor's bytes |
 | A connection, its label and description | Its step's range, then each anchor's bytes |
-| A frame's description | Its member cards' signatures |
+| A frame's description | Its member cards' signatures, signed again when cards join or leave the frame (unless it was already outdated) |
 
 Signatures come only from verified bytes; text can never be signed against source the graph hasn't seen. Notes,
 proposals, and open paths are never signed. A save never marks old text reviewed just because new bytes appeared.
@@ -360,7 +360,7 @@ allows:
 | Health | About |
 | --- | --- |
 | Missing | A card's, name's, or proposal's key, or a resource card's anchor or type, isn't in the graph |
-| Outdated | The code under a description, name, combined step, resource card, or connection changed since it was signed, or a step written between a combined step's blocks joined it |
+| Outdated | The code under a description (a frame's: its member cards' code), name, combined step, resource card, or connection changed since it was signed, or a step written between a combined step's blocks joined it |
 | Review | A guarded reference changed kind or owner, or a position-based one changed code |
 | Broken combined step | A combined step no longer follows the overlay rules: one of its blocks is gone, listed twice, no longer combinable, out of written order, or in another body, or it overlaps or nests in another combined step |
 | Broken link | A connection's end, step, carried type, or anchor is gone |

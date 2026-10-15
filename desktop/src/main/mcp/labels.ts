@@ -100,7 +100,7 @@ export function choiceLines(flow: DrawnFlow, labels: Labels): string[] {
   const open = own.filter((block) => block.actions?.open === true).map((block) => shown(block.key));
   return [
     `The blocks of ${flow.header.name ?? flow.header.label} you can choose from, by short label:`,
-    `- names: any block, such as ${listed(labels.all())}; title names the card itself`,
+    `- names: any block, such as ${listed(labels.all())}; title names the card itself, only when its code name says nothing`,
     ...(bodies.size > 0 ? [`- combine: consecutive steps of one body: ${[...bodies].map(([key, steps]) => `in ${body(key)}: ${listed(steps)}`).join("; ")}`] : ["- combine: nothing in this card combines"]),
     ...(alone.length > 0 ? [`- combine alone: ${listed(alone)}`] : []),
     open.length > 0 ? `- open: ${listed(open)} (a path's next blocks are calls or callbacks of what the one before opens)` : "- open: no call of this card opens in place",

@@ -2,9 +2,10 @@
  * How a page shows and where its items are: `set_view` (each card compact or expanded; whether a
  * combined step or a frame is collapsed) and `arrange` (Arrange from the inside out, `arrangePage`:
  * each frame by call depth and connections in its direction, type cards after the types that link to
- * them; then the agent's moves of cards and frames). Arrange reads the arrows from the cards' models
- * and type definitions, and sizes and ports from what the canvas measured, else estimates, so it works
- * on a page no one has shown.
+ * them; then the agent's moves of cards and frames). An `arrange` with moves and neither a frame nor a
+ * direction only moves: nothing is arranged, so earlier moves stay where the agent put them. Arrange
+ * reads the arrows from the cards' models and type definitions, and sizes and ports from what the
+ * canvas measured, else estimates, so it works on a page no one has shown.
  */
 
 import type { AgentCardResult, AgentItemResult, AgentMove, AgentViewSpec, ArrangeOp, SetViewOp } from "@unfold/desktop/agent-api";
@@ -122,11 +123,38 @@ function applyMove(ctx: OpContext, page: Page, move: AgentMove): void {
   }
 }
 
+/**
+ * The notes on the page's links a moves-only `arrange` puts back beside their lines: those on the
+ * links from or to a moved item, a moved frame, or anything a moved frame holds. A note the moves
+ * place themselves stays where they put it.
+ */
+function movedLineNotes(ctx: OpContext, page: Page, moves: readonly AgentMove[]): Record<string, [number, number]> {
+  const moved = new Set(moves.flatMap((move) => [move.id, ...frameItems(page, move.id)]));
+  const lines = new Set(page.links.filter((link) => moved.has(link.from) || moved.has(link.to)).map((link) => link.id));
+  const spots = lineNoteSpots(page, (id) => itemSize(ctx, page, id), lines);
+  return Object.fromEntries(Object.entries(spots).filter(([id]) => !moved.has(id)));
+}
+
+/**
+ * Applies `arrange`: Arrange (the page, or only `frame`, turned to `direction`), then the moves in
+ * order, then the notes on links beside their lines as they now run. With moves and neither a frame
+ * nor a direction, only the moves apply: the page is not arranged again, so an agent nudging one item
+ * keeps every earlier move, and only the notes on the lines the moves touch follow them. The result
+ * lists the cards and resource cards that moved, and a frame whose direction it turned.
+ */
 export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentItemResult[] {
   const before = new Map([...page.cards, ...(page.resources ?? [])].map((item) => [item.id, `${item.at[0]},${item.at[1]}`]));
   const frame = op.frame !== undefined ? findFrame(page, op.frame) : undefined;
   if (op.frame !== undefined && !frame) {
     throw invalid(`There is no frame with id “${op.frame}” on this page to arrange. read_page lists the page's frames.`);
+  }
+  const moves = op.moves ?? [];
+  if (moves.length > 0 && op.frame === undefined && op.direction === undefined) {
+    for (const move of moves) {
+      applyMove(ctx, page, move);
+    }
+    moveItems(page, movedLineNotes(ctx, page, moves));
+    return movedItems(ctx, page, before);
   }
   const turned = frame !== undefined && op.direction !== undefined && op.direction !== frame.direction;
   if (frame && op.direction !== undefined) {
@@ -153,19 +181,24 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
     });
     moveItems(page, Object.fromEntries([...positions].map(([id, at]) => [id, [at.x, at.y] as const])));
   }
-  for (const move of op.moves ?? []) {
+  for (const move of moves) {
     applyMove(ctx, page, move);
   }
   // Then the notes on links (a frame's: those on its items' links), beside their lines as they now run.
   const held = frame ? new Set([frame.id, ...frameItems(page, frame.id)]) : undefined;
   const lines = held ? new Set(page.links.filter((link) => held.has(link.from) || held.has(link.to)).map((link) => link.id)) : undefined;
   moveItems(page, lineNoteSpots(page, (id) => itemSize(ctx, page, id), lines));
-  const moved = [
+  const moved = movedItems(ctx, page, before);
+  const arranged = frame ? findFrame(page, frame.id) : undefined;
+  return turned && arranged ? [frameResult(ctx, page, arranged, "updated"), ...moved] : moved;
+}
+
+/** The results of the cards and resource cards no longer where `before` had them (by id, `x,y`). */
+function movedItems(ctx: OpContext, page: Page, before: ReadonlyMap<string, string>): AgentItemResult[] {
+  return [
     ...page.cards.flatMap((card) => (before.get(card.id) === `${card.at[0]},${card.at[1]}` ? [] : [cardResult(ctx, card, "updated", { at: [card.at[0], card.at[1]] })])),
     ...(page.resources ?? []).flatMap((resource) =>
       before.get(resource.id) === `${resource.at[0]},${resource.at[1]}` ? [] : [resourceResult(ctx, page, resource, "updated", { at: [resource.at[0], resource.at[1]] })],
     ),
   ];
-  const arranged = frame ? findFrame(page, frame.id) : undefined;
-  return turned && arranged ? [frameResult(ctx, page, arranged, "updated"), ...moved] : moved;
 }

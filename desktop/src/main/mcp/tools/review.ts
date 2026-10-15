@@ -48,6 +48,7 @@ const CHECK_WORDS: Readonly<Record<PageCheckKind, string>> = {
   missingWords: "missing words",
   evidence: "evidence",
   strays: "strays",
+  wordy: "too many words",
 };
 
 /** The blocks accepting each health item's code vouches for, for the items that offer accept. */
@@ -110,7 +111,7 @@ export const check = defineTool({
   name: "check",
   title: "Check",
   description:
-    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken combined steps, broken connections), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), missing words (frames, combined steps, and resource cards without a description), evidence (connections and resource cards without anchors), and strays (items with no line, connection, or frame), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it, as many pages as fit in one result: pass the next cursor for the rest. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
+    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken combined steps, broken connections), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), missing words (resource cards without a description), evidence (connections and resource cards without anchors), strays (cards and resource cards with no line to the rest of the page; a frame doesn\'t count), and too many words (an agent\'s titles on more than about 3 cards, its descriptions on more than about 3 compact cards, more than 2 of its notes), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it, as many pages as fit in one result: pass the next cursor for the rest. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
   input: z.strictObject({
     board: z.string().min(1).optional().describe("A board's id or a link; alone, every page of it is checked"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),

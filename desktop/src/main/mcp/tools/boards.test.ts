@@ -21,6 +21,7 @@ const PAGE: AgentPage = {
   links: [],
 };
 const ENTRANCE = "entrance:server/place-an-order";
+const WORKER = "entrance:worker/process-an-order";
 const ENTRANCES = { entrances: () => recorded<EntrancesView>(entrances) };
 
 function summary(id: string, title: string): BoardSummary {
@@ -71,8 +72,35 @@ describe("create_board", () => {
       `Traced Place an order of Server on the first page (rev ${pageRevision(PAGE)}):`,
       "- Place an order (card id post-orders, created)",
       "- createOrder (card id create-order, created); stopped: ordersQueue.add (line 28) is external, bullmq",
-      "Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.",
+      "Next: set_view to expand the one or two cards the page is about (pass the board and page ids), arrange_page, then check. show presents it when it's ready.",
     ]);
+  });
+
+  it("traces a list of apps and entrances in one edit, each once", async () => {
+    const app = harness({ window: answers, engine: ENTRANCES });
+    const { text } = await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: [ENTRANCE, WORKER, ENTRANCE] });
+    const edits = app.requests.filter((request) => request.type === "agent_edit");
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({
+      title: "Trace",
+      ops: [
+        {
+          op: "add_cards",
+          cards: [
+            { ref: { entrance: ENTRANCE }, follow: { callees: 1 } },
+            { ref: { entrance: WORKER }, follow: { callees: 1 } },
+          ],
+        },
+      ],
+    });
+    expect(text).toContain(`Traced Place an order of Server, Process an order of Worker on the first page (rev ${pageRevision(PAGE)}):`);
+  });
+
+  it("creates a board without tracing and says how to build it", async () => {
+    const app = harness({ window: answers, engine: ENTRANCES });
+    const { text } = await app.call(createBoard, { project: "ts-orders", title: "Orders" });
+    expect(app.requests.map((request) => request.type)).toEqual(["agent_create_board", "agent_read"]);
+    expect(text.split("\n").at(-1)).toBe("Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.");
   });
 
   it("refuses an entrance the project doesn't have before creating anything, and teaches from the window's refusals", async () => {
@@ -84,6 +112,11 @@ describe("create_board", () => {
     });
     expect(app.requests).toEqual([]);
     expect((await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: "src/a.ts#a" })).isError).toBe(true);
+    expect((await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: [ENTRANCE, "entrance:server/refund", "entrance:worker/refund"] })).text).toBe(
+      "Can't trace the entrance: ts-orders has no app or entrance with the keys entrance:server/refund, entrance:worker/refund. list_entrances lists its apps and entrances with their keys.",
+    );
+    expect((await app.call(createBoard, { project: "ts-orders", title: "Orders", trace: [] })).isError).toBe(true);
+    expect(app.requests).toEqual([]);
 
     const late = harness({ window: () => ({ ok: false, code: "unconfirmed", message: "The Unfold window didn't answer within 30 s, so the change may still land." }) });
     expect((await late.call(createBoard, { project: "ts-orders", title: "Orders" })).text).toBe(

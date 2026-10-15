@@ -174,7 +174,7 @@ describe("shape_card", () => {
     expect(text).toContain(CREATE_ORDER_TEXT.text.trimEnd());
     expect(lines.slice(-2)).toEqual([
       `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`,
-      "Next: shape_card the next card the page is about, then frame_cards, add_resources, and connect to compose the page; arrange_page and check.",
+      "Next: shape_card the next expanded card the page is about, if any; add_resources and connect only for what code can't show; arrange_page and check.",
     ]);
   });
 
@@ -192,6 +192,17 @@ describe("shape_card", () => {
     expect(edits(test)[1]?.ops).toEqual([{ op: "shape_card", card: "create-order", names: [{ key: IF, text: null }], replacePeopleText: true }]);
   });
 
+  it("passes null to take a title or a description off", async () => {
+    const test = app();
+    expect((await test.call(shapeCard, { card: "create-order", title: null, description: null })).isError).toBe(false);
+    const described = await test.call(shapeCard, { card: "post-orders", description: null });
+    expect(described.text.split("\n").at(-1)).toBe("Next: shape_card the next expanded card the page is about, if any; arrange_page and check.");
+    expect(edits(test).map((edit) => [edit.title, edit.ops])).toEqual([
+      ["Shape card", [{ op: "shape_card", card: "create-order", title: null, description: null }]],
+      ["Describe card", [{ op: "shape_card", card: "post-orders", description: null }]],
+    ]);
+  });
+
   it("refuses with what failed and the blocks the agent can choose from instead", async () => {
     const test = app({
       ok: false,
@@ -203,7 +214,7 @@ describe("shape_card", () => {
     expect(refused.text.split("\n")).toEqual([
       "Can't save the page: `src/routes/orders.ts#createOrder/if[0]/then/return[0]` is not in the body of `src/routes/orders.ts#createOrder/if[0]`: combined steps are consecutive steps of one body.",
       "The blocks of createOrder you can choose from, by short label:",
-      `- names: any block, such as ${CREATE_ORDER_TEXT.labels.map((label) => label.label).join(", ")}; title names the card itself`,
+      `- names: any block, such as ${CREATE_ORDER_TEXT.labels.map((label) => label.label).join(", ")}; title names the card itself, only when its code name says nothing`,
       "- combine: consecutive steps of one body: in its own body: if[0], call:orderService.place, call:slack.post, call:res.status().json; in if[0]/then: if[0]/then/call:ordersQueue.add, if[0]/then/call:res.status().json, if[0]/then/return[0]",
       "- open: call:orderService.place, call:slack.post (a path's next blocks are calls or callbacks of what the one before opens)",
     ]);

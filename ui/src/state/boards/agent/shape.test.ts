@@ -146,6 +146,37 @@ describe("shape_card", () => {
     expect(again.items).toMatchObject([{ status: "kept" }, { status: "kept" }]);
   });
 
+  it("takes a card's title and description off with null, and keeps a card that has neither", async () => {
+    const ours = { author: "agent:claude", signature: "" } as const;
+    open({ names: [{ key: CREATE, text: "Create an order", ...ours }] }, [
+      { ...createCard, description: { text: "Places an order.", ...ours } },
+      { ...entranceCard, description: { text: "Takes an order.", ...ours } },
+    ]);
+    const result = await edit([
+      { op: "shape_card", card: "create-order", title: null, description: null },
+      { op: "shape_card", card: "post-orders", description: null },
+    ]);
+    expect(result.items).toMatchObject([
+      { kind: "card", id: "create-order", status: "updated" },
+      { kind: "card", id: "post-orders", status: "updated" },
+    ]);
+    expect(onPage().names).toEqual([]);
+    expect(onPage().cards.map((card) => card.description)).toEqual([undefined, undefined]);
+    const again = await edit([{ op: "shape_card", card: "create-order", title: null, description: null }]);
+    expect(again.items).toMatchObject([{ kind: "card", id: "create-order", status: "kept" }]);
+    // An entrance's card takes no title, not even to take one off.
+    expect((await refusal([{ op: "shape_card", card: "post-orders", title: null }])).message).toContain("shape_card writes only its description");
+  });
+
+  it("takes a person's title or description off only when the person asked", async () => {
+    open({ names: [{ key: CREATE, text: "Create an order", author: MAYA, signature: "" }] }, [{ ...createCard, description: { text: "Mine.", author: MAYA, signature: "" } }]);
+    expect((await refusal([{ op: "shape_card", card: "create-order", title: null }])).message).toContain("Can't change the name “Create an order”: Maya wrote it");
+    expect((await refusal([{ op: "shape_card", card: "create-order", description: null }])).message).toContain("Can't change the description of createOrder: Maya wrote it");
+    await edit([{ op: "shape_card", card: "create-order", title: null, description: null, replacePeopleText: true }]);
+    expect(onPage().names).toEqual([]);
+    expect(onPage().cards[0]?.description).toBeUndefined();
+  });
+
   it("keeps a person's name, title, combined step, and description unless the person asked", async () => {
     const theirs: Combined = { id: "tell", title: "Tell", members: [SLACK], collapsed: true, author: MAYA, signature: "" };
     open({ combined: [theirs], names: [{ key: IF, text: "Queued?", author: MAYA, signature: "" }] }, [{ ...createCard, description: { text: "Mine.", author: MAYA, signature: "" } }]);

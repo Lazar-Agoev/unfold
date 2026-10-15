@@ -123,7 +123,9 @@ one, redraws every card once).
   UI code reads keys.
 - **Cards**: modules, classes, functions, and inline functions (compact, or expanded to their drawn flow), type cards
   (fields and inherited fields from `type_definition`), and app and entrance cards, drawn as declared (a dark border).
-  A card's title is its name, with `ASYNC` after it for an async function; an expanded card's signature row says what
+  A card's title is its code name, with `ASYNC` after it for an async function; a title the page gave its definition
+  shows in the UI font, with the code name after it, smaller and muted (`CardTitle`), so an authored title never
+  hides or imitates the code. An expanded card's signature row says what
   follows the name (`(order_id)`), and an inline function's, its whole head. A card's description shows all of it,
   wrapped (a type card's: one line, with "more"), in the authored color with no mark. A card whose code is missing is
   dashed, and its review banner alone says so. Code a start names that isn't found is its own dashed card with its
@@ -230,7 +232,10 @@ undo history unchanged.
 board view does, adopting it as a session that is never saved, with Show all calls as the person's window has it
 (each `RenderJob` carries the switch). Once every card is measured, every query has loaded,
 the fonts are in, and nothing moves, it answers with the image's bounds or the page checks (`board/checks/`:
-overlap, crossings, density, missing descriptions, connections and resources that cite nothing, and strays).
+overlap, crossings, density, resource cards without a description, connections and resources that cite nothing,
+cards and resource cards with no line to the rest of the page (a frame doesn't count), and too many of an agent's
+words: its titles on more than about 3 cards, its descriptions on more than about 3 compact cards, or more than 2 of
+its notes; a person's words never count).
 
 ## Overlays and focus
 

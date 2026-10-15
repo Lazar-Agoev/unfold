@@ -27,42 +27,63 @@ const boardArg = z.string().min(1).describe("A board's id (from list_boards) or 
 // ---------------------------------------------------------------------------------------------
 // create_board
 
-/** Puts an entrance and its handlers on the board's first page, as Trace on a New Board does. */
-async function traced(context: ToolContext, board: AgentBoardRef, page: string, entrance: string, name: string): Promise<string[]> {
+/** An app or entrance to trace: its key, and its name as results say it. */
+type Start = readonly [key: string, name: string];
+
+/** Puts apps and entrances, each with the code it starts, on the board's first page in one edit, as Trace on a New Board does. */
+async function traced(context: ToolContext, board: AgentBoardRef, page: string, starts: readonly Start[]): Promise<string[]> {
+  const names = starts.map(([, name]) => name).join(", ");
   const edit = await context.bridge.edit({
     board,
     page,
     agent: context.agent,
     title: "Trace",
-    ops: [{ op: "add_cards", cards: [{ ref: { entrance }, follow: { callees: 1 } }] }],
+    ops: [{ op: "add_cards", cards: starts.map(([entrance]) => ({ ref: { entrance }, follow: { callees: 1 } })) }],
   });
   if (!edit.ok) {
-    return [`Couldn't trace ${name} onto it: ${edit.message} add_cards with the entrance's key places it.`];
+    return [`Couldn't trace ${names} onto it: ${edit.message} add_cards with the entrances' keys places them.`];
   }
   const cards = edit.items.flatMap((item) => (item.kind === "card" ? [item] : []));
-  return [`Traced ${name} on the first page (rev ${edit.revision}):`, ...cards.map((card) => `- ${cardText(card)}`), ...edit.warnings.map((warning) => `Warning: ${warning}`)];
+  return [`Traced ${names} on the first page (rev ${edit.revision}):`, ...cards.map((card) => `- ${cardText(card)}`), ...edit.warnings.map((warning) => `Warning: ${warning}`)];
+}
+
+/** The apps and entrances `trace` names, each once and with its name; unknown keys refused before anything is created. */
+async function startsToTrace(context: ToolContext, row: ProjectRow, trace: string | readonly string[] | undefined): Promise<Start[]> {
+  if (trace === undefined) {
+    return [];
+  }
+  const keys = [...new Set(typeof trace === "string" ? [trace] : trace)];
+  const names = await startNames(context, row.id);
+  const unknown = keys.filter((key) => !names.has(key));
+  if (unknown.length > 0) {
+    throw cant(
+      "trace the entrance",
+      `${row.name} has no app or entrance with the ${unknown.length === 1 ? "key" : "keys"} ${unknown.join(", ")}`,
+      "list_entrances lists its apps and entrances with their keys.",
+    );
+  }
+  return keys.map((key) => [key, names.get(key) ?? key]);
 }
 
 export const createBoard = defineTool({
   name: "create_board",
   title: "Create board",
   description:
-    'Creates a board in a project, a file in .unfold/boards/ saved as it is edited, and loads it in Unfold without moving the person\'s view. title names the story ("Order placement"); pages titles its pages, in order (default one page, "Page 1"); folder files it (one name: folders are one level deep). trace, an entrance\'s key (from list_entrances or search), puts that entrance and its handlers on the first page, as Trace on a New Board does, but compact: expand the ones the page is about with set_view. Following stops at external and unresolved handlers, and the result says where. The result gives the board\'s id and each page\'s id: pass them to the next tools, since the person may switch boards. Before building a new page, read get_guide("diagrams") and post a short diagram brief in chat. When the work is ready, show presents it.',
+    'Creates a board in a project, a file in .unfold/boards/ saved as it is edited, and loads it in Unfold without moving the person\'s view. title names the story ("Order placement"); pages titles its pages, in order (default one page, "Page 1"); folder files it (one name: folders are one level deep). trace, an app\'s or entrance\'s key or a list of up to 20 (from list_entrances or search), puts each with the code it starts on the first page in one step, as Trace on a New Board does, but compact; Unfold draws the start and call arrows. Expand the cards the page is about with set_view. Following stops at external and unresolved handlers, and the result says where. An unknown key is refused before anything is created. The result gives the board\'s id and each page\'s id: pass them to the next tools, since the person may switch boards. Before building a new page, read get_guide("diagrams") and post a short diagram brief in chat. When the work is ready, show presents it.',
   input: z.strictObject({
     project: z.string().min(1).describe("The project's name or id, or a link to one of its boards"),
     title: z.string().trim().min(1).max(200).describe("The board's title"),
     folder: z.string().min(1).optional().describe("The board folder's name (absent: the top level)"),
-    trace: z.string().min(1).optional().describe("An app's or entrance's key (from list_entrances) to trace onto the first page"),
+    trace: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1).max(20)])
+      .optional()
+      .describe("An app's or entrance's key (from list_entrances), or a list of them, to trace onto the first page"),
     pages: z.array(z.string().trim().min(1).max(200)).min(1).max(20).optional().describe("The pages' titles, in order"),
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   async run({ project, title, folder, trace, pages }, context) {
     const row = await context.project(project);
-    // Refuse an unknown entrance before anything is created.
-    const traceName = trace === undefined ? undefined : (await startNames(context, row.id)).get(trace);
-    if (trace !== undefined && traceName === undefined) {
-      throw cant("trace the entrance", `${row.name} has no app or entrance with the key ${trace}`, "list_entrances lists its apps and entrances with their keys.");
-    }
+    const starts = await startsToTrace(context, row, trace);
     const created = await context.bridge.create({
       project: row.id,
       title,
@@ -73,14 +94,16 @@ export const createBoard = defineTool({
       throw windowRefusal(created);
     }
     const [first] = created.pages;
-    const traceLines = trace !== undefined && traceName !== undefined && first ? await traced(context, created.board, first.id, trace, traceName) : [];
+    const traceLines = starts.length > 0 && first ? await traced(context, created.board, first.id, starts) : [];
     const read = first ? await readPage(context, created.board, first.id) : null;
     return textResult(
       context.header(read ? pagePlace(row, read) : { project: row.name, board: created.info.title }),
       `Created the board “${created.info.title}” (board id ${created.board.id})${created.folder !== null ? ` in the folder ${created.folder}` : ""}. Unfold loaded it; the person's view didn't move.`,
       `Pages:\n${pagesText(created.pages)}`,
       ...traceLines,
-      "Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.",
+      starts.length > 0
+        ? "Next: set_view to expand the one or two cards the page is about (pass the board and page ids), arrange_page, then check. show presents it when it's ready."
+        : "Next: add_cards to build a page (pass the board and page ids), then arrange_page and check. show presents it when it's ready.",
     );
   },
 });

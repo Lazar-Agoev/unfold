@@ -89,8 +89,8 @@ model":
 - add_cards places Cart and Customer with follow: {types: 1}, which brings CartItem
   and Address. Unfold draws `items: list[CartItem]` and `address: "Address"`.
 - read_code on CartItem shows `price: Money` unknown; the chat says so.
-- Review, finish_work. Every field and arrow is compiled; you wrote the titles and
-  descriptions.
+- Review, finish_work. Every field and arrow is compiled; you wrote, at most, a
+  description on the one or two types the page is about.
 
 If the person then says "these are tables in Postgres", add a table backed by each
 type, anchored where the code or a migration names it.

@@ -8,10 +8,14 @@
  * - **Crossings**: lines crossing each other more than a few times, crossing a frame they neither
  *   start nor end in, or passing under a card they neither start nor end at;
  * - **Density**: too many visible items on the page or in a frame, or steps in an expanded card;
- * - **Missing words**: frames, combined steps, and resource cards without a description;
+ * - **Missing words**: resource cards without a description;
  * - **Evidence**: resource cards and connections that cite no code (an agent's are refused at save, a
  *   person's may lack them);
- * - **Strays**: cards and resource cards with no line, connection, or frame.
+ * - **Strays**: cards and resource cards with no line to the rest of the page: no compiled arrow (a
+ *   call's, a start's to its code, or a field's to its type) and no connection; a frame doesn't count;
+ * - **Wordy**: more of an agent's words than a page reads well with: its titles on more than a few
+ *   definition cards, its descriptions on more than a few compact cards, or more than a couple of its
+ *   notes. Only an agent's words count (an `agent:` author); a person's never do.
  *
  * A card's steps are counted from its drawn flow (`cards`, as the canvas drew them) when the card is
  * expanded; a compact card shows no steps to count. Cards are named by what they draw.
@@ -20,9 +24,11 @@
  * `thresholds.ts`.
  */
 
+import { flowless } from "@unfold/desktop/drawing";
 import type { PageCheck } from "@unfold/desktop/render-api";
-import type { CardView, Connection, ConnectionKind, Page, Sequence } from "../../ipc/generated";
-import { cardView } from "../../state/boards";
+import { agentName } from "../../code/text";
+import type { Card, CardView, Connection, ConnectionKind, Page, Sequence } from "../../ipc/generated";
+import { cardKey, cardView } from "../../state/boards";
 import { cardName } from "../../state/cards";
 import { frameBox, frameTree, type FrameTree } from "./frames";
 import { crossingOf, distance, overlapOf, segmentMeetsBox, type Box, type DrawnLine, type PageGeometry, type Point } from "./geometry";
@@ -50,7 +56,7 @@ export function pageChecks(page: Page, geometry: PageGeometry, cards: ReadonlyMa
   const items = [...page.cards, ...(page.frames ?? []), ...(page.resources ?? []), ...(page.notes ?? [])].map((item) => item.id);
   const order = new Map([...items, ...page.links.map((link) => link.id), ...page.combined.map((combined) => combined.id)].map((id, index) => [id, index]));
   const context: Context = { page, geometry, cards, tree, order, visible: items.filter((id) => tree.hiddenBy(id) === undefined) };
-  return [overlap, crossings, density, missingWords, evidence, strays].flatMap((check) => check(context));
+  return [overlap, crossings, density, missingWords, evidence, strays, wordy].flatMap((check) => check(context));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -341,12 +347,7 @@ function density(context: Context): PageCheck[] {
 }
 
 function missingWords(context: Context): PageCheck[] {
-  const { page } = context;
-  const bare = [
-    ...(page.frames ?? []).filter((frame) => frame.description === undefined).map((frame) => frame.id),
-    ...page.combined.filter((combined) => combined.description === undefined).map((combined) => combined.id),
-    ...(page.resources ?? []).filter((resource) => resource.description === undefined).map((resource) => resource.id),
-  ];
+  const bare = (context.page.resources ?? []).filter((resource) => resource.description === undefined).map((resource) => resource.id);
   if (bare.length === 0) {
     return [];
   }
@@ -386,14 +387,19 @@ function evidence(context: Context): PageCheck[] {
   ];
 }
 
+/**
+ * The visible cards and resource cards with no line to anything on the page: no arrow the canvas drew
+ * (a call's, a start's from an entrance to its code, a field's to its type) and no connection, drawn
+ * or not. The frame an item is in, or a line to that frame, doesn't join the item itself.
+ */
 function strays(context: Context): PageCheck[] {
-  const { page, tree } = context;
+  const { page } = context;
   const placed = context.visible.filter((id) => page.cards.some((card) => card.id === id) || page.resources?.some((item) => item.id === id) === true);
   if (placed.length < 2) {
     return [];
   }
   const joined = new Set([...context.geometry.lines, ...page.links].flatMap((line) => [line.from, line.to]));
-  const alone = placed.filter((id) => !joined.has(id) && tree.parentOf(id) === undefined);
+  const alone = placed.filter((id) => !joined.has(id));
   if (alone.length === 0) {
     return [];
   }
@@ -401,8 +407,71 @@ function strays(context: Context): PageCheck[] {
     {
       kind: "strays",
       items: alone,
-      message: `${opening(listed(alone.map((id) => nameOf(context, id))))} ${alone.length === 1 ? "has" : "have"} no line, connection, or frame to the rest of the page.`,
-      suggestion: "connect them, put them in a frame (frame_cards), or take them off the page (remove_items).",
+      message: `${opening(listed(alone.map((id) => nameOf(context, id))))} ${alone.length === 1 ? "has" : "have"} no line to the rest of the page.`,
+      suggestion:
+        "Add the code that joins it (add_cards with follow: the code an entrance starts, a caller, or a callee), connect a store or an outside service with a cited connection, or take it off the page (remove_items).",
     },
   ];
+}
+
+// ---------------------------------------------------------------------------------------------
+// An agent's words
+
+/** Whether an agent signed these words (`agent:claude`); a person's never count. */
+function byAgent(words: { readonly author: string } | undefined): boolean {
+  return words !== undefined && agentName(words.author) !== null;
+}
+
+/** Whether a card draws a flow (a definition's: a function, method, class, or module), so a title names it. */
+function definitionCard(context: Context, card: Card): boolean {
+  return flowless(card.ref, context.cards.get(card.id)) === undefined;
+}
+
+/**
+ * Whether a card is compact and shows a description as its body: a definition's, an app's, or an
+ * entrance's; not a type card, which keeps its fields in every view.
+ */
+function compactCard(context: Context, card: Card): boolean {
+  return cardView(card, context.page.defaultView) === "compact" && flowless(card.ref, context.cards.get(card.id)) !== "type";
+}
+
+/**
+ * Too many of an agent's words: its titles (the page's names for the cards' own definitions) on more
+ * definition cards than `THRESHOLDS.titledCards`, its descriptions on more compact cards than
+ * `THRESHOLDS.describedCards`, or more of its notes than `THRESHOLDS.notes`; one finding each. Every
+ * card counts, in a collapsed frame too: its words show once the frame opens.
+ */
+function wordy(context: Context): PageCheck[] {
+  const { page } = context;
+  const named = new Set(page.names.filter(byAgent).map((name) => name.key));
+  const titled = page.cards.filter((card) => definitionCard(context, card) && named.has(cardKey(card))).map((card) => card.id);
+  const described = page.cards.filter((card) => byAgent(card.description) && compactCard(context, card)).map((card) => card.id);
+  const notes = (page.notes ?? []).filter(byAgent).map((note) => note.id);
+  const findings: PageCheck[] = [];
+  if (titled.length > THRESHOLDS.titledCards) {
+    findings.push({
+      kind: "wordy",
+      items: titled,
+      message: `An agent titled ${plural(titled.length, "card")}: ${listed(titled.map((id) => nameOf(context, id)))}; about ${THRESHOLDS.titledCards} is the most a page reads well with.`,
+      suggestion: "Title only the few cards whose code name says nothing (main, run, _tick); shape_card with title: null takes yours off. Unfold shows the code name beside a title.",
+    });
+  }
+  if (described.length > THRESHOLDS.describedCards) {
+    findings.push({
+      kind: "wordy",
+      items: described,
+      message: `An agent described ${plural(described.length, "compact card")}: ${listed(described.map((id) => nameOf(context, id)))}; about ${THRESHOLDS.describedCards} is the most a page reads well with.`,
+      suggestion: "Describe the one to three cards the page is about; shape_card with description: null takes yours off the others.",
+    });
+  }
+  if (notes.length > THRESHOLDS.notes) {
+    findings.push({
+      kind: "wordy",
+      items: notes,
+      message: `An agent left ${plural(notes.length, "note")} on the page; about ${THRESHOLDS.notes} is the most a page reads well with.`,
+      suggestion:
+        "Keep the one or two caveats or open questions a reader would miss; remove_items the notes that restate a card, an entrance, a schedule, or a status (say those in the chat).",
+    });
+  }
+  return findings;
 }

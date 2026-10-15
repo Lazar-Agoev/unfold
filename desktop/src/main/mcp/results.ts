@@ -153,6 +153,13 @@ export class ToolError extends Error {
 }
 
 /**
+ * What to do next when a project declares no apps: a page starts from its entrances, so the agent
+ * proposes them and writes them once the person says yes.
+ */
+export const PROPOSE_ENTRANCES =
+  'Next: propose its apps and entrances to the person (get_guide("setup") says how); with their yes, set_app and set_entrance, then trace them: Unfold draws the arrows from each entrance.';
+
+/**
  * A refusal, shaped `Can't <what>: <why>. <instead>`, for example "Can't read the
  * board: no project named “shop” is in the workspace. list_projects shows the names."
  */

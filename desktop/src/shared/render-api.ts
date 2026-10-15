@@ -60,7 +60,7 @@ export interface RenderFrame {
 }
 
 /** A layout or content problem the page checks found. */
-export type PageCheckKind = "overlap" | "crossings" | "density" | "missingWords" | "evidence" | "strays";
+export type PageCheckKind = "overlap" | "crossings" | "density" | "missingWords" | "evidence" | "strays" | "wordy";
 
 /** One finding of the page checks: what it is about, in words, and what fixes it. */
 export interface PageCheck {

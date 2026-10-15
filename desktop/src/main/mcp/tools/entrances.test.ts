@@ -26,7 +26,8 @@ function others(test: ReturnType<typeof harness>): string[] {
   return test.engineCalls.map(([command]) => command).filter((command) => command !== "update_project_config" && command !== "workspace");
 }
 
-const SHARED = "unfold.toml is shared through the repository: write apps and entrances only when the person asks, and tell them the file changed. Unfold looks up the code keys again without compiling.";
+const SHARED =
+  "unfold.toml is shared through the repository: write apps and entrances only when the person asks or says yes to the ones you proposed, and tell them the file changed. Unfold looks up the code keys again without compiling.";
 
 describe("set_app", () => {
   it("adds an app, and answers with the change as a diff, saying the file is shared and nothing recompiles", async () => {

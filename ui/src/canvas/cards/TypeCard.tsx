@@ -1,8 +1,9 @@
 /**
  * A type card: a type declaration as its fields in every view (it has no chevron), or a
  * compact class, whose header starts with the chevron that expands it to its class-level code
- * (`BlockCard`). The header shows the kind (`interface`, `type`, `enum`, `class`), the name, and where
- * it is, from what the reader drew; the review banner and the description follow. The fields come from
+ * (`BlockCard`). The header shows the kind (`interface`, `type`, `enum`, `class`), the name (a title the
+ * page gave a class, with its code name after it: `CardTitle`), and where it is, from what the reader
+ * drew; the review banner and the description follow. The fields come from
  * the type's definition (`type_definition`).
  * Each field is its name as written (`readonly` drawn apart, `?`), its written type, and its default
  * (` = …`) or an enum member's value;
@@ -31,7 +32,7 @@ import { NODE_PORT, fieldPort } from "../arrows";
 import { useMeasure } from "../measure";
 import { fieldTexts, headerText, listedFields, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";
-import { CardHandles, CardMark, CardNote, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts } from "./parts";
+import { CardHandles, CardMark, CardNote, CardTitle, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, titleLabel } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
 
 export interface TypeCardProps {
@@ -226,7 +227,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
       data-key={key}
       data-loading={typeQuery.isPending ? "true" : undefined}
       style={{ width }}
-      aria-label={`${text.mark.text} ${text.name}`}
+      aria-label={`${text.mark.text} ${titleLabel(text)}`}
       onClick={() => {
         clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
       }}
@@ -234,11 +235,9 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
     >
       <CardHandles />
       <header className="card-header card-drag">
-        {expandable ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={text.name} /> : null}
+        {expandable ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={titleLabel(text)} /> : null}
         <CardMark mark={text.mark} />
-        <h3 className="card-title" title={text.name}>
-          {text.name}
-        </h3>
+        <CardTitle text={text} />
         <span className="card-location" title={`${header.path}:${header.line}`}>
           {text.location}
         </span>

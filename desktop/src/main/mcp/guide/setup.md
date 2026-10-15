@@ -1,8 +1,8 @@
 # Setting up: projects, Compile, settings, apps, and boards
 
 Settings, apps, and entrances live in `unfold.toml`, which the team shares through the
-repository. Change it only when the person asks, and tell them it changed: it shows in
-their git diff.
+repository. Change it only when the person asks, or says yes to apps and entrances you
+proposed, and tell them it changed: it shows in their git diff.
 
 ## Projects
 - list_projects: every project's name, id, state, languages, and boards. A resting
@@ -48,7 +48,7 @@ something it handles (a route, a queue, a schedule, a signal). Both are declared
   start, or stale, with a fix when there is exactly one candidate.
 - set_app writes an app's run, code, and about; set_entrance adds or changes one
   entrance (and creates its app if it is new); remove_entrance removes one, or a whole
-  app. Each returns the diff. Only when the person asks.
+  app. Each returns the diff. Only when the person asks, or said yes to your proposal.
 - `run` and `on` are text as written; Unfold never runs or parses them. `code` is a
   start's key: a module (`src/server.ts#`), a definition
   (`src/routes/orders.ts#createOrder`), an inline handler
@@ -68,12 +68,26 @@ set_entrance({project: "ts-orders", app: "Server", name: "Place an order",
 ```
 In chat: what you declared, and that `unfold.toml` changed.
 
+## Proposing entrances
+A page starts from entrances, so when the code a question is about has none
+(list_entrances says the project declares no apps, or none reaches that code), propose
+them before building anything.
+- Find them in the repository: deploy config (render.yaml, fly.toml, a Procfile, a
+  Dockerfile, docker-compose), crontab or cron config, package.json and pyproject.toml
+  scripts, and the framework's route and worker registrations.
+- Propose them in one message: each app's name, run, and code; each entrance's name,
+  on, and code, with the file:line that shows it.
+- Ask once; a yes covers all of them. Then set_app and set_entrance, list_entrances
+  (every code found), and trace them.
+- Never invent one the code or its config doesn't show. If the person says no, build
+  from the functions themselves.
+
 ## Boards
 - A board is a file in the project's `.unfold/boards/`, saved as it is edited. Git is
   how a team shares it.
-- create_board makes one with named pages, optionally in a folder and traced from an
-  entrance. Unfold loads it without moving the person's view. Pass its board and page
-  ids to the next tools.
+- create_board makes one with named pages, optionally in a folder and traced from
+  its entrances. Unfold loads it without moving the person's view. Pass its board and
+  page ids to the next tools.
 - organize_boards: create_folder, rename_folder, delete_folder (an empty one), move a
   board, rename a board. Folders are one level deep. Ops run in order and stop at the
   first that fails.

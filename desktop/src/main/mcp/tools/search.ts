@@ -9,7 +9,7 @@
 import { z } from "zod";
 import type { AppView, EntranceCode, EntranceView, NodeKind, ProjectRow, SearchHit } from "../engine-types";
 import { count, place } from "../format";
-import { cursorOffset, textResult } from "../results";
+import { cursorOffset, PROPOSE_ENTRANCES, textResult } from "../results";
 import { fitting, moreLine, section, type Section } from "../sections";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
@@ -160,7 +160,9 @@ export const listEntrances = defineTool({
       resolved ? null : "The code keys aren't looked up yet: compile_project, then list again.",
       lines.length > 0 ? lines.join("\n") : `${row.name} declares no apps in unfold.toml.`,
       moreLine(page.sections, "list_entrances", offset + page.limit),
-      lines.length > 0 ? "Next: read_code with an app's or entrance's key shows its code; create_board with trace makes a board from it." : null,
+      lines.length > 0
+        ? "Next: read_code with an app's or entrance's key shows its code; create_board with trace (one key or several) makes a board from them, and add_cards with their keys and follow puts them on a page."
+        : PROPOSE_ENTRANCES,
     );
   },
 });
