@@ -5,10 +5,11 @@
  * has a faint white fill. A collapsed frame is a stack of cards: its title, how many it holds, and its
  * description. Sizes follow `framePadding` (geometry.ts) and `frameNodeSize` (sizing.ts).
  *
- * A title grows on screen as you zoom out (zoom.ts sets `--box-title-size` and `--zone-title-size`): its
- * line keeps its bottom-left corner, so it grows up and to the right, over the frame's edge, never over
- * the cards. A box title fades out before it runs into an enclosing frame's title (`--title-fade-at`,
- * titles.ts). Below 60% descriptions fade out; hovering a title shows its frame's again.
+ * As you zoom out a frame grows with its title (zoom.ts sets the `--box-*` and `--zone-*` variables): the
+ * title gets bigger on screen and stays inside, the drawn edge (`.frame-edge`) moving out past the frame's
+ * box to hold it, and further past the frames nested inside it (its `inset`, edges.ts `edgeInsets`); and
+ * the edge thickens, a box's 1 → 1.5 → 2px on screen, a zone's from none to 1.5 → 2px. What it holds doesn't
+ * move. Below 60% descriptions fade out; hovering a title shows its frame's again.
  */
 
 /* An expanded frame sits behind the lines and cards and lets the pointer through, but for its title. */
@@ -23,23 +24,32 @@
   color: var(--color-text);
 }
 
-.frame-box.look-box {
-  border: 1px solid var(--color-frame-line);
-  border-radius: 12px;
+/*
+ * The drawn edge: the frame's box, moved out by the zoom, with the title in its top-left corner. Where it
+ * sits (its `inset`) comes from the frame (edges.ts `edgeInsets`), in the zoom's variables.
+ */
+.frame-edge {
+  position: absolute;
+  inset: 0;
 }
 
-.frame-box.look-box.in-zone { background: rgb(255 255 255 / 0.55); }
+.look-box > .frame-edge {
+  border: var(--box-edge, 1px) solid var(--color-frame-line);
+  border-radius: max(12px, calc(6px / var(--zoom, 1)));
+}
 
-.frame-box.look-zone {
-  border-radius: 16px;
+.look-box.in-zone > .frame-edge { background: rgb(255 255 255 / 0.55); }
+
+.look-zone > .frame-edge {
+  border: var(--zone-edge, 0px) solid var(--color-frame-line);
+  border-radius: max(16px, calc(8px / var(--zoom, 1)));
   background: var(--color-zone);
 }
 
-.frame-box.selected { box-shadow: 0 0 0 1.5px var(--color-accent), 0 0 0 4.5px var(--color-accent-ring); }
+.frame-box.selected > .frame-edge { box-shadow: 0 0 0 1.5px var(--color-accent), 0 0 0 4.5px var(--color-accent-ring); }
 
-/* The title, in the corner: a box's 13px line 12px down, 16px in; a zone's 20px bold 18px down, 20px in. */
+/* The title, in the corner: a box's 13px line 12px down, 16px in; a zone's 20px bold 18px down, 20px in, its description under it. */
 .frame-title {
-  position: absolute;
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -48,16 +58,23 @@
   cursor: grab;
 }
 
-.look-box > .frame-title {
-  right: 16px;
-  bottom: calc(100% - 30px);
-  left: 16px;
+.look-box .frame-title,
+.look-zone .frame-head { position: absolute; }
+
+.look-box .frame-title {
+  top: var(--box-title-top, 12px);
+  right: var(--box-title-left, 16px);
+  left: var(--box-title-left, 16px);
 }
 
-.look-zone > .frame-title {
-  right: 20px;
-  bottom: calc(100% - 44px);
-  left: 20px;
+.look-zone .frame-head {
+  top: var(--zone-title-top, 18px);
+  right: var(--zone-title-left, 20px);
+  left: var(--zone-title-left, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .frame-title-text {
@@ -73,9 +90,6 @@
   line-height: 1.3;
   letter-spacing: -0.01em;
 }
-
-/* A box title that would run into the title of a frame around it fades out first. */
-.frame-box.fades > .frame-title > .frame-title-text { opacity: clamp(0, calc((var(--zoom, 1) - var(--title-fade-at)) * 25), 1); }
 
 .frame-title-input {
   min-width: 120px;
@@ -101,13 +115,6 @@
 }
 
 .look-box .frame-description { flex: 1; }
-
-.look-zone > .frame-description {
-  position: absolute;
-  top: 46px;
-  right: 20px;
-  left: 20px;
-}
 
 .board-canvas[data-far] .frame-description { opacity: 0; }
 .board-canvas[data-far] .frame-box:has(.frame-title-text:hover) .frame-description { opacity: 1; }

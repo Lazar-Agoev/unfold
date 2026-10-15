@@ -55,8 +55,19 @@ export function WritingRing({ writing, className }: { readonly writing: ItemWrit
   );
 }
 
-/** The chips over a page's items an agent is writing, each at its item's top-right corner (`rects`, as drawn). */
-export function WritingChips({ target, rects }: { readonly target: PageTarget; readonly rects: ReadonlyMap<string, Rect> }) {
+/**
+ * The chips over a page's items an agent is writing, each at its item's top-right corner (`rects`, as drawn),
+ * moved by `offsets` where an item draws past its rectangle (an expanded frame's edge, as CSS lengths).
+ */
+export function WritingChips({
+  target,
+  rects,
+  offsets,
+}: {
+  readonly target: PageTarget;
+  readonly rects: ReadonlyMap<string, Rect>;
+  readonly offsets: ReadonlyMap<string, { readonly x: string; readonly y: string }>;
+}) {
   const writing = usePageWriting(target);
   const chips = Object.entries(writing).flatMap(([id, item]) => {
     const rect = rects.get(id);
@@ -71,7 +82,9 @@ export function WritingChips({ target, rects }: { readonly target: PageTarget; r
         <WritingChip
           key={id}
           writing={item}
-          style={{ transform: `translate(${rect.x + rect.width}px, ${rect.y}px) scale(var(--screen-scale, 1)) translate(6px, -6px) translate(-100%, -100%)` }}
+          style={{
+            transform: `translate(${rect.x + rect.width}px, ${rect.y}px) translate(${offsets.get(id)?.x ?? "0px"}, ${offsets.get(id)?.y ?? "0px"}) scale(var(--screen-scale, 1)) translate(6px, -6px) translate(-100%, -100%)`,
+          }}
         />
       ))}
     </EdgeLabelRenderer>

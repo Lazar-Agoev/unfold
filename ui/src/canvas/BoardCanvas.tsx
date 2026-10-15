@@ -68,7 +68,7 @@ import { lineHandles, relatedColumns, stepPorts, type DrawsStep } from "./connec
 import { FrameNode, type FrameNodeType } from "./frames/FrameNode";
 import { attachPoint, collapsedPlaces, fallbackItemSize, pageGeometry, type Drag } from "./frames/geometry";
 import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
-import { insideZones, titleFades } from "./frames/titles";
+import { FLAT, edgeInsets, frameNesting, insideZones, titleWidth } from "./frames/edges";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
 import { useMeasure } from "./measure";
@@ -226,9 +226,15 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
 
   // Node objects keep their identity while nothing about them changes, so React Flow skips them.
   const [frameCache] = useState(() => new Map<string, FrameNodeType>());
-  // Boxes in a zone get a faint fill; a box title fades before it runs into a title around it.
+  // Boxes in a zone get a faint fill; a frame's edge moves out past the frames nested inside it.
   const zoned = useMemo(() => insideZones(frames), [frames]);
-  const fades = useMemo(() => titleFades(geometry.frames.filter((drawn) => !drawn.collapsed), measure), [geometry, measure]);
+  const frameEdges = useMemo(() => {
+    const expanded = geometry.frames.filter((drawn) => !drawn.collapsed);
+    const nested = frameNesting(expanded);
+    return new Map(expanded.map(({ frame, rect }) => [frame.id, edgeInsets(frame.look, nested.get(frame.id) ?? FLAT, titleWidth(frame, measure), rect.width)] as const));
+  }, [geometry, measure]);
+  // What sits at an expanded frame's top-right corner (the writing chip) follows its edge.
+  const chipOffsets = useMemo(() => new Map([...frameEdges].map(([id, edge]) => [id, { x: `calc(-1 * ${edge.right})`, y: edge.top }] as const)), [frameEdges]);
   const frameNodes = useMemo(() => {
     const live = new Set<string>();
     const deepest = geometry.frames.reduce((most, drawn) => Math.max(most, drawn.depth), 0);
@@ -237,7 +243,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       const cached = frameCache.get(frame.id);
       const box = collapsed ? undefined : { width: rect.width, height: rect.height };
       const inZone = !collapsed && zoned.has(frame.id);
-      const titleFadeAt = collapsed ? undefined : fades.get(frame.id);
+      const edge = collapsed ? undefined : frameEdges.get(frame.id);
       // Behind the lines and cards, outer frames behind inner ones; a collapsed frame is a node like a card.
       const zIndex = collapsed ? 0 : depth - deepest - 1;
       const node: FrameNodeType =
@@ -247,7 +253,9 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         cached.data.box?.width === box?.width &&
         cached.data.box?.height === box?.height &&
         cached.data.inZone === inZone &&
-        cached.data.titleFadeAt === titleFadeAt &&
+        cached.data.edge?.top === edge?.top &&
+        cached.data.edge?.right === edge?.right &&
+        cached.data.edge?.bottom === edge?.bottom &&
         cached.data.ports.join("\u0000") === framePorts.join("\u0000")
           ? cached
           : {
@@ -256,7 +264,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
               position: { x: rect.x, y: rect.y },
               dragHandle: ".frame-drag",
               zIndex,
-              data: { target, ports: framePorts, inZone, ...(box ? { box } : {}), ...(titleFadeAt !== undefined ? { titleFadeAt } : {}) },
+              data: { target, ports: framePorts, inZone, ...(box ? { box } : {}), ...(edge ? { edge } : {}) },
             };
       frameCache.set(frame.id, node);
       live.add(frame.id);
@@ -268,7 +276,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [geometry, ports, target, frameCache, zoned, fades]);
+  }, [geometry, ports, target, frameCache, zoned, frameEdges]);
 
   const [nodeCache] = useState(() => new Map<string, CardNodeType>());
   const cardNodes = useMemo(() => {
@@ -615,7 +623,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       >
         <Background gap={DOT_GAP} size={DOT_SIZE} />
         <ZoomScaleVariables />
-        <WritingChips target={target} rects={display} />
+        <WritingChips target={target} rects={display} offsets={chipOffsets} />
       </ReactFlow>
       {paneMenu.element}
       {addingResource ? (

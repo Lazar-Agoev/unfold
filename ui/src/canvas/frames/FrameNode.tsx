@@ -3,8 +3,8 @@
  * cards inside carry the color. Expanded, it is behind what it holds, sized by `pageGeometry`: a **box**
  * is a hairline outline with its title written inside its top-left corner and its description beside it;
  * a **zone** is a gray ground with a large title and its description under it; a box in a zone has a
- * faint white fill. A title grows on screen as you zoom out, from its corner (titles.ts); a box title
- * fades out before it runs into the title of a frame around it. Only its title takes the pointer, so the
+ * faint white fill. As you zoom out its title grows and its drawn edge moves out with it, thicker, so the
+ * title stays inside (zoom.ts, edges.ts); what it holds doesn't move. Only its title takes the pointer, so the
  * canvas pans and cards are clicked through it. Collapsed, it is one node like a card, a stack of them:
  * its title, how many cards it holds, and its description, with the arrows and links of what it holds
  * attached. Who drew it shows in Selected.
@@ -27,6 +27,7 @@ import type { Size } from "../layout";
 import { useMeasure } from "../measure";
 import { frameNodeWidth } from "../sizing";
 import { WritingText, useItemWriting } from "../writing";
+import type { EdgeInsets } from "./edges";
 import { useFrameMenu } from "./frameMenu";
 import { holdsText } from "./holds";
 import "./frames.css";
@@ -39,8 +40,8 @@ interface FrameNodeData extends Record<string, unknown> {
   readonly box?: Size;
   /** Whether an expanded box sits in a zone (it gets a faint white fill). */
   readonly inZone?: boolean;
-  /** The zoom an expanded box's title is gone by, before it runs into an enclosing frame's title (titles.ts). */
-  readonly titleFadeAt?: number;
+  /** Where an expanded frame draws its edge as the zoom moves it out (edges.ts). */
+  readonly edge?: EdgeInsets;
 }
 
 export type FrameNodeType = Node<FrameNodeData, "frame">;
@@ -105,7 +106,7 @@ function Title({
 }
 
 export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNodeType>) {
-  const { target, ports, box, inZone = false, titleFadeAt } = data;
+  const { target, ports, box, inZone = false, edge } = data;
   const frame = useOpenBoard(target.board, (board) => {
     const page = findPage(board.document, target.page);
     return page ? findFrame(page, id) : undefined;
@@ -202,28 +203,39 @@ export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNo
     );
   }
   const zone = frame.look === "zone";
-  const style = { width: box.width, height: box.height, ...(titleFadeAt !== undefined ? { "--title-fade-at": titleFadeAt } : {}) } as CSSProperties;
+  const style = { width: box.width, height: box.height } as CSSProperties;
+  const title = (
+    <header className="frame-title frame-drag" onClick={handlers.onClick} onDoubleClick={handlers.onDoubleClick} onContextMenu={handlers.onContextMenu}>
+      {heading}
+      {!zone && description !== null ? (
+        <p className="frame-description" title={frame.description?.text}>
+          {description}
+        </p>
+      ) : null}
+    </header>
+  );
   return (
     <section
-      className={`frame-box look-${frame.look}${inZone ? " in-zone" : ""}${titleFadeAt !== undefined ? " fades" : ""}${selected ? " selected" : ""}`}
+      className={`frame-box look-${frame.look}${inZone ? " in-zone" : ""}${selected ? " selected" : ""}`}
       data-frame-id={id}
       style={style}
       aria-label={`Frame ${frame.title}`}
     >
       <CardHandles />
-      <header className="frame-title frame-drag" onClick={handlers.onClick} onDoubleClick={handlers.onDoubleClick} onContextMenu={handlers.onContextMenu}>
-        {heading}
-        {!zone && description !== null ? (
-          <p className="frame-description" title={frame.description?.text}>
-            {description}
-          </p>
-        ) : null}
-      </header>
-      {zone && description !== null ? (
-        <p className="frame-description" title={frame.description?.text}>
-          {description}
-        </p>
-      ) : null}
+      <div className="frame-edge" style={edge ? { inset: `${edge.top} ${edge.right} ${edge.bottom} ${edge.left}` } : undefined}>
+        {zone ? (
+          <div className="frame-head">
+            {title}
+            {description !== null ? (
+              <p className="frame-description" title={frame.description?.text}>
+                {description}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          title
+        )}
+      </div>
       {menu.element}
     </section>
   );
