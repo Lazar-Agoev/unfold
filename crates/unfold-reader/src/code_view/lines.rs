@@ -4,31 +4,42 @@
 //! Lines end where the stored line numbers end them (core's `LineIndex`, with the file's
 //! `LineBreaks`), so line `n` of the view is line `n` of the file. A terminator at the very end
 //! of the file does not start an extra empty line. The view drops the indentation every
-//! nonblank shown line shares: a method loses its class's indentation.
+//! nonblank line of it shares: a method loses its class's indentation.
+//!
+//! An answer holds a **window** of the view: the lines asked for, at most [`MAX_WINDOW`], or by
+//! default a page from a little above the first line the selection marks. Everything found per
+//! line (its tokens, its block and calls, the marked expression, the definitions) is found for
+//! the window's lines only, from the highlighting and the nodes that reach them, so an answer
+//! costs about the same in a file of any size. A line longer than [`MAX_LINE_BYTES`] is cut
+//! there.
 
-use unfold_core::highlight::{HighlightSpan, Highlighter};
+use unfold_core::highlight::HighlightSpan;
 use unfold_core::vocab::{Form, NodeKind};
-use unfold_core::{ByteRange, LineBreaks, LineIndex, RepoPath, Utf16Index};
+use unfold_core::{ByteRange, LineIndex, RepoPath, Utf16Index};
 
 use super::select::{MarkSpec, Span};
-use super::{CallName, CodeLine, DefinitionLine, LineRange, Mark, Token};
+use super::{CallName, CodeLine, DefinitionLine, LineRange, MAX_WINDOW, Mark, Token};
 use crate::error::{ReaderError, Result};
 use crate::tree::{FileTree, is_expression, to_u32};
 
+/// The lines an answer holds when it asks for none.
+const PAGE: u32 = 200;
+/// How many lines above the first marked line that page starts.
+const ABOVE: u32 = PAGE / 4;
+/// The most bytes of one line's shown text an answer holds.
+const MAX_LINE_BYTES: u32 = 1_000;
+
 /// A file's text with its line and UTF-16 indexes.
+#[derive(Clone, Copy)]
 pub(super) struct Text<'a> {
     text: &'a str,
-    lines: LineIndex,
-    utf16: Utf16Index,
+    lines: &'a LineIndex,
+    utf16: &'a Utf16Index,
 }
 
 impl<'a> Text<'a> {
-    pub(super) fn new(text: &'a str, breaks: LineBreaks) -> Self {
-        Self {
-            text,
-            lines: LineIndex::new(text, breaks),
-            utf16: Utf16Index::new(text),
-        }
+    pub(super) fn new(text: &'a str, lines: &'a LineIndex, utf16: &'a Utf16Index) -> Self {
+        Self { text, lines, utf16 }
     }
 
     fn len(&self) -> u32 {
@@ -58,6 +69,43 @@ impl<'a> Text<'a> {
             .map_or(0, |terminator| terminator.len());
         (start, next - to_u32(terminator))
     }
+
+    /// Line `number`'s indentation (its leading spaces and tabs), and whether it is blank.
+    fn indent(&self, number: u32) -> (u32, bool) {
+        let (start, end) = self.line_bounds(number);
+        let line = &self.text[start as usize..end as usize];
+        let rest = line.trim_start_matches([' ', '\t']);
+        (to_u32(line.len() - rest.len()), rest.trim().is_empty())
+    }
+
+    /// The first line `mark` marks, if it marks any.
+    fn marked_line(&self, mark: &MarkSpec) -> Option<u32> {
+        match (mark.lines, mark.expression) {
+            (Some(lines), _) => self.lines_of(lines).ok().map(|[start, _]| start),
+            (None, Some(range)) => Some(self.lines.line_of(range.start)),
+            (None, None) => None,
+        }
+    }
+
+    /// The first and last line of `span`, inside the file; the range of a span that doesn't fit
+    /// the text.
+    fn lines_of(&self, span: Span) -> std::result::Result<[u32; 2], ByteRange> {
+        let last = self.last_line();
+        Ok(match span {
+            Span::Whole => [1, last],
+            Span::Bytes(range) => {
+                if self.text.get(range.as_usize()).is_none() {
+                    return Err(range);
+                }
+                let span = self.lines.span(range);
+                [span.start, span.end]
+            }
+            Span::Lines([first, end]) => {
+                let end = end.clamp(1, last);
+                [first.clamp(1, end), end]
+            }
+        })
+    }
 }
 
 /// One shown line's bounds.
@@ -67,80 +115,116 @@ struct Row {
     start: u32,
     /// Where its shown text starts, after the shared indentation.
     shown: u32,
-    /// Where it ends, before its terminator.
+    /// Where its shown text ends: before its terminator, or where a long line is cut.
     end: u32,
+    /// Whether the line is cut.
+    cut: bool,
 }
 
-/// The rows of one view of a file.
+/// The window of one view of a file.
 pub(super) struct Render<'a> {
-    text: &'a Text<'a>,
+    text: Text<'a>,
     path: &'a RepoPath,
+    /// The view's first and last line.
+    span: [u32; 2],
+    /// The window's lines.
     rows: Vec<Row>,
 }
 
 impl<'a> Render<'a> {
-    /// The lines `view` covers.
-    pub(super) fn new(text: &'a Text<'a>, path: &'a RepoPath, view: Span) -> Result<Self> {
-        let mut render = Self {
-            text,
-            path,
-            rows: Vec::new(),
+    /// The lines `view` covers, and the rows of `window` among them: at most [`MAX_WINDOW`] of
+    /// them, by default a page from [`ABOVE`] lines above the first line `mark` marks (the
+    /// view's first line when it marks none), kept inside the view.
+    pub(super) fn new(
+        text: Text<'a>,
+        path: &'a RepoPath,
+        view: Span,
+        mark: &MarkSpec,
+        window: Option<[u32; 2]>,
+    ) -> Result<Self> {
+        let [first, last] = text.lines_of(view).map_err(|range| invalid(path, range))?;
+        let [from, to] = match window {
+            Some([from, to]) => {
+                let from = from.max(first);
+                [from, to.min(last).min(from.saturating_add(MAX_WINDOW - 1))]
+            }
+            None => {
+                let anchor = text.marked_line(mark).unwrap_or(first).clamp(first, last);
+                let from = anchor
+                    .saturating_sub(ABOVE)
+                    .min(last.saturating_sub(PAGE - 1))
+                    .max(first);
+                [from, last.min(from + PAGE - 1)]
+            }
         };
-        let [first, last] = render.lines_of(view)?;
-        let bounds: Vec<(u32, u32, u32)> = (first..=last)
+        // The indentation every nonblank line of the view shares: none once one has none.
+        let mut dedent: Option<u32> = None;
+        for number in first..=last {
+            let (indent, blank) = text.indent(number);
+            if !blank {
+                dedent = Some(dedent.map_or(indent, |shared| shared.min(indent)));
+                if indent == 0 {
+                    break;
+                }
+            }
+        }
+        let dedent = dedent.unwrap_or(0);
+        let rows = (from..=to)
             .map(|number| {
                 let (start, end) = text.line_bounds(number);
-                (number, start, end)
+                let shown = start + dedent.min(text.indent(number).0);
+                let cut = end - shown > MAX_LINE_BYTES;
+                let end = if cut {
+                    to_u32(text.text.floor_char_boundary((shown + MAX_LINE_BYTES) as usize))
+                } else {
+                    end
+                };
+                Row {
+                    number,
+                    start,
+                    shown,
+                    end,
+                    cut,
+                }
             })
             .collect();
-        let indent = |start: u32, end: u32| {
-            let line = &text.text[start as usize..end as usize];
-            to_u32(line.len() - line.trim_start_matches([' ', '\t']).len())
-        };
-        let blank = |start: u32, end: u32| text.text[start as usize..end as usize].trim().is_empty();
-        let dedent = bounds
-            .iter()
-            .filter(|&&(_, start, end)| !blank(start, end))
-            .map(|&(_, start, end)| indent(start, end))
-            .min()
-            .unwrap_or(0);
-        render.rows = bounds
-            .into_iter()
-            .map(|(number, start, end)| Row {
-                number,
-                start,
-                shown: start + dedent.min(indent(start, end)),
-                end,
-            })
-            .collect();
-        Ok(render)
+        Ok(Self {
+            text,
+            path,
+            span: [first, last],
+            rows,
+        })
+    }
+
+    /// The view's first and last line.
+    pub(super) fn span(&self) -> [u32; 2] {
+        self.span
     }
 
     /// The first and last line of `span`, inside the file.
     fn lines_of(&self, span: Span) -> Result<[u32; 2]> {
-        let last = self.text.last_line();
-        Ok(match span {
-            Span::Whole => [1, last],
-            Span::Bytes(range) => {
-                if self.text.text.get(range.as_usize()).is_none() {
-                    return Err(self.invalid(range));
-                }
-                let span = self.text.lines.span(range);
-                [span.start, span.end]
-            }
-            Span::Lines([first, end]) => {
-                let end = end.clamp(1, last);
-                [first.clamp(1, end), end]
-            }
-        })
+        self.text
+            .lines_of(span)
+            .map_err(|range| invalid(self.path, range))
     }
 
-    /// The shown lines, highlighted by `highlighter`, with their blocks and call names when the
-    /// view is of `tree`'s verified source.
+    /// The bytes the window's lines take, terminators included.
+    fn bytes(&self) -> Option<(u32, u32)> {
+        let (first, last) = (self.rows.first()?, self.rows.last()?);
+        let end = self
+            .text
+            .lines
+            .line_start(last.number + 1)
+            .unwrap_or_else(|| self.text.len());
+        Some((first.start, end))
+    }
+
+    /// The window's lines, highlighted by `highlights` (the whole text's), with their blocks
+    /// and call names when the view is of `tree`'s verified source.
     pub(super) fn lines(
         &self,
         tree: Option<&FileTree>,
-        highlighter: Option<&dyn Highlighter>,
+        highlights: Option<&[HighlightSpan]>,
     ) -> Result<Vec<CodeLine>> {
         let mut lines: Vec<CodeLine> = self
             .rows
@@ -151,10 +235,11 @@ impl<'a> Render<'a> {
                 tokens: Vec::new(),
                 block: None,
                 calls: Vec::new(),
+                cut: row.cut,
             })
             .collect();
-        if let Some(highlighter) = highlighter {
-            self.tokens(&highlighter.highlight(self.text.text), &mut lines)?;
+        if let Some(spans) = highlights {
+            self.tokens(spans, &mut lines)?;
         }
         if let Some(tree) = tree {
             self.blocks(tree, &mut lines);
@@ -163,26 +248,8 @@ impl<'a> Render<'a> {
         Ok(lines)
     }
 
-    /// Clips `spans` (over the whole text) to each line. Spans that are not well formed are
-    /// dropped rather than trusted.
+    /// Clips `spans` (well formed, over the whole text) to each line.
     fn tokens(&self, spans: &[HighlightSpan], lines: &mut [CodeLine]) -> Result<()> {
-        let text = self.text.text;
-        let mut previous_end = 0u32;
-        let spans: Vec<&HighlightSpan> = spans
-            .iter()
-            .filter(|span| {
-                let ByteRange { start, end } = span.range;
-                let fits = start >= previous_end
-                    && start < end
-                    && (end as usize) <= text.len()
-                    && text.is_char_boundary(start as usize)
-                    && text.is_char_boundary(end as usize);
-                if fits {
-                    previous_end = end;
-                }
-                fits
-            })
-            .collect();
         let mut next = 0;
         for (row, line) in self.rows.iter().zip(lines) {
             next += spans[next..].partition_point(|span| span.range.end <= row.shown);
@@ -202,37 +269,50 @@ impl<'a> Render<'a> {
 
     /// Each line's block: the innermost block that covers it, except that a block starting on
     /// the same line as the block holding it leaves the line to that block (the statement's
-    /// first block).
+    /// first block). One sweep over the blocks that reach the window, in preorder: each takes
+    /// the lines it covers from the block holding them.
     fn blocks(&self, tree: &FileTree, lines: &mut [CodeLine]) {
-        let (Some(first), Some(last)) = (self.rows.first(), self.rows.last()) else {
+        let (Some((start, end)), Some(first), Some(last)) =
+            (self.bytes(), self.rows.first(), self.rows.last())
+        else {
             return;
         };
-        let candidates: Vec<(u32, u32, u32)> = (0..to_u32(tree.nodes().len()))
-            .filter_map(|id| {
-                let extent = hover_extent(tree, id)?;
-                let span = self.text.lines.span(extent);
-                (span.start <= last.number && first.number <= span.end).then_some((id, span.start, span.end))
-            })
-            .collect();
-        for line in lines {
-            let mut best: Option<(u32, u32)> = None;
-            for &(id, start, end) in &candidates {
-                if !(start..=end).contains(&line.number) {
-                    continue;
-                }
-                let inner =
-                    best.is_none_or(|(held, held_start)| tree.contains(held, id) && start > held_start);
-                if inner {
-                    best = Some((id, start));
+        let mut best: Vec<Option<(u32, u32)>> = vec![None; lines.len()];
+        for id in 0..to_u32(tree.nodes().len()) {
+            let Some(extent) =
+                hover_extent(tree, id).filter(|extent| extent.start < end && extent.end >= start)
+            else {
+                continue;
+            };
+            let span = self.text.lines.span(extent);
+            if span.end < first.number || span.start > last.number {
+                continue;
+            }
+            let from = span.start.max(first.number) - first.number;
+            let to = span.end.min(last.number) - first.number;
+            for held in &mut best[from as usize..=to as usize] {
+                if held
+                    .is_none_or(|(outer, outer_start)| tree.contains(outer, id) && span.start > outer_start)
+                {
+                    *held = Some((id, span.start));
                 }
             }
+        }
+        for (line, best) in lines.iter_mut().zip(best) {
             line.block = best.map(|(id, _)| tree.key(id).clone());
         }
     }
 
-    /// Each call's written name on the lines it is written on.
+    /// Each call's written name on the window's lines it is written on.
     fn calls(&self, tree: &FileTree, lines: &mut [CodeLine]) -> Result<()> {
+        let Some((start, end)) = self.bytes() else {
+            return Ok(());
+        };
         for id in 0..to_u32(tree.nodes().len()) {
+            let reaches = |head: ByteRange| head.start < end && head.end > start;
+            if !tree.node(id).head.is_some_and(reaches) {
+                continue;
+            }
             let Some(name) = call_name(tree, id, self.text.text) else {
                 continue;
             };
@@ -251,34 +331,31 @@ impl<'a> Render<'a> {
         Ok(())
     }
 
-    /// The first line of each definition the view shows.
+    /// The first line of each definition that starts on the window's lines.
     pub(super) fn definitions(&self, tree: &FileTree) -> Vec<DefinitionLine> {
-        let (Some(first), Some(last)) = (self.rows.first(), self.rows.last()) else {
+        let Some((start, end)) = self.bytes() else {
             return Vec::new();
         };
         (1..to_u32(tree.nodes().len()))
             .filter(|&id| tree.kind(id).is_definition())
             .filter_map(|id| {
-                let line = self.text.lines.line_of(tree.extent(id).start);
-                (first.number..=last.number)
-                    .contains(&line)
-                    .then(|| DefinitionLine {
-                        line,
-                        key: tree.key(id).clone(),
-                    })
+                let first = tree.extent(id).start;
+                (start..end).contains(&first).then(|| DefinitionLine {
+                    line: self.text.lines.line_of(first),
+                    key: tree.key(id).clone(),
+                })
             })
             .collect()
     }
 
-    /// `spec` inside the view; `None` when nothing of it is shown.
+    /// `spec` inside the view: the marked lines (all of them the view shows), and the
+    /// expression on the window's lines. `None` when nothing of it is shown.
     pub(super) fn mark(&self, spec: &MarkSpec) -> Result<Option<Mark>> {
-        let (Some(first), Some(last)) = (self.rows.first(), self.rows.last()) else {
-            return Ok(None);
-        };
+        let [first, last] = self.span;
         let lines = match spec.lines {
             Some(span) => {
                 let [start, end] = self.lines_of(span)?;
-                let [start, end] = [start.max(first.number), end.min(last.number)];
+                let [start, end] = [start.max(first), end.min(last)];
                 (start <= end).then_some([start, end])
             }
             None => None,
@@ -290,7 +367,7 @@ impl<'a> Render<'a> {
         Ok((lines.is_some() || !expression.is_empty()).then_some(Mark { lines, expression }))
     }
 
-    /// The shown parts of `range`, one per line it touches.
+    /// The shown parts of `range`, one per line of the window it touches.
     fn ranges(&self, range: ByteRange) -> Result<Vec<LineRange>> {
         if self.text.text.get(range.as_usize()).is_none() {
             return Err(self.invalid(range));
@@ -327,11 +404,16 @@ impl<'a> Render<'a> {
     }
 
     fn invalid(&self, range: ByteRange) -> ReaderError {
-        ReaderError::InvalidRange {
-            path: self.path.as_str().into(),
-            start: range.start,
-            end: range.end,
-        }
+        invalid(self.path, range)
+    }
+}
+
+/// A stored range of `path` that doesn't fit its verified text.
+fn invalid(path: &RepoPath, range: ByteRange) -> ReaderError {
+    ReaderError::InvalidRange {
+        path: path.as_str().into(),
+        start: range.start,
+        end: range.end,
     }
 }
 

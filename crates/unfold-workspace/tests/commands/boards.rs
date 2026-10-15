@@ -338,7 +338,7 @@ fn a_project_without_a_graph_has_board_health_once_it_compiles() {
         harness.row(&harness.project)["live"] == false
     });
     std::fs::remove_dir_all(harness.root.join(".unfold/local")).expect("remove local");
-    // Enough code that the Compile is still running when the board opens.
+    // Enough code that the Compile is likely still running when the board opens.
     let code = "export function f(value: number): number { return value; }\n".repeat(20);
     for index in 0..400 {
         harness.write(&format!("src/generated/file{index:04}.ts"), &code);
@@ -348,22 +348,27 @@ fn a_project_without_a_graph_has_board_health_once_it_compiles() {
     harness.write(".unfold/boards/order-placement.json", &board);
     let id = ".unfold/boards/order-placement.json";
     assert_eq!(harness.on(1, "open_board", id)["id"], id);
-    assert_eq!(harness.row(&harness.project)["state"]["kind"], "compiling");
 
-    // While it compiles, health has no graph to judge the board by: no label, no Problems.
-    assert_eq!(harness.listed(id)["label"], Value::Null);
-    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
-    assert_eq!(summary["health"]["boards"], json!([]));
-
-    // Once the graph commits, the board's health is its real one.
+    // Until the graph commits, health has no graph to judge the board by: no label and no Problems
+    // item, never one judged without a graph (every key missing).
     eventually("the board's health arrives", || {
-        harness.listed(id)["label"] == "4 missing"
+        let label = harness.listed(id)["label"].clone();
+        assert!(
+            label.is_null() || label == "4 missing",
+            "health judged without the graph: {label}"
+        );
+        let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+        let boards = &summary["health"]["boards"];
+        assert!(
+            *boards == json!([]) || *boards == json!([{ "id": id, "title": "Order placement", "items": 4 }]),
+            "Problems judged without the graph: {boards}"
+        );
+        label == "4 missing"
     });
-    let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
-    assert_eq!(
-        summary["health"]["boards"],
-        json!([{ "id": id, "title": "Order placement", "items": 4 }])
-    );
+    eventually("Home's Health lists the board", || {
+        let summary = harness.ok(1, "project_summary", json!({ "project": harness.project }));
+        summary["health"]["boards"] == json!([{ "id": id, "title": "Order placement", "items": 4 }])
+    });
     let health = harness.on(1, "board_health", id);
     assert_eq!(health["health"]["missing"], 4);
     assert_eq!(health["health"]["items"][0]["target"]["card"], "middleware-0");

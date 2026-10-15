@@ -1,6 +1,10 @@
 {
   "file": "src/orders_playground/routes/orders.py",
   "state": "current",
+  "span": [
+    24,
+    31
+  ],
   "lines": [
     {
       "number": 24,

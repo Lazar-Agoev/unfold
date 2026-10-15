@@ -105,7 +105,7 @@ engineVersion: string, };
 export type AppSettings = { 
 /**
  * The command that opens a file in the person's editor, such as `code -g {path}:{line}`;
- * without one, files open in TextEdit.
+ * without one, files open in the default text editor.
  */
 editorCommand?: string, };
 
@@ -808,7 +808,11 @@ block?: Key,
 /**
  * The written names of the calls on the line; hovering one outlines that call.
  */
-calls: Array<CallName>, };
+calls: Array<CallName>, 
+/**
+ * The line goes on past `text`: it is too long to show whole (written only when true).
+ */
+cut?: boolean, };
 
 /**
  * Whether the shown lines can be trusted.
@@ -883,7 +887,12 @@ file?: RepoPath,
  */
 state: CodeState, 
 /**
- * The shown lines, in order; empty when not found.
+ * The view's first and last line; absent when nothing is shown.
+ */
+span?: [number, number], 
+/**
+ * The window's lines, in order: those of the view the request asked for. Empty when not
+ * found, or when the window is past the view.
  */
 lines: Array<CodeLine>, 
 /**
@@ -896,8 +905,8 @@ mark?: Mark,
  */
 path: Array<PathStep>, 
 /**
- * Each definition whose first line is shown, in written order, for `⊕` (the UI decides
- * which have no card on the page).
+ * Each definition whose first line is one of the window's, in written order, for `⊕` (the
+ * UI decides which have no card on the page).
  */
 definitions: Array<DefinitionLine>, };
 
@@ -917,7 +926,13 @@ target: CodeTarget,
  * What to show instead of the selection's own lines, when the path widened the view: a
  * block on the selection's path, the file, or the app of a selected entrance.
  */
-show?: CodeTarget, };
+show?: CodeTarget, 
+/**
+ * The view's lines to answer with, first and last, one-based: at most 400 (a page as the
+ * panel scrolls, or what `read_file` reads). Absent: a page of 200 from a little above the
+ * first line the selection marks.
+ */
+window?: [number, number], };
 
 /**
  * One column of a table card. A table backed by a type lists marks only (`name`, `key`,
@@ -2209,7 +2224,8 @@ export type Mark = {
  */
 lines?: [number, number], 
 /**
- * A call's own expression, one range per line it spans; empty for anything else.
+ * A call's own expression, one range per line of the window it spans; empty for anything
+ * else.
  */
 expression: Array<LineRange>, };
 
@@ -4212,7 +4228,7 @@ export interface Commands {
    */
   code_view: { args: CodeViewArgs; result: CodeView };
   /**
-   * Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
+   * Opens a file with the editor command, or in the default text editor. The project's `unfold.toml` is
    * created empty first when it has none.
    */
   open_in_editor: { args: OpenInEditorArgs; result: null };

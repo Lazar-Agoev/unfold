@@ -46,6 +46,7 @@ const DEFINITION = fixture("code_view", "code_view_create_order");
 /** The view of `orderService.place(draft)` on line 32: its statement, the call marked. */
 const PLACE_VIEW: CodeView = {
   ...DEFINITION,
+  span: [32, 32],
   lines: DEFINITION.lines.filter((line) => line.number === 32).map((line) => ({ ...line, text: line.text.trimStart() })),
   mark: { expression: [{ line: 32, start: 14, end: 39 }] },
   path: [
@@ -76,6 +77,7 @@ function wholeFile(count: number, overrides: Partial<CodeView> = {}): CodeView {
   return {
     file: FILE,
     state: "current",
+    span: [1, count],
     lines: Array.from({ length: count }, (_, index) => line(index + 1)),
     path: [{ label: FILE, showing: true }],
     definitions: [
@@ -84,6 +86,19 @@ function wholeFile(count: number, overrides: Partial<CodeView> = {}): CodeView {
     ],
     ...overrides,
   };
+}
+
+/**
+ * `view` (all its lines) as the engine answers `args`: the lines of its window, or a page of 200 from 50
+ * lines above what it marks, kept inside it.
+ */
+function windowed(view: CodeView, args: CodeViewArgs): CodeView {
+  const [first, last] = view.span ?? [1, 0];
+  const anchor = view.mark?.lines?.[0] ?? view.mark?.expression[0]?.line ?? first;
+  const start = Math.max(first, Math.min(anchor - 50, last - 199));
+  const [from, to] = args.window ?? [start, start + 199];
+  const shown = (number: number) => number >= from && number <= to;
+  return { ...view, lines: view.lines.filter((item) => shown(item.number)), definitions: view.definitions.filter((item) => shown(item.line)) };
 }
 
 /** A card drawn as another definition. */
@@ -216,7 +231,7 @@ beforeEach(() => {
       return PLACE_VIEW;
     }
     if (args.target.kind === "lines") {
-      return { ...DEFINITION, lines: [line(26, "const draft: OrderDraft = req.body;")], path: [{ label: FILE, showing: false }, { label: "line 26", showing: true }], definitions: [] };
+      return { ...DEFINITION, span: [26, 26], lines: [line(26, "const draft: OrderDraft = req.body;")], path: [{ label: FILE, showing: false }, { label: "line 26", showing: true }], definitions: [] };
     }
     return DEFINITION;
   };
@@ -236,7 +251,7 @@ beforeEach(() => {
         // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw { code: "not_found", message: "no such key" };
       },
-      code_view: (args) => answer(args),
+      code_view: async (args) => windowed(await answer(args), args),
       open_in_editor: () => null,
       list_boards: () => ({ project: P, boards: [], emptyFolders: [] }),
       save_board: () => state([]),
@@ -314,6 +329,37 @@ describe("the code panel", () => {
     expect(getCodeOpen()?.show).toBeNull();
   });
 
+  it("shortens a long path by its crumbs' own widths: the file's folders, then the definition, keeping the selection's label whole", async () => {
+    // jsdom has no layout: each crumb and separator is 7 px a letter and 6 px, what holds them nothing,
+    // and the row 290 px.
+    const rowWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.matches(".code-crumb, .code-path-sep") ? 7 * this.textContent.length + 6 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("code-path") ? 290 : 400;
+      },
+    });
+    try {
+      const { container } = renderBoard();
+      await openBlock(container, PLACE);
+      const path = need(panel().querySelector(".code-path"), "path");
+      expect([...path.querySelectorAll("button.code-crumb")].map((item) => item.textContent)).toEqual(["src/…/orders.ts", "orderService.place"]);
+      expect(path.textContent).toBe("src/…/orders.ts›…›orderService.place");
+      expect(path.getAttribute("title")).toBe(PLACE);
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+      if (rowWidth) {
+        Object.defineProperty(HTMLElement.prototype, "clientWidth", rowWidth);
+      }
+    }
+  });
+
   it.each([
     ["changed", "Changed since the last compile · showing the whole file"],
     ["doesNotParse", "Doesn't parse · showing the whole file"],
@@ -379,12 +425,13 @@ describe("the code panel", () => {
     expect(await screen.findByText("The editor command `zed` wasn't found.")).not.toBeNull();
   });
 
-  it("renders a long file in pages of 200 lines as they scroll into view, starting at its mark", async () => {
+  it("asks for and renders a long file in pages of 200 lines as they scroll into view, starting at its mark", async () => {
     answer = () => wholeFile(450);
     const { container } = renderBoard();
     await openFromHeader(container);
     expect(numbers()).toHaveLength(200);
     expect(numbers().at(-1)).toBe("200");
+    expect(codeViews().map((args) => args.window)).toEqual([undefined]);
     const scroller = panel().querySelector<HTMLElement>(".code-lines");
     if (!scroller) {
       throw new Error("no lines");
@@ -392,9 +439,10 @@ describe("the code panel", () => {
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 4000 });
     fireEvent.scroll(scroller);
     await waitFor(() => {
-      expect(numbers()).toContain("400");
+      expect(rowOf(400).textContent).toBe("400line 400");
     });
     expect(numbers()).not.toContain("401");
+    expect(codeViews().map((args) => args.window)).toEqual([undefined, [201, 400]]);
 
     act(() => {
       closeCode();
@@ -406,6 +454,17 @@ describe("the code panel", () => {
       expect(numbers()).toContain("300");
     });
     expect([...panel().querySelectorAll(".code-line.marked .code-number")].map((item) => item.textContent)).toEqual(["300", "301", "302"]);
+  });
+
+  it("ends a line the engine cut with `…`, after its last token", async () => {
+    const long: CodeView["lines"][number] = { ...line(2, 'const banner = "'), tokens: [[0, 5, "keyword"]], cut: true };
+    answer = () => wholeFile(3, { lines: [line(1), long, line(3)] });
+    const { container } = renderBoard();
+    await openFromHeader(container);
+    const text = need(rowOf(2).querySelector(".code-text"), "text");
+    expect(text.textContent).toBe('const banner = "…');
+    expect(text.lastElementChild?.classList.contains("code-cut")).toBe(true);
+    expect(rowOf(1).querySelector(".code-cut")).toBeNull();
   });
 
   it("starts each new view at its left, with its line numbers showing", async () => {
@@ -545,7 +604,7 @@ describe("the panel and the canvas", () => {
   });
 
   it("drops a gap tick's outline once a click on a line selects something", async () => {
-    answer = (args) => (args.target.kind === "lines" ? { ...DEFINITION, lines: [{ ...line(26), block: KEY }], path: [{ label: FILE, showing: false }, { label: "line 26", showing: true }], definitions: [] } : DEFINITION);
+    answer = (args) => (args.target.kind === "lines" ? { ...DEFINITION, span: [26, 26], lines: [{ ...line(26), block: KEY }], path: [{ label: FILE, showing: false }, { label: "line 26", showing: true }], definitions: [] } : DEFINITION);
     const { container } = renderBoard();
     await loadedCard(container);
     fireEvent.click(need(container.querySelector(".flow-gap"), "gap tick"));
@@ -601,12 +660,13 @@ describe("the panel and the canvas", () => {
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "create", key: PLACE });
   });
 
-  it("adds a definition with no card on the page from `⊕`, and leaves the panel where it is", async () => {
+  it("adds a definition with no card on the page from `⊕`, and leaves the panel and the canvas where they are", async () => {
     answer = () => wholeFile(40);
     const { container } = renderBoard();
     await openFromHeader(container);
     // createOrder has its card; cancelOrder doesn't.
     expect(within(panel()).getAllByRole("button", { name: /^Add the definition/ }).map((item) => item.getAttribute("aria-label"))).toEqual(["Add the definition on line 2 to the page"]);
+    const focus = store.getPageView(PAGE).focus;
     fireEvent.click(within(panel()).getByRole("button", { name: "Add the definition on line 2 to the page" }));
     await waitFor(() => {
       expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.ref)).toEqual([{ block: KEY }, { block: OTHER }]);
@@ -616,12 +676,37 @@ describe("the panel and the canvas", () => {
       expect(within(panel()).queryByRole("button", { name: /^Add the definition/ })).toBeNull();
     });
     expect(getCodeOpen()?.target).toEqual({ kind: "block", key: KEY });
+    // The panel never moves the canvas.
+    expect(store.getPageView(PAGE).focus).toEqual(focus);
+  });
+
+  it("draws `⊕` in the gutter beside the line number, before the code", async () => {
+    answer = () => wholeFile(40);
+    const { container } = renderBoard();
+    await openFromHeader(container);
+    const add = within(panel()).getByRole("button", { name: "Add the definition on line 2 to the page" });
+    expect(add.parentElement).toBe(rowOf(2));
+    expect(add.previousElementSibling?.classList.contains("code-number")).toBe(true);
+    expect(add.nextElementSibling?.classList.contains("code-text")).toBe(true);
+  });
+
+  it("offers `⊕` for the outermost definition when two start on one line", async () => {
+    // `const cancelOrder = (rows) => rows.map((row) => row.id)`: the reader lists the outer one first.
+    answer = () => wholeFile(40, { definitions: [{ line: 2, key: OTHER }, { line: 2, key: `${OTHER}/call:rows.map/callback[0]` }, { line: 25, key: KEY }] });
+    const { container } = renderBoard();
+    await openFromHeader(container);
+    expect(within(panel()).getAllByRole("button", { name: /^Add the definition/ })).toHaveLength(1);
+    fireEvent.click(within(panel()).getByRole("button", { name: "Add the definition on line 2 to the page" }));
+    await waitFor(() => {
+      expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.ref)).toEqual([{ block: KEY }, { block: OTHER }]);
+    });
   });
 
   it("opens an entrance card's lines in unfold.toml", async () => {
     answer = () => ({
       file: "unfold.toml",
       state: "current",
+      span: [6, 6],
       lines: [line(6, '{ name = "Place an order", on = "POST /orders/{order_id}" }')],
       path: [
         { label: "unfold.toml", showing: false },

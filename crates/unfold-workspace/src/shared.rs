@@ -186,8 +186,8 @@ pub(crate) struct Shared {
     pub(crate) problems: Mutex<Problems>,
     pub(crate) readers: RwLock<Option<ReadPool>>,
     pub(crate) reader_cache: ReaderCache,
-    /// The sources the drawings verified most recently, whose text a card keeps while its file
-    /// changes or doesn't parse.
+    /// The sources the drawings and the code panel verified most recently, whose text a card
+    /// keeps while its file changes or doesn't parse.
     pub(crate) sources: SourceCache,
     pub(crate) local_state: Mutex<LocalState>,
     /// Held across a settings edit's read, edit, and write, so concurrent edits (the window and

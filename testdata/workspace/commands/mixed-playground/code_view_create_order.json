@@ -1,6 +1,10 @@
 {
   "file": "ts-orders/src/routes/orders.ts",
   "state": "current",
+  "span": [
+    25,
+    35
+  ],
   "lines": [
     {
       "number": 25,

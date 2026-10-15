@@ -60,7 +60,7 @@ function SettingsForm({ saved, onClose }: { readonly saved: AppSettings; readonl
               void commit();
             }
           }}
-          hint="{path}, {line}, and {column} are replaced. Empty opens files in TextEdit."
+          hint="{path}, {line}, and {column} are replaced. Empty opens files in the default text editor."
         />
       </section>
       <AgentsSection />

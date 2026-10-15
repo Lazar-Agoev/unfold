@@ -3,14 +3,15 @@
  * board, full height beside the top bar. Its header is the path from the file to the selection (the step
  * showing in bold; a click widens the view to that step, the file to the whole file), Open in editor,
  * and ×. Under it, a banner when the lines can't be trusted, then the lines the reader chose, with their
- * numbers: the selection's lines tinted with an accent edge, and a call's expression filled. Lines render
- * in pages of 200 as they scroll into view.
+ * numbers: the selection's lines tinted with an accent edge, a call's expression filled, and a line the
+ * engine cut ending in `…`. Lines are asked for and rendered in pages of 200 as they scroll into view.
  *
  * While it is open it follows the page's selection (something with no source leaves it where it is),
  * and lines opened from a card's flow follow the card as it is drawn now. Hovering a line lights its
  * block on the canvas (`setCodeHover`): a call's when on its name, falling back to the line's block when
  * the call isn't drawn on its own. Clicking one selects that block and leaves the panel where it is.
- * `⊕` beside a definition with no card on the page adds its card. × or Escape closes it.
+ * `⊕` in the gutter beside a definition's first line, when it has no card on the page, adds its card
+ * without moving the canvas. × or Escape closes it.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type UIEvent } from "react";
@@ -19,14 +20,15 @@ import { call, toUnfoldError } from "../ipc";
 import type { CardView, CodeLine, CodeState, CodeTarget, CodeView, Key, Page, PathStep } from "../ipc/generated";
 import { openInEditor } from "../lib/files";
 import { isTyping } from "../lib/typing";
-import { addBlock, cardRefKey, findPage, itemsFor, select, useOpenBoard, usePageKeys, usePageView, type PageTarget } from "../state/boards";
+import { addBlockWithoutFocus, cardRefKey, findPage, itemsFor, select, useOpenBoard, usePageKeys, usePageView, type PageTarget } from "../state/boards";
 import { cardName, usePageCards } from "../state/cards";
 import { closeCode, openCode, quietly, retargetCode, setCodeHover, takeQuiet, widenCode, type CodeOpen } from "../state/codePanel";
 import { ReviewButton } from "../canvas/cards/ReviewBanner";
-import { PAGE_LINES, pageRange } from "./paging";
+import { pageLines, pagesOf, type LineSpan } from "./paging";
+import { fileForms, letters, shortenPath, type Shortened } from "./path";
 import { blockSelection, selectionCode, sourceLines } from "./targets";
 import { TokenText } from "./TokenText";
-import { markedLine, useCodeView } from "./view";
+import { markedLine, useCodeLines, useCodeView, type LoadedLines } from "./view";
 import "./panel.css";
 
 /** A line's height (panel.css). */
@@ -55,55 +57,71 @@ function stepShow(open: CodeOpen, view: CodeView, step: PathStep, index: number)
 }
 
 /**
- * The path, shortened in the middle (never past the step showing) while it doesn't fit; hovering it
- * shows the selection's full key (its labels, when the selection is lines). Its steps can't be clicked
- * while it is the previous view's, kept while the next one loads.
+ * The path, shortened while it doesn't fit (`shortenPath`): in the middle first, then the file's
+ * folders, then the definition; the step showing and the selection never go, and the selection's label
+ * shortens only past all of that. Hovering it shows the selection's full key (its labels, when the
+ * selection is lines). Its steps can't be clicked while it is the previous view's, kept while the next
+ * one loads.
  */
 function Path({ steps, stale, onWiden }: { readonly steps: readonly PathStep[]; readonly stale: boolean; readonly onWiden: (step: PathStep, index: number) => void }) {
   const row = useRef<HTMLDivElement>(null);
-  const [drop, setDrop] = useState(0);
+  const forms = useMemo(() => fileForms(steps[0]?.label ?? ""), [steps]);
+  // How it is shortened; null until the row is measured whole.
+  const [shortened, setShortened] = useState<Shortened | null>(null);
   useLayoutEffect(() => {
     const element = row.current;
-    if (!element) {
+    const [file, ...rest] = element ? [...element.children] : [];
+    if (!element || !file || shortened !== null) {
       return;
     }
-    const natural = [...element.children].reduce((width, child) => width + child.scrollWidth, 0);
-    const showing = steps.findIndex((step) => step.showing);
-    if (natural > element.clientWidth && 1 + drop < steps.length - 1 && !(showing >= 1 && showing <= 1 + drop)) {
-      setDrop(drop + 1);
-    }
-  }, [drop, steps]);
-  const shown = steps.map((step, index) => ({ step, index })).filter(({ index }) => index === 0 || index > drop);
+    // Each step at its separator's and crumb's own widths (a crumb that gives way still scrolls its
+    // whole label). The code font is monospaced: each of the file's shorter forms is a letter narrower
+    // for each letter it drops, and `…`, drawn as a separator is, makes a `› …` two separators wide.
+    const natural = (step: Element) => [...step.children].reduce((width, part) => width + part.scrollWidth, 0);
+    const whole = natural(file);
+    const length = letters(steps[0]?.label ?? "");
+    const style = getComputedStyle(file.firstElementChild ?? file);
+    const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+    const letter = (whole - padding) / Math.max(1, length);
+    const separator = element.querySelector(".code-path-sep")?.scrollWidth ?? 0;
+    const widths = { file: forms.map((form) => whole - (length - letters(form)) * letter), steps: rest.map(natural), gap: 2 * separator };
+    setShortened(shortenPath(widths, steps.findIndex((step) => step.showing), element.clientWidth));
+  }, [shortened, steps, forms]);
   return (
     <div ref={row} className="code-path" title={steps.at(-1)?.key ?? steps.map((step) => step.label).join(" › ")}>
-      {shown.map(({ step, index }, position) => (
-        <span key={index} className="code-path-step">
-          {position > 0 ? (
-            <span className="code-path-sep" aria-hidden="true">
-              ›
-            </span>
-          ) : null}
-          {position === 1 && drop > 0 ? (
-            <>
-              <span className="code-crumb">…</span>
+      {steps.map((step, index) => {
+        if (shortened?.out.has(index)) {
+          // Each run of steps left out draws one `› …`, where its first step was.
+          return shortened.out.has(index - 1) ? null : (
+            <span key={index} className="code-path-step">
               <span className="code-path-sep" aria-hidden="true">
                 ›
               </span>
-            </>
-          ) : null}
-          <button
-            type="button"
-            className={`code-crumb${index === 0 ? " file" : ""}${step.showing ? " showing" : ""}`}
-            aria-current={step.showing ? "true" : undefined}
-            disabled={stale}
-            onClick={() => {
-              onWiden(step, index);
-            }}
-          >
-            {step.label}
-          </button>
-        </span>
-      ))}
+              <span className="code-path-sep">…</span>
+            </span>
+          );
+        }
+        return (
+          <span key={index} className="code-path-step">
+            {index > 0 ? (
+              <span className="code-path-sep" aria-hidden="true">
+                ›
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className={`code-crumb${index === 0 ? " file" : ""}${step.showing ? " showing" : ""}`}
+              aria-current={step.showing ? "true" : undefined}
+              disabled={stale}
+              onClick={() => {
+                onWiden(step, index);
+              }}
+            >
+              {index === 0 ? forms[shortened?.form ?? 0] : step.label}
+            </button>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -120,12 +138,12 @@ function Banner({ target, state, cardId }: { readonly target: PageTarget; readon
   );
 }
 
-/** Adds a definition's card to the page; the panel stays where it is. */
+/** Adds a definition's card to the page; the panel and the canvas stay where they are. */
 async function addDefinition(target: PageTarget, key: Key): Promise<void> {
   try {
     const view = await call("card", { project: target.board.project, key });
     quietly(target, () => {
-      addBlock(target, key, cardName(view));
+      addBlockWithoutFocus(target, key, cardName(view));
     });
   } catch (error) {
     showToast({ title: "Couldn't add it", body: toUnfoldError(error).message, tone: "danger" });
@@ -134,36 +152,35 @@ async function addDefinition(target: PageTarget, key: Key): Promise<void> {
 
 interface LinesProps {
   readonly view: CodeView;
-  /** Each definition's first line, for those with no card on the page. */
+  /** The view's lines loaded so far. */
+  readonly loaded: LoadedLines;
+  /** The pages within reach of the scrolled view, as a key (`pagesInView`). */
+  readonly shown: string;
+  readonly onShown: (pages: string) => void;
+  /** The definition `⊕` adds beside each line that starts one with no card on the page. */
   readonly adds: ReadonlyMap<number, Key>;
   readonly onAdd: (key: Key) => void;
   readonly onHover: (line: CodeLine | null, call: Key | null) => void;
   readonly onPick: (line: CodeLine, call: Key | null) => void;
 }
 
-/** The pages of `count` lines, in order. */
-function pagesOf(count: number): number[] {
-  return Array.from({ length: Math.ceil(count / PAGE_LINES) }, (_, page) => page);
-}
-
-/** The pages of `count` lines within `ROOM` pixels of the view at `top` (`height` tall), as a key. */
-function pagesInView(count: number, top: number, height: number): string {
-  return pagesOf(count)
+/** The pages of the view `span` within `ROOM` pixels of the view at `top` (`height` tall), as a key. */
+function pagesInView(span: LineSpan, top: number, height: number): string {
+  return pagesOf(span)
     .filter((page) => {
-      const { startLine, endLine } = pageRange(page, count);
-      return endLine * LINE >= top - ROOM && (startLine - 1) * LINE <= top + height + ROOM;
+      const [start, end] = pageLines(page, span);
+      return (end - span[0] + 1) * LINE >= top - ROOM && (start - span[0]) * LINE <= top + height + ROOM;
     })
     .join(",");
 }
 
-function Lines({ view, adds, onAdd, onHover, onPick }: LinesProps) {
+function Lines({ view, loaded, shown, onShown, adds, onAdd, onHover, onPick }: LinesProps) {
   const scroller = useRef<HTMLDivElement>(null);
-  const { lines } = view;
+  const { span } = loaded;
   const trusted = view.state === "current";
   const mark = trusted ? view.mark : undefined;
   const first = markedLine(view);
-  const anchor = first === undefined ? -1 : lines.findIndex((line) => line.number === first);
-  const [shown, setShown] = useState(() => pagesInView(lines.length, 0, 0));
+  const anchor = first === undefined ? -1 : first - span[0];
 
   // A new view starts at its mark, when that is out of view, else at its top; always at its left, with
   // its line numbers showing.
@@ -175,14 +192,14 @@ function Lines({ view, adds, onAdd, onHover, onPick }: LinesProps) {
     const top = anchor > 0 && (anchor + 1) * LINE > element.clientHeight ? Math.max(0, (anchor - 2) * LINE) : 0;
     element.scrollTop = top;
     element.scrollLeft = 0;
-    setShown(pagesInView(lines.length, top, element.clientHeight));
-  }, [view, anchor, lines.length]);
+    onShown(pagesInView(span, top, element.clientHeight));
+  }, [view, anchor, span, onShown]);
 
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
-    const next = pagesInView(lines.length, element.scrollTop, element.clientHeight);
+    const next = pagesInView(span, element.scrollTop, element.clientHeight);
     if (next !== shown) {
-      setShown(next);
+      onShown(next);
     }
   };
 
@@ -191,7 +208,7 @@ function Lines({ view, adds, onAdd, onHover, onPick }: LinesProps) {
       return null;
     }
     const row = event.target.closest<HTMLElement>("[data-line]");
-    const line = row ? lines[Number(row.dataset["line"])] : undefined;
+    const line = row ? loaded.lines.get(Number(row.dataset["line"]))?.line : undefined;
     return line ? { line, call: event.target.closest<HTMLElement>("[data-call]")?.dataset["call"] ?? null } : null;
   };
 
@@ -215,35 +232,45 @@ function Lines({ view, adds, onAdd, onHover, onPick }: LinesProps) {
         }
       }}
     >
-      {pagesOf(lines.length).map((page) => {
-        const { startLine, endLine } = pageRange(page, lines.length);
+      {pagesOf(span).map((page) => {
+        const [start, end] = pageLines(page, span);
         if (!visible.has(page)) {
-          return <div key={page} style={{ height: (endLine - startLine + 1) * LINE }} />;
+          return <div key={page} style={{ height: (end - start + 1) * LINE }} />;
         }
-        return lines.slice(startLine - 1, endLine).map((line, offset) => {
-          const index = startLine - 1 + offset;
+        return Array.from({ length: end - start + 1 }, (_, offset) => start + offset).map((number) => {
+          const at = loaded.lines.get(number);
+          if (!at) {
+            // Its page is still being read.
+            return (
+              <div key={number} className="code-line" data-line={number}>
+                <span className="code-number">{number}</span>
+              </div>
+            );
+          }
+          const { line } = at;
           const tinted = mark?.lines !== undefined && line.number >= mark.lines[0] && line.number <= mark.lines[1];
-          const marks = (mark?.expression ?? []).filter((range) => range.line === line.number);
+          const marks = trusted ? at.marks : [];
           const add = adds.get(line.number);
           return (
-            <div key={index} className={`code-line${tinted ? " marked" : ""}`} data-line={index}>
+            <div key={number} className={`code-line${tinted ? " marked" : ""}`} data-line={number}>
               <span className="code-number">{line.number}</span>
+              {add !== undefined ? (
+                <button
+                  type="button"
+                  className="code-add"
+                  aria-label={`Add the definition on line ${line.number} to the page`}
+                  title="Add its card"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onAdd(add);
+                  }}
+                >
+                  ⊕
+                </button>
+              ) : null}
               <span className="code-text">
                 <TokenText text={line.text} tokens={line.tokens} calls={line.calls} marks={marks} />
-                {add !== undefined ? (
-                  <button
-                    type="button"
-                    className="code-add"
-                    aria-label={`Add the definition on line ${line.number} to the page`}
-                    title="Add its card"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onAdd(add);
-                    }}
-                  >
-                    ⊕
-                  </button>
-                ) : null}
+                {line.cut ? <span className="code-cut">…</span> : null}
               </span>
             </div>
           );
@@ -312,6 +339,9 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
   const { project } = open;
   const query = useCodeView(open);
   const view = query.data;
+  const [shown, setShown] = useState("");
+  const pages = useMemo(() => shown.split(",").filter((page) => page !== "").map(Number), [shown]);
+  const loaded = useCodeLines(open, view, pages, query.isPlaceholderData);
   const onPage = usePageKeys(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
   const views = usePageCards(target);
@@ -319,10 +349,16 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
   useCurrentLines(open, views);
   useEscapeCloses();
 
-  const adds = useMemo(
-    () => new Map((view?.definitions ?? []).filter((definition) => !onPage.has(cardRefKey(project, definition.key))).map((definition) => [definition.line, definition.key] as const)),
-    [view, onPage, project],
-  );
+  // `⊕` adds the outermost definition a line starts: the first the reader lists there, in written order.
+  const adds = useMemo(() => {
+    const outermost = new Map<number, Key>();
+    for (const { line, key } of loaded.definitions) {
+      if (!outermost.has(line)) {
+        outermost.set(line, key);
+      }
+    }
+    return new Map([...outermost].filter(([, key]) => !onPage.has(cardRefKey(project, key))));
+  }, [loaded, onPage, project]);
   const file = view?.file;
   const editorLine = view ? (markedLine(view) ?? view.lines[0]?.number) : undefined;
 
@@ -331,7 +367,8 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
       <header className="code-panel-header">
         {view ? (
           <Path
-            key={view.path.map((step) => step.label).join("\u0000")}
+            // A new path, or another step showing, is measured afresh.
+            key={JSON.stringify(view.path.map((step) => [step.label, step.showing]))}
             steps={view.path}
             stale={query.isPlaceholderData}
             onWiden={(step, index) => {
@@ -359,6 +396,9 @@ export function CodePanel({ target, open }: { readonly target: PageTarget; reado
       {view ? (
         <Lines
           view={view}
+          loaded={loaded}
+          shown={shown}
+          onShown={setShown}
           adds={adds}
           onAdd={(key) => void addDefinition(target, key)}
           onHover={(line, callKey) => {

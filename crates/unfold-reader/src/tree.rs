@@ -3,8 +3,9 @@
 //!
 //! A [`FileTree`] owns one [`FileGraph`] and adds what its records only imply: each node's
 //! children, the end of its subtree (a subtree is a contiguous run in preorder), the definition
-//! it belongs to (through [`unfold_core::owner`], the one ownership rule), a key index, and the
-//! `types` and `extends` links in range order (a written type's names are found by range).
+//! it belongs to (through [`unfold_core::owner`], the one ownership rule), where a definition's
+//! source starts (its first decorator), a key index, and the `types` and `extends` links in
+//! range order (a written type's names are found by range).
 //! Typed records and links are looked up by node. Nothing here reads key text: kinds, parents,
 //! and files come from the records.
 
@@ -29,6 +30,8 @@ pub struct FileTree {
     /// The exclusive end of each node's subtree.
     ends: Vec<u32>,
     owners: Vec<Option<u32>>,
+    /// Where each node's source starts: a definition's first decorator, else its range.
+    starts: Vec<u32>,
     /// Indexes into the file's links of its `types` and `extends` links, by range start.
     type_links: Vec<u32>,
 }
@@ -79,6 +82,22 @@ impl FileTree {
             }
         }
         let owners = (0..to_u32(count)).map(|id| owner(&graph.nodes, id)).collect();
+        let mut starts: Vec<u32> = graph.nodes.iter().map(|node| node.range.start).collect();
+        for decorator in &graph.nodes {
+            let Some(definition) = decorator
+                .r#for
+                .filter(|_| decorator.role == Some(CallRole::Decorator))
+            else {
+                continue;
+            };
+            let decorates = graph.nodes.get(definition as usize).is_some_and(|node| {
+                node.kind().is_definition() && node.parent.is_some() && node.parent == decorator.parent
+            });
+            if decorates {
+                let start = &mut starts[definition as usize];
+                *start = (*start).min(decorator.range.start);
+            }
+        }
         let by_key = graph
             .nodes
             .iter()
@@ -100,6 +119,7 @@ impl FileTree {
             children,
             ends,
             owners,
+            starts,
             type_links,
         }
     }
@@ -234,48 +254,53 @@ impl FileTree {
     /// The source block `id` spans: a definition from its first decorator to its end, any
     /// other block its range. What a card shows and a board signs for a definition.
     pub fn extent(&self, id: u32) -> ByteRange {
-        let node = self.node(id);
-        if !node.kind().is_definition() {
-            return node.range;
-        }
-        let siblings = node.parent.map_or(&[][..], |parent| self.children(parent));
-        let start = siblings
-            .iter()
-            .map(|&sibling| self.node(sibling))
-            .filter(|sibling| sibling.r#for == Some(id) && sibling.role == Some(CallRole::Decorator))
-            .map(|decorator| decorator.range.start)
-            .fold(node.range.start, u32::min);
         ByteRange {
-            start,
-            end: node.range.end,
+            start: self.starts[id as usize],
+            end: self.node(id).range.end,
         }
     }
 
     /// The statement call `id` is written in: its own `stmt`, or that of the nearest block above
-    /// it that has one. A call in a test or a header is in that test or header; a call that runs
-    /// when a definition is created (a decorator, a base, a default) is its own statement. A part
-    /// of a ternary or comprehension is inside an expression, so the climb goes on to the
-    /// statement holding it.
+    /// it that has one. A call in a test or a header is in that test or header, even in a control
+    /// block that carries its whole statement (as TypeScript's do); a call that runs when a
+    /// definition is created (a decorator, a base, a default) is its own statement. A part of a
+    /// ternary or comprehension is inside an expression, so the climb goes on to the statement
+    /// holding it.
     pub fn statement(&self, id: u32) -> ByteRange {
         let call = self.node(id).range;
         let parent = |id: u32| self.parent(id).map(|parent| self.node(parent));
         let mut at = Some(id);
         while let Some(current) = at {
             let node = self.node(current);
+            // A control block or part written as a statement, not inside an expression.
+            let control = match node.kind() {
+                NodeKind::Decision | NodeKind::Loop => !is_expression(node.form),
+                NodeKind::Try | NodeKind::With => true,
+                NodeKind::Part => !parent(current).is_some_and(|parent| is_expression(parent.form)),
+                NodeKind::Module
+                | NodeKind::Class
+                | NodeKind::Function
+                | NodeKind::Type
+                | NodeKind::Call
+                | NodeKind::Exit => false,
+            };
+            if let Some(head) = node.head.filter(|head| control && head.contains(call)) {
+                return head;
+            }
             if let Some(stmt) = node.stmt {
                 return stmt;
             }
             match node.kind() {
                 NodeKind::Call | NodeKind::Exit => {}
-                NodeKind::Decision | NodeKind::Loop if is_expression(node.form) => {}
                 NodeKind::Function
                     if node.form == Form::Lambda
                         || parent(current).is_some_and(|parent| parent.kind() == NodeKind::Call) => {}
-                NodeKind::Part if parent(current).is_some_and(|parent| is_expression(parent.form)) => {}
-                NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {
-                    return node.head.filter(|head| head.contains(call)).unwrap_or(call);
-                }
                 NodeKind::Module | NodeKind::Class | NodeKind::Function | NodeKind::Type => return call,
+                NodeKind::Decision | NodeKind::Loop | NodeKind::Try | NodeKind::With | NodeKind::Part => {
+                    if control {
+                        return call;
+                    }
+                }
             }
             at = node.parent;
         }

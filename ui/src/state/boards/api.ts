@@ -86,19 +86,39 @@ export function addRef(target: PageTarget, ref: CardRef, name: string): string |
     focusCard(target, existing.id);
     return existing.id;
   }
+  const cardId = newCard(target, board, ref, name);
+  if (cardId !== undefined) {
+    requestCardFocus(target, [cardId], "center");
+  }
+  return cardId;
+}
+
+/** Adds a card for `ref` where a new card goes and selects it; returns its id (undefined when it can't be added). */
+function newCard(target: PageTarget, board: OpenBoard, ref: CardRef, name: string): string | undefined {
   const at = newCardPlacement([...displayedRects(board, target.page).values()]);
   const cardId = editPage(target, (draft) => addCard(draft, { ref, name, at }));
-  if (cardId === undefined) {
-    return undefined;
+  if (cardId !== undefined) {
+    select(target, { kind: "card", cardId, key: null });
   }
-  select(target, { kind: "card", cardId, key: null });
-  requestCardFocus(target, [cardId], "center");
   return cardId;
 }
 
 /** Adds a module, definition, or type of the board's project (`addRef`). */
 export function addBlock(target: PageTarget, key: Key, name: string): string | undefined {
   return addRef(target, { block: key }, name);
+}
+
+/**
+ * Adds a card for block `key` of the board's project where a new card goes, and selects it, without
+ * moving the canvas (the code panel's `⊕`). Does nothing when the page already shows it.
+ */
+export function addBlockWithoutFocus(target: PageTarget, key: Key, name: string): void {
+  const board = getOpenBoard(target.board);
+  const page = board ? findPage(board.document, target.page) : undefined;
+  const ref = { block: key };
+  if (board && page && !findCardByKey(page, cardKey({ ref }))) {
+    newCard(target, board, ref, name);
+  }
 }
 
 const NO_KEYS: ReadonlySet<string> = new Set();

@@ -31,11 +31,12 @@ hashed and compared with the hash its facts came from. Only matching bytes are d
 Otherwise the view says the source changed or is missing, without text: old ranges are never applied to new bytes.
 Stored ranges are UTF-8 bytes; everything rendered uses UTF-16 offsets.
 
-Each project keeps a `SourceCache`: the sources the drawings verified most recently, by path and hash, within 32 MiB
-of text. While a file changes on disk and the compile hasn't caught up, or while it doesn't parse (its last good
-facts keep the hash they came from), a drawing's words come from the text kept for the facts' hash, which is exactly
-the text the facts came from. Nothing is kept across a restart: a file that changed while the app was closed has no
-kept text until the reopen check recompiles it.
+Each project keeps a `SourceCache`: the sources the drawings and the code panel verified most recently, by path and
+hash, within 32 MiB of text. A kept source keeps its line and UTF-16 indexes, and its highlighting once the code panel
+asks for it, so reading a kept file again only reads and hashes it. While a file changes on disk and the compile
+hasn't caught up, or while it doesn't parse (its last good facts keep the hash they came from), a drawing's words come
+from the text kept for the facts' hash, which is exactly the text the facts came from. Nothing is kept across a
+restart: a file that changed while the app was closed has no kept text until the reopen check recompiles it.
 
 ## The drawn flow
 
@@ -167,7 +168,10 @@ definition's lines. `code_text` aligns its labels up to 40 characters, and a lon
 
 [code_view/](../crates/unfold-reader/src/code_view/mod.rs) answers what the panel beside the canvas shows for one
 selection. A request names the **selected** target and, when the path widens the view, a target to **show**
-instead; the selection stays marked inside the wider view.
+instead; the selection stays marked inside the wider view. An answer holds a **window** of the view's lines, at most
+400: the ones the request asks for (the panel asks a page of 200 at a time as it scrolls, and `read_file` the lines it
+reads), or by default a page of 200 that starts 50 lines above the first line the selection marks (the view's first
+line when nothing is marked), kept inside the view. The model's `span` is the whole view's first and last line.
 
 | Target | Used for |
 | --- | --- |
@@ -193,20 +197,23 @@ What a block shows:
 
 Library, builtin, and unknown calls open their call site; nothing opens a callee Unfold has no source for.
 
-The model carries the file and its **state**, the shown lines (dedented to the view, real line numbers,
-highlighted by the language's highlighter, each with the block hovering it outlines and the calls named on it), the
-mark, the **path** (the file, then each block above the selection, then the selection, each with a label and key;
-`body` parts are left out), and each shown definition's first line for `⊕`. Path labels: a definition by name, a
-control block by its header or keyword (`for item in order["items"]`, `switch (command)`, `try`), a part by the text
-that opens it, a call by its written callee, an exit by its keyword, a combined step by `⊞` and its title, a gap tick
-by its lines.
+The model carries the file and its **state**, the view's `span`, the window's lines (dedented to the whole view, real
+line numbers, highlighted by the language's highlighter, each with the block hovering it outlines and the calls named
+on it), the mark, the **path** (the file, then each block above the selection, then the selection, each with a label
+and key; `body` parts are left out), and the first line of each definition that starts in the window, for `⊕`. The
+marked lines are the whole view's; the marked expression's ranges, the blocks, the calls, and the definitions are
+found for the window's lines only, from the nodes and highlighting that reach them, so an answer costs about the same
+in a file of any size. A line longer than 1,000 bytes is cut there (at a character's start) and says so (`cut`).
+Path labels: a definition by name, a control block by its header or keyword (`for item in order["items"]`,
+`switch (command)`, `try`), a part by the text that opens it, a call by its written callee, an exit by its keyword, a
+combined step by `⊞` and its title, a gap tick by its lines.
 
 | State | The panel shows |
 | --- | --- |
 | `current` | The view, cropped and marked |
 | `changed` | The whole file as it is now: "Changed since the last compile · showing the whole file" |
 | `doesNotParse` | The whole file as it is now: "Doesn't parse · showing the whole file". `unfold.toml` gets it too when it doesn't parse |
-| `notAnalyzed` | The whole file: it is outside the graph |
+| `notAnalyzed` | The whole file: it is outside the graph. A block or a field whose file left the graph (its key no longer resolves, and the file its key names, read by `unfold-core`, is still there) shows that file this way |
 | `notFound` | Nothing: the target no longer resolves, or its file is gone |
 
 **The panel never marks lines from ranges that may have moved.** Only `current` views are cropped, marked, or carry

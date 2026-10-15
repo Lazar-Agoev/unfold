@@ -11,7 +11,7 @@ import { chmodSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addInput, openAdd, result, selectResult } from "../src/add";
 import { openSettings } from "../src/agents";
-import { boardView, card, expectCardsLoaded, showBoard } from "../src/board";
+import { boardView, cameraSettled, card, expectCardsLoaded, showBoard } from "../src/board";
 import {
   codeBanner,
   codeLine,
@@ -69,6 +69,7 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     throw new Error("createOrder's body no longer calls orderService.place, then slack.post");
   }
   const placeExpression = Buffer.from(ordersText).subarray(place.range[0], place.range[1]).toString();
+  const postExpression = Buffer.from(ordersText).subarray(post.range[0], post.range[1]).toString();
   writeFile(
     join(folder, ".unfold", "boards", "code-panel.json"),
     JSON.stringify({
@@ -113,7 +114,8 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await expectShownLines(page, place.lines[0], place.lines[1]);
     await expect.poll(() => markedExpression(page)).toBe(placeExpression);
     await expectTintedLines(page, null);
-    await expectPath(page, [ORDERS, "createOrder", "orderService.place"], "orderService.place");
+    // The panel's row is too narrow for the whole path: the file's folders shorten, then the definition goes.
+    await expectPath(page, ["src/…/orders.ts", "orderService.place"], "orderService.place");
     await expectOutlined(placeBox);
 
     // A part shows its whole control block, the part tinted; the panel follows the selection.
@@ -123,7 +125,8 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await expectShownLines(page, control.lines[0], control.lines[1]);
     await expectTintedLines(page, part.lines);
     await expect.poll(() => markedExpression(page)).toBe("");
-    await expectPath(page, [CLI, "main", "switch (command)", 'case "report"'], "switch (command)");
+    // The step showing stays: the file's folders shorten, then the definition goes.
+    await expectPath(page, ["…/cli.ts", "switch (command)", 'case "report"'], "switch (command)");
     await expectOutlined(reportCase);
 
     // A gap tick shows the lines it counts, and is outlined.
@@ -131,7 +134,7 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await clickOnCanvas(page, gapTick);
     await expectShownLines(page, gapLine, gapLine);
     await expectTintedLines(page, null);
-    await expectPath(page, [ORDERS, "createOrder", `line ${gapLine}`], `line ${gapLine}`);
+    await expectPath(page, ["src/…/orders.ts", "createOrder", `line ${gapLine}`], `line ${gapLine}`);
     await expectOutlined(gapTick);
 
     // A combined step shows from its first block's statement to its last block's end.
@@ -139,39 +142,41 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await expectShownLines(page, place.lines[0], post.lines[1]);
     await expectTintedLines(page, null);
     await expect.poll(() => markedExpression(page)).toBe("");
-    await expectPath(page, [ORDERS, "createOrder", `⊞ ${COMBINED_TITLE}`], `⊞ ${COMBINED_TITLE}`);
+    await expectPath(page, ["…/orders.ts", `⊞ ${COMBINED_TITLE}`], `⊞ ${COMBINED_TITLE}`);
     await expectOutlined(combined);
   });
 
   const definition = graphNode(nodes, CREATE_ORDER);
   await test.step("the path widens the view, and the selection stays marked", async () => {
-    await clickOnCanvas(page, placeBox);
-    await expectShownLines(page, place.lines[0], place.lines[1]);
+    // `slack.post`'s path fits with the definition in it (`orderService.place`'s leaves it out).
+    await clickOnCanvas(page, postBox);
+    await expectShownLines(page, post.lines[0], post.lines[1]);
+    await expectPath(page, ["src/…/orders.ts", "createOrder", "slack.post"], "slack.post");
     await pathStep(page, "createOrder").click();
     await expectShownLines(page, definition.lines[0], definition.lines[1]);
-    await expectTintedLines(page, place.lines);
-    await expect.poll(() => markedExpression(page)).toBe(placeExpression);
+    await expectTintedLines(page, post.lines);
+    await expect.poll(() => markedExpression(page)).toBe(postExpression);
     await expect(pathStep(page, "createOrder")).toHaveAttribute("aria-current", "true");
-    await expect(placeBox).toHaveClass(/\bselected\b/);
+    await expect(postBox).toHaveClass(/\bselected\b/);
 
-    await pathStep(page, ORDERS).click();
+    await pathStep(page, "src/…/orders.ts").click();
     await expectShownLines(page, 1, ordersText.split("\n").length - 1);
-    await expectTintedLines(page, place.lines);
-    await expect(placeBox).toHaveClass(/\bselected\b/);
+    await expectTintedLines(page, post.lines);
+    await expect(postBox).toHaveClass(/\bselected\b/);
     await pathStep(page, "createOrder").click();
     await expectShownLines(page, definition.lines[0], definition.lines[1]);
   });
 
   await test.step("hovering a line lights its block; clicking it selects the block and the panel stays", async () => {
-    const postLine = codeLine(page, post.lines[0]);
-    await postLine.hover();
-    await expectOutlined(postBox, true);
-    await postLine.click();
-    await expect(postBox).toHaveClass(/\bselected\b/);
-    await expectOutlined(postBox);
+    const placeLine = codeLine(page, place.lines[0]);
+    await placeLine.hover();
+    await expectOutlined(placeBox, true);
+    await placeLine.click();
+    await expect(placeBox).toHaveClass(/\bselected\b/);
+    await expectOutlined(placeBox);
     await expectShownLines(page, definition.lines[0], definition.lines[1]);
     await expect(pathStep(page, "createOrder")).toHaveAttribute("aria-current", "true");
-    await expectTintedLines(page, place.lines);
+    await expectTintedLines(page, post.lines);
   });
 
   await test.step("a file opened from Add adds a definition's card with ⊕", async () => {
@@ -183,11 +188,19 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     await addInput(page).press("Enter");
     await expectShownLines(page, 1, readFile(join(folder, retry)).split("\n").length - 1);
     await expectPath(page, [retry], retry);
+    // `⊕` sits in the gutter beside the line number, in view without scrolling sideways.
     const add = panel.getByRole("button", { name: `Add the definition on line ${withRetry} to the page` });
+    await expect(add).toBeInViewport();
+    await cameraSettled(page);
+    const camera = boardView(page).locator(".react-flow__viewport");
+    const before = await camera.getAttribute("style");
     await add.click();
     await expect(card(page, "withRetry")).toBeVisible();
     await expect(add).toBeHidden();
     await expectPath(page, [retry], retry);
+    // The panel never moves the canvas.
+    await cameraSettled(page);
+    expect(await camera.getAttribute("style")).toBe(before);
   });
 
   await test.step("an entrance card opens its lines in unfold.toml", async () => {
@@ -207,7 +220,7 @@ test("the code panel shows each block's lines, follows the canvas, and keeps up 
     const declared = lineOf(readFile(join(folder, "unfold.toml")), 'name = "Place an order"');
     await expectShownLines(page, declared, declared);
     await expectPath(page, ["unfold.toml", "Server", "Place an order"], "Place an order");
-    // Reaching `⊕` scrolled the lines sideways; a new view starts at its left, its numbers showing.
+    // A new view starts at its left, its numbers showing.
     await expect(codeLine(page, declared).locator(".code-number")).toBeInViewport();
   });
 

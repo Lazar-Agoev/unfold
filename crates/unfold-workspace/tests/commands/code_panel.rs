@@ -114,6 +114,97 @@ fn a_block_shows_its_lines_marked_with_its_path() {
 }
 
 #[test]
+fn a_long_file_comes_back_a_window_at_a_time() {
+    let harness = Harness::compiled("ts-orders");
+    let log: String = (1..=5_000).map(|n| format!("line {n}\n")).collect();
+    harness.write("logs/run.log", &log);
+    let file = json!({ "kind": "file", "path": "logs/run.log" });
+    let first = view(&harness, file.clone());
+    assert_eq!(first["state"], "notAnalyzed");
+    assert_eq!(first["span"], json!([1, 5000]));
+    assert_eq!(numbers(&first), (1..=200).collect::<Vec<_>>());
+    let window = |window: Value| {
+        harness.call(
+            1,
+            "code_view",
+            json!({ "project": harness.project, "target": file, "window": window }),
+        )
+    };
+    let last = window(json!([4801, 5200])).expect("a window");
+    assert_eq!(numbers(&last), (4801..=5000).collect::<Vec<_>>());
+    assert_eq!(text(&last).lines().next(), Some("line 4801"));
+    for bad in [json!([0, 10]), json!([10, 9]), json!([1, 401])] {
+        assert_eq!(
+            window(bad.clone()).expect_err("refused").code,
+            "invalid_args",
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_typescript_call_in_a_loop_or_switch_header_shows_that_line() {
+    let harness = Harness::new("ts-orders", false);
+    harness.write(
+        "src/headers.ts",
+        "declare function more(): boolean;\n\
+         declare function kind(x: number): string;\n\
+         declare function list(): number[];\n\
+         declare function use(x: unknown): void;\n\
+         \n\
+         export function headers(x: number): void {\n\
+         \x20 while (more()) {\n\
+         \x20   use(x);\n\
+         \x20 }\n\
+         \x20 switch (kind(x)) {\n\
+         \x20   case \"a\":\n\
+         \x20     use(1);\n\
+         \x20     break;\n\
+         \x20   default:\n\
+         \x20     use(2);\n\
+         \x20 }\n\
+         \x20 for (const item of list()) {\n\
+         \x20   use(item);\n\
+         \x20 }\n\
+         }\n",
+    );
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    for (call, line, written) in [
+        ("while[0]/call:more", 7, "while (more()) {"),
+        ("switch[0]/call:kind", 10, "switch (kind(x)) {"),
+        ("for[0]/call:list", 17, "for (const item of list()) {"),
+    ] {
+        let header = view(
+            &harness,
+            json!({ "kind": "block", "key": format!("src/headers.ts#headers/{call}") }),
+        );
+        assert_eq!(numbers(&header), [line], "{call}: {header}");
+        assert_eq!(text(&header), written, "{call}");
+    }
+}
+
+#[test]
+fn a_block_whose_file_left_the_graph_shows_the_file_not_analyzed() {
+    let harness = Harness::new("ts-orders", false);
+    let config = std::fs::read_to_string(harness.root.join("unfold.toml")).expect("read");
+    harness.write(
+        "unfold.toml",
+        &format!("[scope]\nexclude = [\"src/jobs/cleanup.ts\"]\n\n{config}"),
+    );
+    harness.ok(1, "select_project", json!({ "project": harness.project }));
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let left = view(
+        &harness,
+        json!({ "kind": "block", "key": "src/jobs/cleanup.ts#cleanupExpiredOrders" }),
+    );
+    assert_eq!(left["state"], "notAnalyzed", "{left}");
+    assert_eq!(left["file"], "src/jobs/cleanup.ts");
+    assert_eq!(numbers(&left)[0], 1, "the whole file");
+    assert!(left.get("mark").is_none(), "{left}");
+}
+
+#[test]
 fn lines_fields_and_files_are_targets_too() {
     let harness = Harness::compiled("ts-orders");
     let lines = view(

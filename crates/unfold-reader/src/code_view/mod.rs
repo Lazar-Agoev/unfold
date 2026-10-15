@@ -4,20 +4,24 @@
 //! | Part | What it is |
 //! | --- | --- |
 //! | `file`, `state` | The file and whether its lines can be trusted: current, changed since the last compile, doesn't parse, not analyzed, or not found |
-//! | `lines` | The shown lines with their real numbers, dedented to the view, highlighted, each with its block and its calls' names for hover |
+//! | `span` | The view's first and last line |
+//! | `lines` | A window of the view's lines with their real numbers, dedented to the view, highlighted, each with its block and its calls' names for hover |
 //! | `mark` | What the selection marks inside the view: a tint on its lines, and a call's expression |
 //! | `path` | File › definitions › control blocks › parts › the block, each with its label and key, and the step that is showing |
-//! | `definitions` | Each definition's first line, for `⊕` |
+//! | `definitions` | The first line of each definition on the window's lines, for `⊕` |
 //!
 //! A request names the **selected** target and, when the path widens the view, the target to
 //! **show** instead (a step of the path, or the file); the selection stays marked inside it.
 //! Which lines a block shows is the table of "What each block shows": a definition from its
-//! first decorator, a part inside its whole control block, a call inside its statement.
+//! first decorator, a part inside its whole control block, a call inside its statement. An
+//! answer holds a **window** of those lines, at most [`MAX_WINDOW`]: the ones the request asks
+//! for, or a page that starts a little above what the selection marks.
 //!
-//! Lines are cropped and marked only from source verified against the facts' hash. A file that
-//! changed since the last compile, or stopped parsing, is shown whole as it is now, with nothing
-//! marked and no blocks: its stored ranges may have moved. Every column is a UTF-16 offset into
-//! its line's shown (dedented) text.
+//! Lines are cropped and marked only from source verified against the facts' hash, kept with
+//! its indexes and highlighting in the [`SourceCache`]. A file that changed since the last
+//! compile, or stopped parsing, is shown whole as it is now, with nothing marked and no blocks:
+//! its stored ranges may have moved. A block whose file left the graph shows that file whole, not
+//! analyzed. Every column is a UTF-16 offset into its line's shown (dedented) text.
 
 mod lines;
 mod select;
@@ -25,21 +29,26 @@ mod select;
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::Serialize;
-use unfold_core::highlight::{Highlighter, TokenClass};
+use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
 use unfold_core::vocab::{FileState, InputRole};
-use unfold_core::{App, ByteRange, Input, Key, RepoPath, Snapshot};
+use unfold_core::{App, ByteRange, Input, Key, LineIndex, RepoPath, Snapshot, Utf16Index};
 
 use crate::contracts::{FactSource, Facts};
 use crate::error::Result;
-use crate::source::{Source, Verified, verify_file};
+use crate::source::{Source, SourceCache, SourceState, highlight};
 
 use lines::{Render, Text};
 use select::{MarkSpec, Origin, Shows, Span};
 
 pub(crate) use select::label;
+
+/// The most lines one answer holds.
+pub const MAX_WINDOW: u32 = 400;
 
 /// What the panel opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +95,9 @@ pub struct CodeRequest {
     /// What to show instead of the selection's own lines, when the path widened the view: a
     /// block on the selection's path, the file, or an app holding a selected entrance.
     pub show: Option<Target>,
+    /// The view's lines to answer with, first and last, one-based: at most [`MAX_WINDOW`] are.
+    /// `None` answers with a page from a little above the first line the selection marks.
+    pub window: Option<[u32; 2]>,
 }
 
 /// Where the panel's files and facts come from.
@@ -104,6 +116,8 @@ pub struct CodeSources<'a> {
     pub settings_parse: bool,
     /// One highlighter per language.
     pub highlighters: &'a [&'a dyn Highlighter],
+    /// The sources verified before, kept with their indexes and highlighting.
+    pub kept: &'a SourceCache,
 }
 
 /// Whether the shown lines can be trusted.
@@ -134,7 +148,12 @@ pub struct CodeView {
     pub file: Option<RepoPath>,
     /// Whether the lines can be trusted.
     pub state: CodeState,
-    /// The shown lines, in order; empty when not found.
+    /// The view's first and last line; absent when nothing is shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub span: Option<[u32; 2]>,
+    /// The window's lines, in order: those of the view the request asked for. Empty when not
+    /// found, or when the window is past the view.
     pub lines: Vec<CodeLine>,
     /// What the selection marks inside the view.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,9 +162,24 @@ pub struct CodeView {
     /// The file, then each block above the selection, then the selection; empty when not
     /// found.
     pub path: Vec<PathStep>,
-    /// Each definition whose first line is shown, in written order, for `⊕` (the UI decides
-    /// which have no card on the page).
+    /// Each definition whose first line is one of the window's, in written order, for `⊕` (the
+    /// UI decides which have no card on the page).
     pub definitions: Vec<DefinitionLine>,
+}
+
+impl CodeView {
+    /// The model of a target that no longer resolves: nothing shown.
+    pub fn not_found() -> Self {
+        Self {
+            file: None,
+            state: CodeState::NotFound,
+            span: None,
+            lines: Vec::new(),
+            mark: None,
+            path: Vec::new(),
+            definitions: Vec::new(),
+        }
+    }
 }
 
 /// One shown line.
@@ -167,6 +201,10 @@ pub struct CodeLine {
     pub block: Option<Key>,
     /// The written names of the calls on the line; hovering one outlines that call.
     pub calls: Vec<CallName>,
+    /// The line goes on past `text`: it is too long to show whole (written only when true).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "ts", ts(optional = nullable))]
+    pub cut: bool,
 }
 
 /// One highlighted span of a line: `[start, end, class]`.
@@ -210,7 +248,8 @@ pub struct Mark {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub lines: Option<[u32; 2]>,
-    /// A call's own expression, one range per line it spans; empty for anything else.
+    /// A call's own expression, one range per line of the window it spans; empty for anything
+    /// else.
     pub expression: Vec<LineRange>,
 }
 
@@ -248,14 +287,7 @@ pub struct DefinitionLine {
 pub fn code_view(sources: &CodeSources<'_>, request: &CodeRequest) -> Result<CodeView> {
     let mut facts = Facts::new(sources.facts, sources.root);
     let Some(selected) = select::resolve(&mut facts, sources, &request.selected)? else {
-        return Ok(CodeView {
-            file: None,
-            state: CodeState::NotFound,
-            lines: Vec::new(),
-            mark: None,
-            path: Vec::new(),
-            definitions: Vec::new(),
-        });
+        return Ok(CodeView::not_found());
     };
     let shown = match &request.show {
         Some(show) => select::resolve(&mut facts, sources, show)?
@@ -269,6 +301,7 @@ pub fn code_view(sources: &CodeSources<'_>, request: &CodeRequest) -> Result<Cod
         return Ok(CodeView {
             file: Some(selected.origin.path().clone()),
             state,
+            span: None,
             lines: Vec::new(),
             mark: None,
             path,
@@ -288,12 +321,19 @@ pub fn code_view(sources: &CodeSources<'_>, request: &CodeRequest) -> Result<Cod
         Origin::Source(tree) if current => Some(&**tree),
         Origin::Source(_) | Origin::Input(_) | Origin::Outside(_) => None,
     };
-    let text = Text::new(body.text(), selected.origin.line_breaks());
-    let render = Render::new(&text, selected.origin.path(), view)?;
+    let render = Render::new(
+        body.indexed(),
+        selected.origin.path(),
+        view,
+        &mark,
+        request.window,
+    )?;
+    let highlights = highlighter(sources, &selected.origin).map(|highlighter| body.highlights(highlighter));
     Ok(CodeView {
         file: Some(selected.origin.path().clone()),
         state,
-        lines: render.lines(tree, highlighter(sources, &selected.origin))?,
+        span: Some(render.span()),
+        lines: render.lines(tree, highlights.as_deref())?,
         mark: render.mark(&mark)?,
         path,
         definitions: tree.map_or_else(Vec::new, |tree| render.definitions(tree)),
@@ -325,17 +365,41 @@ fn highlighter<'a>(sources: &CodeSources<'a>, origin: &Origin) -> Option<&'a dyn
         .find(|highlighter| highlighter.language() == tree.language())
 }
 
-/// A file's text: verified against its hash, or read as it is now.
+/// A file's text with its indexes: verified against its hash (kept, with its highlighting), or
+/// read as it is now (indexed for this answer).
 enum Body {
-    Verified(Source),
-    Now(Snapshot),
+    Verified(Arc<Source>),
+    Now {
+        snapshot: Snapshot,
+        lines: LineIndex,
+        utf16: Utf16Index,
+    },
 }
 
 impl Body {
     fn text(&self) -> &str {
         match self {
             Self::Verified(source) => source.text(),
-            Self::Now(snapshot) => snapshot.text(),
+            Self::Now { snapshot, .. } => snapshot.text(),
+        }
+    }
+
+    fn indexed(&self) -> Text<'_> {
+        match self {
+            Self::Verified(source) => Text::new(source.text(), source.lines(), source.utf16()),
+            Self::Now {
+                snapshot,
+                lines,
+                utf16,
+            } => Text::new(snapshot.text(), lines, utf16),
+        }
+    }
+
+    /// The text's highlighting by `highlighter`, its language's.
+    fn highlights(&self, highlighter: &dyn Highlighter) -> Cow<'_, [HighlightSpan]> {
+        match self {
+            Self::Verified(source) => Cow::Borrowed(source.highlights(highlighter)),
+            Self::Now { snapshot, .. } => Cow::Owned(highlight(snapshot.text(), highlighter)),
         }
     }
 }
@@ -345,29 +409,39 @@ impl Body {
 fn load(sources: &CodeSources<'_>, origin: &Origin) -> (CodeState, Option<Body>) {
     let expected = match origin {
         Origin::Source(tree) if tree.file().state != FileState::Current => {
-            return now(sources, tree.path(), CodeState::DoesNotParse);
+            return now(sources, origin, CodeState::DoesNotParse);
         }
         Origin::Source(tree) => tree.file().hash,
         Origin::Input(input) if input.role == InputRole::UnfoldConfig && !sources.settings_parse => {
-            return now(sources, &input.path, CodeState::DoesNotParse);
+            return now(sources, origin, CodeState::DoesNotParse);
         }
         Origin::Input(input) => Some(input.hash),
-        Origin::Outside(path) => return now(sources, path, CodeState::NotAnalyzed),
+        Origin::Outside(_) => return now(sources, origin, CodeState::NotAnalyzed),
     };
-    match verify_file(sources.root, origin.path(), expected, origin.line_breaks()) {
-        Verified::Current(source) => (CodeState::Current, Some(Body::Verified(source))),
-        Verified::Changed => now(sources, origin.path(), CodeState::Changed),
-        Verified::Missing => (CodeState::NotFound, None),
+    let checked = sources
+        .kept
+        .check(sources.root, origin.path(), expected, origin.line_breaks());
+    match (checked.state, checked.source) {
+        (SourceState::Current, Some(source)) => (CodeState::Current, Some(Body::Verified(source))),
+        (SourceState::Current | SourceState::Changed, _) => now(sources, origin, CodeState::Changed),
+        (SourceState::Missing, _) => (CodeState::NotFound, None),
     }
 }
 
-/// `path` as it is now, in `state`; not found when it can't be read as text.
-fn now(sources: &CodeSources<'_>, path: &RepoPath, state: CodeState) -> (CodeState, Option<Body>) {
+/// `origin`'s file as it is now, in `state`; not found when it can't be read as text.
+fn now(sources: &CodeSources<'_>, origin: &Origin, state: CodeState) -> (CodeState, Option<Body>) {
+    let path = origin.path();
     std::fs::read(sources.root.join(path.as_str()))
         .ok()
         .and_then(|bytes| Snapshot::new(path.clone(), bytes).ok())
         .map_or((CodeState::NotFound, None), |snapshot| {
-            (state, Some(Body::Now(snapshot)))
+            let breaks = origin.line_breaks();
+            let body = Body::Now {
+                lines: snapshot.line_index(breaks),
+                utf16: snapshot.utf16_index(),
+                snapshot,
+            };
+            (state, Some(body))
         })
 }
 

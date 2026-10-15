@@ -386,7 +386,7 @@ impl Workspace {
         self.languages.iter().find(|language| language.id() == id)
     }
 
-    /// The sources the drawings verified most recently ([`SourceCache`]).
+    /// The sources the drawings and the code panel verified most recently ([`SourceCache`]).
     pub fn kept_sources(&self) -> &SourceCache {
         &self.shared.sources
     }

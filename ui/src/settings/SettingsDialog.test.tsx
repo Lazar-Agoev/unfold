@@ -47,7 +47,7 @@ describe("Settings › Editor", () => {
     const { dialog, fake, user } = await open({ editorCommand: "code -g {path}:{line}" });
     const field = editorField(dialog);
     expect((field as HTMLInputElement).value).toBe("code -g {path}:{line}");
-    expect(within(dialog).getByText("{path}, {line}, and {column} are replaced. Empty opens files in TextEdit.")).toBeTruthy();
+    expect(within(dialog).getByText("{path}, {line}, and {column} are replaced. Empty opens files in the default text editor.")).toBeTruthy();
     await user.clear(field);
     await user.type(field, " zed {{path}:{{line} ");
     await user.tab();

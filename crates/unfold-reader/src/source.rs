@@ -13,13 +13,15 @@
 //! keeps its words while a file changes on disk and the compile hasn't caught up, or while the
 //! file doesn't parse (its last good facts keep the hash they came from). A source is kept only
 //! after it verified, and found only by the hash the facts came from: its text is exactly the
-//! facts' text.
+//! facts' text. A kept source keeps its indexes and its highlighting too, so a file read again
+//! is only read and hashed.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use rustc_hash::FxHashMap;
 use serde::Serialize;
+use unfold_core::highlight::{HighlightSpan, Highlighter};
 use unfold_core::text::OffsetError;
 use unfold_core::{
     ByteRange, ContentHash, LineBreaks, LineIndex, RepoPath, Snapshot, Utf16Index, text::Utf16Range,
@@ -28,13 +30,23 @@ use unfold_core::{
 use crate::error::{ReaderError, Result};
 
 /// A file's text, verified against the hash its facts came from, with its line and UTF-16
-/// indexes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// indexes, and its highlighting once it is asked for.
+#[derive(Debug, Clone)]
 pub struct Source {
     snapshot: Snapshot,
     lines: LineIndex,
     utf16: Utf16Index,
+    highlights: OnceLock<Vec<HighlightSpan>>,
 }
+
+impl PartialEq for Source {
+    /// The same file read the same way: the indexes and highlighting follow from it.
+    fn eq(&self, other: &Self) -> bool {
+        self.snapshot == other.snapshot && self.lines == other.lines
+    }
+}
+
+impl Eq for Source {}
 
 impl Source {
     fn new(snapshot: Snapshot, breaks: LineBreaks) -> Self {
@@ -42,6 +54,7 @@ impl Source {
             lines: snapshot.line_index(breaks),
             utf16: snapshot.utf16_index(),
             snapshot,
+            highlights: OnceLock::new(),
         }
     }
 
@@ -68,6 +81,18 @@ impl Source {
     /// The line index.
     pub fn lines(&self) -> &LineIndex {
         &self.lines
+    }
+
+    /// The UTF-16 index.
+    pub fn utf16(&self) -> &Utf16Index {
+        &self.utf16
+    }
+
+    /// The text's highlighting by `highlighter`, its language's ([`highlight`]), found the first
+    /// time it is asked for.
+    pub fn highlights(&self, highlighter: &dyn Highlighter) -> &[HighlightSpan] {
+        self.highlights
+            .get_or_init(|| highlight(self.text(), highlighter))
     }
 
     /// The text of stored range `range`. A range that doesn't fit the verified text (or splits
@@ -186,9 +211,10 @@ impl SourceCache {
         }
     }
 
-    /// Verifies `path` under `root` against `expected` ([`verify_file`]) and keeps its source
-    /// when it is current. When the file changed or is gone, the source kept for `expected` is
-    /// the text, if it is still kept.
+    /// Verifies `path` under `root` against `expected`, as [`verify_file`] does, and keeps its
+    /// source when it is current: a source already kept for those bytes is used as it is. When
+    /// the file changed or is gone, the source kept for `expected` is the text, if it is still
+    /// kept.
     pub fn check(
         &self,
         root: &Path,
@@ -196,15 +222,38 @@ impl SourceCache {
         expected: Option<ContentHash>,
         breaks: LineBreaks,
     ) -> Checked {
-        let verified = verify_file(root, path, expected, breaks);
-        let state = verified.state();
-        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
-        let source = match (verified, expected) {
-            (Verified::Current(source), _) => Some(kept.keep(source, self.budget)),
-            (Verified::Changed | Verified::Missing, Some(hash)) => kept.get(path, hash),
-            (Verified::Changed | Verified::Missing, None) => None,
+        let Some(expected) = expected else {
+            return Checked {
+                state: SourceState::Missing,
+                source: None,
+            };
         };
-        Checked { state, source }
+        let kept = || self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        let state = match std::fs::read(root.join(path.as_str())) {
+            Err(_) => SourceState::Missing,
+            Ok(bytes) if ContentHash::of(&bytes) == expected => {
+                if let Some(source) = kept().get(path, expected) {
+                    return Checked {
+                        state: SourceState::Current,
+                        source: Some(source),
+                    };
+                }
+                // Bytes with the facts' hash decoded when the facts were taken.
+                if let Ok(snapshot) = Snapshot::new(path.clone(), bytes) {
+                    let source = kept().keep(Source::new(snapshot, breaks), self.budget);
+                    return Checked {
+                        state: SourceState::Current,
+                        source: Some(source),
+                    };
+                }
+                SourceState::Changed
+            }
+            Ok(_) => SourceState::Changed,
+        };
+        Checked {
+            state,
+            source: kept().get(path, expected),
+        }
     }
 }
 
@@ -275,6 +324,26 @@ pub fn verify_file(
     }
 }
 
+/// `highlighter`'s spans of `text`, any that aren't well formed dropped rather than trusted: what
+/// is left is sorted, non-overlapping, and on character boundaries.
+pub(crate) fn highlight(text: &str, highlighter: &dyn Highlighter) -> Vec<HighlightSpan> {
+    let mut previous_end = 0u32;
+    let mut spans = highlighter.highlight(text);
+    spans.retain(|span| {
+        let ByteRange { start, end } = span.range;
+        let fits = start >= previous_end
+            && start < end
+            && (end as usize) <= text.len()
+            && text.is_char_boundary(start as usize)
+            && text.is_char_boundary(end as usize);
+        if fits {
+            previous_end = end;
+        }
+        fits
+    });
+    spans
+}
+
 impl Default for SourceCache {
     fn default() -> Self {
         Self::new()
@@ -326,6 +395,63 @@ mod tests {
         write("a = 3\n");
         assert_eq!(text(&check(second)).as_deref(), Some("a = 2\n"));
         assert_eq!(text(&check(first)), None);
+    }
+
+    /// Counts how often it highlights.
+    struct Counting(std::sync::atomic::AtomicUsize);
+
+    impl Highlighter for Counting {
+        fn language(&self) -> unfold_core::vocab::Language {
+            unfold_core::vocab::Language::Python
+        }
+
+        fn highlight(&self, text: &str) -> Vec<HighlightSpan> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let word = ByteRange::new(0, 1).unwrap();
+            // The second span overlaps the first, and the third runs past the text: both dropped.
+            vec![
+                HighlightSpan {
+                    range: word,
+                    class: unfold_core::highlight::TokenClass::Keyword,
+                },
+                HighlightSpan {
+                    range: ByteRange::new(0, 2).unwrap(),
+                    class: unfold_core::highlight::TokenClass::Keyword,
+                },
+                HighlightSpan {
+                    range: ByteRange::new(4, u32::try_from(text.len()).unwrap() + 1).unwrap(),
+                    class: unfold_core::highlight::TokenClass::Number,
+                },
+            ]
+        }
+    }
+
+    #[test]
+    fn a_kept_source_is_read_again_without_indexing_or_highlighting_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = RepoPath::new("a.py").unwrap();
+        std::fs::write(dir.path().join("a.py"), "a = 1\n").unwrap();
+        let hash = ContentHash::of(b"a = 1\n");
+        let cache = SourceCache::new();
+        let check = || {
+            cache
+                .check(dir.path(), &path, Some(hash), LineBreaks::Newlines)
+                .source
+                .unwrap()
+        };
+        let (first, again) = (check(), check());
+        assert!(Arc::ptr_eq(&first, &again), "the kept source, as it is");
+        let counting = Counting(std::sync::atomic::AtomicUsize::new(0));
+        assert_eq!(
+            first
+                .highlights(&counting)
+                .iter()
+                .map(|span| span.range)
+                .collect::<Vec<_>>(),
+            [ByteRange::new(0, 1).unwrap()]
+        );
+        assert_eq!(again.highlights(&counting).len(), 1);
+        assert_eq!(counting.0.load(std::sync::atomic::Ordering::Relaxed), 1);
     }
 
     #[test]

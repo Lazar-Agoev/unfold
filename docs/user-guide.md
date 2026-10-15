@@ -156,7 +156,8 @@ Source opens in the code panel on the right, beside the diagram. Click `</>` on 
   to light up its block; click a line to select it.
 - **Open in editor** opens the file at that line (see [Settings](#settings)). × or Escape closes the panel.
 - If the file changed since the last compile, or doesn't parse, the panel shows the whole file as it is now and marks
-  nothing until the graph catches up.
+  nothing until the graph catches up. If the block's file is now outside the graph (`[scope]` leaves it out), the panel
+  shows the whole file marked **Not analyzed**.
 
 ## Selected
 
@@ -209,8 +210,8 @@ and Health lists it with **Open in editor**.
 The gear at the bottom of the sidebar opens Settings:
 
 - **Editor command:** how **Open in editor** opens a file, such as `code -g {path}:{line}`. `{path}`, `{line}`, and
-  `{column}` are replaced. Empty opens files in TextEdit. If the program isn't found, use its full path: an app started
-  from the Dock gets a short `PATH`.
+  `{column}` are replaced. Empty opens files in the default text editor. If the program isn't found, use its full path:
+  an app started from the Dock gets a short `PATH`.
 - **Agents:** the commands that connect Claude Code and Codex, and whether an agent has connected.
 
 ## Connect an agent

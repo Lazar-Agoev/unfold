@@ -43,6 +43,7 @@
   min-width: 0;
 }
 
+/* Past everything the path leaves out or shortens (Path), the selection's label shortens. */
 .code-path-step:last-child { flex-shrink: 1; }
 
 .code-crumb {
@@ -88,7 +89,7 @@ button.code-crumb:hover { background: var(--color-hover); color: var(--color-tex
   color: var(--color-muted);
 }
 
-/* The lines: numbers, then the dedented code, 20px each. */
+/* The lines, 20px each: a gutter (the number, then room for `⊕`), then the dedented code. */
 .code-lines {
   flex: 1;
   min-height: 0;
@@ -104,7 +105,7 @@ button.code-crumb:hover { background: var(--color-hover); color: var(--color-tex
 
 .code-line {
   display: grid;
-  grid-template-columns: 44px max-content;
+  grid-template-columns: 28px 16px max-content;
   min-width: max-content;
   height: 20px;
   padding-right: 20px;
@@ -113,11 +114,12 @@ button.code-crumb:hover { background: var(--color-hover); color: var(--color-tex
 }
 
 .code-number {
-  padding-right: 16px;
   text-align: right;
   color: var(--color-placeholder-line);
   user-select: none;
 }
+
+.code-text { grid-column: 3; }
 
 /* The selection's lines: a quiet tint with an accent edge. */
 .code-line.marked {
@@ -130,12 +132,19 @@ button.code-crumb:hover { background: var(--color-hover); color: var(--color-tex
 /* A call's own expression; each run carries it, so it reads as one fill. */
 .code-mark { background: var(--color-mark); }
 
-/* `⊕` beside a definition with no card on the page. */
+/* The end of a line too long to show whole: it goes on past `…`. */
+.code-cut {
+  color: var(--color-muted);
+  user-select: none;
+}
+
+/* `⊕` in the gutter beside a definition's first line, when it has no card on the page. */
 .code-add {
-  margin-left: 10px;
-  padding: 0 3px;
+  grid-column: 2;
   border-radius: var(--radius-chip);
   color: var(--color-muted);
+  text-align: center;
+  user-select: none;
 }
 
 .code-add:hover { background: var(--color-hover); color: var(--color-accent-text); }

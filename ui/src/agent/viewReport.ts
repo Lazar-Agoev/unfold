@@ -123,14 +123,12 @@ function loadedCard(target: PageTarget, cardId: string): CardView | undefined {
 /** What the code panel shows: what it opened on, and, once its view has loaded, the file and lines on screen. */
 export function codeReport(open: CodeOpen, view: CodeView | undefined): CodePanelReport {
   const { target } = open;
-  const first = view?.lines[0]?.number;
-  const last = view?.lines.at(-1)?.number;
   const file = view?.file ?? (target.kind === "lines" || target.kind === "file" ? target.path : undefined);
   return {
     ...(target.kind === "block" || target.kind === "field" || target.kind === "start" ? { key: target.key } : {}),
     ...(target.kind === "lines" ? { span: target.lines } : {}),
     ...(file !== undefined ? { file } : {}),
-    ...(first !== undefined && last !== undefined ? { lines: [first, last] as const } : {}),
+    ...(view?.span ? { lines: view.span } : {}),
     widened: open.show !== null,
     ...(view ? { state: view.state } : {}),
   };

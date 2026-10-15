@@ -90,7 +90,7 @@ impl LocalState {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppSettings {
     /// The command that opens a file in the person's editor, such as `code -g {path}:{line}`;
-    /// without one, files open in TextEdit.
+    /// without one, files open in the default text editor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub editor_command: Option<String>,

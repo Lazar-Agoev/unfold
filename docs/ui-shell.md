@@ -151,17 +151,26 @@ inline or as a toast with the page unchanged.
 (the [model](reader.md#the-code-panels-model) is the reader's).
 
 - **Opening:** `</>` on a hovered or selected block and on card headers, View code in a block's menu, a gap tick, a
-  file from Add, and a type name in Selected. App and entrance cards open their lines in `unfold.toml`.
+  file from Add, and a type name in Selected. App and entrance cards open their lines in `unfold.toml`. A resource
+  card or a connection opens the first source it cites, in the reader's order: a table's type or a connection's step,
+  then its first citation.
 - **Following:** while open, the panel follows the selection; something without source leaves it where it is. A
   selection the panel makes itself (a line click, `⊕`) is quiet, so the panel doesn't move. Lines opened from a
   combined step, thin row, or gap tick are rebuilt from the card as drawn now.
 - **Outline:** the selected block is outlined on the canvas on its own shape, or on what holds it (a collapsed
   combined step, a thin row, a gap tick). Hovering a line lights its block (a call's name lights that call); a line no
   drawn block covers lights its gap tick.
-- **Path:** each step widens the view; the selection stays marked and selected.
+- **Path:** each step widens the view; the selection stays marked and selected. When it doesn't fit, it gives way in
+  this order: the steps strictly between the definition (the step after the file) and the selection, deepest first,
+  each run drawn as one `…`; then the file's folders, shortened in the middle so its name stays (`src/…/orders.ts`,
+  then `…/orders.ts`); then the definition. The step showing never goes, and the selection's label shortens only past
+  all of that. Hovering the path shows the selection's full key.
 - **States** show as a banner, and nothing is marked unless the lines are current.
-- **Actions:** Open in editor (errors as a toast) and `⊕` on definitions with no card on the page. × or Escape
-  closes it; it closes when the window shows another board or Home. Long files render in pages of 200 lines.
+- **Actions:** Open in editor (errors as a toast) and `⊕`, in the gutter beside the line number of a line that starts
+  a definition with no card on the page (the outermost one, when several start there). `⊕` adds the card where new
+  cards go and leaves the canvas where it is. × or Escape closes the panel; it closes when the window shows another
+  board or Home. Long views are read and rendered in pages of 200 lines as they scroll into view; the first answer
+  holds the page around what the selection marks. A line the engine cut (over 1,000 bytes) ends in a muted `…`.
 
 ## Add
 

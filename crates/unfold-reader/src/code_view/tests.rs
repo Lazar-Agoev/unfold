@@ -7,6 +7,7 @@ use unfold_core::vocab::{FileState, Form, InputRole, Language, LinkKind, MemberK
 use unfold_core::{ByteRange, Callee, Key, Member, RepoPath};
 
 use super::*;
+use crate::source::SourceCache;
 use crate::testing::Playground;
 
 const SERVICE: &str = "shop/service.py";
@@ -59,6 +60,16 @@ fn view_with(
     show: Option<Target>,
     settings_parse: bool,
 ) -> CodeView {
+    let request = CodeRequest {
+        selected,
+        show,
+        window: None,
+    };
+    answer(playground, &request, settings_parse)
+}
+
+fn answer(playground: &Playground, request: &CodeRequest, settings_parse: bool) -> CodeView {
+    let kept = SourceCache::new();
     let sources = CodeSources {
         facts: &playground.graph,
         root: &playground.root,
@@ -66,12 +77,23 @@ fn view_with(
         apps: &playground.graph.apps,
         settings_parse,
         highlighters: &[&Keywords],
+        kept: &kept,
     };
-    code_view(&sources, &CodeRequest { selected, show }).unwrap()
+    code_view(&sources, request).unwrap()
 }
 
 fn view(playground: &Playground, selected: Target) -> CodeView {
     view_of(playground, selected, None)
+}
+
+/// The lines `window` of what `selected` shows.
+fn window(playground: &Playground, selected: Target, window: [u32; 2]) -> CodeView {
+    let request = CodeRequest {
+        selected,
+        show: None,
+        window: Some(window),
+    };
+    answer(playground, &request, true)
 }
 
 fn block(key: &str) -> Target {
@@ -433,6 +455,13 @@ fn a_call_in_a_test_or_a_header_shows_that_line() {
     );
     assert_eq!(shown(&condition), ["23 if (orderService.remove(id)) removed++;"]);
     assert_eq!(expression(&condition), ["orderService.remove(id)"]);
+    // A TypeScript control block carries its whole statement; a call in its header still shows
+    // only the header's line.
+    let header_loop = view(&ts, block("src/worker.ts#purge/for[0]/call:orderService.list"));
+    assert_eq!(
+        shown(&header_loop),
+        ["8 for (const order of orderService.list()) {"]
+    );
 }
 
 #[test]
@@ -979,7 +1008,7 @@ fn a_file_that_stopped_parsing_shows_whole() {
         .files
         .iter_mut()
         .find(|file| file.file.path.as_str() == SERVICE)
-        .map(std::sync::Arc::make_mut)
+        .map(Arc::make_mut)
         .unwrap();
     file.file.state = FileState::LastGood;
     std::fs::write(shop.root.join(SERVICE), "def place_order(:\n").unwrap();
@@ -1025,6 +1054,23 @@ fn a_file_outside_the_graph_is_not_analyzed() {
 }
 
 #[test]
+fn a_block_whose_file_left_the_graph_shows_the_file_not_analyzed() {
+    let shop = shop();
+    std::fs::create_dir_all(shop.root.join("scripts")).unwrap();
+    std::fs::write(shop.root.join("scripts/seed.py"), "def seed():\n    return 1\n").unwrap();
+    let left = view(&shop, block("scripts/seed.py#seed/return[0]"));
+    assert_eq!(left.state, CodeState::NotAnalyzed);
+    assert_eq!(left.file, Some(path("scripts/seed.py")));
+    assert_eq!(shown(&left), ["1 def seed():", "2     return 1"]);
+    assert_eq!(left.mark, None);
+    assert!(left.definitions.is_empty());
+    assert_eq!(steps(&left), ["*scripts/seed.py*"]);
+    // With its file gone too, it is not found.
+    let gone = view(&shop, block("scripts/gone.py#seed"));
+    assert_eq!((gone.state, gone.file), (CodeState::NotFound, None));
+}
+
+#[test]
 fn a_key_that_no_longer_resolves_is_not_found() {
     let shop = shop();
     let gone = view(&shop, block("shop/service.py#refund_order"));
@@ -1033,6 +1079,7 @@ fn a_key_that_no_longer_resolves_is_not_found() {
         CodeView {
             file: None,
             state: CodeState::NotFound,
+            span: None,
             lines: Vec::new(),
             mark: None,
             path: Vec::new(),
@@ -1046,6 +1093,148 @@ fn a_key_that_no_longer_resolves_is_not_found() {
     assert!(deleted.lines.is_empty());
     let absent = view(&shop, Target::File(path("absent.py")));
     assert_eq!(absent.state, CodeState::NotFound);
+}
+
+/// A Python module of 250 four-line functions, `return go(n)` each: 1,000 lines.
+fn long_module() -> Playground {
+    let code: String = (1..=250)
+        .map(|n| format!("def f{n}():\n    x = {n}\n    return go({n})\n\n"))
+        .collect();
+    let mut g = GraphBuilder::new();
+    let file = g.file("long.py", Language::Python, &code);
+    for n in 1..=250 {
+        let written = format!("def f{n}():\n    x = {n}\n    return go({n})");
+        let function = g.def(file, Form::Function, &format!("f{n}"), g.find(file, &written));
+        g.node_mut(function).head = Some(g.find(file, &format!("def f{n}()")));
+        let statement = g.find(file, &format!("return go({n})"));
+        let exit = g.block(function, Form::Return, statement);
+        g.node_mut(exit).stmt = Some(statement);
+        let call = g.call(exit, &Callee::name("go"), g.find(file, &format!("go({n})")));
+        let head = g.find_in(call, "go");
+        g.node_mut(call).head = Some(head);
+        g.link(call, LinkKind::Calls, head, "go", unknown(Reason::NotFound));
+    }
+    Playground::built(&g)
+}
+
+#[test]
+fn an_answer_holds_a_window_of_the_view() {
+    let long = long_module();
+    let module = block("long.py#");
+    // By default, the view's first page.
+    let first = view(&long, module.clone());
+    assert_eq!(first.span, Some([1, 1000]));
+    assert_eq!(numbers(&first), [1, 200]);
+    // A window asked for: at most `MAX_WINDOW` lines, none past the view.
+    let page = window(&long, module.clone(), [401, 600]);
+    assert_eq!((page.span, numbers(&page)), (Some([1, 1000]), [401, 600]));
+    assert_eq!(
+        numbers(&window(&long, module.clone(), [1, 1000])),
+        [1, MAX_WINDOW]
+    );
+    assert_eq!(numbers(&window(&long, module.clone(), [901, 2000])), [901, 1000]);
+    let past = window(&long, module.clone(), [1001, 1100]);
+    assert_eq!((past.span, past.lines.len()), (Some([1, 1000]), 0));
+    // What is found per line is found for the window's lines only.
+    let names = |view: &CodeView| -> Vec<String> {
+        view.definitions
+            .iter()
+            .map(|definition| format!("{} {}", definition.line, definition.key))
+            .collect()
+    };
+    assert_eq!(
+        names(&window(&long, module.clone(), [400, 408])),
+        ["401 long.py#f101", "405 long.py#f102"]
+    );
+    let calls = window(&long, module, [403, 403]);
+    assert_eq!(
+        calls.lines[0].calls[0].key.as_str(),
+        "long.py#f101/return[0]/call:go"
+    );
+    assert_eq!(
+        calls.lines[0].block.as_ref().map(Key::as_str),
+        Some("long.py#f101/return[0]")
+    );
+
+    // Without a window, the page starts a little above what the selection marks, so its lines
+    // come back in the first answer, and it stays inside the view.
+    let cited = |mark: [u32; 2]| {
+        view(
+            &long,
+            Target::Lines {
+                path: path("long.py"),
+                lines: [1, 1000],
+                mark: Some(mark),
+                title: None,
+            },
+        )
+    };
+    let marked = cited([700, 705]);
+    assert_eq!(
+        (numbers(&marked), marked_lines(&marked)),
+        ([650, 849], Some([700, 705]))
+    );
+    assert_eq!(numbers(&cited([990, 990])), [801, 1000]);
+    assert_eq!(numbers(&cited([30, 31])), [1, 200]);
+    // A call widened to the file comes back at its line, its expression marked.
+    let widened = view_of(
+        &long,
+        block("long.py#f200/return[0]/call:go"),
+        Some(Target::File(path("long.py"))),
+    );
+    assert_eq!(widened.span, Some([1, 1000]));
+    assert_eq!(numbers(&widened), [749, 948]);
+    assert_eq!(expression(&widened), ["go(200)"]);
+}
+
+#[test]
+fn windows_agree_with_the_whole_view_at_their_edges() {
+    for (playground, file) in [
+        (Playground::load("ts-orders"), "src/routes/orders.ts"),
+        (
+            Playground::load("py-orders"),
+            "src/orders_playground/features/control.py",
+        ),
+        (shop(), SERVICE),
+    ] {
+        let whole = view(&playground, Target::File(path(file)));
+        let [first, last] = whole.span.unwrap();
+        assert_eq!(numbers(&whole), [first, last], "{file} fits one page");
+        for start in first..=last {
+            let part = window(&playground, Target::File(path(file)), [start, start + 2]);
+            let expected: Vec<&CodeLine> = whole
+                .lines
+                .iter()
+                .filter(|line| (start..=start + 2).contains(&line.number))
+                .collect();
+            assert_eq!(
+                part.lines.iter().collect::<Vec<_>>(),
+                expected,
+                "{file} from line {start}"
+            );
+            assert!(
+                part.definitions
+                    .iter()
+                    .all(|definition| whole.definitions.contains(definition))
+            );
+        }
+    }
+}
+
+#[test]
+fn a_long_line_is_cut() {
+    let shop = shop();
+    let long = format!("short\n{}é{}\n", "a".repeat(999), "b".repeat(50));
+    std::fs::write(shop.root.join("wide.txt"), long).unwrap();
+    let wide = view(&shop, Target::File(path("wide.txt")));
+    assert!(!wide.lines[0].cut);
+    let line = &wide.lines[1];
+    assert!(line.cut);
+    // The cut never splits a character: `é` would end past the thousandth byte.
+    assert_eq!(line.text, "a".repeat(999));
+    let json = serde_json::to_value(&wide).unwrap();
+    assert!(json["lines"][0].get("cut").is_none());
+    assert_eq!(json["lines"][1]["cut"], true);
 }
 
 #[test]

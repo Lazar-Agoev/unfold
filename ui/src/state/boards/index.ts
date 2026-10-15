@@ -6,6 +6,7 @@
 
 export {
   addBlock,
+  addBlockWithoutFocus,
   addRef,
   describeCard,
   describeLink,

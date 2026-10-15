@@ -130,7 +130,7 @@ command_table! {
     /// The code panel's model for one selection: a block, lines, a field, a file, or an app or
     /// entrance.
     "code_view" => CodeView(code::CodeViewArgs) -> unfold_reader::code_view::CodeView = code::code_view;
-    /// Opens a file with the editor command, or in TextEdit. The project's `unfold.toml` is
+    /// Opens a file with the editor command, or in the default text editor. The project's `unfold.toml` is
     /// created empty first when it has none.
     "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> () = files::open_in_editor;
     /// A card: a definition's drawn flow (with the page's overlay, the card's open paths, and

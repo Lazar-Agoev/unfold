@@ -32,12 +32,12 @@ pub struct OpenInEditorArgs {
 }
 
 /// `open_in_editor`: runs the settings' editor command (without a shell), or opens the file in
-/// TextEdit when none is set. Asked for the project's `unfold.toml` (the project menu's Open
+/// the default text editor when none is set. Asked for the project's `unfold.toml` (the project menu's Open
 /// `unfold.toml`), it first creates an empty one when the project has none.
 ///
-/// TextEdit opens any file as text: handing the file to its default app could run it (a `.py`
-/// file's default app can be a launcher, and `.command` files run when "opened"), while Unfold
-/// never runs the code it indexes (docs/architecture.md#security).
+/// The default text editor opens any file as text: handing the file to its default app could
+/// run it (a `.py` file's default app can be a launcher, and `.command` files run when "opened"),
+/// while Unfold never runs the code it indexes (docs/architecture.md#security).
 pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<()> {
     let workspace = ctx.live(&args.project)?;
     if args.path == CONFIG_PATH {
@@ -56,7 +56,7 @@ pub fn open_in_editor(ctx: &Ctx<'_>, args: OpenInEditorArgs) -> CommandResult<()
 }
 
 /// The program and arguments that open `path` at `line`: the editor command when the settings
-/// have one, else `/usr/bin/open -t`, which opens TextEdit.
+/// have one, else `/usr/bin/open -t`, which opens the default text editor.
 fn open_argv(settings: &AppSettings, path: &str, line: Option<u32>) -> CommandResult<Vec<String>> {
     match settings
         .editor_command

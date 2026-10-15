@@ -1,15 +1,15 @@
 //! `code_view`: the code panel's model for one selection (docs/reader.md#the-code-panels-model): a
 //! block, lines of a file (with an optional mark), a field of a type card, a whole file, or an
-//! app or entrance (its lines in `unfold.toml`). The reader builds the model from the committed
-//! graph and the source verified against it; the workspace confines paths, finds an app's or
-//! entrance's span in `unfold.toml` among what the engine last resolved, says whether that
-//! file parses as the engine last read it, and passes the languages' highlighters. Wakes the
-//! project.
+//! app or entrance (its lines in `unfold.toml`), answered a window of lines at a time. The reader
+//! builds the model from the committed graph and the source verified against it; the workspace
+//! confines paths, finds an app's or entrance's span in `unfold.toml` among what the engine last
+//! resolved, says whether that file parses as the engine last read it, and passes the languages'
+//! highlighters and the sources verified before. Wakes the project.
 
 use serde::Deserialize;
 use ts_rs::TS;
 use unfold_core::RepoPath;
-use unfold_reader::code_view::{self, CodeRequest, CodeSources, CodeState, CodeView, Target};
+use unfold_reader::code_view::{self, CodeRequest, CodeSources, CodeView, MAX_WINDOW, Target};
 
 use super::entrances::span_of;
 use super::key_of;
@@ -18,8 +18,6 @@ use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 use crate::workspace::Workspace;
 
-/// The most lines a `lines` target spans.
-pub const MAX_LINES: u32 = 100_000;
 /// The longest title of a `lines` target, in characters.
 pub const MAX_TITLE: usize = 400;
 
@@ -85,19 +83,37 @@ pub struct CodeViewArgs {
     #[serde(default)]
     #[ts(optional)]
     pub show: Option<CodeTarget>,
+    /// The view's lines to answer with, first and last, one-based: at most 400 (a page as the
+    /// panel scrolls, or what `read_file` reads). Absent: a page of 200 from a little above the
+    /// first line the selection marks.
+    #[serde(default)]
+    #[ts(optional)]
+    pub window: Option<[u32; 2]>,
 }
 
 /// `code_view`: the code panel's model for one selection.
 pub fn code_view(ctx: &Ctx<'_>, args: CodeViewArgs) -> CommandResult<CodeView> {
+    if let Some(window) = args.window {
+        check_lines(window)?;
+        if window[1] - window[0] >= MAX_WINDOW {
+            return Err(CommandError::invalid_args(format!(
+                "a window is at most {MAX_WINDOW} lines"
+            )));
+        }
+    }
     let workspace = ctx.live(&args.project)?;
     let Some(selected) = target(&workspace, args.target)? else {
-        return Ok(not_found());
+        return Ok(CodeView::not_found());
     };
     let show = match args.show {
         Some(show) => target(&workspace, show)?,
         None => None,
     };
-    let request = CodeRequest { selected, show };
+    let request = CodeRequest {
+        selected,
+        show,
+        window: args.window,
+    };
     let reader = workspace.readers()?.get()?;
     let highlighters = workspace.highlighters();
     let root = workspace.root();
@@ -114,23 +130,11 @@ pub fn code_view(ctx: &Ctx<'_>, args: CodeViewArgs) -> CommandResult<CodeView> {
             apps: &apps,
             settings_parse,
             highlighters: &highlighters,
+            kept: workspace.kept_sources(),
         };
         Ok(code_view::code_view(&sources, &request))
     })?;
     Ok(view?)
-}
-
-/// The panel's model when the selection names nothing: an app or entrance key no table of
-/// `unfold.toml` has.
-fn not_found() -> CodeView {
-    CodeView {
-        file: None,
-        state: CodeState::NotFound,
-        lines: Vec::new(),
-        mark: None,
-        path: Vec::new(),
-        definitions: Vec::new(),
-    }
 }
 
 /// The reader's target for `target`, with its path confined and its key checked; `None` for an
@@ -190,12 +194,10 @@ fn file(workspace: &Workspace, path: &str) -> CommandResult<RepoPath> {
         .ok_or_else(|| CommandError::invalid_args("the path names the project's folder, not a file"))
 }
 
-/// One-based, ordered lines spanning at most [`MAX_LINES`].
+/// One-based lines, in order.
 fn check_lines([first, last]: [u32; 2]) -> CommandResult<()> {
-    if first == 0 || last < first || last - first >= MAX_LINES {
-        return Err(CommandError::invalid_args(format!(
-            "lines are one-based, in order, and span at most {MAX_LINES} lines"
-        )));
+    if first == 0 || last < first {
+        return Err(CommandError::invalid_args("lines are one-based and in order"));
     }
     Ok(())
 }

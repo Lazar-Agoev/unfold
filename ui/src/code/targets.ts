@@ -117,9 +117,8 @@ function combinedLines(views: ReadonlyMap<string, CardView>, item: string): Code
 }
 
 /**
- * What a resource card or a connection cites first: a block; an app or entrance (its lines in
- * `unfold.toml`), which its guard on the page records as an `entrance`; or lines of an evidence file
- * (marked).
+ * What a citation names: a block; an app or entrance (its lines in `unfold.toml`), which its guard on
+ * the page records as an `entrance`; or lines of an evidence file (marked).
  */
 function anchorTarget(page: Page, anchor: Anchor | undefined): CodeTarget | null {
   if (!anchor) {
@@ -140,8 +139,9 @@ export function rowTarget(path: RepoPath, row: ThinRow): CodeTarget {
 /**
  * What the panel opens for a selection: a card's block (an app's or entrance's lines in `unfold.toml`),
  * a block drawn in a card, a field of a type card, a combined step's lines, an arrow's call, or what a
- * resource card or a connection cites first. Null for what has no source: nothing, a frame, a note, a
- * proposed step, or an arrow that stands for several calls.
+ * resource card or a connection cites first, in the reader's order: a table's type or a connection's
+ * step, then its first anchor. Null for what has no source: nothing, a frame, a note, a proposed step,
+ * a resource card or connection that cites nothing, or an arrow that stands for several calls.
  */
 export function selectionCode(selection: Selection, page: Page, views: ReadonlyMap<string, CardView>): CodeChoice | null {
   switch (selection.kind) {
@@ -162,7 +162,8 @@ export function selectionCode(selection: Selection, page: Page, views: ReadonlyM
     case "line":
       return { target: { kind: "block", key: selection.call }, cardId: selection.from };
     case "resource": {
-      const target = anchorTarget(page, findResource(page, selection.resourceId)?.anchors[0]);
+      const resource = findResource(page, selection.resourceId);
+      const target = resource?.type !== undefined ? { kind: "block" as const, key: resource.type } : anchorTarget(page, resource?.anchors[0]);
       return target ? { target, cardId: null } : null;
     }
     case "link": {

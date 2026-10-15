@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use unfold_core::vocab::{Form, Language, NodeKind};
-use unfold_core::{ByteRange, Input, Key, LineBreaks, RepoPath};
+use unfold_core::{ByteRange, Input, Key, LineBreaks, ParsedKey, RepoPath};
 
 use super::{CodeSources, PathStep, Target, settings_input};
 use crate::catalog::{self, Start};
@@ -95,14 +95,18 @@ pub(super) struct Resolved {
     steps: Vec<Step>,
 }
 
-/// `target` against the records; `None` when its key no longer resolves.
+/// `target` against the records; `None` when its key no longer resolves. A block (or a field)
+/// whose file left the graph resolves to that whole file, not analyzed.
 pub(super) fn resolve(
     facts: &mut Facts<'_>,
     sources: &CodeSources<'_>,
     target: &Target,
 ) -> Result<Option<Resolved>> {
     let resolved = match target {
-        Target::Block(key) => facts.locate(key.as_str())?.map(|(tree, id)| block(tree, id)),
+        Target::Block(key) => match facts.locate(key.as_str())? {
+            Some((tree, id)) => Some(block(tree, id)),
+            None => outside(facts, sources, key)?,
+        },
         Target::Lines {
             path,
             lines,
@@ -132,17 +136,11 @@ pub(super) fn resolve(
                 steps,
             })
         }
-        Target::Field { key, index } => facts
-            .locate(key.as_str())?
-            .and_then(|(tree, id)| field(tree, id, *index)),
-        Target::File(path) => Some(Resolved {
-            origin: origin(facts, sources, path)?,
-            view: Span::Whole,
-            mark: MarkSpec::default(),
-            region: MarkSpec::default(),
-            shows: Shows::File,
-            steps: vec![Step::File],
-        }),
+        Target::Field { key, index } => match facts.locate(key.as_str())? {
+            Some((tree, id)) => field(tree, id, *index),
+            None => outside(facts, sources, key)?,
+        },
+        Target::File(path) => Some(whole(origin(facts, sources, path)?)),
         Target::Start { key, span } => catalog::start(sources.apps, key.as_str())
             .zip(settings_input(sources.inputs))
             .map(|(start, input)| {
@@ -171,6 +169,33 @@ pub(super) fn resolve(
             }),
     };
     Ok(resolved)
+}
+
+/// The whole file `origin`.
+fn whole(origin: Origin) -> Resolved {
+    Resolved {
+        origin,
+        view: Span::Whole,
+        mark: MarkSpec::default(),
+        region: MarkSpec::default(),
+        shows: Shows::File,
+        steps: vec![Step::File],
+    }
+}
+
+/// The file block `key` names (by core's reading of the key), when that file is outside the
+/// graph and still there: the block's file left the graph.
+fn outside(facts: &mut Facts<'_>, sources: &CodeSources<'_>, key: &Key) -> Result<Option<Resolved>> {
+    let Ok(ParsedKey::Block(block)) = key.parse() else {
+        return Ok(None);
+    };
+    if !sources.root.join(block.path().as_str()).is_file() {
+        return Ok(None);
+    }
+    Ok(match origin(facts, sources, block.path())? {
+        outside @ Origin::Outside(_) => Some(whole(outside)),
+        Origin::Source(_) | Origin::Input(_) => None,
+    })
 }
 
 /// The file at `path`: analyzed, an input, or outside the graph.

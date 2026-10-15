@@ -78,6 +78,19 @@ describe("what the code panel opens for a selection", () => {
     expect(selectionCode({ kind: "link", linkId: "reads" }, PAGE, VIEWS)).toEqual({ target: { kind: "lines", path: "db/schema.sql", lines: [12, 14], mark: [12, 14] }, cardId: null });
   });
 
+  it("opens a table's type before its citations, as the reader orders what it cites", () => {
+    const ORDER = "src/types.ts#Order";
+    const tables = page("page-1", [], {
+      resources: [
+        // Made From a type: its type and no citations.
+        { id: "typed", kind: "table", name: "orders", type: ORDER, anchors: [], at: [0, 0], author: "person:lazar" },
+        { id: "both", kind: "table", name: "orders", type: ORDER, anchors: [{ file: "db/schema.sql", lines: [3, 9] }], at: [0, 0], author: "agent:claude" },
+      ],
+    });
+    expect(selectionCode({ kind: "resource", resourceId: "typed" }, tables, VIEWS)).toEqual({ target: { kind: "block", key: ORDER }, cardId: null });
+    expect(selectionCode({ kind: "resource", resourceId: "both" }, tables, VIEWS)).toEqual({ target: { kind: "block", key: ORDER }, cardId: null });
+  });
+
   it("opens a field of a type card as its type's written member", () => {
     expect(selectionCode({ kind: "field", cardId: "place", key: "src/cart.ts#Cart", index: 2 }, PAGE, VIEWS)).toEqual({ target: { kind: "field", key: "src/cart.ts#Cart", index: 2 }, cardId: "place" });
     expect(selectionCode({ kind: "field", cardId: "gone", key: "src/cart.ts#Cart", index: 2 }, PAGE, VIEWS)).toBeNull();
