@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, reflow, startCodePlacement } from "./layout";
+import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, reflow, startCodePlacement, type Point } from "./layout";
 
 describe("reflow", () => {
   it("pushes a card below a grown card in its column, and never above its saved place", () => {
@@ -118,6 +118,31 @@ describe("Arrange by call depth", () => {
     expect([y("a"), y("b")]).toEqual([40 - HEADER_PORT, 40 - HEADER_PORT]);
     // c: halfway between b's line (40) and root's, straight at 200 past a and b.
     expect(y("c")).toBe(Math.round((40 + 200) / 2 - HEADER_PORT));
+  });
+
+  it("puts a card two roots reach at the middle of their lines, and a root with its own tree level with it", () => {
+    const small = (id: string) => ({ id, width: 200, height: 44 });
+    const shared = arrange(
+      [small("r1"), small("r2"), small("shared")],
+      [
+        { source: "r1", target: "shared", port: HEADER_PORT, order: 0 },
+        { source: "r2", target: "shared", port: HEADER_PORT, order: 0 },
+      ],
+    );
+    const y = (positions: Map<string, Point>, id: string) => positions.get(id)?.y ?? Number.NaN;
+    // One band for both roots: shared sits between their lines, not in the first one's band.
+    expect(y(shared, "shared")).toBeGreaterThan(y(shared, "r1"));
+    expect(y(shared, "shared")).toBeLessThan(y(shared, "r2"));
+    // r2's own callee is pushed under r1's tall one; r2 moves level with it.
+    const apart = arrange(
+      [small("r1"), small("r2"), { id: "tall", width: 200, height: 400 }, small("own")],
+      [
+        { source: "r1", target: "tall", port: HEADER_PORT, order: 0 },
+        { source: "r2", target: "own", port: HEADER_PORT, order: 0 },
+      ],
+    );
+    expect(y(apart, "own")).toBeGreaterThan(y(apart, "tall") + 400);
+    expect(y(apart, "r2")).toBe(y(apart, "own"));
   });
 
   it("orders each column so lines don't cross: a lane goes under the card called above it", () => {

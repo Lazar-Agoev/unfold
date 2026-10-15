@@ -204,11 +204,10 @@ function median(values: readonly number[]): number | undefined {
   return sorted.length % 2 === 1 ? sorted[middle] : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
-/** A node of the layered layout: a card, or a placeholder that keeps a lane for a long line through a column. */
+/** A node of the layered layout: a card, a placeholder that keeps a lane for a long line through a column, or an exit on the east side. */
 interface LayerNode {
   readonly id: string;
   readonly card: ArrangeCard | undefined;
-  readonly band: number;
   readonly column: number;
   /** Its order before sorting: the depth-first order it was reached in (a placeholder's, its line's start's), then its line's order. */
   readonly rank: readonly [number, number];
@@ -220,7 +219,7 @@ interface LayerEdge {
   readonly target: string;
   /** Where it leaves the source, below its top (a placeholder's: 0, its lane). */
   readonly port: number;
-  /** Where it enters the target, below its top (a placeholder's: 0). */
+  /** Where it enters the target, below its top (a placeholder's or an exit's: 0). */
   readonly entry: number;
   readonly order: number;
   /** The card the line really leaves (inside a block, the card), and the card its call starts at. */
@@ -252,27 +251,29 @@ function crossingsBetween(edges: readonly LayerEdge[], slot: Slots): number {
  *
  * 1. Cycles: a depth-first walk from each root, in priority order (`cards` comes in priority order);
  *    a call back into a card still on the walk is left out of the layout.
- * 2. Columns: a callee sits in the column after its deepest caller. Every root starts a band, and
- *    bands stack downward.
+ * 2. Columns: a callee sits in the column after its deepest caller. `exits` are where lines leave
+ *    on the east side (a frame's, to what is past it): they sit in a column after the last.
  * 3. Lanes: a call that crosses columns gets a placeholder in each column it crosses, so it has its
  *    own lane and runs under no card.
- * 4. Order: each column is sorted, sweeping down and up the columns, by the places of the lines that
- *    reach each node (a card's lines in the order they leave it), keeping the order with the fewest
- *    crossings.
+ * 4. Order: the roots keep their order; each other column is sorted, sweeping down and up the
+ *    columns, by the places of the lines that reach each node (a card's lines in the order they leave
+ *    it), keeping the order with the fewest crossings.
  * 5. Rows: column by column, in that order, each node sits level with the median of the lines that
  *    reach it (a card's first, when it calls it more than once), never above its topmost caller, and
- *    below the node before it: a lane `LANE_GAP` from a card, a frame (`spaced`) `BAND_GAP` from
- *    what is stacked by it, else `STACK_GAP`.
+ *    below the node before it: a lane `LANE_GAP` from a card, a frame (`spaced`) `BAND_GAP` from what
+ *    is stacked by it, else `STACK_GAP`. Then a root with a call tree of its own, none of whose lines
+ *    runs straight, moves level with its first line, where there is room.
  * 6. Columns are as wide as their widest card, `COLUMN_GAP` apart, wider where many lines turn.
  *
- * Cards without calls go in a compact grid underneath, grouped by file. The result depends only on
- * the cards, their sizes, and the calls, never on where cards are now, so arranging twice changes
- * nothing.
+ * Cards without calls go in a compact grid underneath, grouped by file. The result (cards, and each
+ * exit at the east edge, level with its line) depends only on the cards, their sizes, and the calls,
+ * never on where cards are now, so arranging twice changes nothing.
  */
-export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCall[], origin: Point = { x: 0, y: 0 }): Map<string, Point> {
+export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCall[], origin: Point = { x: 0, y: 0 }, exits: readonly string[] = []): Map<string, Point> {
   const byId = new Map(cards.map((card) => [card.id, card]));
-  const priority = new Map(cards.map((card, index) => [card.id, index]));
-  const valid = calls.filter((call) => call.source !== call.target && byId.has(call.source) && byId.has(call.target));
+  const isExit = new Set(exits);
+  const priority = new Map([...cards.map((card) => card.id), ...exits].map((id, index) => [id, index]));
+  const valid = calls.filter((call) => call.source !== call.target && byId.has(call.source) && (byId.has(call.target) || isExit.has(call.target)));
   const outgoing = new Map<string, ArrangeCall[]>();
   for (const call of valid) {
     const list = outgoing.get(call.source) ?? [];
@@ -283,19 +284,17 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     list.sort((a, b) => a.port - b.port || a.order - b.order || (priority.get(a.target) ?? 0) - (priority.get(b.target) ?? 0));
   }
   const called = new Set(valid.map((call) => call.target));
-  const connected = new Set(valid.flatMap((call) => [call.source, call.target]));
+  const connected = new Set(valid.flatMap((call) => [call.source, call.target]).filter((id) => byId.has(id)));
 
   // 1. Depth first from each root, in order. An arrow into a card still on the stack is a back edge.
   const state = new Map<string, "open" | "done">();
-  const band = new Map<string, number>();
   const preorder = new Map<string, number>();
   const postorder: string[] = [];
   const back = new Set<ArrangeCall>();
-  const visit = (root: string, bandIndex: number) => {
+  const visit = (root: string) => {
     // Iterative, so a long call chain can't overflow the stack.
     const stack: { id: string; next: number }[] = [{ id: root, next: 0 }];
     state.set(root, "open");
-    band.set(root, bandIndex);
     preorder.set(root, preorder.size);
     while (stack.length > 0) {
       const frame = stack[stack.length - 1];
@@ -316,26 +315,24 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
         back.add(call);
       } else if (seen === undefined) {
         state.set(call.target, "open");
-        band.set(call.target, bandIndex);
         preorder.set(call.target, preorder.size);
         stack.push({ id: call.target, next: 0 });
       }
     }
   };
-  let bands = 0;
   for (const card of cards) {
     if (connected.has(card.id) && !called.has(card.id) && !state.has(card.id)) {
-      visit(card.id, bands++);
+      visit(card.id);
     }
   }
   for (const card of cards) {
     if (connected.has(card.id) && !state.has(card.id)) {
-      visit(card.id, bands++);
+      visit(card.id);
     }
   }
   const forward = valid.filter((call) => !back.has(call));
 
-  // 2. Longest path, so every forward arrow points right and a shared callee sits past its deepest caller.
+  // 2. Longest path, so every forward arrow points right and a shared callee sits past its deepest caller; exits after the last column.
   const incoming = new Map<string, ArrangeCall[]>();
   for (const call of forward) {
     const list = incoming.get(call.target) ?? [];
@@ -344,16 +341,23 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
   }
   const depth = new Map<string, number>();
   for (const id of [...postorder].reverse()) {
-    const callers = incoming.get(id) ?? [];
-    depth.set(id, callers.reduce((deepest, call) => Math.max(deepest, (depth.get(call.source) ?? 0) + 1), 0));
+    if (!isExit.has(id)) {
+      const callers = incoming.get(id) ?? [];
+      depth.set(id, callers.reduce((deepest, call) => Math.max(deepest, (depth.get(call.source) ?? 0) + 1), 0));
+    }
   }
-  const columns = connected.size > 0 ? Math.max(...depth.values()) + 1 : 0;
+  const cardColumns = connected.size > 0 ? Math.max(...depth.values()) + 1 : 0;
+  const reached = exits.filter((id) => state.has(id));
+  for (const id of reached) {
+    depth.set(id, cardColumns);
+  }
+  const columns = cardColumns + (reached.length > 0 ? 1 : 0);
 
-  // 3. The layered graph: the cards, and a placeholder in each column a call crosses.
+  // 3. The layered graph: the cards, the exits, and a placeholder in each column a call crosses.
   const nodes = new Map<string, LayerNode>();
-  for (const card of cards) {
-    if (connected.has(card.id)) {
-      nodes.set(card.id, { id: card.id, card, band: band.get(card.id) ?? 0, column: depth.get(card.id) ?? 0, rank: [preorder.get(card.id) ?? 0, 0] });
+  for (const id of [...cards.map((card) => card.id), ...reached]) {
+    if (connected.has(id) || isExit.has(id)) {
+      nodes.set(id, { id, card: byId.get(id), column: depth.get(id) ?? 0, rank: [preorder.get(id) ?? 0, 0] });
     }
   }
   const edges: LayerEdge[] = [];
@@ -366,17 +370,18 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     let port = call.port;
     for (let column = start + 1; column < end; column += 1) {
       const id = `\u0000lane:${index}:${column}`;
-      nodes.set(id, { id, card: undefined, band: band.get(call.source) ?? 0, column, rank: [preorder.get(call.source) ?? 0, order + 1] });
+      nodes.set(id, { id, card: undefined, column, rank: [preorder.get(call.source) ?? 0, order + 1] });
       edges.push({ source: previous, target: id, port, entry: 0, order, from, origin: call.source });
       previous = id;
       port = 0;
     }
-    edges.push({ source: previous, target: call.target, port, entry: call.entry ?? HEADER_PORT, order, from, origin: call.source });
+    const entry = isExit.has(call.target) ? 0 : (call.entry ?? HEADER_PORT);
+    edges.push({ source: previous, target: call.target, port, entry, order, from, origin: call.source });
   });
 
-  // 4. Order: the initial order is the depth-first one; then sweeps sort each column by where its lines come from (down) or go (up).
+  // 4. Order: the initial order is the depth-first one; then sweeps sort each column but the roots' by where its lines come from (down) or go (up).
   const layers: string[][] = Array.from({ length: columns }, () => []);
-  for (const node of [...nodes.values()].sort((a, b) => a.band - b.band || a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1])) {
+  for (const node of [...nodes.values()].sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1])) {
     layers[node.column]?.push(node.id);
   }
   const ins = new Map<string, LayerEdge[]>();
@@ -409,10 +414,10 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     gaps[nodes.get(edge.source)?.column ?? 0]?.push(edge);
   }
   const crossings = () => gaps.reduce((sum, gap) => sum + crossingsBetween(gap, slot), 0);
-  /** Sorts a column by `key` (nodes without one keep their places), never across bands. */
+  /** Sorts a column by `key`; nodes without one keep their places. */
   const sortLayer = (layer: string[], key: (id: string) => number | undefined) => {
-    const keyed = layer.map((id, index) => ({ id, index, band: nodes.get(id)?.band ?? 0, key: key(id) }));
-    const movable = keyed.filter((item) => item.key !== undefined).sort((a, b) => a.band - b.band || (a.key ?? 0) - (b.key ?? 0) || a.index - b.index);
+    const keyed = layer.map((id, index) => ({ id, index, key: key(id) }));
+    const movable = keyed.filter((item) => item.key !== undefined).sort((a, b) => (a.key ?? 0) - (b.key ?? 0) || a.index - b.index);
     const fixed = new Map(keyed.filter((item) => item.key === undefined).map((item) => [item.index, item.id]));
     let next = 0;
     for (let index = 0; index < layer.length; index += 1) {
@@ -428,7 +433,7 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
       sortLayer(layers[column] ?? [], (id) => mean((ins.get(id) ?? []).map((edge) => slot(edge, "source"))));
       number();
     }
-    for (let column = columns - 2; column >= 0; column -= 1) {
+    for (let column = columns - 2; column >= 1; column -= 1) {
       sortLayer(layers[column] ?? [], (id) => mean((outs.get(id) ?? []).map((edge) => slot(edge, "target"))));
       number();
     }
@@ -442,7 +447,7 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
   layers.splice(0, layers.length, ...best);
   number();
 
-  // 5. Rows: band by band, column by column, each node level with the lines that reach it.
+  // 5. Rows: column by column, each node level with the lines that reach it.
   const height = (id: string) => nodes.get(id)?.card?.height ?? 0;
   const gapBetween = (above: string, below: string): number => {
     const [a, b] = [nodes.get(above)?.card, nodes.get(below)?.card];
@@ -452,35 +457,45 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     return a.spaced === true || b.spaced === true ? BAND_GAP : STACK_GAP;
   };
   const tops = new Map<string, number>();
-  let bottom = origin.y - BAND_GAP;
-  for (let current = 0; current < bands; current += 1) {
-    const bandTop = bottom + BAND_GAP;
-    for (const layer of layers) {
-      let above: string | undefined;
-      for (const id of layer) {
-        if (nodes.get(id)?.band !== current) {
-          continue;
+  for (const layer of layers) {
+    let above: string | undefined;
+    for (const id of layer) {
+      const placed = (ins.get(id) ?? []).filter((edge) => tops.has(edge.source));
+      // A card's several lines count once: its first.
+      const first = new Map<string, LayerEdge>();
+      for (const edge of [...placed].sort((a, b) => a.order - b.order || a.port - b.port)) {
+        if (!first.has(edge.from)) {
+          first.set(edge.from, edge);
         }
-        const placed = (ins.get(id) ?? []).filter((edge) => tops.has(edge.source));
-        // A card's several lines count once: its first.
-        const first = new Map<string, LayerEdge>();
-        for (const edge of [...placed].sort((a, b) => a.order - b.order || a.port - b.port)) {
-          if (!first.has(edge.from)) {
-            first.set(edge.from, edge);
-          }
-        }
-        const middle = median([...first.values()].map((edge) => (tops.get(edge.source) ?? bandTop) + edge.port - edge.entry));
-        const topmost = Math.min(...placed.map((edge) => tops.get(edge.origin) ?? bandTop));
-        let y = middle === undefined ? bandTop : Math.max(bandTop, topmost, middle);
-        if (above !== undefined) {
-          y = Math.max(y, (tops.get(above) ?? bandTop) + height(above) + gapBetween(above, id));
-        }
-        tops.set(id, Math.round(y));
-        above = id;
-        bottom = Math.max(bottom, y + height(id));
       }
+      const middle = median([...first.values()].map((edge) => (tops.get(edge.source) ?? origin.y) + edge.port - edge.entry));
+      const topmost = Math.min(...placed.map((edge) => tops.get(edge.origin) ?? origin.y));
+      let y = middle === undefined ? origin.y : Math.max(origin.y, topmost, middle);
+      if (above !== undefined) {
+        y = Math.max(y, (tops.get(above) ?? origin.y) + height(above) + gapBetween(above, id));
+      }
+      tops.set(id, Math.round(y));
+      above = id;
     }
   }
+  // A root that alone reaches everything it reaches (a call tree of its own), none of whose lines runs
+  // straight, moves level with its first line, where there is room.
+  let above: string | undefined;
+  for (const id of layers[0] ?? []) {
+    const level = (edge: LayerEdge) => (tops.get(edge.target) ?? origin.y) + edge.entry - edge.port;
+    const now = tops.get(id) ?? origin.y;
+    const lines = outs.get(id) ?? [];
+    const straight = lines.some((edge) => Math.abs(level(edge) - now) <= LEVEL_SNAP);
+    const alone = lines.every((edge) => (ins.get(edge.target) ?? []).every((other) => other.origin === id));
+    const [first] = lines;
+    let y = Math.max(origin.y, straight || !alone || !first ? now : level(first));
+    if (above !== undefined) {
+      y = Math.max(y, (tops.get(above) ?? origin.y) + height(above) + gapBetween(above, id));
+    }
+    tops.set(id, Math.round(y));
+    above = id;
+  }
+  const bottom = Math.max(origin.y - BAND_GAP, ...[...nodes.values()].map((node) => (tops.get(node.id) ?? origin.y) + height(node.id)));
 
   // 6. Columns: as wide as their widest card, apart by the lines that turn between them.
   const columnWidth = layers.map((layer) => Math.max(0, ...layer.map((id) => nodes.get(id)?.card?.width ?? 0)));
@@ -489,13 +504,16 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
   for (let column = 0; column < columns; column += 1) {
     columnX.push(Math.round(x));
     const turning = (gaps[column] ?? []).filter((edge) => Math.abs((tops.get(edge.source) ?? 0) + edge.port - (tops.get(edge.target) ?? 0) - edge.entry) > LEVEL_SNAP).length;
-    x += (columnWidth[column] ?? 0) + Math.max(COLUMN_GAP, 2 * LANE_GAP + Math.max(0, turning - 1) * TRACK_GAP);
+    x += (columnWidth[column] ?? 0) + (column + 1 < cardColumns ? Math.max(COLUMN_GAP, 2 * LANE_GAP + Math.max(0, turning - 1) * TRACK_GAP) : 0);
   }
 
   const positions = new Map<string, Point>();
   for (const node of nodes.values()) {
-    if (node.card) {
-      positions.set(node.id, { x: columnX[node.column] ?? origin.x, y: tops.get(node.id) ?? origin.y });
+    positions.set(node.id, { x: columnX[node.column] ?? origin.x, y: tops.get(node.id) ?? origin.y });
+  }
+  for (const id of nodes.keys()) {
+    if (!byId.has(id) && !isExit.has(id)) {
+      positions.delete(id);
     }
   }
 

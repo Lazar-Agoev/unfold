@@ -101,6 +101,31 @@ describe("Arrange with frames", () => {
     }
   });
 
+  it("gives a line that leaves a frame a lane to its east side, and lines up what it reaches with where it leaves", () => {
+    const positions = arrangePage(input(setup));
+    const create = placed(positions, "create");
+    const place = placed(positions, "place");
+    // create → notify (300 down create) leaves the frame past place's column: its lane runs clear of
+    // place (under it), and notify sits level with it, outside the frame.
+    const notify = placed(positions, "notify");
+    const line = notify.y + HEADER_PORT;
+    expect(line).toBeGreaterThan(create.y + 300 - 1);
+    expect(line).toBeGreaterThanOrEqual(place.y + place.height);
+    expect(notify.x).toBeGreaterThan(place.x + place.width);
+  });
+
+  it("arranges ports measured a hair apart the same", () => {
+    const jitter = (by: number) => (cardId: string, port: string) => {
+      const offset = portOffset(cardId, port);
+      return (offset ?? HEADER_PORT) + by;
+    };
+    // route's line to loose leaves its header, as its connection to orders does: which goes first mustn't hang on the last digits.
+    const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
+    const links: Connection[] = [{ id: "w", from: "route", to: "orders", kind: "writes", author: "agent:claude" }];
+    const jittered = { ...setup, resources, links, arrows: [...ARROWS, call("route", "loose", "node", 1)] };
+    expect([...arrangePage(input(jittered, { portOffset: jitter(-0.00003) }))]).toEqual([...arrangePage(input(jittered, { portOffset: jitter(0.00001) }))]);
+  });
+
   it("is deterministic, and arranging again changes nothing", () => {
     const first = arrangePage(input(setup));
     expect([...arrangePage(input(setup))]).toEqual([...first]);

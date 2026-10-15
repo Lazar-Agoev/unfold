@@ -2,8 +2,11 @@
  * Arrange, from the inside out. Each frame, deepest first, lays out what it holds by
  * call depth and connections (`arrange`), to the right or downward as its direction says, and takes
  * the size that fits them plus room for its title. The level above treats each frame as one node: the
- * arrows that cross its border join it at the card they reach inside. A collapsed frame is one node of
- * its own size, and what it holds is laid out inside it too, ready for when it opens. Type cards rank
+ * arrows that cross its border join it at the card they reach inside. It runs twice: the first time
+ * says where everything goes, so the second knows which lines leave each frame by its east side; those
+ * get a lane through the frame to that side, and what they reach lines up with where they leave. A
+ * collapsed frame is one node of its own size, and what it holds is laid out inside it too, ready for
+ * when it opens. Type cards rank
  * by their type arrows, as calls. A connection runs from the code to what it touches, so a resource
  * card is a leaf in the column after the step that touches it, level with that step's row (the
  * middle of its steps' rows when several touch it); a queue goes before the code it delivers to, and an
@@ -59,8 +62,9 @@ interface Inside {
 
 /** A group of related tables: stacked, nothing around them. */
 const TABLES: Inside = { padding: { top: 0, right: 0, bottom: 0, left: 0 }, direction: "down" };
-/** The prefix of a group of related tables' id, which no page item has. */
+/** The prefixes of a group of related tables' id and of where a line leaves a frame's east side, which no page item has. */
 const TABLES_ID = "\u0000tables:";
+const EXIT_ID = "\u0000exit:";
 
 /**
  * Which way a connection orders its ends: from the code to what it touches, so a resource card is
@@ -93,6 +97,8 @@ interface Block {
   readonly offsets: ReadonlyMap<string, Point>;
   /** Where each item inside is drawn, from the block's top (a frame's own nodes only). */
   readonly drawn: ReadonlyMap<string, Drawn>;
+  /** Where lines leave its east side, below its top, by their edge's index (a frame's, to what is past it). */
+  readonly exits?: ReadonlyMap<number, number>;
 }
 
 /** The order of a level's items: entrances first, then left to right and top to bottom as they are now. */
@@ -104,11 +110,11 @@ function byPriority(corner: (id: string) => Point): (a: Block, b: Block) => numb
   };
 }
 
-/** Lays out one level's blocks from `origin`, to the right or (transposed) downward. */
-function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], direction: FrameDirection, origin: Point): Map<string, Point> {
+/** Lays out one level's blocks from `origin`, to the right (with `exits` on its east side) or (transposed) downward. */
+function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], direction: FrameDirection, origin: Point, exits: readonly string[] = []): Map<string, Point> {
   const cards = blocks.map(({ id, size, group, spaced }) => ({ id, ...size, ...(group !== undefined ? { group } : {}), ...(spaced === true ? { spaced } : {}) }));
   if (direction === "right") {
-    return arrange(cards, calls, origin);
+    return arrange(cards, calls, origin, exits);
   }
   // Downward: depth runs down the page, a callee under its caller's left edge.
   const flipped = arrange(
@@ -217,12 +223,17 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     return { x: point.x, y: point.y };
   };
 
+  // Ports to the half pixel (rows sit on half pixels): a measured port varies in its last digits, and Arrange must not.
+  const portOffset = (card: string, port: string): number | undefined => {
+    const offset = input.portOffset(card, port);
+    return offset === undefined ? undefined : Math.round(offset * 2) / 2;
+  };
   const edges: Edge[] = [
-    ...input.arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: input.portOffset(arrow.source, arrow.sourceHandle), order: arrow.order })),
+    ...input.arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: portOffset(arrow.source, arrow.sourceHandle), order: arrow.order })),
     ...page.links.map((link): Edge => {
       const [source, target] = linkOrder(link, (id) => resources.get(id));
       // A connection leaves from its step's row where its card draws the step.
-      const port = link.step !== undefined && source === link.from ? input.portOffset(link.from, stepPort(link.step)) : undefined;
+      const port = link.step !== undefined && source === link.from ? portOffset(link.from, stepPort(link.step)) : undefined;
       return { source, target, port, order: 0 };
     }),
   ];
@@ -243,9 +254,19 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
   const anchor = (block: Block, item: string): Drawn =>
     frames.get(block.id)?.collapsed === true ? { top: 0, own: false } : (block.drawn.get(item) ?? { top: 0, own: block.id === item && leaves.has(item) });
 
-  /** The calls among a level's blocks, each at the card it leaves and the card it reaches. */
+  /** Where edge `index` leaves `block`, below its top: where it crosses a frame's east side, else at the card it leaves. */
+  const leavingPort = (block: Block, edge: Edge, index: number): number => {
+    const exit = block.exits?.get(index);
+    if (exit !== undefined) {
+      return exit;
+    }
+    const leaving = anchor(block, edge.source);
+    return leaving.top + ((leaving.own ? edge.port : undefined) ?? HEADER_PORT);
+  };
+
+  /** The calls among a level's blocks, each at the card it leaves (or the side it leaves a frame by) and the card it reaches. */
   const callsAmong = (blocks: ReadonlyMap<string, Block>, container: string | null): ArrangeCall[] =>
-    edges.flatMap((edge) => {
+    edges.flatMap((edge, index) => {
       const from = childOf(edge.source, container);
       const to = childOf(edge.target, container);
       const source = from !== undefined ? blocks.get(from) : undefined;
@@ -253,11 +274,41 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       if (!source || !target || source === target) {
         return [];
       }
-      const leaving = anchor(source, edge.source);
       const entering = anchor(target, edge.target);
-      const port = leaving.top + ((leaving.own ? edge.port : undefined) ?? HEADER_PORT);
-      return [{ source: source.id, target: target.id, port, order: edge.order, from: edge.source, ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}) }];
+      return [{ source: source.id, target: target.id, port: leavingPort(source, edge, index), order: edge.order, from: edge.source, ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}) }];
     });
+
+  // Arrange runs twice: the first time places every block at its level (`levels`), so the second
+  // knows which lines leave each frame by its east side (`leavesEast`), and gives them lanes there.
+  let blocks = new Map<string, Block>();
+  let levels = new Map<string, Point>();
+  const firstPass = new Map<string, Point>();
+  /** How each level lays out: the page's, or a frame's direction. */
+  const directionOf = (container: string | null): FrameDirection => (container === null ? (input.direction ?? "right") : (frames.get(container)?.direction ?? "right"));
+  /**
+   * Whether `edge` leaves frame `id` (which holds its start) by its east side: at the first level
+   * that holds both its ends, the first pass put what it reaches in a column past what holds its
+   * start, and every level from there in lays out to the right.
+   */
+  const leavesEast = (id: string, edge: Edge): boolean => {
+    const seen = new Set<string>();
+    for (let inner = id; firstPass.size > 0 && !seen.has(inner); ) {
+      seen.add(inner);
+      const container = parentOf(inner) ?? null;
+      if (directionOf(container) !== "right" || (container !== null && frames.get(container)?.collapsed === true)) {
+        return false;
+      }
+      const other = childOf(edge.target, container);
+      if (other !== undefined) {
+        return (firstPass.get(other)?.x ?? 0) > (firstPass.get(inner)?.x ?? 0);
+      }
+      if (container === null) {
+        return false;
+      }
+      inner = container;
+    }
+    return false;
+  };
 
   /**
    * The free notes of a level at its top right: in a row ending at the right edge of what it laid out
@@ -279,10 +330,10 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     return { notes: placed, down: laid ? Math.max(...sizes.map((size) => size.height)) + STACK_GAP : 0 };
   };
 
-  const blocks = new Map<string, Block>();
   /**
    * `members` laid out as one block: by call depth in its direction inside its padding, with the free
-   * notes at its top right; its content's size, and what goes where.
+   * notes at its top right; its content's size, what goes where, and where lines leave its east side
+   * (a frame's, laid out to the right).
    */
   const layoutInside = (id: string, members: readonly string[], inside: Inside, free: readonly Note[], seen: ReadonlySet<string>) => {
     const inner = new Set([...seen, id]);
@@ -294,7 +345,28 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       }),
     );
     const ordered = [...children.values()].sort(byPriority((item) => corner(item)));
-    const positions = layoutLevel(ordered, callsAmong(children, id), inside.direction, { x: 0, y: 0 });
+    // The lines that leave a frame by its east side end at exits there, so they get lanes to it.
+    const frame = frames.get(id);
+    const exits =
+      frame && frame.collapsed !== true && inside.direction === "right"
+        ? edges.flatMap((edge, index) => {
+            const from = childOf(edge.source, id);
+            const source = from !== undefined ? children.get(from) : undefined;
+            return source && childOf(edge.target, id) === undefined && leavesEast(id, edge)
+              ? [{ index, call: { source: source.id, target: `${EXIT_ID}${index}`, port: leavingPort(source, edge, index), order: edge.order, from: edge.source } }]
+              : [];
+          })
+        : [];
+    const positions = layoutLevel(
+      ordered,
+      [...callsAmong(children, id), ...exits.map(({ call }) => call)],
+      inside.direction,
+      { x: 0, y: 0 },
+      exits.map(({ call }) => call.target),
+    );
+    for (const block of ordered) {
+      levels.set(block.id, positions.get(block.id) ?? { x: 0, y: 0 });
+    }
     const laid = boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? { x: 0, y: 0 }), ...block.size })));
     const band = topRight(free, laid, { x: 0, y: 0 });
     const content = boundsOf([
@@ -325,16 +397,17 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       offsets.set(note, { x: at.x + shift.x, y: at.y + shift.y });
     }
     const size = { width: (content?.width ?? 0) + padding.left + padding.right, height: (content?.height ?? 0) + padding.top + padding.bottom };
-    return { offsets, drawn, size };
+    const sides = new Map(exits.map(({ index, call }) => [index, (positions.get(call.target)?.y ?? 0) + band.down + shift.y] as const));
+    return { offsets, drawn, size, exits: sides };
   };
   /** A frame laid out inside (`layoutInside`), then its size (a collapsed frame's node's) with its notes under it. */
   const frameBlock = (frame: Frame, seen: ReadonlySet<string>): Block => {
-    const { offsets, drawn, size: box } = layoutInside(frame.id, frame.members, { padding: framePadding(frame), direction: frame.direction ?? "right" }, freeNotes.get(frame.id) ?? [], seen);
+    const { offsets, drawn, size: box, exits } = layoutInside(frame.id, frame.members, { padding: framePadding(frame), direction: frame.direction ?? "right" }, freeNotes.get(frame.id) ?? [], seen);
     const { size, notes } = withNotes(frame.id, frame.collapsed === true ? sizeOf(frame.id) : box);
     for (const [id, point] of notes) {
       offsets.set(id, point);
     }
-    return { id: frame.id, size, entrance: [...offsets.keys()].some((id) => entrances.has(id)), spaced: frame.collapsed !== true, offsets, drawn };
+    return { id: frame.id, size, entrance: [...offsets.keys()].some((id) => entrances.has(id)), spaced: frame.collapsed !== true, offsets, drawn, exits };
   };
   const blockOf = (id: string, seen: ReadonlySet<string>): Block | undefined => {
     const known = blocks.get(id);
@@ -359,44 +432,56 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     return block;
   };
 
-  const result = new Map<string, Point>();
-  const place = (block: Block, at: Point) => {
-    if (leaves.has(block.id)) {
-      result.set(block.id, at);
+  /** Lays the page out (or only `scope`, keeping its box's corner): where everything goes. */
+  const layoutAll = (scope: Frame | undefined): Map<string, Point> => {
+    const result = new Map<string, Point>();
+    const place = (block: Block, at: Point) => {
+      if (leaves.has(block.id)) {
+        result.set(block.id, at);
+      }
+      for (const [id, offset] of block.offsets) {
+        result.set(id, { x: Math.round(at.x + offset.x), y: Math.round(at.y + offset.y) });
+      }
+    };
+    if (scope) {
+      place(frameBlock(scope, new Set()), corner(scope.id));
+      return result;
     }
-    for (const [id, offset] of block.offsets) {
-      result.set(id, { x: Math.round(at.x + offset.x), y: Math.round(at.y + offset.y) });
+    const top = new Map(
+      [...leaves.keys(), ...frames.keys()].flatMap((id) => {
+        const item = levelItem(id);
+        const block = holder.has(id) ? undefined : blockOf(item, new Set());
+        return block ? [[item, block] as const] : [];
+      }),
+    );
+    const ordered = [...top.values()].sort(byPriority((id) => corner(id)));
+    const all = ordered.map((block) => corner(block.id));
+    const origin = { x: Math.min(...all.map((point) => point.x)), y: Math.min(...all.map((point) => point.y)) };
+    const positions = layoutLevel(ordered, callsAmong(top, null), directionOf(null), origin);
+    for (const block of ordered) {
+      levels.set(block.id, positions.get(block.id) ?? origin);
     }
-  };
-  const scope = input.frame !== undefined ? frames.get(input.frame) : undefined;
-  if (scope) {
-    place(frameBlock(scope, new Set()), corner(scope.id));
+    const band = topRight(
+      freeNotes.get("") ?? [],
+      boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? origin), ...block.size }))),
+      origin,
+    );
+    for (const block of ordered) {
+      const at = positions.get(block.id) ?? origin;
+      place(block, { x: at.x, y: at.y + band.down });
+    }
+    for (const [note, at] of band.notes) {
+      result.set(note, { x: Math.round(at.x), y: Math.round(at.y) });
+    }
     return result;
+  };
+  layoutAll(undefined);
+  for (const [id, at] of levels) {
+    firstPass.set(id, at);
   }
-  const top = new Map(
-    [...leaves.keys(), ...frames.keys()].flatMap((id) => {
-      const item = levelItem(id);
-      const block = holder.has(id) ? undefined : blockOf(item, new Set());
-      return block ? [[item, block] as const] : [];
-    }),
-  );
-  const ordered = [...top.values()].sort(byPriority((id) => corner(id)));
-  const all = ordered.map((block) => corner(block.id));
-  const origin = { x: Math.min(...all.map((point) => point.x)), y: Math.min(...all.map((point) => point.y)) };
-  const positions = layoutLevel(ordered, callsAmong(top, null), input.direction ?? "right", origin);
-  const band = topRight(
-    freeNotes.get("") ?? [],
-    boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? origin), ...block.size }))),
-    origin,
-  );
-  for (const block of ordered) {
-    const at = positions.get(block.id) ?? origin;
-    place(block, { x: at.x, y: at.y + band.down });
-  }
-  for (const [note, at] of band.notes) {
-    result.set(note, { x: Math.round(at.x), y: Math.round(at.y) });
-  }
-  return result;
+  blocks = new Map();
+  levels = new Map();
+  return layoutAll(input.frame !== undefined ? frames.get(input.frame) : undefined);
 }
 
 /**
