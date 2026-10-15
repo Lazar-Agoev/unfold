@@ -87,6 +87,8 @@ interface Block {
   readonly entrance: boolean;
   /** Its file, for a card: items with no lines are grouped by it. */
   readonly group?: string | undefined;
+  /** An expanded frame: it keeps a wider gap from what is stacked by it. */
+  readonly spaced?: boolean;
   /** Where each card, resource card, and note inside goes, from the block's top-left. */
   readonly offsets: ReadonlyMap<string, Point>;
   /** Where each item inside is drawn, from the block's top (a frame's own nodes only). */
@@ -104,7 +106,7 @@ function byPriority(corner: (id: string) => Point): (a: Block, b: Block) => numb
 
 /** Lays out one level's blocks from `origin`, to the right or (transposed) downward. */
 function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], direction: FrameDirection, origin: Point): Map<string, Point> {
-  const cards = blocks.map(({ id, size, group }) => ({ id, ...size, ...(group !== undefined ? { group } : {}) }));
+  const cards = blocks.map(({ id, size, group, spaced }) => ({ id, ...size, ...(group !== undefined ? { group } : {}), ...(spaced === true ? { spaced } : {}) }));
   if (direction === "right") {
     return arrange(cards, calls, origin);
   }
@@ -332,7 +334,7 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     for (const [id, point] of notes) {
       offsets.set(id, point);
     }
-    return { id: frame.id, size, entrance: [...offsets.keys()].some((id) => entrances.has(id)), offsets, drawn };
+    return { id: frame.id, size, entrance: [...offsets.keys()].some((id) => entrances.has(id)), spaced: frame.collapsed !== true, offsets, drawn };
   };
   const blockOf = (id: string, seen: ReadonlySet<string>): Block | undefined => {
     const known = blocks.get(id);

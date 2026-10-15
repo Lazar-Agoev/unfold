@@ -92,9 +92,51 @@ describe("Arrange by call depth", () => {
     expect(x("handler")).toBeLessThan(x("callee"));
     expect(x("callee")).toBeLessThan(x("shared"));
     expect(y("handler")).toBe(120 - HEADER_PORT);
-    // shared: halfway between handler's line (200) and callee's (40).
-    expect(y("shared")).toBe(Math.round((y("handler") + 200 + y("callee") + 40) / 2 - HEADER_PORT));
+    expect(y("callee")).toBe(y("handler") + 80 - HEADER_PORT);
+    // shared: halfway between its two lines: callee's (40 down it), and handler's, which crosses
+    // callee's column in a lane of its own, clear of callee (under it: above, it would cross callee's line).
+    const line = y("shared") + HEADER_PORT;
+    expect(line).toBeGreaterThan(y("callee") + 40);
+    expect(2 * line - (y("callee") + 40)).toBeGreaterThan(y("callee") + 300);
     expect(y("loose")).toBeGreaterThan(400);
+  });
+
+  it("keeps a long line straight in its own lane where nothing is in its way", () => {
+    const chain = [
+      { id: "root", width: 300, height: 300 },
+      { id: "a", width: 200, height: 44 },
+      { id: "b", width: 200, height: 44 },
+      { id: "c", width: 200, height: 44 },
+    ];
+    const positions = arrange(chain, [
+      { source: "root", target: "a", port: 40, order: 0 },
+      { source: "a", target: "b", port: HEADER_PORT, order: 0 },
+      { source: "b", target: "c", port: HEADER_PORT, order: 0 },
+      { source: "root", target: "c", port: 200, order: 1 },
+    ]);
+    const y = (id: string) => positions.get(id)?.y ?? Number.NaN;
+    expect([y("a"), y("b")]).toEqual([40 - HEADER_PORT, 40 - HEADER_PORT]);
+    // c: halfway between b's line (40) and root's, straight at 200 past a and b.
+    expect(y("c")).toBe(Math.round((40 + 200) / 2 - HEADER_PORT));
+  });
+
+  it("orders each column so lines don't cross: a lane goes under the card called above it", () => {
+    const chain = [
+      { id: "root", width: 300, height: 60 },
+      { id: "a", width: 200, height: 44 },
+      { id: "b", width: 200, height: 44 },
+      { id: "c", width: 200, height: 44 },
+    ];
+    const positions = arrange(chain, [
+      { source: "root", target: "c", port: 50, order: 1 },
+      { source: "root", target: "a", port: 30, order: 0 },
+      { source: "a", target: "b", port: HEADER_PORT, order: 0 },
+      { source: "b", target: "c", port: HEADER_PORT, order: 0 },
+    ]);
+    // a stays level with its call (30), and root's line to c (50) runs under it, not across it.
+    expect(positions.get("a")?.y).toBe(30 - HEADER_PORT);
+    expect(positions.get("b")?.y).toBe(30 - HEADER_PORT);
+    expect(positions.get("c")?.y).toBeGreaterThan(positions.get("b")?.y ?? 0);
   });
 
   it("puts cards without calls in a compact grid underneath, a file's cards together", () => {
