@@ -57,7 +57,7 @@ export const listProjects = defineTool({
 
 function graphText(status: GraphStatus): string {
   const watching = { events: "watching for changes", scanning: "watching by scanning", off: "not watching" }[status.watching];
-  return `${status.complete ? "complete" : "incomplete (files that don't parse)"}, ${watching}`;
+  return `${status.complete ? "complete" : "incomplete (see its problems)"}, ${watching}`;
 }
 
 function appLine(app: AppView): string {

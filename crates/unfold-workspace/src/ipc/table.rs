@@ -178,7 +178,7 @@ command_table! {
     "close_board" => CloseBoard(boards::BoardIdArgs) -> () = boards::close_board;
     /// Validates, signs, and writes an edited board over its file.
     "save_board" => SaveBoard(boards::SaveBoardArgs) -> boards::BoardState = boards::save_board;
-    /// An open board's health.
+    /// A board's health: its session's while a window has it open, else its file's.
     "board_health" => BoardHealth(boards::BoardIdArgs) -> boards::BoardHealthView = boards::board_health;
     /// Applies one repair to an open board and saves it.
     "repair_board" => RepairBoard(boards::RepairBoardArgs) -> boards::BoardState = boards::repair_board;

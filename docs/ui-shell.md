@@ -33,7 +33,7 @@ IPC mirror to change a component.
 
 There is one window. The sidebar (264 px, fixed) sits on the left with the macOS window buttons over its top; there
 is no title bar, and the board's top bar moves the window too. Beside it, the content area shows Home or one board.
-Closing the window keeps the app running.
+Closing the window keeps the app running (a `just dev` session quits).
 
 - **The shown board.** Every board opened while the app runs keeps its session and undo history; `shownBoard` says
   which one is in front. The window reports it (`report_shown_board`) and comes back to it at launch.
@@ -58,16 +58,18 @@ across its pages; undo shows the page a step changed. Optional fields are delete
 an item takes what would dangle with it.
 
 **Autosave** (`state/boards/store.ts`): edits save a moment later through `save_board`, built on the file's revision
-last loaded or saved; saves never overlap. A failed save keeps the edits and shows "Not saved · Retry". An outside
-change (`board_reloaded`) replaces the board and starts its undo history over when nothing is unsaved. When it arrives
-while edits wait for the autosave, or while a save is failing or in flight, saving stops and the bar on the board asks
-the person: "The board's file changed on disk." with *Keep my edits* (written over the file) or *Load the file* (its
-version, with the undo history starting over). A save the engine refuses because the file changed (`board_changed`)
-asks the same. A file that isn't a valid board, such as a merge conflict, stops saving too: "The board's file on disk
-isn't a valid board, so saving stopped." with *Save my version*; once the file is a valid board again, the board takes
-it by itself, or asks when the person has edited meanwhile. A deleted file is written back by the next save. While
-saving is stopped, agents' edits and repairs on the board are refused (`board_changed`). Remove from workspace and
-Rename stop when a board can't be saved (`unsaved_edits`).
+last loaded or saved; saves never overlap. A failed save keeps the edits and shows "Not saved · Retry"; one the engine
+host's restart cut off waits and saves once the engine is back. An outside change (`board_reloaded`) replaces the
+board and starts its undo history over when nothing is unsaved. When it arrives while edits wait for the autosave, or
+while a save is failing or in flight, saving stops and the bar on the board asks the person: "The board's file changed
+on disk." with *Keep my edits* (written over the file) or *Load the file* (its version, with the undo history starting
+over). A save the engine refuses because the file changed (`board_changed`) asks the same. A file that isn't a valid
+board, such as a merge conflict, stops saving too: "The board's file on disk isn't a valid board, so saving stopped."
+with *Save my version*; once the file is a valid board again, the board takes it by itself when nothing of the
+person's is unsaved (edits from before the file broke count), and asks otherwise. A file back to the version the board
+builds on lets saving go on, and a deleted file is written back by the next save. While saving is stopped, agents'
+edits and repairs on the board are refused (`board_changed`). Remove from workspace, Rename, and Export PNG… stop when
+a board can't be saved (`unsaved_edits`).
 
 ## Home
 
@@ -75,12 +77,13 @@ Rename stop when a board can't be saved (`unsaved_edits`).
 then the overview.
 
 - **How it starts** (`home/starts/`): one bordered list in two columns, names left and `run` or `on` right in mono.
-  Apps are bold rows with their entrances indented under them, in file order; there are no badges at rest. Hover
-  shows a chevron, and a copy icon on an app's `run`. A problem is an amber dot; on hover the right column says what
+  Apps are bold rows with their entrances indented under them, in file order; there are no badges at rest. Hover shows
+  a chevron, and a copy icon on an app's `run`. A problem is an amber dot; on hover the right column says what
   happened ("Moved to …", "Route edited", "Not found", "Not analyzed", "Not a start", or the entry's own problem) with
-  Fix, Choose code…, or Open `unfold.toml`. Fixes are offered, never applied unasked; Fix and Choose code… rewrite one
-  `code` key (`replace_code`, which names the key shown, so a file changed since is refused and the toast says why).
-  Search appears above 15 entrances. Empty: "No entrances yet" with Add entrance and Copy agent prompt.
+  Fix or Choose code…; for code the graph leaves out, Fix opens `unfold.toml`. Fixes are offered, never applied
+  unasked; a Fix for moved code and Choose code… rewrite one `code` key (`replace_code`, which names the key shown, so
+  a file changed since is refused and the toast says why). Search appears above 15 entrances. Empty: "No entrances
+  yet" with Add entrance and Copy agent prompt.
 - **Tracing** (`trace.ts`): clicking an app or entrance makes a new board named after it: the start's card, compact,
   and its code's cards expanded in a column to its right, in run order. A row the graph left out opens its lines in
   `unfold.toml`.
@@ -90,7 +93,7 @@ then the overview.
   `unfold.toml`: Unfold keeps the settings that last parsed; a configuration input: imports and calls may not
   resolve) and the file to open.
 
-Everything comes from `entrances`, `project_summary`, and `list_boards`; no key is read.
+Everything comes from `entrances`, `project_summary`, `problems`, and `list_boards`; no key is read.
 
 ## The board screen
 
@@ -109,24 +112,25 @@ Bylines say who wrote what: "by you" for the person at the window, another perso
 ## The canvas
 
 `canvas/` draws a page with React Flow, over the design pages' dot grid (a 2 px dot every 18 px, `--color-dotgrid`).
-Cards come from `card` (`state/cards.ts`), asked for with the page's overlay,
-the card's open paths, and the Show all calls switch. A card is cached under where the overlay's entries go and the
-words of those its drawing shows, so typing a name redraws the cards that draw its block, not the whole page.
+Cards come from `card` (`state/cards.ts`), asked for with the page's overlay, the card's open paths, and the Show all
+calls switch. A card is cached under where the overlay's entries go and the words of those its drawing shows, so
+typing a name redraws the cards that draw its block, not the whole page (the first letter of a new name, or clearing
+one, redraws every card once).
 
 - **The canvas computes geometry only.** `flow/layout.ts` turns a drawn flow into `FlowGeometry` (pieces, wires,
   every block's rect, page items, call anchors), pure and deterministic; `FlowView` renders it and decides nothing.
   What a block allows comes from its drawn-flow `actions`; there is no TypeScript copy of the overlay rules, and no
   UI code reads keys.
 - **Cards**: modules, classes, functions, and inline functions (compact, or expanded to their drawn flow), type cards
-  (fields and inherited fields from `type_definition`), and app and entrance cards in the authored style. A card's
-  title is its name, with `ASYNC` after it for an async function; an expanded card's signature row says what follows
-  the name (`(order_id)`), and an inline function's, its whole head. A card's description shows all of it, wrapped
-  (a type card's: one line, with "more"), in the authored color with no mark. A card whose code is missing is dashed,
-  and its review banner alone says so. Code a
-  start names that isn't found is its own dashed card with its fix. A card whose file changed since the last compile,
-  or doesn't parse, says so in a line under its header, in the code panel's words and banner look ("Changed since
-  the last compile", "Doesn't parse"), and keeps the words its facts' text gives (`header.state`); an editor's save
-  refetches it at once (`files_changed`), and the compile's `graph_updated` again.
+  (fields and inherited fields from `type_definition`), and app and entrance cards, drawn as declared (a dark border).
+  A card's title is its name, with `ASYNC` after it for an async function; an expanded card's signature row says what
+  follows the name (`(order_id)`), and an inline function's, its whole head. A card's description shows all of it,
+  wrapped (a type card's: one line, with "more"), in the authored color with no mark. A card whose code is missing is
+  dashed, and its review banner alone says so. Code a start names that isn't found is its own dashed card with its
+  fix. A card whose file changed since the last compile, or doesn't parse, says so in a line under its header, in the
+  code panel's words and banner look ("Changed since the last compile", "Doesn't parse"), and keeps the words its
+  facts' text gives (`header.state`); an editor's save refetches it at once (`files_changed`), and the compile's
+  `graph_updated` again.
 - **Arrows** come from call boxes whose callee has a card on the page: from the call on an expanded card (insets and
   collapsed combined steps included), from the edge on a compact card (one per target, carrying its calls). Start
   cards point at their code in order, dashed to code whose file doesn't parse; type fields point at their types. The
@@ -141,11 +145,11 @@ words of those its drawing shows, so typing a name redraws the cards that draw i
 ## Explaining by hand
 
 People make what agents make, under the same rules (`state/boards/explain.ts`), except frames and notes, which only
-agents create and people rename, describe, move, collapse, and remove.
+agents create: people rename, describe, move, collapse, and remove frames, and edit, move, and remove notes.
 
 - **A block's menu** (`canvas/cards/blockMenu.ts`): View code, Open/Close in place, Name…, Describe…, Combine…, Add
-  proposed step after… or at the start…, and Draw link… on a call. Each of the overlay's items shows only when the
-  block's actions allow it.
+  proposed step after… or at the start…, and Draw link… on a call. Open in place, Combine…, and the proposed-step
+  items show only when the block's actions allow them; any block can be named.
 - **Combine…** lists the body's drawn steps and ticks a consecutive run; a title is required; it starts collapsed.
 - **Add resource…** (the canvas menu), **Draw link…** (card, resource, and frame menus; an `other` connection with a
   label), **Kind ▸** on a connection, and the relationship editor in Selected. Draw link… on a call starts the link at
@@ -153,12 +157,13 @@ agents create and people rename, describe, move, collapse, and remove.
   doesn't start at an unknown call.
 - **Review** (`ReviewBanner.tsx`): Accept, Reconnect… (a name search), and Remove from page.
 
-Each structural edit saves at once as one undo step (`saveStep`); the board's save decides, and a refusal comes back
-inline or as a toast with the page unchanged. No TypeScript copy of the board's rules checks first: ids, how long a
-note or a proposed step may be, and how deep frames nest are the save's to refuse. Text edited in place (a note, a
-proposed step) is an edit on each keystroke, so a save that refuses it shows its message under the field while you
-type ("A note holds at most 400 characters; this one has 412."), and the folder dialogs show the folder commands'
-refusals on their field.
+What people make by hand (a combined step, a proposed step, a resource card, a drawn link, a connection's kind, a
+relationship) saves at once as one undo step (`saveStep`); the board's save decides, and a refusal comes back inline
+or as a toast with the page unchanged. Apart from requiring a title, no TypeScript copy of the board's rules checks
+first: ids, how long a note or a proposed step may be, and how deep frames nest are the save's to refuse. Text edited
+in place (a note, a proposed step) is an edit on each keystroke, so a save that refuses it shows its message under the
+field while you type ("A note holds at most 400 characters; this one has 412."), and the folder dialogs show the
+folder commands' refusals on their field.
 
 ## The code panel
 
@@ -201,9 +206,10 @@ them with the same pure edits people's actions use, as one undo step named "<age
 with the agent's identity, saved at once through the normal board path. A refused edit leaves the document and its
 undo history unchanged.
 
-- The window checks only what it draws: that a connection's step is drawn on its from card, that a connection
-  doesn't repeat a compiled call, and where a proposed step can go (the block's actions). The save checks the board's
-  rules (ids, ends, kinds, lengths, frames), keys, the overlay rules, and grounding, and its refusal is the answer.
+- The window checks only what it draws and what an operation needs on the page: that a connection's step is drawn on
+  its from card, that a connection doesn't repeat a compiled call, where a proposed step can go (the block's actions),
+  and that a note's attachment and a frame's members and parent are there. The save checks the board's rules (ids,
+  ends, kinds, lengths, frames), keys, the overlay rules, and grounding, and its refusal is the answer.
 - People's words stay theirs unless the request says the person asked (`replacePeopleText`); unchanged text keeps
   its author. A repair that removes an item, a name, or a description is held to the same rule, what goes with the
   item included.

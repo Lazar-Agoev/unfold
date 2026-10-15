@@ -2,9 +2,8 @@
 
 The precision and recall gates ([testing](../../docs/testing.md#precision-and-recall-gates)): every call,
 construction, and passed definition Unfold resolves must name the target an independent oracle names, every
-`library` or `builtin` call must name the module the oracle finds it in, and recall stays at or above a floor that
-only rises. The oracles' answers are cached here, keyed by a hash of each corpus, so
-`cargo xtask oracles check` needs no Node.
+`library` or `builtin` call must name the module the oracle finds it in, and recall stays at or above a floor. The
+oracles' answers are cached here, keyed by a hash of each corpus, so `cargo xtask oracles check` needs no Node.
 
 ```text
 oracles/
@@ -50,11 +49,11 @@ Only its saved Pyright rows and its corpus copies are read; nothing is written t
 
 ## Oracle files
 
-One JSON object per line: a header (format version 2), then `call` rows (one per call site, with the oracle's
-`target` or an `outcome` without one, an optional `refused` policy refusal beside a target, and for an `external`
-outcome the `module` label of where the oracle finds the callee declared) and `reference` rows (definitions passed as
-arguments, by `site` and `position`). Sites and targets are named by node key, modules by Unfold's module labels
-(`ecmascript`, `global`, `python:logging`). The fields and the TypeScript rules are in
+One JSON object per line: a header (the format's version and the corpus's hash), then `call` rows (one per call
+site, with the oracle's `target` or an `outcome` without one, an optional `refused` policy refusal beside a target,
+and for an `external` outcome the `module` label of where the oracle finds the callee declared) and `reference` rows
+(definitions passed as arguments, by `site` and `position`). Sites and targets are named by node key, modules by
+Unfold's module labels (`ecmascript`, `global`, `python:logging`). The fields and the TypeScript rules are in
 [tools/oracles/README.md](../../tools/oracles/README.md#typescript-checker-oracle).
 
 - **`corpus_sha256`** hashes the corpus: a `sha256sum`-style listing of the language's sources and every
@@ -98,7 +97,8 @@ arguments, by `site` and `position`). Sites and targets are named by node key, m
 - **Recall (floors).** The call sites the oracle resolves (one target, no policy refusal) that Unfold resolves to
   the same target, over the call sites the oracle resolves. Passed definitions are reported, not gated. Each floor
   in `floors.toml` records its counts; recall passes when it is at least that ratio, compared exactly, and the check
-  says when a floor can rise. Raise it then; never lower it.
+  says when a floor can rise. Raise it then. A floor drops only when a precision fix removes answers Unfold couldn't
+  prove, and the reason is recorded above it.
 
 The justified entries are one case, labeled C-8, in `ts-orders` and in `mixed-playground`:
 `const { printReport } = await import("./jobs/report.ts")` binds that module's export

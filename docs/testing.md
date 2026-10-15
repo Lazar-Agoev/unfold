@@ -52,8 +52,9 @@ Run `source "$HOME/.cargo/env"` first if `cargo` isn't on `PATH`. Format and lin
 | `ui`, `desktop` | Vitest files beside the code. UI component tests answer engine commands from the command goldens (`ui/src/test/engine.ts`); desktop tests use a fake Electron (`desktop/src/main/fake-electron.ts`) |
 | `e2e` | Five Playwright journeys ([below](#end-to-end-journeys)) |
 
-Every compiled graph in a test passes validation, including the language's **census**: each call in the parse tree
-is exactly one call node.
+Every compiled graph in a test passes validation, including the language's **census**: each call site the language
+counts on its own (TypeScript in a separate walk of the syntax tree, Python by scanning the lexer's tokens) is exactly
+one call node.
 
 ## Goldens
 
@@ -68,7 +69,7 @@ Tests compile temporary copies of `testdata/` folders and compare the output wit
 | `goldens/{ts-orders,py-orders,mixed-playground}.flows.txt` | `unfold-reader`'s drawing tests | Every definition drawn with no overlay, printed as agent text |
 | `goldens/drawn/*.json` | `unfold-reader`'s drawing tests | Drawn flows as the IPC sends them. The UI's layout tests read them |
 | `goldens/sample.jsonl` | `unfold-core`'s canonical tests | The sample `shop` graph |
-| `workspace/commands/*.json`, `workspace/commands/{py-orders,mixed-playground}/*.json` | `unfold-workspace/tests/commands/goldens.rs` | Command results, normalized: every command on `ts-orders` (the UI tests' engine answers), and `project_summary`, `entrances`, `card` (with and without its agent text), and `code_view` on `py-orders` and the mixed playground |
+| `workspace/commands/*.json`, `workspace/commands/{py-orders,mixed-playground}/*.json` | `unfold-workspace/tests/commands/goldens.rs` | Command results, normalized: representative commands on `ts-orders` (the UI and desktop tests' engine answers), and `project_summary`, `entrances`, `card` (with and without its agent text), and `code_view` on `py-orders` and the mixed playground |
 | `boards/order-system.json` | `unfold-workspace/tests/commands/claims.rs` | The example board, saved to itself with real signatures |
 | `fixtures/typed-lines/expected/*.jsonl`, `fixtures/typescript-typed/*.typed`, `fixtures/typescript-structure/*.tree`, `fixtures/typescript-evidence/*/expected.links` | The language crates | Typed records, node trees, links per case |
 
@@ -88,8 +89,9 @@ Independent oracles check resolution: the TypeScript checker and Pyright, with t
   finds it declared in another module than Unfold's label (`ecmascript` against `global`, `python:json` against
   `python:builtins`); where the oracle has no answer, the label isn't compared. A disagreement fails unless
   `justified.toml` lists it with a reason, and an entry that matches nothing is stale and fails.
-- **Recall has floors that only rise.** When the check reports recall above a floor, raise the floor to the
-  reported counts. Never lower one to accept a change.
+- **Recall has floors.** When the check reports recall above a floor, raise the floor to the reported counts. A
+  floor drops only when a precision fix removes answers Unfold couldn't prove, with the reason recorded beside it in
+  `floors.toml`.
 - **A stale oracle fails.** Each oracle file records a hash of its corpus. Rerun `cargo xtask oracles refresh
   <corpus>` when the corpus changes.
 
@@ -143,8 +145,11 @@ folder that exists isn't proof it is current.
 | Journeys | the UI and desktop builds, then `pnpm --filter ./e2e test` |
 | Rust dependency licenses and advisories | `cargo deny check` (its own Linux job) |
 
-Locally, `just check`, `just test`, `just js-check`, `just addon-test`, and `just e2e` run the same checks.
+Locally, `just gate` runs the full gate in this order: `just check` (format, lints), `just test`, `gen-ipc --check`,
+`notices --check`, `cargo deny check`, `cargo machete`, the oracle check, `just js-check` (typecheck, lint, the unit
+tests, knip), `just addon-test`, and `just e2e`, which launches the app. `pr.yml` stays the source of CI; when a gate
+changes there, change the recipe with it.
 
-Not in CI: `cargo machete` (unused Rust dependencies), `node tools/oracles/check-board-schema.mjs` (board files
-against the JSON Schema with an independent validator), the large corpora, and `just bundle-dir`. A workflow that
-exists isn't evidence that it passed.
+Not in CI: `cargo machete` (unused Rust dependencies; `just gate` runs it), `node tools/oracles/check-board-schema.mjs`
+(board files against the JSON Schema with an independent validator), the large corpora, and `just bundle-dir`. A
+workflow that exists isn't evidence that it passed.

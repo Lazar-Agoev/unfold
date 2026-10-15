@@ -203,8 +203,8 @@ vocabulary! {
         FallsThrough = "falls_through",
         /// A Python `except*` handler.
         Group = "group",
-        /// A block the front end could not place: nesting past the depth limit, or a TypeScript
-        /// labeled plain block.
+        /// A block above what the front end could not place: nesting past the depth limit, or a
+        /// TypeScript `break` out of a labeled statement that isn't a loop or `switch`.
         Truncated = "truncated",
     }
 }

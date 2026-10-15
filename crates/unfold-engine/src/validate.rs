@@ -2,10 +2,12 @@
 //!
 //! It runs `unfold_core`'s validator over the candidate graph, against the source snapshots when
 //! the caller has them, and against each linked language's independent census of call sites, so
-//! validation never just trusts extraction.
+//! validation never just trusts extraction. The apps are resolved after the graph, and again
+//! when only the `[[app]]` tables change, so they are checked as they are attached
+//! ([`validate_apps`]).
 
-use unfold_core::Graph;
 use unfold_core::validate::{Sources, Validator, Violation};
+use unfold_core::{App, Graph};
 
 use crate::language::Linked;
 
@@ -24,4 +26,21 @@ pub fn validate_graph(
         validator = validator.with_census(census);
     }
     validator.validate(graph)
+}
+
+/// Checks `apps` as they are attached to a graph that was validated without them, by the rules
+/// [`validate_graph`] applies to a graph's apps: keys re-derived from names and unique, and every
+/// entrance starting somewhere. The settings parser keeps out every entry that would break them,
+/// so a violation is the engine's error, never a bad `unfold.toml` entry.
+pub(crate) fn validate_apps(apps: Vec<App>) -> Result<Vec<App>, Vec<Violation>> {
+    let graph = Graph {
+        apps,
+        ..Graph::default()
+    };
+    let violations = Validator::new().validate(&graph);
+    if violations.is_empty() {
+        Ok(graph.apps)
+    } else {
+        Err(violations)
+    }
 }

@@ -1,8 +1,9 @@
 # Recall floors, one per corpus and language (`cargo xtask oracles check`). Recall is the call sites
 # the oracle resolves (one concrete target, no policy refusal) that Unfold resolves to the same
 # target, over the sites the oracle resolves. A floor records the counts it was set from and passes
-# when recall is at least that ratio, compared exactly. Floors only rise: when the check reports
-# recall above a floor, raise the floor to the reported counts.
+# when recall is at least that ratio, compared exactly. When the check reports recall above a floor,
+# raise the floor to the reported counts. A floor drops only when a precision fix removes answers
+# Unfold couldn't prove, and the reason is recorded above it.
 
 [[floor]]
 corpus = "ts-orders"

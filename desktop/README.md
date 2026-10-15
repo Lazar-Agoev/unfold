@@ -31,8 +31,8 @@ unsaved edits. Main does no graph work and never waits on the engine.
 
 There is one window, with no title bar: the macOS window buttons sit over the sidebar and the top bar moves the
 window. Closing it keeps the app running; the Dock, a second launch, File › Add Project…, or an agent that needs it
-opens it again. It comes back with its bounds, the last board shown, and the Show all calls switch, saved in the app
-data's `window.json` (through the engine) and placed on a display that still exists.
+opens it again. It comes back with its bounds, maximized or not, the last board shown, and the Show all calls switch,
+saved in the app data's `window.json` (through the engine) and placed on a display that still exists.
 
 ## Agents
 
@@ -54,12 +54,14 @@ instructions only. The listener refuses requests with an `Origin` header, a `Hos
   undo step each, signed with the agent's name, refused when the page changed since the agent's `expectRevision`
   (the window compares it as it saves the edit, with `shared/revision.ts`).
   An edit to a board the window doesn't hold loads that board's session in the background without changing what the
-  person sees; if the window is closed, the bridge opens it (after the launch restore). A request that times out is
+  person sees; if the window is closed, the bridge opens it (after the launch restore). A change that times out is
   `unconfirmed` and may still land, so re-read before retrying.
-- **Links** are `unfold://<folder name>/<board id>?page=<page id>&item=<item id>`. Only main parses them, resolving
-  the folder name against the workspace. They aren't registered with the OS.
-- **The view** (`main/agents/views.ts`) is the window's last report: its board, page, selection, what the code panel
-  shows, and the boards it holds. Tools default to it.
+- **Links** are `unfold://<project>/<board id>?page=<page id>&item=<item id>`, where `<project>` is the project's
+  folder name, or its id when another project's folder has the same name. Only main parses them, resolving the
+  project by id, else by a folder name exactly one project has; a name several projects share is refused. They
+  aren't registered with the OS.
+- **The view** (`main/agents/views.ts`) is the window's last report: its board, page, selection, the items in view,
+  what the code panel shows, and the boards it holds. Tools default to it.
 
 ## The render window
 
@@ -67,8 +69,8 @@ instructions only. The listener refuses requests with an `Origin` header, a `Hos
 `get_screenshot`, the board menu's Export PNG…, and `check`. The page comes from the window when it holds the board,
 unsaved edits included, else from the engine, and its health from `board_health`, which judges the file of a board no
 window has open: neither opens the window or a board session. The render window reads card data from the engine but
-holds no board session. Rendering waits for fonts and measured content and bounds the canvas size, image bytes,
-deadlines, and queued work.
+holds no board session. Rendering waits for fonts and measured content, bounds the image's long side and each
+request's deadline, and draws one request at a time.
 
 ## Packaging
 
@@ -82,8 +84,10 @@ signed only with a certificate named in `CSC_LINK` or `CSC_NAME`; otherwise it i
 
 ## Running and checks
 
-`just dev` builds the debug addon and runs the UI's dev server and the shell with hot reload. `just js-build` builds
-the UI and the shell; `pnpm --filter @unfold/desktop start` runs them. Unit tests use a fake Electron
-(`src/main/fake-electron.ts`): `pnpm --filter @unfold/desktop test <file>` and `pnpm --filter @unfold/desktop
-typecheck`. See [choosing checks](../docs/testing.md#choose-checks-for-a-local-change) before building the app for a
-shell change.
+`just dev` builds the debug addon and runs the UI's dev server and the shell with hot reload. A dev session keeps its
+own app data folder, `Unfold Dev`, and its own single-instance lock, so it never hands its launch to an installed
+Unfold, and closing its window quits it; `just dev-stop` stops one an earlier session left running. `just js-build`
+builds the UI and the shell; `pnpm --filter @unfold/desktop start` runs them. Unit tests use a fake Electron
+(`src/main/fake-electron.ts`): `pnpm --filter @unfold/desktop test <file>` and
+`pnpm --filter @unfold/desktop typecheck`. See [choosing checks](../docs/testing.md#choose-checks-for-a-local-change)
+before building the app for a shell change.

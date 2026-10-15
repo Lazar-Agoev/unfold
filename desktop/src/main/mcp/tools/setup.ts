@@ -119,7 +119,7 @@ export const addProject = defineTool({
     // The engine compiles the project as it adds it; a compile queued behind that one waits for it
     // and finds nothing left to do, so its outcome counts the files without the changes.
     const compiled = await compileText(context, { id: added.project, name }, MAX_WAIT_SECONDS, (outcome) =>
-      `Compiled ${name}: ${count(outcome.files, "file")}${outcome.complete ? "" : ", incomplete (some files don't parse)"}; ${count(outcome.problems, "problem")}.`,
+      `Compiled ${name}: ${count(outcome.files, "file")}${outcome.complete ? "" : ", incomplete (see its problems)"}; ${count(outcome.problems, "problem")}.`,
     ).catch((error: unknown) => {
       throw error instanceof ToolError ? new ToolError(`${addedLine}, but compiling it failed. ${error.message}`, error.code) : error;
     });
@@ -140,7 +140,7 @@ export const compileProject = defineTool({
   async run({ project, waitSeconds }, context) {
     const row = await context.project(project);
     const compiled = await compileText(context, row, waitSeconds, (outcome) =>
-      `Compiled ${row.name} in ${(outcome.durationMs / 1000).toFixed(1)} s: ${count(outcome.files, "file")} (${outcome.changedFiles} added or changed, ${outcome.removedFiles} removed)${outcome.entrancesChanged ? ", entrances changed" : ""}${outcome.complete ? "" : ", incomplete (some files don't parse)"}; ${count(outcome.problems, "problem")}.`,
+      `Compiled ${row.name} in ${(outcome.durationMs / 1000).toFixed(1)} s: ${count(outcome.files, "file")} (${outcome.changedFiles} added or changed, ${outcome.removedFiles} removed)${outcome.entrancesChanged ? ", entrances changed" : ""}${outcome.complete ? "" : ", incomplete (see its problems)"}; ${count(outcome.problems, "problem")}.`,
     );
     return textResult(context.header({ project: row.name }), ...compiled);
   },

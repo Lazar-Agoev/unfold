@@ -6,6 +6,7 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::Instant;
 
+use unfold_core::validate::Violation;
 use unfold_core::vocab::{FileState, InputRole};
 use unfold_core::{App, ContentHash, Graph, Input, RepoPath, Snapshot};
 
@@ -26,6 +27,7 @@ use crate::language::{
     ExtractionOptions, Language, LanguageId, LanguageProblem, ProjectInput, ProjectInputs,
 };
 use crate::settings::SettingsHash;
+use crate::validate::validate_apps;
 
 /// How many times languages may ask for more inputs ([`Language::requested_inputs`]).
 const INPUT_ROUNDS: usize = 16;
@@ -215,7 +217,8 @@ impl<'e, 'r> Run<'e, 'r> {
             let built = build(&input, &mut self.stats)?;
             cancel.check()?;
             let mut graph = built.graph;
-            graph.apps = resolve_apps(engine, &mut state, &old.graph, &graph);
+            graph.apps =
+                resolve_apps(engine, &mut state, &old.graph, &graph).map_err(UpdateError::Validation)?;
             state.graph = Arc::new(graph);
             state.link_problems = link_problems(built.problems);
             state.complete = is_complete(&state);
@@ -223,7 +226,7 @@ impl<'e, 'r> Run<'e, 'r> {
         // A graph kept as it was takes the new records of the inputs linking never reads, and
         // the apps resolved again: changing only `[[app]]` tables never relinks.
         if !relink {
-            refresh(engine, &old.graph, &mut state);
+            refresh(engine, &old.graph, &mut state).map_err(UpdateError::Validation)?;
         }
         self.stats.relinked = relink;
         self.stats.files_removed = old
@@ -763,23 +766,30 @@ fn unlinked_records(state: &State) -> Vec<Input> {
 }
 
 /// Resolves the apps of `state` against `graph`, an update of `previous`, and keeps their fixes
-/// and the modules they name in `state`.
-pub(super) fn resolve_apps(engine: &Engine, state: &mut State, previous: &Graph, graph: &Graph) -> Vec<App> {
+/// and the modules they name in `state`. This is where every graph gets its apps, so this is
+/// where they are validated: the graph itself was validated without them.
+pub(super) fn resolve_apps(
+    engine: &Engine,
+    state: &mut State,
+    previous: &Graph,
+    graph: &Graph,
+) -> Result<Vec<App>, Vec<Violation>> {
     let apps = &state.settings.apps;
     state.modules.observe(previous, apps);
     state.modules.observe(graph, apps);
     let on_disk = |path: &RepoPath| engine.root.join(path.as_str()).is_file();
     let (resolved, fixes) = entrances::resolve(graph, apps, &state.modules, &on_disk);
+    let resolved = validate_apps(resolved)?;
     state.fixes = fixes;
-    resolved
+    Ok(resolved)
 }
 
 /// For a graph kept as it was (not linked again), an update of `previous`: takes the new
 /// records of the inputs linking never reads, and the apps resolved again. The new graph shares
 /// every file graph with the kept one, and when nothing changed, it is the kept one.
-pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) {
+pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) -> Result<(), Vec<Violation>> {
     let graph = Arc::clone(&state.graph);
-    let apps = resolve_apps(engine, state, previous, &graph);
+    let apps = resolve_apps(engine, state, previous, &graph)?;
     let mut inputs: Vec<Input> = graph
         .inputs
         .iter()
@@ -795,6 +805,7 @@ pub(super) fn refresh(engine: &Engine, previous: &Graph, state: &mut State) {
             apps,
         });
     }
+    Ok(())
 }
 
 /// The content of an input as linking sees it: its role and its bytes' hash.

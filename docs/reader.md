@@ -57,8 +57,9 @@ flow. Nothing else decides what is drawn.
 | Steps | In the order they run: call boxes, thin rows, decision/loop/try/with frames whose parts are lanes, exits, combined steps, proposed steps. Each has an id and a route state |
 | Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks (each with the property it is written as and its signature), its inset when opened, its actions |
 | Frame | Key, form, the page's name, its header as written, the boxes written in the header and its unknown calls outside them (`headerUnknown`), `binds`, its lanes, its actions |
-| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written, the boxes written in it, and its unknown calls outside them), the classes a handler catches, `fallsThrough`, `group` (an `except*` handler), its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
-| Exit | Form, the call that is its value or its value as written (`RETURN mark_failed`, `RETURN order`), a `break`/`continue` target |
+| Thin row | Its library and unknown calls in the order they run, its lines, and how many are unknown |
+| Lane | Id, key, form, route state, the page's name, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written, the boxes written in it, and its unknown calls outside them), the classes a handler catches, `fallsThrough`, `group` (an `except*` handler), its combinable steps, its body, its actions. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
+| Exit | Key, form, the page's name, the call that is its value or its value as written (`RETURN mark_failed`, `RETURN order`), a `break`/`continue` target, its actions |
 | Combined step | The page's id, title, members, collapsed, the blocks it `holds` while collapsed, its lines, counts of conditions, loops, library and unknown calls, and its project calls with their targets (arrows leave a collapsed step from its box) |
 | Gap tick | On the route into a step, or after a body's last step: how many lines, which lines, and the hidden control blocks that start in it |
 | Routes | `from` an id `to` a step, End, or the caller, `through` any `finally` lanes, and what a `break`/`continue` leaves (nothing when a `finally` that always exits ends it there) |
@@ -69,7 +70,7 @@ flow. Nothing else decides what is drawn.
    written inside another call is its own box, drawn before the call it feeds; so is a ternary or comprehension
    written inside a call or an exit. A named library or unknown call, or one that takes a callback, is a box too.
 2. **Thin rows.** Consecutive library and unknown calls of one body fold into one row that lists them and counts its
-   unknowns; each unknown keeps its `?`.
+   unknowns, unless a gap tick sits between them; each unknown keeps its `?`.
 3. **Builtin calls are hidden.** With Show all calls they join the thin rows.
 4. **Callbacks** are rows under the call they are passed to, labeled by the property they are written as
    (`onSuccess`) and their signature, and open in place like a call.
@@ -83,10 +84,13 @@ flow. Nothing else decides what is drawn.
    name, or a combined step on a block written in it), which draws it as a frame. A hidden block's code stays in the
    code panel and in any combined step that spans it, and its gap tick names it (`⋯ 3 lines · for loop`). A proposal
    after it sits after that tick.
-7. **Gap ticks** count the lines between steps that no drawn step's statement covers, skipping blank and comment
-   lines. Comments are the language's highlighter's comment tokens, so a comment mark inside a string is code, and a
-   line is one of the file's lines as its language ends them. A tick sits on a route and takes no layout of its own.
-8. **Exits** are terminals labeled by their value, with the library and unknown calls written inside it.
+7. **Gap ticks** count the lines between steps that no drawn step's statement covers. Blank and comment lines,
+   lines of closing punctuation only (`});`), a TypeScript `break;` that ends a case, imports, the lines drawn as
+   structure (a block's and its parts' starts and heads), the doc, and the definitions written inside (cards of their
+   own) don't count. Comments are the language's highlighter's comment tokens, so a comment mark inside a string is
+   code, and a line is one of the file's lines as its language ends them. A tick sits on a route and takes no layout
+   of its own.
+8. **Exits** are labeled by their value, with the library and unknown calls written inside it.
 
 The words (tests, headers, values, signatures, docs) and gap ticks come from the text the facts came from: the file's
 own, or the text the [source cache](#verified-source) kept while the file changed or doesn't parse, and the header's
@@ -99,22 +103,24 @@ own, or the text the [source cache](#verified-source) kept while the file change
 | A body or part | Each step goes `on` to the next; the last goes wherever the body goes |
 | `if`, ternary | Each test in order: `yes` into its part, `no` to the next test, then `else`, then after the decision |
 | `switch`, `match` | `case` from the header to each case in order; a case ends after the decision, or falls into the next. `default` when no case matches |
-| Loop | `each` into the body (through a comprehension's filter); `next` back to the header from the body's end and `continue`; `break` after the loop; `done` to `else`, then after |
+| Loop | `each` into the body (through a comprehension's filter); `next` back to the header from the body's end and `continue`; `break` after the loop; `done` to `else`, then after. A `do` loop enters its body first, and `done` leaves from where `next` does, since its test comes after the body |
 | `try` | Dashed `onError` routes from the body to each handler, a possibility rather than a claim. The body's end goes to `else`, then `finally`, then after |
 | `with` | Header, body, then after |
-| Exits | `return` to End; `raise` to the first handler proven to catch it ([Contracts](#contracts)) of the nearest enclosing `try` that has one, else the caller; `break`/`continue` to their target; each through every `finally` between. A `finally` that never reaches its own end (it always returns, raises, breaks, or continues) replaces the transfer: an exit through it ends in it, and its own exit goes on |
+| Exits | `yield` goes on to the next step. `return` to End; `raise` to the first handler proven to catch it ([Contracts](#contracts)) of the nearest enclosing `try` that has one, else the caller; `break`/`continue` to their target; each through every `finally` between. A `finally` that never reaches its own end (it always returns, raises, breaks, or continues) replaces the transfer: an exit through it ends in it, and its own exit goes on |
 | Combined step | Wherever its blocks went: a collapsed step takes over the routes that leave it, so combining never makes a dead end |
 
 Every step and lane has a **route state**: `reached`; `unreachable`, drawn dimmed and marked "never runs" (code after
 an early `return`, or after an always-exiting `finally`); or `truncated`, drawn with a dashed "may continue" route
-(nesting past the depth limit, a TypeScript labeled plain block). A truncated step, part, or definition keeps its
-other routes and may continue to where its end goes: the route leaves the step, the part, or the definition's start
-(into End). Both are facts about the code: validation never checks routes, so legal code never fails a compile.
+(nesting past the depth limit, or the block that holds a `break` out of a TypeScript labeled statement that isn't a
+loop or `switch`). A truncated step, part, or definition keeps its other routes and may continue to where its end
+goes: the route leaves the step, the part, or the definition's start (into End). Both are facts about the code:
+validation never checks routes, so legal code never fails a compile.
 
 ## Overlay rules
 
-[overlay/](../crates/unfold-reader/src/overlay/mod.rs) holds the only copy of these rules. The drawing reports what
-each block allows (its `actions`), and saving a board checks them again.
+[overlay/](../crates/unfold-reader/src/overlay/mod.rs) holds these rules. The drawing reports what each block allows
+(its `actions`), and saving a board checks them again. Only the MCP server's `shape_card` repeats one, the open-path
+bounds, which also bound the server's own work.
 
 | Overlay | Rule |
 | --- | --- |
@@ -136,17 +142,19 @@ MCP server never lays out flows itself:
 - `flow_text` prints a drawn flow, for `shape_card` results and `read_page`. The `card` command returns it beside the
   flow it prints when asked (`agentText`), so a card is drawn once for both.
 
-Every line ends with the full keys of its blocks after `key=`, the calls listed on a box, a chip, an exit's value,
-or in a thin row included, in the order they are printed. Each result also carries a label → key map (`labels`,
-read from the tree alone, in the compiled tree's order), so the server turns an agent's short label
-(`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
-collapsed or open combined step, `⋯` a gap tick, `↳` a callback (`↳ callback onSuccess () =>`: the property it is written as, then its
-signature), `+ PROPOSED` a proposal, `· never runs` and
-`· truncated` for route states (a truncated definition's on its first line). A `with` block's line is `WITH` and its
-header after the keyword (`WITH open(path) as f`). A handler's line is its clause, then
-the clause's project calls and unknown calls: `ON ERROR → except errors() · ▸ errors`. An exit says where it goes, after a
-`finally →` for each `finally` it passes: `End`, `the caller`, the handler that catches it (`RAISE ValueError →
-except ValueError`), `after the loop`, `next`, or `finally` when a `finally` that always exits ends it. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
+Every line that prints a block ends with the full keys of its blocks after `key=`, the calls listed on a box, a chip,
+an exit's value, or in a thin row included, in the order they are printed. Each result also carries a label → key map
+(`labels`, read from the tree alone, in the compiled tree's order), so the server turns an agent's short label
+(`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or splitting key text. Marks: `▸` a
+project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
+collapsed or open combined step, `⋯` a gap tick, `↳` a callback (`↳ callback onSuccess () =>`: the property it is
+written as, then its signature), `+ PROPOSED` a proposal, `· never runs` and `· truncated` for route states (a
+truncated definition's on its first line). A `with` block's line is `WITH` and its header after a leading `with`
+(`WITH open(path) as f`; `async with` keeps its words). A handler's line is its clause, then the clause's project
+calls and unknown calls: `ON ERROR → except errors() · ▸ errors`. An exit says where it goes, after a `finally →` for
+each `finally` it passes: `End` (`returns` in a call opened in place), `the caller`, the handler that catches it
+(`RAISE ValueError → except ValueError`), `after the loop`, `after the switch`, `next`, `may continue`, or `finally`
+when a `finally` that always exits ends it. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
 shortened:
 
 ```text
@@ -206,8 +214,9 @@ marked lines are the whole view's; the marked expression's ranges, the blocks, t
 found for the window's lines only, from the nodes and highlighting that reach them, so an answer costs about the same
 in a file of any size. A line longer than 1,000 bytes is cut there (at a character's start) and says so (`cut`).
 Path labels: a definition by name, a control block by its header or keyword (`for item in order["items"]`,
-`switch (command)`, `try`), a part by the text that opens it, a call by its written callee, an exit by its keyword, a
-combined step by `⊞` and its title, a gap tick by its lines.
+`switch (command)`, `try`), a part by the text that opens it, a call by its written callee, an exit by its keyword, an
+app or entrance by its name, a combined step by `⊞` and its title, a field by its name (or its kind when it has
+none), and a gap tick or a citation by its lines (`line 24`, `lines 24–26`).
 
 | State | The panel shows |
 | --- | --- |
@@ -229,7 +238,7 @@ pairing is what the engine proved, and a missing annotation shows missing.
   just its callee when the caller's file changed since the compile), what it sends (each argument beside the parameter it fills, or why it
   fills none; unfilled parameters only when the pairings prove them), what returns (the written return type, or the
   class a construction makes) and where the value lands (`binds`, an exit, an outer call, or nowhere), and what the
-  callee raises, with the caller's enclosing handler that catches each. A TypeScript `catch` or a bare `except`
+  callee raises and doesn't catch itself, with the caller's enclosing handler that catches each. A TypeScript `catch` or a bare `except`
   catches everything; otherwise a handler catches a raise whose class derives from a class its `types` links name:
   through project `extends` chains (at most 8 levels), and through the bases typeshed writes for Python's builtin
   exception classes, so `except Exception` catches `ValueError` and `except LookupError` a project class deriving from
@@ -238,7 +247,7 @@ pairing is what the engine proved, and a missing annotation shows missing.
   gen-py-stubs`). The drawing routes each `raise` and `throw` by the same rule, reading the drawn file's classes.
 - **A class or type**: its written members, a type alias's aliased type, its use count, and inherited members. These
   follow `extends` only (never `implements`), depth first in written order, each base once, at most 8 levels; a
-  library or unknown base is a group without members. Generic members stay as written.
+  library, builtin, or unknown base is a group without members. Generic members stay as written.
 - **Uses** of a class or type: one page at a time from the store's reverse index, each with its owner.
 
 ## Boards
@@ -249,8 +258,9 @@ compiled arrows.
 
 | Page field | Holds |
 | --- | --- |
+| `id`, `title` | The page's id and its name in Pages |
 | `defaultView` | `compact` or `expanded`, for cards without their own |
-| `cards` | `ref` (`{block}` for a module, definition, or type; `{entrance}` for an app or entrance), `at`, `view`, `description`, and `open` paths |
+| `cards` | `id`, `ref` (`{block}` for a module, definition, or type; `{entrance}` for an app or entrance), `at`, `view`, `description`, and `open` paths |
 | `names` | `{key, text, author, signature}` on any block, page-wide |
 | `combined` | `{id, title, members, collapsed, description, author, signature}`, page-wide |
 | `proposals` | `{id, after \| start, title, reason, author}`: an intended change, never signed, its place guarded |
@@ -260,10 +270,12 @@ compiled arrows.
 
 Ids are unique together within a page; page ids are unique within the board. Text records its author
 (`person:<username>` or `agent:<name>`). A note holds at most 400 characters, a proposed step's title one line of at
-most 120 and its reason at most 400; frames nest at most three deep; a folder's name is 1 to 64 characters. Lengths
-count characters (Unicode scalar values). Parsing is strict and serialization deterministic. Files that break the
-format fail to parse like any invalid file, with the JSON pointer of what is wrong; going past a limit is said in words
-that name the thing instead (`BoardError::Limit`: "A note holds at most 400 characters; this one has 412."). These
+most 120 and its reason at most 400, and a page at most 200 proposed steps; frames nest at most three deep; a
+folder's name is 1 to 64 characters, without `/`, `\`, control characters, or leading or trailing spaces, and isn't
+`.` or `..`. Lengths count characters (Unicode scalar values). Parsing is strict and serialization deterministic.
+Files that break the format fail to parse like any invalid file, with the JSON pointer of what is wrong; going past a
+length or count limit is said in words that name the thing instead (`BoardError::Limit`: "A note holds at most 400
+characters; this one has 412."). These
 rules are checked here only: the window, its dialogs, and the MCP server leave them to the save and the folder
 commands, and show what those refuse.
 
@@ -274,8 +286,8 @@ commands, and show what those refuse.
 
 - Every board is `.unfold/boards/<name>.json`, its id the path in the project. A new board's name is its title's slug
   (`Order placement` → `order-placement`), with `-2`, `-3` when taken; a new board never overwrites a file. A file
-  whose name a board file can't have (1 to 100 ASCII letters, digits, `.`, `_`, or `-`) is listed with an error that
-  says so.
+  whose name a board file can't have (1 to 100 ASCII letters, digits, `.`, `_`, or `-`, starting with a letter or
+  digit) is listed with an error that says so.
 - Files are written atomically as the board is edited, and shared through git. A new board's file is claimed
   exclusively and then replaced atomically, never hard-linked: FSEvents doesn't report the deletion of a file that
   began as a hard link. A board file is at most 16 MiB: a larger one isn't read, and no board that large is written.
@@ -350,7 +362,7 @@ allows:
 | Missing | A card's, name's, or proposal's key, or a resource card's anchor or type, isn't in the graph |
 | Outdated | The code under a description, name, combined step, resource card, or connection changed since it was signed, or a step written between a combined step's blocks joined it |
 | Review | A guarded reference changed kind or owner, or a position-based one changed code |
-| Broken combined step | A combined step no longer follows the overlay rules: one of its blocks is gone, they are out of written order or in different bodies, or it overlaps another combined step |
+| Broken combined step | A combined step no longer follows the overlay rules: one of its blocks is gone, listed twice, no longer combinable, out of written order, or in another body, or it overlaps or nests in another combined step |
 | Broken link | A connection's end, step, carried type, or anchor is gone |
 
 Repairs are explicit: Reconnect, Resign, Accept, Remove, and Remove description. Resigning a combined step also records

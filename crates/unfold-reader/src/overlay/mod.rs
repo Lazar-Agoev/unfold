@@ -1,7 +1,9 @@
 //! The overlay rules (docs/reader.md#overlay-rules): what a page's overlay may do to a definition's drawing.
 //! The drawing function calls them to tell the canvas what each block allows ([`allows`]), and
-//! saving a board calls the checks to refuse what breaks them. There is no other copy of these
-//! rules.
+//! saving a board calls the checks to refuse what breaks them. Nothing else decides these rules.
+//! One part is copied on purpose: `shape_card`'s input (desktop/src/main/mcp/tools/card.ts) states
+//! the open-path bounds (1 to [`MAX_OPEN_DEPTH`] blocks, at most [`MAX_OPEN_PATHS`] paths) so the
+//! MCP server refuses an oversized request before doing any work; these checks still decide.
 //!
 //! | Overlay | Rule |
 //! | --- | --- |

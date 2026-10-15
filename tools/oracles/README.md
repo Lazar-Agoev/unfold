@@ -28,11 +28,12 @@ compiles a temporary copy of the corpus, writes its canonical export, and calls:
 ```sh
 pnpm install --filter @unfold/oracles     # once
 node tools/oracles/typescript-oracle.mjs --folder <corpus> --export <canonical.jsonl> \
-  --corpus <name> --out testdata/reference/oracles/<name>.typescript.jsonl
+  --corpus <name> --out <name>.typescript.jsonl
 ```
 
-It reads the corpus and the export and writes only `--out`. The export names nodes; nothing else in
-it is used (never Unfold's links), so the answers are the checker's alone.
+It reads the corpus and the export and writes only `--out` (`refresh` writes into `testdata/reference/oracles/` for
+a committed corpus, `target/oracles/` for the large TypeScript ones). The export names nodes; nothing else in it is
+used (never Unfold's links), so the answers are the checker's alone.
 
 **Programs.** Files are grouped by their nearest `tsconfig.json` inside the folder: each group is one program whose roots are exactly
 its indexed files, with the configuration's compiler options (its own `files`/`include`/`exclude`
@@ -56,10 +57,11 @@ aside. Each remaining declaration is mapped to the body it denotes, in the value
 | --- | --- | --- | --- |
 | Function, function expression, arrow, method with a body | that block | that block | that block |
 | Class | none | its own constructor with a body, else the class | the class |
-| `const` initialized with a function, arrow, or class expression (through transparent wrappers) | that block | that block | that block |
+| `const` initialized with a function or arrow (through transparent wrappers) | that block | that block | that block |
+| `const` initialized with a class expression (through transparent wrappers) | none | its own constructor with a body, else the class | the class |
 | Class field initialized with a function or arrow | that block | that block | that block |
 | Property of an object literal that is a `const` initializer (C-2), with a function value | that block | that block | that block |
-| Overload or ambient signature beside its implementation | the implementation | the implementation | the implementation |
+| Body-less, non-ambient overload signature beside its implementation | the implementation | the implementation | the implementation |
 | Parameter, `let`/`var`, accessor, other properties and values | none (`parameter`, `mutable_binding`, `accessor`, `not_concrete`) | | |
 
 Declarations outside the indexed files make the site `external`; several different bodies, or a
@@ -94,7 +96,7 @@ not a class member). Precision compares the target; recall leaves these sites ou
 **Output** (`<corpus>.typescript.jsonl`; the Python files share the format):
 
 ```text
-{"t":"header","format":"unfold-oracle","version":2,"corpus":"ts-orders","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"…","export_sha256":"…","files":34,"sites":212,"resolved":71,"references":15,"unfold_sites_without_checker_site":1}
+{"t":"header","format":"unfold-oracle","version":…,"corpus":"ts-orders","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"…","export_sha256":"…","files":34,"sites":212,"resolved":71,"references":15,"unfold_sites_without_checker_site":1}
 {"t":"call","site":"src/cli.ts#main/switch[0]/case[0]/call:importOrders","target":"src/jobs/import-orders.ts#importOrders"}
 {"t":"call","site":"src/cli.ts#main/switch[0]/case[1]/call:printReport","outcome":"not_concrete"}
 {"t":"call","site":"src/cli.ts#/call:main().catch","outcome":"external","module":"ecmascript"}

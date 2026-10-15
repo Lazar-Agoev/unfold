@@ -24,11 +24,11 @@ testdata/
 │   ├── <playground>.flows.txt   # every definition drawn, as agent text: ts-orders, py-orders, mixed-playground, typed-lines
 │   ├── drawn/*.json             # drawn flows as the IPC sends them
 │   └── sample.jsonl             # unfold-core's sample `shop` graph
-├── workspace/commands/          # command results on ts-orders (the UI tests' engine answers), and in
+├── workspace/commands/          # command results on ts-orders (the UI and desktop tests' engine answers), and in
 │                                #   py-orders/ and mixed-playground/ a smaller set on those playgrounds
 ├── boards/                      # two board files on ts-orders
 ├── reference/oracles/           # cached oracle answers, floors, justified entries (reference/README.md)
-└── corpora.lock.toml            # larger corpora, pinned by hash (and by URL where public)
+└── corpora.lock.toml            # corpora pinned by hash (and by URL where public)
 ```
 
 ## Conventions
@@ -53,8 +53,9 @@ testdata/
 Open a playground folder itself. The mixed folder's `unfold.toml` repeats both playgrounds' settings with prefixed
 paths; the nested `unfold.toml` files aren't read then.
 
-Each `unfold.toml` gives every process the package starts an app (`run`, `code`), with the routes, queues,
-schedules, and commands it handles as entrances. The tables cover every entrance state:
+Each `unfold.toml` gives every process the package starts an app (`run`, `code`), with the routes, queues, schedules,
+and commands it handles as entrances. The tables cover three entrance states (`not_a_start` and `stale` have their own
+tests):
 
 - **found**: almost every key;
 - **missing, with one fix**: "Admin stats" names a definition that moved to `routes/admin`, and the comment above it
@@ -104,5 +105,5 @@ Both follow the [board schema](../docs/schemas/unfold-board.schema.json);
 
 [`reference/README.md`](reference/README.md) describes the precision oracles. [`corpora.lock.toml`](corpora.lock.toml)
 pins the larger corpora by the hash of their selected files, with a URL where the source is public. Among them are
-TypeScript 6.0.3's `src`, the proof of concept's own source, and the FastAPI full-stack template 0.12.0; the lock
-file lists them all.
+TypeScript 6.0.3's `src`, the proof of concept's own source, and the FastAPI full-stack template 0.12.0. It also pins
+the in-repository Python corpora whose saved Pyright rows the oracles convert; the lock file lists them all.

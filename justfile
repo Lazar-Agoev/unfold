@@ -63,27 +63,39 @@ dev-stop:
     for _ in $(seq 25); do pgrep -f "$electron" >/dev/null || exit 0; sleep 0.2; done
     pkill -9 -f "$electron" || true
 
-# Typecheck, lint, and unit-test the desktop shell and the UI.
+# Typecheck, lint, and unit-test the desktop shell and the UI, then find unused code (knip).
 js-check:
     pnpm -r typecheck
     pnpm -r lint
-    pnpm -r --filter "!@unfold/e2e" test
+    pnpm -r --filter "!@unfold/node" --filter "!@unfold/e2e" test
+    pnpm knip
 
 # Build the UI and the Electron app (run it with `pnpm --filter @unfold/desktop start`).
 js-build:
     pnpm --filter @unfold/ui build
     pnpm --filter @unfold/desktop build
 
-# Build the release addon, the UI, and the desktop shell, then run the end-to-end journeys (e2e/)
-# on the unpackaged app. Pass Playwright arguments through: `just e2e journeys/slice.spec.ts`.
+# Pass Playwright arguments through: `just e2e journeys/trace.spec.ts`.
+# Build the release addon, the UI, and the shell, then run the journeys (e2e/) on the unpackaged app.
 e2e *args: addon-release js-build
     pnpm --filter @unfold/desktop exec node -e "require('electron')"
     pnpm --filter @unfold/e2e test {{args}}
 
+# --- The full gate ---
+
+# .github/workflows/pr.yml stays the source of CI; keep this in step. The journeys launch the app.
+# Run the full gate in order: every check CI runs, plus `cargo machete`.
+gate: check test && js-check addon-test e2e
+    cargo xtask gen-ipc --check
+    cargo xtask notices --check
+    cargo deny check
+    cargo machete
+    cargo xtask oracles check ts-orders entrances py-orders mixed-playground python-ranges
+
 # --- Packaging (desktop/electron-builder.yml) ---
 
 # macOS signing only with a certificate named in the environment (CSC_LINK or CSC_NAME), never with
-# whichever identity happens to be in the login keychain; without one the build is unsigned.
+# whichever identity happens to be in the login keychain; without one the app is signed ad hoc.
 csc_discovery := if env("CSC_LINK", "") + env("CSC_NAME", "") == "" { "false" } else { env("CSC_IDENTITY_AUTO_DISCOVERY", "true") }
 
 # The unpacked app (desktop/dist/mac*/Unfold.app).

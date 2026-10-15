@@ -3,7 +3,7 @@
 Unfold is a macOS desktop app that compiles TypeScript and Python into connected diagrams. A workspace holds
 projects; each project is one folder with its own graph, its `unfold.toml`, and its boards. Boards hold pages of
 cards (modules, definitions, types, apps, and entrances), with names, combined steps, descriptions, proposals,
-frames, resources, and connections added by people and agents.
+frames, resources, connections, and notes added by people and agents.
 
 This is the system overview. For a change, use the [task map](README.md) and read only the owning reference.
 Implementation details live beside their code.
@@ -44,8 +44,9 @@ Core depends on no other Unfold crate. Language crates depend on core and engine
 produces graphs; the workspace commits them through the store. **Only core's key module reads keys**: everything
 else treats a key as opaque text and gets kinds, parents, and files from records. The reader never parses source;
 it receives highlighting through core's `Highlighter` trait. Only the addon depends on Node. The UI calls typed
-`window.unfold` commands; graph computation, including what a drawn flow allows, stays in Rust, and the UI computes
-only geometry.
+`window.unfold` commands; graph computation, including what a drawn flow allows, stays in Rust. The UI computes
+geometry, and one shared module ([drawing.ts](../desktop/src/shared/drawing.ts)) reads the reader's answers to work out
+which arrows a page draws, for the window and the MCP server alike.
 
 ## Guarantees
 
@@ -72,9 +73,9 @@ must keep them.
 | Location | Holds | Shared through git |
 | --- | --- | --- |
 | `unfold.toml` | `languages`, `[scope]`, `[[python.project]]`, `[evidence]`, `[[app]]` ([Engine › Shared config](engine.md#shared-config)) | Yes |
-| `.unfold/boards/<id>.json` | Boards, saved as they are edited | Yes |
+| `.unfold/boards/<name>.json` | Boards, saved as they are edited | Yes |
 | `.unfold/local/` | `cache/` (the graph database and the folder lock), `state.json` (empty board folders), and a `.gitignore` of `*` | No |
-| App data (`~/Library/Application Support/Unfold`) | `workspace.json` (the projects), `settings.json` (the editor command), `window.json` (bounds, the last board shown, Show all calls) | No |
+| App data (`~/Library/Application Support/Unfold`; a `just dev` session uses `Unfold Dev` beside it) | `workspace.json` (the projects), `settings.json` (the editor command), `window.json` (bounds, maximized, the last board shown, Show all calls) | No |
 
 `unfold.toml` and the [board file](schemas/unfold-board.schema.json) are the shared contracts. SQLite is a private
 cache: [the executable schema](../crates/unfold-store/src/schema.rs) owns its shapes and version, and a database
@@ -84,10 +85,11 @@ store, and reader on the previous graph. Remembered state files that are missing
 
 ## Security
 
-Every renderer path is relative to the named project and confined there, including symlink checks. Commands that
-take an operating-system path, set a program Unfold runs (the editor command), or keep the window's state are
-main-process only: the engine host marks them trusted, never a window's or the MCP server's requests. Engine payloads
-are bounded, and long requests can be cancelled.
+Every renderer path is relative to the named project and confined there, including symlink checks. Commands that take
+an operating-system path, set a program Unfold runs (the editor command), or keep the window's state are main-process
+only: the engine host marks them trusted, never a window's or the MCP server's requests. An agent's `add_project`
+reaches the engine only as the main process's own request, after the person confirms the folder. Engine payloads are
+bounded, and long requests can be cancelled.
 
 The window and the render window use context isolation and sandboxing, without Node integration. They can't
 navigate, open windows, or get any permission, and nothing loads from the network; see

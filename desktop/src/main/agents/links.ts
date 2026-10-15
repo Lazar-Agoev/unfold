@@ -1,7 +1,7 @@
 /**
  * Links: `unfold://<project>/<board id>?page=<page id>&item=<item id>`, which the window's Copy link
  * builds and a person pastes into an agent's chat. `<project>` is the project's folder name, or its
- * id when another project's folder has the same name (two worktrees of one repository). Only the
+ * id when another project's folder has the same name (two checkouts of one repository). Only the
  * main process reads links: it parses the text, then resolves the project against the workspace,
  * by id, else by a folder name exactly one project has. A name several projects share is refused,
  * never guessed. A link names things and carries no code.
@@ -95,7 +95,7 @@ export function parseLink(input: string): LinkParse {
 
 /**
  * The projects `reference` names: the project with that id, else every project whose folder has
- * that name (more than one when worktrees share it).
+ * that name (more than one when checkouts share it).
  */
 export function projectsNamed<T extends NamedProject>(projects: readonly T[], reference: string): readonly T[] {
   const byId = projects.find((row) => row.id === reference);

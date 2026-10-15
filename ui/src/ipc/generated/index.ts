@@ -4288,7 +4288,7 @@ export interface Commands {
    */
   save_board: { args: SaveBoardArgs; result: BoardState };
   /**
-   * An open board's health.
+   * A board's health: its session's while a window has it open, else its file's.
    */
   board_health: { args: BoardIdArgs; result: BoardHealthView };
   /**

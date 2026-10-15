@@ -14,9 +14,14 @@ use super::{
 };
 use crate::settings::{SETTINGS_PATH, Settings};
 
+/// The most names that can't be project paths one problem lists.
+const MAX_SKIPPED_LISTED: usize = 10;
+
 /// What one walker thread reports.
 enum Found {
     File(RepoPath, FileClass, FileStamp),
+    /// A file or folder whose name can't be a project path, folder-relative and lossily decoded.
+    Skipped(String),
     Problem(Problem),
 }
 
@@ -48,7 +53,7 @@ pub(super) fn walk(root: &Path, settings: &Settings, options: &DiscoverOptions) 
             match result {
                 Ok(entry) => visit(root, settings, &entry, &mut send),
                 Err(error) => {
-                    send(Found::Problem(problem(root, &error)));
+                    problems(root, &error, &mut send);
                     WalkState::Continue
                 }
             }
@@ -60,9 +65,12 @@ pub(super) fn walk(root: &Path, settings: &Settings, options: &DiscoverOptions) 
 
 fn visit(root: &Path, settings: &Settings, entry: &DirEntry, send: &mut impl FnMut(Found)) -> WalkState {
     if entry.depth() == 0 {
+        ignore_problems(root, entry, send);
         return WalkState::Continue;
     }
     let Some(path) = relative(root, entry.path()).and_then(|relative| RepoPath::new(&relative).ok()) else {
+        let skipped = entry.path().strip_prefix(root).unwrap_or(entry.path());
+        send(Found::Skipped(skipped.to_string_lossy().into_owned()));
         return WalkState::Skip;
     };
     if entry.path_is_symlink() {
@@ -73,13 +81,14 @@ fn visit(root: &Path, settings: &Settings, entry: &DirEntry, send: &mut impl FnM
         if is_default_excluded_name(&entry.file_name().to_string_lossy()) {
             return WalkState::Skip;
         }
+        ignore_problems(root, entry, send);
         return WalkState::Continue;
     }
     let class = classify(&path, settings);
     if class != FileClass::Other {
         match entry.metadata() {
             Ok(metadata) => send(Found::File(path, class, FileStamp::of(&metadata))),
-            Err(error) => send(Found::Problem(problem(root, &error))),
+            Err(error) => problems(root, &error, send),
         }
     }
     WalkState::Continue
@@ -102,6 +111,7 @@ fn symlink(root: &Path, settings: &Settings, full: &Path, path: RepoPath, send: 
 
 fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
     let mut discovery = Discovery::default();
+    let mut skipped = Vec::new();
     for item in found {
         match item {
             Found::File(path, class, stamp) => match class {
@@ -124,8 +134,12 @@ fn collect(root: &Path, found: impl Iterator<Item = Found>) -> Discovery {
                 FileClass::Input(role) => discovery.inputs.push(InputFile { path, role, stamp }),
                 FileClass::Other => {}
             },
+            Found::Skipped(path) => skipped.push(path),
             Found::Problem(problem) => discovery.problems.push(problem),
         }
+    }
+    if !skipped.is_empty() {
+        discovery.problems.push(skipped_problem(skipped));
     }
     // The walk finds the settings file too unless an ignore file lists it; it counts either way.
     discovery
@@ -169,22 +183,56 @@ fn relative(root: &Path, full: &Path) -> Option<String> {
     Some(text)
 }
 
-fn problem(root: &Path, error: &ignore::Error) -> Problem {
-    let path = error_path(error)
-        .and_then(|path| relative(root, path))
-        .unwrap_or_default();
-    Problem {
-        path: path.into(),
-        message: error.to_string().into(),
+/// The problems of the ignore files a folder's entry read: rules that don't parse, which the
+/// walk leaves out.
+fn ignore_problems(root: &Path, entry: &DirEntry, send: &mut impl FnMut(Found)) {
+    if let Some(error) = entry.error() {
+        problems(root, error, send);
     }
 }
 
-fn error_path(error: &ignore::Error) -> Option<&Path> {
+/// One problem per error `error` holds, each with its folder-relative path; a path outside the
+/// folder (an ignore file above it) stays in the message.
+fn problems(root: &Path, error: &ignore::Error, send: &mut impl FnMut(Found)) {
     match error {
-        ignore::Error::WithPath { path, .. } => Some(path),
-        ignore::Error::WithLineNumber { err, .. } | ignore::Error::WithDepth { err, .. } => error_path(err),
-        ignore::Error::Partial(errors) => errors.iter().find_map(error_path),
-        _ => None,
+        ignore::Error::Partial(errors) => {
+            for error in errors {
+                problems(root, error, send);
+            }
+        }
+        ignore::Error::WithDepth { err, .. } => problems(root, err, send),
+        ignore::Error::WithPath { path, err } if let Some(path) = relative(root, path) => {
+            send(Found::Problem(Problem {
+                path: path.into(),
+                message: err.to_string().into(),
+            }));
+        }
+        _ => send(Found::Problem(Problem {
+            path: "".into(),
+            message: error.to_string().into(),
+        })),
+    }
+}
+
+/// The one problem that lists the files and folders whose names can't be project paths, the
+/// first [`MAX_SKIPPED_LISTED`] in order.
+fn skipped_problem(mut skipped: Vec<String>) -> Problem {
+    skipped.sort();
+    let listed: Vec<String> = skipped
+        .iter()
+        .take(MAX_SKIPPED_LISTED)
+        .map(|path| format!("`{path}`"))
+        .collect();
+    let mut message = format!(
+        "names that can't be project paths, left out: {}",
+        listed.join(", ")
+    );
+    if skipped.len() > MAX_SKIPPED_LISTED {
+        message.push_str(&format!(", and {} more", skipped.len() - MAX_SKIPPED_LISTED));
+    }
+    Problem {
+        path: "".into(),
+        message: message.into(),
     }
 }
 

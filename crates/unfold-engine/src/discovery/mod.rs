@@ -6,7 +6,9 @@
 //! running Git and whether or not the folder is a repository. Folders named in
 //! [`DEFAULT_EXCLUDED`] are never entered, symlinked folders are never followed, and a symlinked
 //! file counts only when its target is a file inside the folder. `[scope]` and `languages` from
-//! the settings then decide what is indexed; see [`classify`].
+//! the settings then decide what is indexed; see [`classify`]. What the walk can't read or use
+//! (an unreadable folder, an ignore rule that doesn't parse, a name that can't be a project path)
+//! is left out and reported as a [`Problem`].
 //!
 //! The result is deterministic: every list is sorted by path.
 
@@ -109,8 +111,10 @@ pub struct InputFile {
     pub stamp: FileStamp,
 }
 
-/// Something the walk couldn't read, such as a folder without permission or a malformed ignore
-/// file. Discovery carries on without it.
+/// Something the walk couldn't read or use: a folder without permission, an ignore rule that
+/// doesn't parse (its ignore file is the path), or the files and folders whose names can't be
+/// project paths (one problem lists the first few, with no path). Discovery carries on without
+/// it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Problem {
     /// The folder-relative path involved, or empty when unknown.
@@ -133,7 +137,7 @@ pub struct Discovery {
     /// Configuration inputs: `unfold.toml`, `tsconfig*.json`, `package.json`, and
     /// `pyproject.toml`.
     pub inputs: Vec<InputFile>,
-    /// What couldn't be read.
+    /// What couldn't be read or used.
     pub problems: Vec<Problem>,
 }
 

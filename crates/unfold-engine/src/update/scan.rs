@@ -193,9 +193,12 @@ fn full_scan(engine: &Engine, settings: &Settings) -> Result<Scan, super::Update
     })
 }
 
-/// Whether a change to `path` can change which files are in scope beyond `path` itself.
+/// Whether a change to `path` can change which files are in scope beyond `path` itself: an
+/// ignore file discovery reads. `.git/info/exclude` is one, though nothing else under `.git` is
+/// ever walked; an ignore file inside another always-excluded folder never applies.
 fn changes_rules(path: &RepoPath) -> bool {
-    matches!(path.file_name(), ".gitignore" | ".ignore") || path.as_str() == ".git/info/exclude"
+    path.as_str() == ".git/info/exclude"
+        || (matches!(path.file_name(), ".gitignore" | ".ignore") && !is_default_excluded(path.as_str()))
 }
 
 /// Applies changed paths to the previous scan, or `None` when one of them needs a full
@@ -230,13 +233,13 @@ fn apply_paths(engine: &Engine, previous: &State, settings: &Settings, paths: &[
     let mut listings = Listings::default();
     let mut check = BTreeSet::new();
     for path in paths {
+        if changes_rules(path) {
+            return None;
+        }
         // The settings file was loaded already; nothing else in an always-excluded folder
         // (`.unfold/boards/`, `node_modules/`, ...) is ever in scope.
         if path.as_str() == SETTINGS_PATH || is_default_excluded(path.as_str()) {
             continue;
-        }
-        if changes_rules(path) {
-            return None;
         }
         let metadata = match std::fs::symlink_metadata(engine.root.join(path.as_str())) {
             Ok(metadata) => metadata,

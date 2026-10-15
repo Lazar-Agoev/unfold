@@ -38,7 +38,7 @@ pub enum ProblemCategory {
     DoesntParse,
     /// A file can't be read or isn't UTF-8.
     CantRead,
-    /// Discovery couldn't read part of the folder.
+    /// Discovery couldn't read or use part of the folder.
     Discovery,
     /// A configuration input can't be read.
     Input,

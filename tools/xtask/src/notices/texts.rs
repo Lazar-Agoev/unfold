@@ -44,8 +44,7 @@ pub(super) const EXPLICIT: &str = r#"## Notices for the main components
 **Electron and Chromium.** Unfold runs on Electron (MIT License, Copyright (c) Electron
 contributors, Copyright (c) 2013-2020 GitHub Inc.). Electron embeds Chromium, Node.js, V8, and
 their own dependencies, under BSD-style and other licenses listed in `LICENSES.chromium.html`. That
-file and Electron's `LICENSE.electron.txt` ship with the app: beside the executable on Windows and
-Linux, and in `Unfold.app/Contents/Resources` on macOS.
+file and Electron's `LICENSE.electron.txt` ship with the app, in `Unfold.app/Contents/Resources`.
 
 ```text
 Copyright (c) Electron contributors

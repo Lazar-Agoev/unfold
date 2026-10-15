@@ -75,13 +75,15 @@ class identity linking proves), whose form is then `new`. Its `name` is the writ
 | `binds` | The written target its value is assigned to, when it is exactly that value: `receipt`, `order.receipt`, `email_row_id, inserted`. `a = b = f()` binds `a = b`. Ternaries and comprehensions record it too |
 | `exit_value` | Its value is exactly what its exit returns, raises, or yields |
 | `awaited` | Written under `await` |
-| `conditional` | It runs only sometimes inside its expression: the right side of `and`, `or`, or `??`, or after `?.` |
-| `role`, `for` | `test`: written in a part's test. `decorator`, `base`, `default`: it runs when a definition is created, in the enclosing body, and `for` names that definition. A TypeScript default runs each time its function is called, so it is a call at the start of the function's own body, with role `default` and no `for` |
+| `conditional` | It runs only sometimes inside its expression: the right side of `and`, `or`, `&&`, `\|\|`, `??`, or a logical assignment (`&&=`, `\|\|=`, `??=`), or after `?.` |
+| `role`, `for` | `test`: written in a part's test. `decorator`, `base`, `default`: it runs when a definition is created, in the enclosing body, and `for` names that definition. In Python, `default` also covers the calls in a `def`'s annotations and type parameters, and `base` those in a class's type parameters. A TypeScript default runs each time its function is called, so it is a call at the start of the function's own body, with role `default` and no `for` |
 | `stmt` | See [Statements](#statements) |
 
 Every decorator is a call, plain names included: `@property` is a call to `property`. Every call is a block,
 including builtins, calls no one could resolve, and calls inside `assert` and `del`. So every resolved call can be
 opened where it is written, and an unresolved call is never dropped. Which calls are drawn is the reader's choice.
+The one thing left out is a Python `@overload` stub proven to be `typing.overload`: the stub, its decorator, and the
+calls in its defaults and annotations, so the implementation takes the plain key.
 
 A call **contains** what is written in its receiver chain and arguments: calls, ternaries, comprehensions, and
 inline definitions. `save_all(map(convert, rows))` is a `save_all` block containing a `map` block. A function or
@@ -150,20 +152,23 @@ expression blocks         =  calls, ternaries, comprehensions, and the functions
 ```
 
 A definition inside a part (a `def` under `except ImportError:`) sits in that part and is still keyed by its name.
-So does one written in an expression: an inline definition, or a TypeScript object literal's method in a
-`return` (`return { run() {…} }` holds `#make.run`).
+One written in an expression sits there too: an inline definition (keyed `callback[n]` or `lambda[n]`), or a
+TypeScript object literal's method in a `return`, keyed by its name (`return { run() {…} }` holds `#make.run`).
 
 **A block belongs to the nearest definition above it.** That is the only ownership rule, implemented once as
-`unfold_core::owner` and used by the engine, validation, and the reader. Decorators, bases, and Python defaults sit
-in the enclosing body, so they belong to the enclosing definition; calls inside a callback belong to the callback.
+`unfold_core::owner` and used by the engine and the reader. Validation checks the structure the rule relies on: a
+definition's link is never written inside a nearer definition, and a `break` or `continue` targets a loop (or, for a
+`break`, a `switch`) in the same definition. Decorators, bases, and Python defaults sit in the enclosing body, so they
+belong to the enclosing definition; calls inside a callback belong to the callback.
 
 ### Uncertainty
 
 A fact is known, or it is `unknown` with a reason. Besides a link's [outcome](#links), there are two other unknowns,
 each drawn dashed and labeled, never omitted and never drawn as an end:
 
-- **A truncated block.** What a front end can't place is marked `truncated` on the nearest node above it: nesting
-  past the depth limit, or a `break` out of a TypeScript labeled plain block.
+- **A truncated block.** What a front end can't place is marked `truncated` on the nearest node above it: code
+  nested past the depth limit, or a `break` out of a TypeScript labeled statement that isn't a loop or `switch`,
+  which truncates the node that holds the `break` (a labeled statement with no such `break` is plain code).
 - **An entrance target that names nothing,** with its [state](engine.md#resolving-code).
 
 Routes are not stored. The reader derives them from the tree, so code after an early `return` is a route state
@@ -254,8 +259,9 @@ A node's fields:
 | --- | --- |
 | `key`, `parent` | Identity and containment |
 | `form` | The written form, which decides `kind` |
-| `name` | A definition's name, a call's normalized callee, or a callback's property name |
+| `name` | A definition's name (its parts joined with `.` when it is qualified past its parent: `handlers.onCreate`, `N.f`), a call's normalized callee, or a callback's property name |
 | `range` | The whole block; the module spans the whole file |
+| `lines` | The one-based lines `range` starts and ends on |
 | `head` | A definition's signature, a control block's header, a part's test or clause, a call's callee |
 | `body` | The suite of a definition or a part |
 | `doc` | A definition's docstring or JSDoc |
@@ -275,7 +281,7 @@ written text is cut to 120 UTF-16 units.
 | --- | --- |
 | Signature | One per function; its written return type, if any |
 | Parameter | One per written parameter, in order: kind, name, `optional`, `default`, written annotation |
-| Member | Written fields and signatures of a type or class, in source order, each with its range |
+| Member | Written fields and signatures of a type or class, and an enum's members, in source order, each with its range |
 | Argument | One per argument of a call: range, expansion, keyword, pairing, and `bound` for a passed function |
 
 Parameter kinds are `positional`, `this` (TypeScript), `rest`, `positional_only`, `keyword_only`, and `keywords`
@@ -336,9 +342,11 @@ src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0] an inlin
 
 - **Named definitions** are keyed by qualified name wherever they sit, so a guard added around a `def` doesn't move
   its key: `src/repo.ts#Repo.save`, `#place_order.helper`. A repeat of the same key gets `[n]`. A function bound by a
-  declaration or a simple assignment takes that name (`const handler = …` is `#handler`); an object-literal method
-  or class property takes its property name, after the names of the declaration that names its object
-  (`#handlers.onCreate`); an anonymous default export is `#default`.
+  declaration takes that name (`const handler = …` is `#handler`), and so does a Python `lambda` that is the whole
+  value of an assignment to a plain name (`handler = lambda: …`); a TypeScript assignment names nothing
+  (`h = () => work()` is `lambda[n]`). An object-literal method or class property takes its property name, after the
+  names of the declaration or property that names its object (`#handlers.onCreate`); an anonymous default export is
+  `#default`.
 - **Inline definitions** (functions, and TypeScript class expressions with the form `class`) are `callback[n]` in a
   call's arguments and `lambda[n]` anywhere else, numbered in written order. Named definitions inside them follow
   their key and `.`: `#/call:define("x")/callback[0].connectedCallback`.
@@ -348,7 +356,8 @@ src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0] an inlin
   (`call:logger.info[1]`). Arguments become `()`, subscripts `[]` (escaped), a string literal `""`, any other
   expression `(…)`; `await`, parentheses, `!`, and type casts are dropped; `?.` is written `.`; a callee is cut at 80
   characters. So `res.status(500).json(…)` is `call:res.status().json`.
-- **A call that receives an inline definition** is also keyed by its first argument when that is a string literal:
+- **A call that receives an inline definition** is also keyed by its first argument when that is a string literal
+  (in TypeScript, a template literal without substitutions counts):
   `call:ordersRouter.post("/orders/:id")`. Adding a route above it doesn't move its key, and editing its path makes
   the key missing instead of wrong. The literal is written double-quoted with only `"` and `\` escaped.
 - **Steps always follow `/` and names follow `#` or `.`,** so a module's own steps start with `#/`, and a function
@@ -403,13 +412,18 @@ in [validate/](../crates/unfold-core/src/validate/mod.rs):
   or for `break` a `switch`, in the same definition).
 - Ranges lie inside their parents; `head`, `body`, and `value` inside the node; `stmt` around it.
 - Keys are unique and equal to the keys `KeyBuilder` derives from the tree.
-- Every call has exactly one `calls` link, first. Link sources, targets, outcomes, and module labels fit the link
-  kind; a project target exists and has a permitted kind.
+- Every call has exactly one `calls` link, first. Link sources fit the link kind; a project target exists, in the
+  same language, with a kind the link kind permits; a `passes` link reaches a project definition; module labels are
+  well formed.
 - Typed records have the right cardinality (exactly one signature per function), contiguous indexes, and ranges
   inside their nodes; pairings agree with resolution.
-- App and entrance keys are re-derived from their names and unique. An entrance target's state is data, not an
-  error: a `missing` target is valid.
-- **The census:** one check, each language's own walk of the parse tree: every call in it is exactly one call node.
+- App and entrance keys are re-derived from their names and unique, and every entrance has a `code` key. The apps
+  are resolved after the rest of the graph is validated, and again when only the `[[app]]` tables change, so they
+  are checked as they are attached. The settings parser already keeps out every entry that would break these rules
+  ([Entry problems](engine.md#entry-problems)), so a bad `unfold.toml` entry never fails a compile: a violation here
+  is the engine's error. An entrance target's state is data, not an error: a `missing` target is valid.
+- **The census:** one check against each language's own count of call sites, made apart from the lowering
+  (TypeScript walks the syntax tree again; Python scans the lexer's tokens): every call site is exactly one call node.
   Recall is never improved by dropping hard occurrences.
 
 ## Value policy and reason order
@@ -465,8 +479,8 @@ call binds itself.
    `no_parameter`.
 3. Once an argument is spread, it and every later positional argument are `spread`. Python `**` is itself `spread`;
    later keywords still pair by name.
-4. A keyword fills the named taker that accepts keywords unless a positional argument already did, else `**kwargs`,
-   else `no_parameter`.
+4. A keyword fills the named taker that accepts keywords; when a positional argument already filled it, it is
+   `no_parameter`. A keyword no taker is named for goes to `**kwargs`, else it is `no_parameter`.
 5. A class with no direct constructor takes nothing only when its language proves it (no base, no decorator);
    otherwise its arguments are `no_signature`.
 

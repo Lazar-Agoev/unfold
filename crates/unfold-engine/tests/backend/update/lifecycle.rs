@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use unfold_core::LinkTarget;
 use unfold_core::vocab::{FileState, Reason};
 use unfold_engine::update::MemoryFactsCache;
-use unfold_engine::{CancelToken, Stage, UpdateError, UpdateRequest};
+use unfold_engine::{CancelToken, ProblemKind, Stage, UpdateError, UpdateRequest};
 
 use super::{Counting, Folder, background, canonical, compile, engine, engine_with, file, template};
 
@@ -144,6 +144,56 @@ fn ignored_and_unindexed_paths_follow_discovery() {
         1,
         "the settings file shaped the graph"
     );
+}
+
+#[test]
+fn a_git_exclude_change_discovers_everything() {
+    let folder = Folder::new();
+    folder.write("main.ts", &template(1, 0));
+    folder.write("lib/util.ts", &template(0, 1));
+    folder.write(".git/info/exclude", "");
+    let mut engine = engine(&folder);
+    compile(&mut engine);
+    // Nothing else under `.git` is ever in scope, but its exclude file is an ignore file.
+    folder.write(".git/info/exclude", "lib/\n");
+    let excluded = background(&mut engine, &[".git/info/exclude"]);
+    assert!(excluded.stats.full_discovery);
+    assert_eq!(paths(&excluded.summary.removed_files), ["lib/util.ts"]);
+    assert_eq!(helper_call(&excluded), LinkTarget::Unknown(Reason::NotFound));
+    // The rest of `.git` changes nothing.
+    folder.write(".git/HEAD", "ref: refs/heads/main\n");
+    let other = background(&mut engine, &[".git/HEAD"]);
+    assert!(!other.stats.full_discovery && other.summary.is_empty());
+}
+
+#[test]
+fn what_discovery_leaves_out_is_listed_and_makes_the_graph_incomplete() {
+    let folder = Folder::new();
+    folder.write("main.ts", &template(1, 0));
+    let mut engine = engine(&folder);
+    assert!(compile(&mut engine).complete);
+    folder.write(".gitignore", "dist/\n[z-a]\n");
+    folder.write("odd\\name.ts", "");
+    let outcome = background(&mut engine, &[".gitignore"]);
+    assert!(!outcome.complete);
+    let problems: Vec<(ProblemKind, &str)> = outcome
+        .problems
+        .iter()
+        .map(|problem| (problem.kind, &*problem.path))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            (ProblemKind::Discovery, ""),
+            (ProblemKind::Discovery, ".gitignore")
+        ],
+        "{:?}",
+        outcome.problems
+    );
+    folder.write(".gitignore", "dist/\n");
+    folder.remove("odd\\name.ts");
+    let fixed = background(&mut engine, &[".gitignore"]);
+    assert!(fixed.complete && fixed.problems.is_empty());
 }
 
 #[test]

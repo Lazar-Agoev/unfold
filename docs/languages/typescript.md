@@ -13,13 +13,14 @@ resolution policy are in [Graph model](../graph-model.md).
 | Census | `census.rs` |
 | Cached payload | `payload/`, `module_syntax.rs` |
 | Project configuration and paths | `config/`, `paths.rs` |
-| Modules and exports | `modules/`, `exports/` |
+| Modules, imports, and exports | `modules/`, `imports.rs`, `exports/` |
 | Scope and name binding | `bind/` |
-| Link-time evidence and answers | `evidence/`, `link.rs`, `values.rs` |
+| Value table (callees and passed arguments) | `values.rs` |
+| Link-time evidence and answers | `evidence/`, `link.rs` |
 | Written types | `typed.rs` |
 | Module labels | `labels.rs` |
-| Library and ECMAScript tables | `tables/`; regenerate with `cargo xtask gen-lib-tables` |
-| Highlighting for the code panel | `highlight/` |
+| Library and ECMAScript tables | `tables/`; regenerate with `cargo xtask gen-lib-tables <lib-dir> --node-types <dir>`, and `--aliases` for `aliases.rs` |
+| Highlighting for the code panel, and the comments gap ticks skip | `highlight/` |
 
 Paths are relative to `crates/unfold-lang-typescript/src/`. Read a module's comment and a nearby fixture before
 expanding to other stages.
@@ -44,7 +45,7 @@ pretty-prints syntax. Linking reads only cached facts, never a retained parse tr
 | Written | Node |
 | --- | --- |
 | The file | `module`; a leading file JSDoc is its `doc` |
-| Function declarations; methods, constructors, accessors (class or object literal) | `function` (`function`, `method`, `constructor`, `getter`, `setter`) |
+| Function declarations; methods, constructors, accessors (class or object literal) | `function` (`function`, `method`, `constructor`, `getter`, `setter`); in a call's arguments an object literal's method or accessor is `callback[n]` (`lambda`), labeled by its property |
 | Arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments, object properties included (labeled by the property); named by `const x = …`, a class property, a property of an object literal that isn't an argument (after the names of the declaration or property that names the object), or `export default`; `lambda[n]` anywhere else |
 | `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`). A class expression is named like a function expression, or by its own name in a body; otherwise it is an inline definition, `callback[n]` or `lambda[n]` with the form `class` |
 | Decorators | Calls in the enclosing body, role `decorator`, `for` the definition, no `stmt` |
@@ -78,9 +79,11 @@ Choices the lowering makes:
   first-literal key rule.
 - A definition's `doc` is the nearest JSDoc before it, past line comments such as `// eslint-disable-next-line`,
   as TypeScript reads it, with no blank line between.
-- A decorator on a class field is a plain call: a field isn't a definition.
+- A decorator on a class field is a plain call: a field isn't a definition. When the field's value is a function or
+  class, the field names that definition, and the decorator is `for` it.
 - What can't be placed is marked `truncated` on the nearest node above it: nesting past the depth limit (the code
-  below is left out and the census skips it), and a `break` out of a labeled plain block.
+  below is left out and the census skips it), and a `break` out of a labeled statement that isn't a loop or
+  `switch`.
 
 ## Project configuration
 
@@ -119,9 +122,9 @@ Export tables follow `export` declarations, re-exports, `export *` (explicit exp
 make a name ambiguous), `export =`, and `export default`, stopping at cycles. A module outside the program is
 external, or an excluded boundary for a source that scope excludes or that failed.
 
-Which module syntax is a runtime dependency (an `imports` link) is decided once, in `imports.rs`, for both
-extraction and the census: type-only imports and exports aren't; named imports whose specifiers are all type-only
-are only with `verbatimModuleSyntax`; a dynamic `import()` with a non-literal specifier is `dynamic`.
+Which module syntax is a runtime dependency (an `imports` link) is decided once, in `imports.rs`, which the
+lowering asks: type-only imports and exports aren't; named imports whose specifiers are all type-only are only with
+`verbatimModuleSyntax`. A dynamic `import()` always is, and with a non-literal specifier its link is `dynamic`.
 
 Implementation: [config/mod.rs](../../crates/unfold-lang-typescript/src/config/mod.rs),
 [modules/mod.rs](../../crates/unfold-lang-typescript/src/modules/mod.rs),
@@ -148,7 +151,8 @@ overload signature beside its implementation is one target.
 A plain `const` destructuring of a directly awaited literal import binds the module's export:
 `const { report } = await import("./report.ts")`. Defaults, rest, nested or computed patterns, mutable bindings,
 non-awaited imports, and dynamic specifiers don't get this proof (fixture
-`testdata/fixtures/typescript-evidence/c8-dynamic-import`, with a justified oracle entry).
+`testdata/fixtures/typescript-evidence/c8-dynamic-import`; the checker leaves these calls unresolved, so `ts-orders`
+and `mixed-playground` have a justified oracle entry for one).
 
 ## What a call's value is
 
@@ -159,7 +163,8 @@ A receiver's type comes only from what is written ([receivers.rs](../../crates/u
   `let`/`var` that is never assigned again; never a parameter's default;
 - a class property's initializer, when nothing writes the property after its declaration (an assignment, `++`,
   destructuring, `delete`, `Object.defineProperty`/`assign`, a write with an unknown key, or a subclass member of
-  the same name); an overwritten property is `mutable_binding`;
+  the same name); a call through an overwritten property is `unknown_receiver`, and a call of the property itself
+  `mutable_binding`;
 - a callee's declared return type, when every declaration agrees and one has a body. A class, or a class with
   `null` or `undefined`, gives that class;
 - through `await`, the `Promise<Repo>` an `async` callee declares, with the library `Promise`.
@@ -224,11 +229,11 @@ tables come from the standard editions, `lib.es5` through `lib.es2025`, not `lib
 
 ## Typed records
 
-Recorded: parameter and return annotations, the members of interfaces, enums, and classes (instance fields,
-`accessor` properties, and constructor parameter properties; static members are not), the members of a type
-alias whose whole aliased type is an object type literal, and the type names of those written types, variable
-annotations, catch clause annotations, and heritage clauses. Intersections, unions, and inferred shapes are never
-expanded into fields. Methods are nodes.
+Recorded: parameter and return annotations, the members of interfaces, enums, and classes (instance fields, `accessor`
+properties, and constructor parameter properties; static members are not), the members of a type alias whose whole
+aliased type is an object type literal, and the type names of those written types, a type alias's aliased type,
+variable annotations, catch clause annotations, and heritage clauses. Intersections, unions, and inferred shapes are
+never expanded into fields. Methods are nodes.
 
 Each type name links to one same-language declaration, generic arguments included. Keyword and literal types,
 `this`, `typeof x`, `import("m").T`, and lexical type parameters are not links. A class's `extends` names a type
@@ -251,4 +256,5 @@ resolution, typed records, robustness, determinism, and the playground goldens).
 and precision checks; module changes need configuration, export, and unindexed-target cases.
 
 The precision gate compares resolved calls with the TypeScript checker's answers ([Testing](../testing.md)). A
-deliberate disagreement needs a specific justified entry, never a lowered recall floor or a blanket exception.
+deliberate disagreement needs a specific justified entry, never a blanket exception. A recall floor drops only when a
+precision fix removes answers Unfold couldn't prove, with the reason recorded in `floors.toml`.

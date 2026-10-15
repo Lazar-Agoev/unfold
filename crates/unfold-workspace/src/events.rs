@@ -10,7 +10,7 @@
 //!
 //! | Event | When |
 //! | --- | --- |
-//! | `workspace_changed` | A project row was added, removed, expanded or collapsed, or renamed |
+//! | `workspace_changed` | A project row was added, removed, expanded, or collapsed |
 //! | `project_state` | A project's row state changed (live ↔ resting included; not on every progress tick) |
 //! | `project_reset` | A project was removed: everything cached for it is stale |
 //! | `compile_progress` | A compile or update advanced (throttled) |

@@ -18,9 +18,10 @@ root, so the legacy export's entrance points at code Unfold doesn't analyze.
   answers.
 
 Keep the difficult cases: they are what the goldens and oracles check. To change one, edit one behavior, run the
-Python crate's tests, read the golden diff before blessing, and run `cargo xtask oracles check py-orders
-mixed-playground` when a call's outcome can change. Editing a Python source here makes its oracle stale for good:
-`refresh` converts the saved Pyright rows only for the exact sources they describe.
+Python crate's tests and those of `unfold-reader` and `unfold-workspace` (the drawn flows and command results), read
+the golden diff before blessing, and run `cargo xtask oracles check py-orders mixed-playground` when a call's outcome
+can change. Editing a Python source here makes its oracle stale for good: `refresh` converts the saved Pyright rows
+only for the exact sources they describe.
 
 - [Test data](../../README.md)
 - [Python front end](../../../docs/languages/python.md)

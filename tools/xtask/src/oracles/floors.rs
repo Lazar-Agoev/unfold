@@ -1,7 +1,8 @@
 //! `testdata/reference/oracles/floors.toml`: the recall floor per corpus and language. A floor
 //! records the matched and resolved counts it was set from; recall passes when it is at least that
-//! ratio, compared exactly. Floors only rise: when recall is higher, the check says so and the
-//! floor is raised by hand.
+//! ratio, compared exactly. When recall is higher, the check says so and the floor is raised by
+//! hand. A floor drops only when a precision fix removes answers Unfold couldn't prove, and
+//! `floors.toml` records why above it.
 
 use std::path::{Path, PathBuf};
 

@@ -8,6 +8,7 @@ resolution policy are in [Graph model](../graph-model.md).
 
 | Concern | Owning module |
 | --- | --- |
+| Extraction of one file | `extract.rs` |
 | Ruff parsing and compile-time checks | `parse.rs`, `analysis/` |
 | Lowering to nodes | `lower/` (`statements.rs`, `expressions.rs`), `ast.rs`, `tokens.rs` |
 | Value table and call facts | `values.rs` |
@@ -15,7 +16,7 @@ resolution policy are in [Graph model](../graph-model.md).
 | Source roots, imports, whole-program binding | `link/` |
 | Standard-library stubs | `stubs.rs` (generated), `link/library.rs`, `stdlib.rs` |
 | Written types | `typed.rs`, `bind/types.rs` |
-| Census and highlighting | `census.rs`, `highlight.rs` |
+| Census, and highlighting (the code panel's, and the comments gap ticks skip) | `census.rs`, `highlight.rs` |
 
 Paths are relative to `crates/unfold-lang-python/src/`. Read a module's comment and the relevant fixture first.
 
@@ -90,7 +91,8 @@ Every file resolves its imports through its own source roots, the same however t
 - **Relative imports** need the importing file to lie in a source root deep enough for its dots; nothing found is
   `not_found`.
 - A module that exists outside the index (a source root outside `[scope]`) is `not_indexed`, never `not_found`.
-  Existence comes from the program, discovery's unindexed files, and, for paths discovery never walked, the disk.
+  Existence comes from the program, discovery's unindexed and context files, and, for paths discovery never walked,
+  the disk.
 
 A `from package import name` loads a child module only when the attribute is proven absent: the package is indexed,
 its `__init__.py` binds nothing of that name and defines no hook that could (`__getattr__`, `__path__`, …), and no
@@ -133,20 +135,20 @@ A call gives an instance of a class only when it is proven ([link/value.rs](../.
 - **Construction:** the call constructs a proven, concrete project class.
 - **Written return type:** the callee is exactly one proven, concrete `def` that isn't overridden or wrapped, and its
   annotation is a class (a name, member chain, or quoted dotted name), `Repo | None` or `None | Repo`, or
-  `Optional[Repo]` with `Optional` proven to be `typing.Optional`. A generic class is read by its class, its type
-  arguments dropped, as written variable types are: `-> Repo[str]` gives `Repo`, `-> list[int]` gives `list`. An
-  `async def`'s type is read only through `await`, any other's only without it. Unions of classes, TypeVars, `Self`,
-  `type[Repo]`, quoted generics, and `Union[Repo, None]` give nothing, and so does a class that derives from
-  `Generic[T]`, whose base Unfold doesn't read.
+  `Optional[Repo]` with `Optional` proven to be `typing.Optional` (or `typing_extensions.Optional`). A generic class
+  is read by its class, its type arguments dropped, as written variable types are: `-> Repo[str]` gives `Repo`,
+  `-> list[int]` gives `list`. An `async def`'s type is read only through `await`, any other's only without it.
+  Unions of classes, TypeVars, `Self`, `type[Repo]`, quoted generics, and `Union[Repo, None]` give nothing, and so
+  does a class that derives from `Generic[T]`, whose base Unfold doesn't read.
 - **Written annotations are read as their `types` links are:** in the type meaning, where a name an assignment binds
   (`Alias = Repo`) is its own declaration, never followed. So `-> Alias` and `param: Alias` give nothing, as the
   `types` link says `not_concrete`. A class with a decorator that isn't proven transparent is still its own type,
   as for its `types` link, and calls to its members are `wrapper`.
 - **Standard-library stubs:** eight modules (`builtins`, `logging`, `os` with `os.path`, `json`, `re`, `datetime`,
   `pathlib`, `asyncio`) and every class their members reach, generated into `stubs.rs` by
-  `cargo xtask gen-py-stubs` from typeshed at the commit pinned in `stdlib.rs`. Nothing is read at run time. The
-  same run writes the builtin exception classes and their bases into the reader (`python_exceptions.rs`), which
-  tells which `except` catches a raise ([Reader › Contracts](../reader.md#contracts)).
+  `cargo xtask gen-py-stubs <typeshed-dir>` from typeshed at the commit pinned in `stdlib.rs`. Nothing is read at run
+  time. The same run writes the builtin exception classes and their bases into the reader (`python_exceptions.rs`),
+  which tells which `except` catches a raise ([Reader › Contracts](../reader.md#contracts)).
   - Type arguments are dropped (`list[str]` is `list`); a class or `None`, `Optional`, quoted names, and
     `async` through `await` are kept.
   - `Self` in a stub reads as the receiver's class (`datetime.datetime.now()`); `LiteralString` reads as `str`.

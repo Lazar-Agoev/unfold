@@ -38,7 +38,7 @@ picking one silently.
 
 - `designs/` holds the design documents and build records: core scope, diagram blocks, entrance definitions,
   viewing code, MCP capabilities, the core rebuild plan and its build log, with their HTML pages.
-- `analysis/` holds an analysis of the compiler.
+- `analysis/` holds an analysis of the compiler and the audit of the core rebuild, its fix list.
 
 The references above hold the rules that stay true; these records keep the reasoning and the history. A new design
 goes in `designs/<topic>.md` with a status line, the contracts it touches, and its open questions. Once it is built,

@@ -1,5 +1,5 @@
 //! Workspace commands: the project rows the window shows, adding (from the main process
-//! only), removing, ordering, expanding, and selecting projects.
+//! only), removing, expanding, and selecting projects.
 
 use std::path::Path;
 

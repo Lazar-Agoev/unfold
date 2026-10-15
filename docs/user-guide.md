@@ -7,8 +7,8 @@ and never runs your code, installs anything, or runs Git.
 
 Everything you add lives in one **workspace**. Each **project** in it is a folder, usually a repository, with its own
 graph. You explain code on **boards**: a board is a story, such as "Order lifecycle", and holds **pages**, each one
-view of it, such as "Placing an order". A page holds **cards**: an entrance, a function, a class, a type, or a module.
-Folders group boards, one level deep.
+view of it, such as "Placing an order". A page holds **cards**: an app, an entrance, a function, a class, a type, or a
+module. Folders group boards, one level deep.
 
 ## Add a project
 
@@ -22,12 +22,12 @@ read-only folder, or one on a network volume, is refused with a message saying s
 ## Home
 
 Home shows the project selected in the sidebar. Under its name, the state line says where things stand: "Graph current
-· 84 files · TypeScript + Python · updated 2 min ago", "Compiling", "Updating · 2 files changed", or "Resting" for a
+· 84 files · TypeScript + Python · updated 2 minutes ago", "Compiling", "Updating · 2 files changed", or "Resting" for a
 project you haven't looked at in a while (it catches up when you open it). The project's row in the sidebar shows the
 same state as a small mark.
 
 - **How it starts** lists the project's apps and what each one handles ([below](#declare-how-it-starts)). Click a row
-  to trace it onto a new board.
+  to trace it onto a new board; a row whose code is outside the graph opens its lines in `unfold.toml`.
 - **Boards** lists the project's boards, most recently edited first. **New board** makes one.
 - **Health** says whether anything needs a look: a file that doesn't parse, a board whose code changed, or an
   entrance whose code isn't found. Click an amber item to go to it.
@@ -63,8 +63,9 @@ entrances = [
 
 - `name` is required, and so is an entrance's `code`. `run` and `on` are only shown; Unfold never runs or parses them.
   `about` adds one sentence.
-- `code` is where it starts: a module (`src/server.ts#`), a definition (`src/routes/orders.ts#createOrder`), an
-  inline handler, or a list of them in the order they run. **Add as entrance…** on a card writes the key for you.
+- `code` is where it starts: a module (`src/server.ts#`), a definition (`src/routes/orders.ts#createOrder`), or an
+  inline handler; an entrance's `code` can also be a list of them in the order they run. **Add as entrance…** on a
+  card writes the key for you.
 - Editing these tables never recompiles: Unfold only looks the keys up again.
 
 You don't have to edit the file by hand:
@@ -72,13 +73,15 @@ You don't have to edit the file by hand:
 - **Add as entrance…**, in a module, function, or class card's menu, asks for the app (or a new one), the name, and
   `on`, and writes one line.
 - **Add entrance**, in How it starts' header (or its empty state), does the same, with a name search for the code.
-- **Copy agent prompt** copies a request you can paste into Claude Code or Codex to write the tables for you.
+- **Copy agent prompt**, in How it starts' empty state, copies a request you can paste into Claude Code or Codex to
+  write the tables for you.
 
 When a `code` key stops matching, its row on Home gets an amber dot. Hover it to see what happened: **Moved to …** or
 **Route edited** offers **Fix**, which rewrites that one key; **Not found** and **Not a start** offer **Choose
-code…**; **Not analyzed** (the file is outside the graph) opens `unfold.toml`, where `[scope]` is. Unfold never applies
-a fix by itself, and a fix changes nothing else in the file: if the key changed since you looked, it says so and writes
-nothing. If `unfold.toml` stops parsing, the last good settings and apps stay and the error is shown.
+code…**; **Not analyzed** (the file is outside the graph) offers **Fix**, which opens `unfold.toml`, where `[scope]`
+is. Unfold never applies a fix by itself, and a fix changes nothing else in the file: if the key changed since you
+looked, it says so and writes nothing. If `unfold.toml` stops parsing, the last good settings and apps stay and the
+error is shown.
 
 ## Boards and pages
 
@@ -94,12 +97,13 @@ The bar above the canvas shows the page's name and the **Show all calls** switch
 **Arrange**, and the zoom. Right-click the canvas for **Add resource…** and **Fit**.
 
 Boards are saved as you edit, as files in `.unfold/boards/`. Undo and Redo are in the Edit menu (⌘Z, ⇧⌘Z), one history
-per board, across its pages. If a save fails, the canvas says **Not saved · Retry**; your work stays in the window.
-If the file changes outside Unfold (an agent, your editor, a `git pull`), the board reloads from it and its undo
-history starts over. If you have edits that aren't saved yet, Unfold stops saving and asks: **Keep my edits** writes
-yours over the file, and **Load the file** takes the file's version. If the file isn't a valid board, such as after a
-merge conflict, saving stops until you choose **Save my version** or fix the file; once it's a valid board again, the
-board reloads by itself, or asks if you edited meanwhile. Nothing either side wrote is lost without you choosing.
+per board, across its pages. If a save fails, the canvas says **Not saved · Retry**; your work stays in the window. If
+the file changes outside Unfold (an agent, your editor, a `git pull`), the board reloads from it and its undo history
+starts over. If you have edits that aren't saved yet, Unfold stops saving and asks: **Keep my edits** writes yours
+over the file, and **Load the file** takes the file's version. If the file isn't a valid board, such as after a merge
+conflict, saving stops until you choose **Save my version** or fix the file; once it's a valid board again, the board
+reloads by itself, or asks if you have edits that aren't saved. Nothing either side wrote is lost without you
+choosing.
 
 In the sidebar, a folder's menu has **New Board Here**, **Rename…**, and **Delete** (when it's empty).
 
@@ -109,7 +113,8 @@ In the sidebar, a folder's menu has **New Board Here**, **Rename…**, and **Del
   the cards for its code, expanded, in the order they run.
 - **Add:** press **Add** in the dock and type a name. Functions, classes, types, modules, apps, and entrances of the
   board's project come first, then files. Enter puts the card on the page, or opens a file in the code panel.
-- **Show callers**, in a card's menu or in Selected, adds the functions that call it, in a column to its left.
+- **Show callers**, in a card's menu or in Selected, adds the functions that call it (up to 20), in a column to its
+  left.
 - **From the code panel:** `⊕` beside a definition adds its card.
 
 When a function and the function it calls are both on the page, an arrow joins them: from the call on an expanded
@@ -125,8 +130,8 @@ shows its signature and docstring, then the **drawn flow**: what the function do
 - **Open in place:** the chevron on a call box draws the callee's flow inside the card, up to three levels deep.
 - **Other calls** (libraries, and calls Unfold can't follow) gather into thin rows such as
   `· ordersQueue.add → job, res.status().json ?`. A `?` marks a call Unfold can't follow, and the row counts them.
-  The ones written in a test or a loop's header are listed after it, each with its `?`, and the ones written inside a
-  call drawn on a test or an exit are listed on it (`+ x.foo ?`).
+  Calls Unfold can't follow written in a test or a header are listed after it, each with its `?`, and the other calls
+  written inside a call drawn on a test or an exit are listed on it (`+ x.foo ?, logger.info`).
 - **Builtin calls** (`len`, `JSON.parse`) are hidden. **Show all calls** in the top bar shows them on every card.
 - **Decisions** draw a diamond per test, with each branch as a lane. A test too long to draw whole ends in `…`; hover
   it to read all of it. **Loops** are frames titled by their header, and a **with** block by WITH and what it
@@ -176,8 +181,9 @@ Right-click a block in an expanded card for its menu:
 - **Name…** gives a block your own words; the code's name stays beside it. A name applies on every card of the page
   that draws the block. Naming a library call lifts it out of its thin row.
 - **Describe…** writes one sentence on what a card does and why.
-- **Combine…** puts consecutive steps under one title, or a whole `if`, loop, or `try`. It draws as one step that keeps
-  its ways out (`returns → End`) and counts its unknown calls; open it to see the steps. **Uncombine** undoes it.
+- **Combine…** puts consecutive steps under one title, or a whole `if`, loop, `try`, or other control block. It draws
+  as one step that keeps its ways out (`returns → End`) and counts its unknown calls; open it to see the steps.
+  **Uncombine** undoes it.
 - **Add proposed step after…** or **at the start…** draws an intended change, dashed as PROPOSED, with a title and a
   reason. It's never presented as code.
 
@@ -189,19 +195,21 @@ On the canvas:
   in an expanded card, the line leaves from that call. **Kind ▸** on the line makes it HTTP, Queue, Reads, Writes, Calls
   (where an unknown call goes at runtime: draw it from the unknown call), Relates, or Other; a relationship's columns
   and cardinality are set in Selected.
-- Frames and notes are added by agents; you can rename, describe, move, collapse, and remove them.
+- Frames and notes are added by agents. You can rename, describe, move, collapse, and remove a frame, and edit, move,
+  and remove a note.
 
-Everything you write is signed with your name, and against the code it describes.
+Everything you write is signed with your name, and a name, a description, or a combined step also against the code it
+describes.
 
 ## Keep it true
 
 When code under a description, name, or combined step changes, its card shows "Changed since it was described ·
 Review". **Review** offers **Accept** (still true), **Reconnect…** (the code was renamed or moved: pick its new name),
-and **Remove from page**. Unfold never moves your words to other code by itself. A call written inside a combined
-step joins it and sends it to review; **Accept** keeps the call in the step. A page with something to review has
-a mark in Pages, and Home's Health line counts the boards that need review. An entrance's card keeps up
-too: its description goes to review when its code is found or changes, and an entrance renamed or removed in
-`unfold.toml` shows as missing at once, with **Reconnect…** offering the entrance that has the same code.
+and **Remove from page**. Unfold never moves your words to other code by itself. A step written between a combined
+step's blocks joins it and sends it to review; **Accept** keeps it in the step. A page with something to review has a
+mark in Pages, and Home's Health line counts the boards that need review. An entrance's card keeps up too: its
+description goes to review when its code is found or changes, and an entrance renamed or removed in `unfold.toml`
+shows as missing at once, with **Reconnect…** offering the entrance that has the same code.
 
 Unfold updates the graph in the background as files change. A file that stops parsing keeps its last good facts,
 and Health lists it with **Open in editor**.

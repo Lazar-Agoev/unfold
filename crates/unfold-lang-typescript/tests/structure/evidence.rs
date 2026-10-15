@@ -5,8 +5,7 @@
 //! The `poc-*` folders are the inline fixtures of the proof of concept's native binding,
 //! classes, declared-type, narrowing, receiver, value, and reference tests; the others cover the
 //! binder rules, the override census, overloads, script globals, and the fixed defects (C-2,
-//! C-4, C-6, C-8). The folder's `README.md` lists where the goldens deliberately differ from the
-//! proof of concept's native producer.
+//! C-4, C-6, C-8). The folder's `README.md` describes the cases.
 
 use std::fmt::Write as _;
 

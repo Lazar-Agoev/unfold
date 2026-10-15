@@ -18,10 +18,11 @@ semantics belong to [Graph model](graph-model.md); language extraction and bindi
 
 ## Updates
 
-`Engine::update` is the single path that keeps one folder's graph current. Each language implements two traits
+`Engine::update` (`Engine::prepare`, then `Engine::adopt`) is the single path that compiles one folder's graph;
+`Engine::resolve_entrances` only resolves its apps again. Each language implements two traits
 ([language.rs](../crates/unfold-engine/src/language.rs)): `Language` for per-file extraction (lowering to nodes,
-unresolved links, typed records, and an opaque binder payload), and `Linked` for the questions the shared backend
-asks about the whole program. A language answers narrow questions; the backend owns the policy.
+unresolved links, typed records, and an opaque binder payload), and `Linked` for the questions the shared backend asks
+about the whole program. A language answers narrow questions; the backend owns the policy.
 
 | Action | Request | What it reads |
 | --- | --- | --- |
@@ -34,11 +35,13 @@ An update runs its stages in order: **discover** (settings, then a full discover
 **snapshot** (read and hash changed files once), **extract** (per-file facts through the facts cache, in parallel),
 **link** (each language over the whole program), **resolve** (every link's outcome and every argument's pairing),
 and **validate** (the core validator and each language's census). After a successful update the apps of
-`unfold.toml` are resolved against the new graph ([Resolving `code`](#resolving-code)).
+`unfold.toml` are resolved against the new graph ([Resolving `code`](#resolving-code)) and validated as they are
+attached ([Validation invariants](graph-model.md#validation-invariants)).
 
-- **Full discovery** runs for a Compile, the first update, a settings change (pattern lists compare as sets, so
-  reordering patterns isn't one), or a changed path that can't be applied on its own: an ignore file, a folder, or a
-  symlink.
+- **Full discovery** runs for a Compile, the first update, the reopen check, a periodic or overflow rescan, a
+  settings change (pattern lists compare as sets, so reordering patterns isn't one), or a changed path that can't be
+  applied on its own: an ignore file (`.gitignore`, `.ignore`, or `.git/info/exclude`, the one path under `.git` that
+  counts), a folder, a symlink, or a path that can't be examined.
 - **Relinking.** A Compile always relinks the whole program. A background update relinks unless the files' facts
   and everything else linking reads are unchanged: the settings linking reads (`Settings::hash`), the configuration
   inputs, and the unindexed and context files. The bytes of `unfold.toml`, its comments, its `[[app]]` tables, its
@@ -67,8 +70,8 @@ own hash, and displayed source must still verify against it. A failed update nev
 The cache is an accelerator: a read error, an entry that doesn't decode, or one whose payload its language can't read
 (`Language::reads_payload`) is a miss, and a failed write is a problem, never a failed update.
 
-The store is a cache too ([schema.rs](../crates/unfold-store/src/schema.rs)): a database with another schema or
-engine version, or a damaged one, is discarded and rebuilt on open. There are no migrations. Deltas commit in one
+The store is a cache too ([schema.rs](../crates/unfold-store/src/schema.rs)): a database with another schema, engine,
+or front-end version, or a damaged one, is discarded and rebuilt on open. There are no migrations. Deltas commit in one
 transaction; one writer per folder, on the engine thread; readers see committed snapshots through write-ahead
 logging. Keys are stored once each and referred to by ID; the commit that deletes a key's last use (a renamed or
 deleted block, a link or entrance that moved on) deletes the key too, so the key table holds only live keys.
@@ -97,9 +100,9 @@ files = ["schema.sql", "prisma/**"]
 [[app]]
 name = "Shop API"
 run  = "uvicorn shop.api:app --port 8000"
-code = "shop/api.py#"
+code = "src/shop/api.py#"
 entrances = [
-  { name = "Place an order", on = "POST /orders/{order_id}", code = "shop/api.py#create_order" },
+  { name = "Place an order", on = "POST /orders/{order_id}", code = "src/shop/api.py#create_order" },
 ]
 ```
 
@@ -112,9 +115,10 @@ entrances = [
 | `[[app]]` | `name`, `run`, `code`, `about`, `entrances` | None: no entrances |
 
 The compile settings (`languages`, `[scope]`, `[[python.project]]`, `[evidence]`) must all be valid, or the file is
-invalid. **A file that doesn't parse keeps the last good settings and apps** in effect, shows the error, and marks
-the graph incomplete. The text of the last good file is stored with the graph, so reopening keeps it too, and an
-engine that starts over in a recreated `local/cache/` keeps the settings it had.
+invalid. **A file that doesn't parse keeps the last good settings and apps** in effect, shows the error, and marks the
+graph incomplete. The text of the last good file is stored with the graph, so reopening keeps it too, and an engine
+that starts over in a recreated `local/cache/` keeps the settings it had. A store recreated as it opens (another
+version, or damaged) has no stored text, so a file broken at that moment compiles with the defaults.
 
 `[[python.project]]` picks the grammar and source roots; the deepest project containing a file owns it. Source roots
 join onto `root`, and one may lie outside `[scope]`: its modules then resolve as `not_indexed`. Defaults are in
@@ -218,11 +222,12 @@ never `graph_updated`, however they changed.
 ## Settings edits
 
 [settings/edit/](../crates/unfold-engine/src/settings/edit/mod.rs) changes `unfold.toml` through `toml_edit`, so
-everything an edit doesn't touch (comments, blank lines, key order, quoting, a BOM) stays byte for byte, and **a
-write changes only its own lines**. The file keeps its line endings: those of its first line, CRLF or LF. The result is parsed with the strict parser; an edit that would make the file
-invalid, or leave the entry it sets with an empty key, is refused with the parser's message and position, and so is
-any edit of a file that doesn't parse. `apply_edits` writes nothing: it returns the new text, what it holds, a
-unified diff, and what each app and entrance edit did (added, changed, or removed).
+everything an edit doesn't touch (comments, blank lines, key order, quoting, a BOM) stays byte for byte, and **a write
+changes only its own lines**. The file keeps its line endings: those of its first line, CRLF or LF, so a file with
+mixed endings is written with its first line's throughout. The result is parsed with the strict parser; an edit that
+would make the file invalid, or leave the entry it sets with an empty key, is refused with the parser's message and
+position, and so is any edit of a file that doesn't parse. `apply_edits` writes nothing: it returns the new text, what
+it holds, a unified diff, and what each app and entrance edit did (added, changed, or removed).
 
 | Edit | Effect |
 | --- | --- |
@@ -237,7 +242,8 @@ unified diff, and what each app and entrance edit did (added, changed, or remove
 
 Apps and entrances are addressed by key, or by a name that makes that key: `"shop api"` addresses the app named
 `"Shop API"`. An edit never renames: a changed entry keeps its name, and a new one takes the name given. A field left
-out keeps what the file says; null removes it.
+out keeps what the file says; null removes an app's `run`, `code`, or `about`, or an entrance's `on` or `about` (an
+entrance always has `code`).
 
 The workspace applies edits under one lock and writes the file atomically when it changes, never creating a file
 that would hold only defaults. An edit that leaves the compile settings as they were resolves the entrances again
@@ -252,8 +258,11 @@ caches, `.git`, and `.unfold` are never entered ([classify.rs](../crates/unfold-
 generated folders such as `dist` need ignore or scope rules.
 
 Directory symlinks are never followed; a file symlink counts only when it resolves to a file inside the project.
-Invalid UTF-8 paths, unreadable entries, and malformed ignore rules are reported, and the walk continues. Results
-are normalized project-relative paths in sorted order.
+What the walk can't read or use is left out, the walk continues, and each is a discovery problem: an unreadable entry;
+an ignore rule that doesn't parse, at its ignore file with its line (the file's other rules apply); and the files and
+folders whose names can't be project paths (not UTF-8, holding a `\`, or starting like a drive, `C:`), which one
+problem lists, the first few in order and how many more. Like every discovery problem, these make the graph
+incomplete. Results are normalized project-relative paths in sorted order.
 
 Classification is by path alone:
 
@@ -283,7 +292,8 @@ writer, reader cache, watcher, and update scheduling.
    Workspace. A folder compiled before takes its lock (a second copy of Unfold gets `open_elsewhere`), opens its
    store, and is readable at once; the engine thread restores the stored graph and runs the reopen check in the
    background. When nothing the graph was linked from changed while the folder was closed, the check neither
-   relinks nor commits. Opening writes nothing into a folder that was never compiled.
+   relinks nor commits. A folder with no cache (never compiled, or `.unfold/local/` deleted) compiles as it opens, as
+   an added one does.
 3. **First Compile** creates `.unfold/local/` (with its `.gitignore`), takes the lock, opens the store, compiles, and
    commits.
 4. **Background updates.** The watcher feeds changed paths to the scheduler; an update starts after a short quiet
@@ -294,9 +304,9 @@ writer, reader cache, watcher, and update scheduling.
 5. **Commits** write only what changed, in one transaction, install a new reader index, and send `graph_updated`
    when files or inputs changed (the settings file's record doesn't count: its effects show in the files and the
    apps), `problems_changed`, `project_state`, and `entrances_changed` when the apps changed.
-6. **Rest.** Once nothing keeps the project live (no open board, no Home selection, no running compile) and its
-   lease runs out, it remembers its row state and closes: no watcher, engine thread, or lock. Commands that read
-   from disk serve it from its stored graph, read-only, without waking it.
+6. **Rest.** Once nothing keeps the project live (no open board, no Home selection, no work running, queued, or
+   due) and its lease runs out, it remembers its row state and closes: no watcher, engine thread, or lock. Commands
+   that read from disk serve it from its stored graph, read-only, without waking it.
 
 Crash and cancel paths keep the last committed graph and show current state and problems; stale source is never
 shown as fresh, because reads verify source against the facts hash. IPC tells commands that wake a project from

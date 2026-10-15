@@ -18,8 +18,9 @@ there so entrances can point at code Unfold doesn't analyze.
 - **Oracles**: the corpora `ts-orders` and `mixed-playground` in `testdata/reference/oracles/`.
 
 Keep the difficult cases: they are what the goldens and oracles check. To change one, edit one behavior, run the
-TypeScript crate's tests, read the golden diff before blessing, and run `cargo xtask oracles check ts-orders
-mixed-playground` when a call's outcome can change.
+TypeScript crate's tests and those of `unfold-reader` and `unfold-workspace` (the drawn flows and command results),
+read the golden diff before blessing, and run `cargo xtask oracles check ts-orders mixed-playground` when a call's
+outcome can change.
 
 - [Test data](../../README.md)
 - [TypeScript front end](../../../docs/languages/typescript.md)

@@ -3,10 +3,11 @@
 # for a library or builtin call its outcome and label, `library python:os`); an entry that matches
 # nothing is stale and fails `cargo xtask oracles check`. Rules: testdata/reference/README.md.
 
-# Decision C-8 (docs/languages/typescript.md, "Decisions"): a binding destructured from a literal
-# awaited dynamic import is that module's export. The checker's symbol for `printReport` is the
-# binding element of `const { printReport } = await import("./jobs/report.ts")`, a declaration with
-# no body, so the oracle names no target; both proof-of-concept producers left it `not_concrete`.
+# Decision C-8 (docs/languages/typescript.md, "Binding and evidence"): a binding destructured from
+# a literal awaited dynamic import is that module's export. The checker's symbol for `printReport`
+# is the binding element of `const { printReport } = await import("./jobs/report.ts")`, a
+# declaration with no body, so the oracle names no target; both proof-of-concept producers left it
+# `not_concrete`.
 [[justified]]
 corpus = "ts-orders"
 language = "typescript"

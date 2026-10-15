@@ -16,8 +16,9 @@
 //!   a temporary sibling (`.<name>.<…>.tmp`) renamed over them;
 //! - **`local/cache/` disappearing**: a cache check, which recreates it and recompiles.
 //!
-//! `.git/` and everything else under `.unfold/` are dropped on arrival. (Recursive watching
-//! can't exclude subtrees, so "never watched" means their events are never acted on.)
+//! `.git/` (but for `.git/info/exclude`, an ignore file) and everything else under `.unfold/` are
+//! dropped on arrival. (Recursive watching can't exclude subtrees, so "never watched" means their
+//! events are never acted on.)
 //! An event that says the back end dropped events asks for a full rescan. Errors that mean
 //! events can't be trusted (an unsupported file system) switch the folder to a periodic scan,
 //! which the status reports.

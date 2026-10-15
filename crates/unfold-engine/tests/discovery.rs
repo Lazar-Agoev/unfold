@@ -271,12 +271,85 @@ fn symlinks_never_lead_out_of_the_folder() {
     assert!(!exists_in_root(root, &RepoPath::new("missing.ts").unwrap()));
 }
 
+/// Discovery's problems as (path, message) pairs.
+fn problems(discovery: &Discovery) -> Vec<(&str, &str)> {
+    discovery
+        .problems
+        .iter()
+        .map(|problem| (&*problem.path, &*problem.message))
+        .collect()
+}
+
 #[test]
-fn names_that_cannot_be_paths_are_left_out() {
-    let dir = folder(&[("ok.ts", ""), ("bad\\name.ts", "")]);
+fn names_that_cannot_be_paths_are_left_out_and_listed() {
+    let dir = folder(&[
+        ("ok.ts", ""),
+        ("bad\\name.ts", ""),
+        ("bad\\dir/inner.ts", ""),
+        ("c:drive.ts", ""),
+        ("node_modules/odd\\name.ts", ""),
+    ]);
     let discovery = run(dir.path());
     assert_eq!(sources(&discovery), ["ok.ts"]);
     assert!(discovery.unindexed.is_empty());
+    assert_eq!(
+        problems(&discovery),
+        [(
+            "",
+            "names that can't be project paths, left out: `bad\\dir`, `bad\\name.ts`, `c:drive.ts`"
+        )]
+    );
+
+    // One problem, listing the first few.
+    let many: Vec<(String, &str)> = (0..15).map(|i| (format!("x\\{i:02}.ts"), "")).collect();
+    let borrowed: Vec<(&str, &str)> = many.iter().map(|(p, c)| (p.as_str(), *c)).collect();
+    let discovery = run(folder(&borrowed).path());
+    let listed: Vec<String> = (0..10).map(|i| format!("`x\\{i:02}.ts`")).collect();
+    assert_eq!(
+        problems(&discovery),
+        [(
+            "",
+            &*format!(
+                "names that can't be project paths, left out: {}, and 5 more",
+                listed.join(", ")
+            )
+        )]
+    );
+}
+
+#[test]
+fn ignore_rules_that_do_not_parse_are_listed() {
+    let dir = folder(&[
+        (".gitignore", "dist/\n[z-a]\n*.gen.ts\n"),
+        ("sub/.ignore", "ok/\nbad{x\n"),
+        (".git/info/exclude", "[z-a].ts\n"),
+        ("node_modules/.gitignore", "[z-a]\n"),
+        ("dist/.gitignore", "[z-a]\n"),
+        ("dist/out.ts", ""),
+        ("src/a.ts", ""),
+        ("src/b.gen.ts", ""),
+    ]);
+    let discovery = run(dir.path());
+    assert_eq!(sources(&discovery), ["src/a.ts"], "the rules that parse apply");
+    assert_eq!(
+        problems(&discovery),
+        [
+            (
+                ".git/info/exclude",
+                "line 1: error parsing glob '[z-a].ts': invalid range; 'z' > 'a'"
+            ),
+            (
+                ".gitignore",
+                "line 2: error parsing glob '[z-a]': invalid range; 'z' > 'a'"
+            ),
+            (
+                "sub/.ignore",
+                "line 2: error parsing glob 'bad{x': unclosed alternate group; missing '}' \
+                 (maybe escape '{' with '[{]'?)"
+            ),
+        ],
+        "ignore files in folders discovery never walks don't count"
+    );
 }
 
 #[test]

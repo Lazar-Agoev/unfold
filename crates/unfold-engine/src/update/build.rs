@@ -112,6 +112,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
         })
         .collect::<Result<_, UpdateError>>()?;
     let linked_refs: Vec<&dyn Linked> = linked.iter().map(|linked| linked.as_ref()).collect();
+    // The apps are resolved against the validated graph, and checked as they are attached.
     let mut graph = Graph {
         files,
         inputs: graph_inputs(state, project, &linked_refs),

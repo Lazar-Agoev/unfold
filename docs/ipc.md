@@ -33,7 +33,8 @@ under `["engine", command, args]` and holds the event-driven invalidation. Trans
 ## Liveness and paths
 
 Commands served from stored data leave a project resting; commands that need its engine wake it. `workspace`,
-`list_boards`, `read_board`, and `search` never wake a project. Read the handler: `ctx.project` doesn't wake, `ctx.live` does. See
+`project_config`, `list_boards`, `read_board`, `board_refs`, and `search`, among others, never wake a project. Read
+the handler: `ctx.project` alone doesn't wake; `ctx.live` and a handle's `wake()` do. See
 [project lifecycle](engine.md#project-lifecycle).
 
 Every path a window names is project-relative and `/`-separated, and goes through
@@ -46,8 +47,9 @@ Only the main process's own requests are trusted. `MAIN_PROCESS_ONLY` in the rou
 absolute path from the folder picker), `set_settings` (the editor command, a program `open_in_editor` runs; Settings
 saves it through the window command `save_settings`), `window_state`, and `save_window_state`. A window message
 naming one, or carrying `trusted`, is refused with `untrusted` before it reaches Rust, and the handlers check trust
-again (`ctx.require_trusted`). The MCP server's requests go untrusted, exactly as a window's do. A new trusted
-command updates both the router and its handler.
+again (`ctx.require_trusted`). The MCP server's requests go untrusted, exactly as a window's do; the one exception
+is an agent's `add_project`, which the main process sends as its own trusted request once the person confirms the
+folder in a dialog. A new trusted command updates both the router and its handler.
 
 ## The addon's surface
 
@@ -84,7 +86,7 @@ tests. Exact arguments, results, defaults, and caps live in code.
 | --- | --- |
 | Workspace | `workspace` (project rows), `add_project` (main only; compiles at once; refuses a folder Unfold can't write `.unfold/` into), `remove_project`, `set_project_expanded`, `select_project` |
 | Project and Home | `project_summary` (state line and Health), `entrances` (the `[[app]]` tables as written, each `code` with its state and fix; one app by name or key), `problems`, `compile` (streams progress), `cancel_compile` |
-| Settings | `project_config`, `update_project_config` (scope, Python projects, evidence, and `[[app]]` edits; returns the diff; `replace_code` rewrites one `code` key and is refused with `settings_conflict` once the file holds another key there), `get_settings`, `set_settings` (main only), `app_info` (the username that signs edits) |
+| Settings | `project_config`, `update_project_config` (scope, Python projects, evidence, and `[[app]]` edits; returns the diff; `replace_code` rewrites one `code` key and is refused with `settings_conflict` once the file holds another key there), `get_settings`, `set_settings` (main only), `app_info` (the username that signs edits, and the engine version) |
 | Code and cards | `code_view` ([the code panel's model](reader.md#the-code-panels-model), a `window` of at most 400 lines at a time), `open_in_editor` (the editor command, else the default text editor; creates an empty `unfold.toml` when asked for a missing one), `card` (a definition's [drawn flow](reader.md#the-drawn-flow) with the page's overlay, open paths, and Show all calls, and with `agentText` the same drawing as [agent text](reader.md#agent-text); or an app's or entrance's card), `code_text` (the compiled tree as agent text) |
 | Relations and contracts | `relations` (callers a page at a time, each page after a caller's `cursor`, every outgoing call, Reached from), `callers` (Show callers), `board_refs`, `call_contract` (by the call's block key), `type_definition`, `type_uses` |
 | Search | `search`: definitions, apps and entrances by name and qualified name, and files by name and path, across projects, from the store's name index. Names only: a folder's name finds its files, not every definition in them. An app or entrance hit has its line in `unfold.toml` |
@@ -93,17 +95,17 @@ tests. Exact arguments, results, defaults, and caps live in code.
 
 ### Boards
 
-A board is addressed as `{project, id}`, its id being its file's path under `.unfold/boards/`. `open_board` and
-`new_board` open it in the calling window, and the project keeps a session for it while the app runs. Every other
-board command except `read_board`, `board_health`, and the folder commands needs the board open (`board_not_open`).
-`board_health` of a board no window has open judges its file and opens nothing. `save_board`
-checks, signs, and writes the window's version over the file. It names the revision that version builds on (`base`),
-and nothing writes over what the window hasn't seen: a save or `repair_board` whose file changed since, or isn't a
-valid board, is refused (`board_changed`) unless the person chose their version (`overwrite`), and a deleted file is
-written again. A board whose file would be larger than 16 MiB is never written (`board_too_large`). An outside change
-sends `board_reloaded`. `list_boards` lists a file whose name a board file can't have with an error that says which
-names are allowed. Folders are one name (`invalid_folder` for a `/`). The rules are in
-[reader › Boards](reader.md#boards).
+A board is addressed as `{project, id}`, its id being its file's project-relative path, `.unfold/boards/<name>.json`.
+`open_board` and `new_board` open it in the calling window, and the project keeps a session for it until
+`close_board`, `delete_board`, or the window's closing ends it. Every other board command except `read_board`,
+`board_health`, and the folder commands needs the board open (`board_not_open`). `board_health` of a board no window
+has open judges its file and opens nothing. `save_board` checks, signs, and writes the window's version over the file.
+It names the revision that version builds on (`base`), and nothing writes over what the window hasn't seen: a save or
+`repair_board` whose file changed since, or isn't a valid board, is refused (`board_changed`), and a deleted file is
+written again. Only `save_board` takes `overwrite`, for when the person chose their version. A board whose file would
+be larger than 16 MiB is never written (`board_too_large`). An outside change sends `board_reloaded`. `list_boards`
+lists a file whose name a board file can't have with an error that says which names are allowed. Folders are one name
+(`invalid_folder` for a `/`). The rules are in [reader › Boards](reader.md#boards).
 
 ## Events
 
@@ -116,7 +118,7 @@ and camelCase fields; every project event names its project.
 | `project_state` | A project's state changed (live and resting included) |
 | `project_reset` | A project was removed: everything cached for it is stale |
 | `compile_progress` | A compile or update advanced (throttled) |
-| `graph_updated` | A commit changed the graph: changed and removed files, changed keys, or `everything` past 2,000, and whether inputs changed (not the settings file's record). Changed apps alone never send it |
+| `graph_updated` | A commit changed the graph: changed and removed files, changed keys, or `everything` past 2,000, whether inputs changed (not the settings file's record), and whether the graph is `complete`. Changed apps alone never send it |
 | `entrances_changed` | The apps and entrances changed. A change to only `[[app]]` tables sends this alone, without a compile |
 | `problems_changed` | The Problems list changed |
 | `files_changed` | The watcher saw files appear, change, or disappear |
@@ -167,7 +169,9 @@ is open. See [architecture](architecture.md) for where it sits among the process
   refusal says what failed and what to call instead. Every object in a tool's arguments is strict: an argument it
   doesn't take is refused, naming the ones it does, never dropped. The server checks arguments in the same wrapper
   as every refusal. It doesn't repeat the board's rules: how long a note or a proposed step's words may be is the
-  save's to check, and its refusal is the answer. It bounds only its own work, such as the calls an open path names.
+  save's to check, and its refusal is the answer. It bounds only its own work (the calls an open path names, how many
+  cards one call adds) and the length of fields the board format doesn't limit (descriptions, names, labels, and
+  titles).
 
 | Group | Tools |
 | --- | --- |
@@ -208,7 +212,7 @@ actions use, as one undo step named after the agent, saved at once through the n
   ([render window](ui-shell.md#the-render-window)). Reading opens nothing: a board the window doesn't hold, or any
   board while the window is closed, is drawn from its file, with the health `board_health` gives its file.
 
-**Rules the server enforces:**
+**Rules agents' edits meet** (the window and the save check them, and the agent gets the refusal):
 
 - Compiled facts aren't the agent's: a connection never repeats a compiled call, and a `calls` connection starts at an
   unknown call.
@@ -237,8 +241,8 @@ lengths before expensive reads, and keep total caps on streams too.
    `cargo xtask gen-ipc` turns it on, so the addon doesn't build the bindings. Arguments are camelCase with
    `deny_unknown_fields`; optional arguments use serde defaults and `ts(optional)`. Doc comments become the generated
    JSDoc. Bound result sizes.
-3. Add one line to the command table. Add it to `MAIN_PROCESS_ONLY` or `CLOSING_WRITES` in both Rust and the router
-   when it is one.
+3. Add one line to the command table. A trusted command goes in the router's `MAIN_PROCESS_ONLY` and its handler
+   calls `ctx.require_trusted`; a closing write goes in `CLOSING_WRITES` in both `host.rs` and the router.
 4. Run `cargo xtask gen-ipc`, then `cargo xtask gen-ipc --check` and `pnpm --filter @unfold/ui typecheck`.
 5. Test through `Host` in `crates/unfold-workspace/tests/commands/`, and update query invalidation. Pick further
    checks with [testing](testing.md).

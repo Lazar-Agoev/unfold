@@ -22,7 +22,7 @@
 //! | Exclude from graph | Removes the path from `include` if listed there (and others remain), otherwise adds it to `exclude` |
 //! | Include in graph | Removes the path from `exclude` if listed there; adds it to a nonempty `include` when that list doesn't cover it. A broader `exclude` pattern is a conflict, reported, never silently rewritten |
 //! | Graph only this folder | Sets `include` to the one folder |
-//! | Remove a scope pattern | Removes one pattern, exactly as written, from `include` or `exclude` (the folder settings' remove buttons); an emptied list's key goes |
+//! | Remove a scope pattern | Removes one pattern, exactly as written, from `include` or `exclude`; an emptied list's key goes |
 //! | Python project | Adds or replaces the `[[python.project]]` table with that root, or removes it |
 //! | Evidence files | Adds a pattern to `[evidence] files` (unless it is listed), or removes one exactly as written; an emptied list's key goes, and so does the emptied table |
 //! | Set app | Adds an `[[app]]` table, or sets or removes the given ones of an existing app's `run`, `code`, and `about`; its entrances stay |

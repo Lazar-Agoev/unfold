@@ -172,7 +172,8 @@ pub enum ProblemKind {
     /// `unfold.toml` can't be read or is invalid; the previous valid settings (or the
     /// defaults) stay in effect.
     Settings,
-    /// Discovery couldn't read part of the folder.
+    /// Discovery couldn't read or use part of the folder: an unreadable entry, an ignore rule
+    /// that doesn't parse, or names that can't be project paths.
     Discovery,
     /// A configuration input can't be read; languages don't see it.
     Input,
@@ -262,6 +263,9 @@ pub enum EntrancesError {
     /// `unfold.toml` changed beyond its `[[app]]` tables; an update applies it.
     #[error("unfold.toml changed beyond its [[app]] tables; compile to apply it")]
     CompileNeeded,
+    /// The apps broke the graph's invariants.
+    #[error("the apps failed validation ({} violation(s)); first: {}", .0.len(), .0.first().map_or_else(String::new, ToString::to_string))]
+    Validation(Vec<Violation>),
 }
 
 /// The result of [`Engine::resolve_entrances`].
@@ -490,7 +494,7 @@ impl Engine {
         let mut state = self.state.clone();
         state.settings = settings;
         let previous = Arc::clone(&state.graph);
-        run::refresh(self, &previous, &mut state);
+        run::refresh(self, &previous, &mut state).map_err(EntrancesError::Validation)?;
         state.complete = run::is_complete(&state);
         let outcome = EntrancesOutcome {
             apps_changed: previous.apps != state.graph.apps,
@@ -578,6 +582,8 @@ fn compile_threads(configured: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use unfold_core::Key;
+
     use super::*;
 
     #[test]
@@ -587,5 +593,32 @@ mod tests {
         assert_send_sync::<UpdateOutcome>();
         assert!(compile_threads(0) >= 1);
         assert_eq!(compile_threads(3), 3);
+    }
+
+    /// The settings parser already keeps every entry that would break the graph's rules out
+    /// (a duplicate or empty key, a missing `code`), so this sets a key by hand that no name
+    /// derives: attaching apps checks them all the same.
+    #[test]
+    fn attaching_apps_validates_them() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let cache = Arc::new(MemoryFactsCache::new());
+        let engine = Engine::new(dir.path(), Vec::new(), cache, EngineOptions::default()).expect("engine");
+        let settings = b"[[app]]\nname = \"Shop\"\nentrances = [{ name = \"Order\", code = \"a.py#f\" }]\n";
+        let mut state = State {
+            settings: scan::parse_settings(settings.to_vec(), None).expect("settings"),
+            ..State::default()
+        };
+        let graph = Graph::default();
+        let apps = run::resolve_apps(&engine, &mut state, &graph, &graph).expect("valid apps");
+        assert_eq!(apps.len(), 1);
+        state.settings.apps[0].entrances[0].key = Some(Key::from_text("entrance:shop/other"));
+        let Err(violations) = run::resolve_apps(&engine, &mut state, &graph, &graph) else {
+            panic!("the entrance's key is checked");
+        };
+        let violations: Vec<String> = violations.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            violations,
+            ["entrance entrance:shop/other: key differs from its derivation `entrance:shop/order`"]
+        );
     }
 }

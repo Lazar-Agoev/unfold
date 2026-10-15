@@ -30,12 +30,14 @@ just js-build     # the UI and the Electron shell
 pnpm --filter @unfold/desktop start
 ```
 
-`just dev` runs the app with hot reload instead.
+`just dev` runs the app with hot reload instead. It keeps its own app data, in
+`~/Library/Application Support/Unfold Dev`, so it runs beside an installed Unfold with its own projects and settings.
 
 ## Open a project
 
 1. Click **Add project** (or **File › Add Project…**) and pick a code folder. Unfold compiles it at once and keeps it
-   current. It writes only inside the folder's `.unfold/`.
+   current. It writes only inside the folder's `.unfold/`, and to `unfold.toml` when you or an agent change its
+   settings.
 2. **Home** shows the project: its state, **How it starts**, its **Boards**, and its **Health**.
 3. Click an entrance under How it starts. Unfold makes a board with the entrance and its code, expanded in run order.
 
@@ -106,7 +108,7 @@ source; they change `unfold.toml` only when asked.
 | --- | --- | --- |
 | `unfold.toml` | Settings, apps, and entrances | Yes |
 | `.unfold/boards/` | Boards, saved as you edit | Yes |
-| `.unfold/local/` | The graph cache and the lock | No; it ignores itself |
+| `.unfold/local/` | The graph cache, the lock, and empty board folders | No; it ignores itself |
 
 **Export PNG…** in a board's menu saves an image of the page.
 
