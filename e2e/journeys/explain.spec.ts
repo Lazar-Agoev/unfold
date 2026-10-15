@@ -171,7 +171,8 @@ test("a person names, combines, describes, proposes, and composes a page that ke
     ]);
 
     await setLinkKind(page, connectionChip(page, "keeps the order"), "Writes");
-    await expect(connectionChip(page, "writes · orders · keeps the order")).toBeVisible();
+    // Selected, its card says all of it: the kind, the table it writes, and the label.
+    await expect(connectionChip(page, "writes orders · keeps the order")).toBeVisible();
     await expect(boardView(page).locator(".board-connection.kind-writes")).toHaveCount(1);
     await expect.poll(() => savedPage(boardFile).links?.map(({ kind, label }) => ({ kind, label: label?.text }))).toEqual([{ kind: "writes", label: "keeps the order" }]);
   });
@@ -248,7 +249,8 @@ test("a person names, combines, describes, proposes, and composes a page that ke
     await expect(boardView(page).getByRole("article", { name: "table customers", exact: true })).toHaveCount(0);
     await expect(block(INSERT).locator(".flow-call-name.named")).toHaveText(NAME);
     await expect(combined).toBeVisible();
-    await expect(connectionChip(page, "N : 1 · belongs to")).toBeVisible();
+    // A relationship has no chip at rest: its ends say how many.
+    await expect(boardView(page).locator(".board-connection.kind-relates .connection-foot")).toHaveCount(1);
   });
 
   expect(app.logs.filter((line) => line.startsWith("[pageerror]"))).toEqual([]);

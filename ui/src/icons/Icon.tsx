@@ -6,7 +6,7 @@ import "./icons.css";
 export interface IconProps {
   readonly name: IconName;
   /** Pixel size of the square; the drawing scales from its own viewBox. Default 16. */
-  readonly size?: 16 | 14 | 12 | 10;
+  readonly size?: 18 | 16 | 14 | 12 | 10;
   readonly className?: string;
 }
 

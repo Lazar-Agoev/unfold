@@ -13,8 +13,8 @@ import type { AgentIdentity, ConnectedAgent } from "../../shared/agent-api";
 
 /** The `_meta` key that carries `clientInfo` on every request of the current revision. */
 const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
-/** Who signs for a client that gives no usable name. */
-const UNKNOWN = "unknown";
+/** Who signs for a client that gives no usable name: "Agent", never "Unknown". */
+const UNNAMED = "agent";
 /** The longest name an author takes. */
 const MAX_NAME = 32;
 /** The most `User-Agent`s, and agents, remembered: a handful of clients run on one machine. */
@@ -30,7 +30,7 @@ const KNOWN: readonly { readonly match: RegExp; readonly slug: string }[] = [
 export function agentIdentity(clientName: string | undefined): AgentIdentity {
   const lowered = (clientName ?? "").trim().toLowerCase();
   const own = lowered.replace(/[^a-z0-9._-]/g, "").slice(0, MAX_NAME);
-  const slug = KNOWN.find((known) => known.match.test(lowered))?.slug ?? (own.length > 0 ? own : UNKNOWN);
+  const slug = KNOWN.find((known) => known.match.test(lowered))?.slug ?? (own.length > 0 ? own : UNNAMED);
   // Shown as the app shows any author: the name after `agent:`, capitalized.
   return { author: `agent:${slug}`, name: slug.charAt(0).toUpperCase() + slug.slice(1) };
 }

@@ -18,6 +18,11 @@ import {
   fieldTexts,
   headerText,
   listedFields,
+  nameFit,
+  noteSize,
+  resourceCardSize,
+  resourceCardWidth,
+  resourceNameFit,
   startCardSize,
   startCardWidth,
   typeCardHeight,
@@ -112,7 +117,7 @@ describe("definition cards", () => {
     expect(descriptionHeight(undefined, 300, measure)).toBe(0);
     const one = descriptionHeight(description("Places the order."), 300, measure);
     const two = descriptionHeight(description("Places the order.\nOr queues it."), 300, measure);
-    expect(two - one).toBe(18);
+    expect(two - one).toBe(20);
     expect(descriptionHeight(description("word ".repeat(60)), 300, measure)).toBeGreaterThan(two);
     expect(descriptionHeight(description("word ".repeat(60)), null, measure)).toBe(one);
   });
@@ -132,7 +137,7 @@ describe("definition cards", () => {
     expect(size.height - bare.height).toBe(17 + 1 + 3 + 17 + 18);
     // Its description, all of it, wrapped in the card's width.
     const described = (text: string) => expandedCardSize(place.header, geometry, description(text), measure).height;
-    expect(described("Places the order.\nOr queues it.") - described("Places the order.")).toBe(18);
+    expect(described("Places the order.\nOr queues it.") - described("Places the order.")).toBe(20);
   });
 
   it("are estimated before they are drawn: compact by their header, expanded by their laid-out flow", () => {
@@ -241,5 +246,44 @@ describe("type cards", () => {
     const klass: CardView = { type: "definition", flow: { ...place, header: { ...place.header, key: CART, kind: "class", form: "class", label: "Cart" } } };
     expect(estimatedCardSize({ model: klass, view: "compact", definition: cart }, measure).height).toBe(typeCardHeight(cart, 0));
     expect(estimatedCardSize({ model: klass, view: "expanded", definition: cart }, measure).height).not.toBe(typeCardHeight(cart, 0));
+  });
+});
+
+describe("names on zoom", () => {
+  it("may grow while the location gives way, up to the room the header has", () => {
+    const text = headerText(place.header, true);
+    const width = compactCardWidth(text, measure);
+    // The location's room is there for the name to take.
+    expect(nameFit(text, width, measure)).toBeGreaterThan(1);
+    // In a card only as wide as the name, it can't grow.
+    expect(nameFit(text, 100, measure)).toBe(1);
+    expect(resourceNameFit({ kind: "queue", name: "orders" }, 240, measure)).toBeGreaterThan(2);
+  });
+});
+
+describe("resource cards and notes", () => {
+  it("size a table as an entity: its band, its description's lines, and a 28px row per column", () => {
+    const columns = [{ name: "id", type: "uuid", optional: false, key: "primary" as const }, { name: "status", type: "text", optional: false }];
+    const bare = resourceCardSize({ kind: "table", name: "orders", columns: [] }, measure);
+    expect(bare).toEqual({ width: 240, height: 2 + 44 });
+    expect(resourceCardSize({ kind: "table", name: "orders", columns }, measure).height).toBe(2 + 44 + 2 * 28);
+    expect(resourceCardSize({ kind: "table", name: "orders", columns, description: description("One row per order.") }, measure).height).toBe(2 + 44 + 16 + 16 + 2 * 28);
+  });
+
+  it("size every other kind's tile to its words, a queue with its lane, an outside service with its dashed edge, and an actor as a pill", () => {
+    const cache = resourceCardSize({ kind: "cache", name: "redis", columns: [], description: description("Sender lookups.") }, measure);
+    expect(cache).toEqual({ width: 240, height: 2 + 12 + 35 + 8 + 18 + 12 });
+    expect(resourceCardSize({ kind: "cache", name: "redis", columns: [] }, measure).height).toBe(2 + 12 + 35 + 12);
+    expect(resourceCardSize({ kind: "queue", name: "ingest", columns: [], description: description("Jobs.") }, measure).height).toBe(2 + 12 + 35 + 8 + 18 + 10 + 36);
+    expect(resourceCardSize({ kind: "external", name: "Gmail", columns: [] }, measure).height).toBe(3 + 12 + 35 + 12);
+    expect(resourceCardWidth({ kind: "queue", name: "ingest", columns: [], carries: "X".repeat(60) }, measure)).toBeGreaterThan(240);
+    const actor = resourceCardSize({ kind: "actor", name: "Reviewer", columns: [], description: description("Clears jobs.") }, measure);
+    expect(actor).toEqual({ width: 228, height: 54 + 10 + 18 });
+    expect(resourceCardSize({ kind: "actor", name: "Reviewer", columns: [] }, measure).width).toBeLessThan(228);
+  });
+
+  it("size a note to its 13/20 text between 140 and 260 px, with its byline", () => {
+    expect(noteSize("Why?", measure)).toEqual({ width: 140, height: 12 + 10 + 20 + 8 + 16 });
+    expect(noteSize("word ".repeat(40), measure).width).toBe(260);
   });
 });

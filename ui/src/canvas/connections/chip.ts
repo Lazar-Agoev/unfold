@@ -1,18 +1,19 @@
 /**
- * What a connection's chip says: its kind's word, then what travels: the channel (a
- * route, a queue, an event; for reads and writes, the table when it names none), the type it carries,
- * and its label (`queue · orders · OrderJob`, `writes · orders`, `runtime call`). A relationship's
- * chip is its cardinality (`N : 1`); an `other` connection's is its label. Chips have shorter forms
- * for the label layout: without the label, then without the type, then the word alone. Pure.
+ * What a connection says. At rest its chip says its kind's word, then what it touches: the channel (a
+ * route, a queue, an event; for reads and writes, the table when it names none) — `queue ingest`,
+ * `writes jobs`, `runtime call`. An `other` connection's chip is its label; a relationship has none (its
+ * ends' marks say how many). Hovered or selected, its card says all of it: the word, what it touches,
+ * the type it carries, and its label (`connectionTitle`), with its description under them. Chips have a
+ * shorter form for the label layout: the word alone. Pure.
  */
 
 import type { Cardinality, ConnectionKind } from "../../ipc/generated";
 import { manyEnds } from "./ends";
 
-/** One part of a chip: the kind's word, code as written (a channel, a type), words (a label), or a separator. */
+/** One part of a chip: the kind's word, code as written (a channel, a type), or words (a label). */
 export interface ChipPart {
   readonly text: string;
-  readonly tone: "word" | "code" | "text" | "sep";
+  readonly tone: "word" | "code" | "text";
 }
 
 /** Each kind's word on its chip and where the page and Selected list connections (menus use `CONNECTION_WORDS`). */
@@ -46,13 +47,6 @@ export interface ChipInput {
   readonly count?: number;
 }
 
-const SEP: ChipPart = { text: " · ", tone: "sep" };
-
-/** Parts joined by separators. */
-function joined(parts: readonly (ChipPart | null)[]): ChipPart[] {
-  return parts.flatMap((part, index) => (part === null ? [] : index === 0 ? [part] : [SEP, part]));
-}
-
 /** The chip's word: the kind's, a relationship's cardinality, or an `other` connection's label. */
 function wordOf(input: ChipInput): ChipPart {
   if (input.kind === "other") {
@@ -64,21 +58,41 @@ function wordOf(input: ChipInput): ChipPart {
   return { text: KIND_WORDS[input.kind], tone: "word" };
 }
 
-/** The chip's forms, longest first, none the same: all of it, then without the label, then without the type, then the word. */
+/** What it touches: the channel, or a read's or write's table. */
+function touches(input: ChipInput): ChipPart | null {
+  const through = input.channel ?? (input.kind === "reads" || input.kind === "writes" ? input.subject : undefined);
+  return through !== undefined ? { text: through, tone: "code" } : null;
+}
+
+/** The chip's forms at rest, longest first, none the same: the word and what it touches, then the word; none for a relationship. */
 export function chipForms(input: ChipInput): ChipPart[][] {
   const word = wordOf(input);
   if (input.count !== undefined && input.count > 1) {
-    return [joined([word, { text: `${input.count} connections`, tone: "text" }]), [word]];
+    return [[word, { text: `${input.count} connections`, tone: "text" }], [word]];
   }
-  const through = input.channel ?? (input.kind === "reads" || input.kind === "writes" ? input.subject : undefined);
-  const channel: ChipPart | null = through !== undefined ? { text: through, tone: "code" } : null;
-  const carries: ChipPart | null = input.carries !== undefined ? { text: input.carries, tone: "code" } : null;
-  const label: ChipPart | null = input.label !== undefined && input.kind !== "other" ? { text: input.label, tone: "text" } : null;
-  const forms = [joined([word, channel, carries, label]), joined([word, channel, carries]), joined([word, channel]), [word]];
-  return forms.filter((form, index) => forms.findIndex((other) => chipText(other) === chipText(form)) === index);
+  if (input.kind === "relates") {
+    return [];
+  }
+  const target = touches(input);
+  return target !== null ? [[word, target], [word]] : [[word]];
 }
 
-/** A form as plain text. */
+/** All a connection says in a line, for its card and its accessible name: the word, what it touches, the type it carries, and its label. */
+export function connectionTitle(input: ChipInput): ChipPart[] {
+  const word = wordOf(input);
+  if (input.count !== undefined && input.count > 1) {
+    return [word, { text: `${input.count} connections`, tone: "text" }];
+  }
+  const parts: (ChipPart | null)[] = [
+    word,
+    touches(input),
+    input.carries !== undefined ? { text: input.carries, tone: "code" } : null,
+    input.label !== undefined && input.kind !== "other" ? { text: input.label, tone: "text" } : null,
+  ];
+  return parts.filter((part): part is ChipPart => part !== null);
+}
+
+/** Parts as plain text: the word and what it touches with a space, anything after with " · ". */
 export function chipText(parts: readonly ChipPart[]): string {
-  return parts.map((part) => part.text).join("");
+  return parts.map((part, index) => (index === 0 ? part.text : index === 1 && part.tone === "code" ? ` ${part.text}` : ` · ${part.text}`)).join("");
 }

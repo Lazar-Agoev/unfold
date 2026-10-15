@@ -102,7 +102,7 @@ afterEach(() => {
 });
 
 describe("frames on the canvas", () => {
-  it("draw a box and a zone behind what they hold, nested, with their icon, title, description, and the agent mark", async () => {
+  it("draw a box and a zone behind what they hold, nested, with their title and description, and no icon or agent mark", async () => {
     open({
       frames: [
         frame("system", ["server", "slack"], { look: "zone", title: "Order system", description: { text: "Everything that takes orders.", author: "person:maya", signature: "" } }),
@@ -116,9 +116,11 @@ describe("frames on the canvas", () => {
     expect(box.classList.contains("look-box")).toBe(true);
     expect(zone.querySelector(".frame-title-text")?.textContent).toBe("Order system");
     expect(zone.querySelector(".frame-description")?.textContent).toBe("Everything that takes orders.");
-    expect(box.querySelector(".frame-icon")?.getAttribute("data-icon")).toBe("frame-api");
-    expect(zone.querySelector(".frame-icon")?.getAttribute("data-icon")).toBe("frame");
-    expect(box.querySelector(".frame-title .agent-mark")?.textContent).toBe("Claude");
+    expect(box.querySelector(".frame-title-text")?.textContent).toBe("Order API");
+    // Who drew it shows in Selected; the box in the zone gets its faint fill.
+    expect(box.querySelector(".icon:not(.frame-toggle .icon), .agent-mark")).toBeNull();
+    expect(box.classList.contains("in-zone")).toBe(true);
+    expect(zone.classList.contains("in-zone")).toBe(false);
     // Behind the lines and cards, the zone behind the box it holds; the zone is larger than the box.
     const layer = (element: HTMLElement) => Number(element.closest<HTMLElement>(".react-flow__node")?.style.zIndex);
     expect(layer(zone)).toBeLessThan(layer(box));
@@ -127,7 +129,7 @@ describe("frames on the canvas", () => {
     expect(container.querySelector('.board-card[data-card-id="create-order"]')).not.toBeNull();
   });
 
-  it("draw a collapsed frame as one node that says what it holds, its members' arrows leaving from it", async () => {
+  it("draw a collapsed frame as one node that counts the cards it holds, its members' arrows leaving from it", async () => {
     open({ frames: [frame("server", ["create-order", "slack"], { collapsed: true, description: { text: "Takes orders.", author: "agent:claude", signature: "" } })] });
     const { container } = renderBoard();
     const node = await waitFor(() => {
@@ -137,7 +139,7 @@ describe("frames on the canvas", () => {
     });
     expect(node.classList.contains("frame-node")).toBe(true);
     expect(node.querySelector(".frame-node-description")?.textContent).toBe("Takes orders.");
-    expect(node.querySelector(".frame-node-holds")?.textContent).toBe("2 functions");
+    expect(node.querySelector(".frame-node-holds")?.textContent).toBe("2 cards");
     expect(container.querySelector('.board-card[data-card-id="create-order"]')).toBeNull();
     expect(container.querySelector('.board-card[data-card-id="place"]')).not.toBeNull();
   });

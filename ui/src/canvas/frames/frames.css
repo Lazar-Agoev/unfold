@@ -1,165 +1,208 @@
 /*
- * Frames are authored, so they use the authored tokens (theme tokens): a box is outlined in the authored line
- * with a tinted title bar; a zone is a faint authored tint with a large title and no border; a
- * collapsed frame is a card-like node. Sizes follow `framePadding` (geometry.ts) and `frameNodeSize`
- * (sizing.ts).
+ * Frames are ground, not figure: the cards inside carry the color. A box is a hairline outline with its
+ * title written inside its top-left corner and its description beside it; no bar, no fill, no icon. A
+ * zone is a gray ground with the page's largest title and its description under it; a box inside a zone
+ * has a faint white fill. A collapsed frame is a stack of cards: its title, how many it holds, and its
+ * description. Sizes follow `framePadding` (geometry.ts) and `frameNodeSize` (sizing.ts).
+ *
+ * A title grows on screen as you zoom out (zoom.ts sets `--box-title-size` and `--zone-title-size`): its
+ * line keeps its bottom-left corner, so it grows up and to the right, over the frame's edge, never over
+ * the cards. A box title fades out before it runs into an enclosing frame's title (`--title-fade-at`,
+ * titles.ts). Below 60% descriptions fade out; hovering a title shows its frame's again.
  */
-
-.board-canvas {
-  --frame-zone-fill: color-mix(in srgb, var(--color-authored) 5%, transparent);
-}
 
 /* An expanded frame sits behind the lines and cards and lets the pointer through, but for its title. */
 .board-canvas .react-flow__node-frame { pointer-events: none; }
-.board-canvas .react-flow__node-frame .frame-title,
+.board-canvas .react-flow__node-frame .frame-title-text,
+.board-canvas .react-flow__node-frame .frame-toggle,
 .board-canvas .react-flow__node-frame .frame-node { pointer-events: all; }
 
 .frame-box {
   position: relative;
   font-family: var(--font-ui);
-  color: var(--color-authored);
+  color: var(--color-text);
 }
 
 .frame-box.look-box {
-  border: 1px solid var(--color-authored-line);
-  border-radius: var(--radius-card);
+  border: 1px solid var(--color-frame-line);
+  border-radius: 12px;
 }
 
+.frame-box.look-box.in-zone { background: rgb(255 255 255 / 0.55); }
+
 .frame-box.look-zone {
-  border-radius: var(--radius-dialog);
-  background: var(--frame-zone-fill);
+  border-radius: 16px;
+  background: var(--color-zone);
 }
 
 .frame-box.selected { box-shadow: 0 0 0 1.5px var(--color-accent), 0 0 0 4.5px var(--color-accent-ring); }
 
-/* The title: a box's 32px bar (its description beside the title), a zone's band (under it). */
+/* The title, in the corner: a box's 13px line 12px down, 16px in; a zone's 20px bold 18px down, 20px in. */
 .frame-title {
+  position: absolute;
   display: flex;
+  align-items: baseline;
+  gap: 10px;
   min-width: 0;
+  pointer-events: none;
   cursor: grab;
 }
 
 .look-box > .frame-title {
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 10px;
-  border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
-  background: var(--color-authored-tint);
+  right: 16px;
+  bottom: calc(100% - 30px);
+  left: 16px;
 }
 
 .look-zone > .frame-title {
-  flex-direction: column;
-  gap: 2px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 16px 20px 0;
-}
-
-.frame-title-row {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
+  right: 20px;
+  bottom: calc(100% - 44px);
+  left: 20px;
 }
 
 .frame-title-text {
-  min-width: 0;
-  overflow: hidden;
-  font: 600 var(--text-12) / var(--leading-16) var(--font-ui);
+  flex: none;
+  font: 600 var(--box-title-size, 13px) / calc(18 / 13) var(--font-ui);
   white-space: nowrap;
-  text-overflow: ellipsis;
+  color: var(--color-text);
 }
 
-.look-zone .frame-title-text { font-size: 18px; line-height: 24px; }
+.look-zone .frame-title-text {
+  font-size: var(--zone-title-size, 20px);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* A box title that would run into the title of a frame around it fades out first. */
+.frame-box.fades > .frame-title > .frame-title-text { opacity: clamp(0, calc((var(--zoom, 1) - var(--title-fade-at)) * 25), 1); }
 
 .frame-title-input {
   min-width: 120px;
   padding: 0 4px;
-  border: 1px solid var(--color-authored-line);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-chip);
   outline: none;
   background: var(--color-surface);
-  font: 600 var(--text-12) / var(--leading-16) var(--font-ui);
-  color: var(--color-authored);
+  font: 600 var(--text-13) / 18px var(--font-ui);
+  color: var(--color-text);
+  pointer-events: all;
 }
 
+/* The description: muted, beside a box's title and under a zone's, one line. */
 .frame-description {
   min-width: 0;
   overflow: hidden;
   font: var(--text-12) / 18px var(--font-ui);
   white-space: nowrap;
   text-overflow: ellipsis;
+  color: var(--color-muted);
+  transition: opacity var(--duration) ease-out;
 }
 
 .look-box .frame-description { flex: 1; }
 
+.look-zone > .frame-description {
+  position: absolute;
+  top: 46px;
+  right: 20px;
+  left: 20px;
+}
+
+.board-canvas[data-far] .frame-description { opacity: 0; }
+.board-canvas[data-far] .frame-box:has(.frame-title-text:hover) .frame-description { opacity: 1; }
+
+/* The chevron and the review dot, beside the title while it is hovered or the frame is selected. */
+.frame-toggle,
+.frame-review-dot { display: none; }
+
+.frame-title:hover > .frame-toggle,
+.frame-title:focus-within > .frame-toggle,
+.frame-box.selected .frame-toggle,
+.frame-node:is(:hover, :focus-within, .selected) .frame-toggle { display: grid; }
+
+.frame-title:hover > .frame-review-dot,
+.frame-box.selected .frame-review-dot,
+.frame-node:is(:hover, .selected) .frame-review-dot { display: block; }
+
 .frame-toggle {
-  display: grid;
   flex-shrink: 0;
   place-items: center;
+  align-self: center;
   width: 12px;
   height: 16px;
   border-radius: var(--radius-chip);
-  color: var(--color-authored);
+  color: var(--color-muted);
 }
 
+.frame-toggle:hover { color: var(--color-text); }
 .frame-toggle:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
-
-.frame-icon { flex-shrink: 0; }
 
 .frame-review-dot {
   flex-shrink: 0;
+  align-self: center;
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
   background: var(--color-review);
 }
 
-/* A collapsed frame: a card-like node with an authored edge, its title bar tinted. */
+/* A collapsed frame: a stack of cards to open, 12px by 14px of padding. */
 .board-card.frame-node {
-  border-color: var(--color-authored-line);
-  color: var(--color-authored);
+  gap: 2px;
+  padding: 12px 14px;
+  border-color: var(--color-frame-line);
+  border-radius: 12px;
+  overflow: visible;
+  box-shadow:
+    4px 4px 0 -1px var(--color-surface),
+    4px 4px 0 0 var(--color-border);
 }
 
-.board-card.frame-node.look-zone { background: color-mix(in srgb, var(--color-authored) 5%, var(--color-surface)); }
-
-.board-card.frame-node.selected { border-color: var(--color-accent); }
-
-.frame-node > .card-header {
-  background: var(--color-authored-tint);
-  border-bottom-color: var(--color-authored-line);
+.board-card.frame-node.selected {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 0.5px var(--color-accent),
+    0 0 0 3.5px var(--color-accent-ring),
+    4px 4px 0 -1px var(--color-surface),
+    4px 4px 0 0 var(--color-border);
 }
 
-.frame-node .frame-title-text { font-size: var(--text-13); }
-
-.frame-node .agent-mark,
-.frame-box .agent-mark { font: var(--text-11) / var(--leading-16) var(--font-ui); }
-
-.frame-node-body {
+.frame-node-head {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px 10px;
-  cursor: default;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  cursor: grab;
+}
+
+.frame-node .frame-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-13);
+  text-overflow: ellipsis;
+}
+
+.frame-node-holds {
+  flex-shrink: 0;
+  font: var(--text-11) / var(--leading-16) var(--font-ui);
+  color: var(--color-subtle);
 }
 
 .frame-node-description {
   font: var(--text-12) / 18px var(--font-ui);
+  color: var(--color-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  cursor: default;
 }
 
-.frame-node-holds {
-  font: var(--text-11) / var(--leading-16) var(--font-ui);
-  color: var(--color-muted);
-}
-
-/* A frame an agent changed while it is still working: the soft authored outline cards get. */
-.react-flow__node.agent-working > .frame-box,
-.react-flow__node.agent-working > .frame-node {
-  outline: 2px solid var(--color-authored-line);
-  outline-offset: 3px;
+/* A collapsed frame's arrows leave its edge level with its title. */
+.frame-node-head > .card-header-ports {
+  top: -12px;
+  right: -14px;
+  bottom: auto;
+  height: 42px;
 }

@@ -4,7 +4,7 @@
  * needs it, so nothing is clipped); type cards (and compact classes) between 280 and 560 px; app and
  * entrance cards between 200 and 320 px (with a 250 to 320 px dashed card beside them for each code that
  * isn't found); collapsed frames' nodes between 240 and 400 px; resource
- * cards between 200 and 360 px (tables 240 to 520); and notes between 140 and 260 px, measured with
+ * cards between 240 and 360 px (tables 240 to 520, actors from 140); and notes between 140 and 260 px, measured with
  * the bundled fonts. Longer lines soft-wrap and nothing scrolls inside a card. Heights follow from the
  * content and are measured by the canvas; before a card is drawn, its size is estimated from what the
  * reader drew (an expanded card's flow laid out by `layoutFlow`), so the cards a step opens are placed
@@ -12,7 +12,7 @@
  */
 
 import { cardShape, fieldRows, type CardShape } from "@unfold/desktop/drawing";
-import type { CardView, Description, Frame, Header, StartCard, TypeDefinition, View } from "../ipc/generated";
+import type { CardView, Description, Frame, Header, ResourceKind, StartCard, TypeDefinition, View } from "../ipc/generated";
 import { layoutFlow, type FlowGeometry, type Measure } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
 import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
@@ -20,23 +20,32 @@ import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layou
 import {
   AUTHORED_TITLE_FONT,
   CODE_FONT,
+  ACTOR_NAME_FONT,
   CODE_NAME_FONT,
+  COLUMN_NAME_FONT,
+  COLUMN_TYPE_FONT,
   DESCRIPTION_FONT,
   DOC_FONT,
+  FRAME_COUNT_FONT,
   FRAME_TITLE_FONT,
+  LANE_TYPE_FONT,
   LINKS_FONT,
   LOCATION_FONT,
-  MARK_FONT,
+  RESOURCE_KIND_FONT,
+  RESOURCE_NAME_FONT,
+  RESOURCE_PROSE_FONT,
+  SMALL_PROSE_FONT,
   SIGNATURE_FONT,
   START_APP_FONT,
   START_NAME_FONT,
   START_ON_FONT,
+  TABLE_NAME_FONT,
+  TABLE_PROSE_FONT,
   TAG_FONT,
   TITLE_FONT,
   TYPE_KIND_FONT,
 } from "./measure";
-import { agentName } from "../code/text";
-import { columnTypeText, listedColumns, markText, type TableColumn } from "./resources/columns";
+import { columnTypeText, listedColumns, type TableColumn } from "./resources/columns";
 
 /** The card's border, left and right. */
 const BORDER = 2;
@@ -52,11 +61,8 @@ const CHEVRON = 14;
 const CODE_BUTTON = 30;
 /** A header (cards.css keeps it 43px with its rule, 44 with the card's border). */
 const BLOCK_HEADER = 44;
-/** A header's block padding (each side) and the rule under it. */
-const HEADER_PADDING = 10;
+/** The rule under a header. */
 const RULE = 1;
-/** A header's line. */
-const TITLE_LINE = 16;
 
 /**
  * The text of a definition card's header: its mark, its title, the code name beside a title the page
@@ -97,15 +103,31 @@ function headerWidth(header: HeaderText, measure: Measure): number {
   return Math.ceil(PADDING * 2 + BORDER + (header.chevron ? CHEVRON + GAP : 0) + text);
 }
 
+/** How much wider a header's `ƒ` gets when its name is at its biggest (cards.css `.card-glyph`). */
+const GLYPH_GROWTH = 1.8;
+
+/**
+ * How much a header's title may grow as the page zooms out (zoom.ts `--name-grow`) and still fit the
+ * header: the room left once its location has given way, over the title's width at its own size.
+ */
+export function nameFit(header: HeaderText, width: number, measure: Measure): number {
+  const mark = header.mark.word ? measure(header.mark.text, TYPE_KIND_FONT) : GLYPH * GLYPH_GROWTH;
+  const tag = header.async ? GAP + tagWidth("async", measure) : 0;
+  const code = header.code !== undefined ? GAP + measure(header.code, CODE_NAME_FONT) : 0;
+  const room = width - (PADDING * 2 + BORDER + (header.chevron ? CHEVRON + GAP : 0) + mark + GAP + tag + code + GAP + GAP + CODE_BUTTON);
+  const name = measure(header.name, header.code !== undefined ? AUTHORED_TITLE_FONT : TITLE_FONT);
+  return Math.max(1, room / Math.max(1, name));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Definition cards
 
 /** Compact cards size to their header between these widths; the description wraps inside. */
 export const COMPACT_MIN_WIDTH = 240;
 export const COMPACT_MAX_WIDTH = 560;
-/** A description's line, and the strip's block padding. */
-const DESCRIPTION_LINE = 18;
-const DESCRIPTION_PADDING = 16;
+/** A description's line, and the strip's block padding (10 above, 12 below). */
+const DESCRIPTION_LINE = 20;
+const DESCRIPTION_PADDING = 22;
 /** What an expanded card says from its code: the section's padding (8 above, 9 below), its gap, and its lines. */
 const CODE_SECTION_PADDING = 17;
 const CODE_SECTION_GAP = 3;
@@ -254,7 +276,7 @@ export function startCardSize(start: StartCard, shape: CardShape, measure: Measu
   const { about, rows } = startTexts(start, shape);
   const room = width - START_PADDING_X * 2 - START_BORDER;
   const words = (start.kind === "entrance" ? START_APP_LINE + START_GAP : 0) + START_NAME_LINE + (start.on !== undefined ? START_GAP + START_ON_LINE : 0);
-  const sentence = about !== null ? START_GAP + wrappedLines(about, DESCRIPTION_FONT, room, measure) * ABOUT_LINE : 0;
+  const sentence = about !== null ? START_GAP + wrappedLines(about, SMALL_PROSE_FONT, room, measure) * ABOUT_LINE : 0;
   const list = rows.length > 0 ? ROWS_TOP + rows.length * ROW + (rows.length - 1) * ROW_GAP : 0;
   const height = START_BORDER + START_PADDING_Y + words + sentence + list;
   const unfound = unfoundCode(start).map(({ code }) => unfoundCardSize(code.key, measure));
@@ -413,95 +435,163 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
 // ---------------------------------------------------------------------------------------------
 // Collapsed frames
 
-/** A collapsed frame's node sizes to its header between these widths; its description wraps inside. */
+/** A collapsed frame's node sizes to its title between these widths; its description wraps inside. */
 const FRAME_NODE_MIN_WIDTH = 240;
 const FRAME_NODE_MAX_WIDTH = 400;
-/** Its header's chevron, icon, and the agent mark's glyph with its gap (frames.css, agent.css). */
+/**
+ * A collapsed frame's node (frames.css `.frame-node`): 12px by 14px of padding, its title's 18px line
+ * with the chevron (shown while hovered) and the count of the cards it holds after it, then its
+ * description's 18px lines 2px under it.
+ */
+const FRAME_NODE_PADDING_X = 14;
+const FRAME_NODE_PADDING_Y = 12 * 2;
+const FRAME_NODE_LINE = 18;
+const FRAME_NODE_GAP = 2;
 const TOGGLE = 12;
-const ICON = 16;
-const MARK_GLYPH = 13;
-/** Its body's block padding, the gap before what it holds, and that line. */
-const FRAME_BODY_PADDING = 18;
-const HOLDS_GAP = 4;
-const HOLDS_LINE = 16;
+/** The count's widest likely text, so the node needn't know it to be sized. */
+const COUNT_SAMPLE = "00 cards";
 
-/** A collapsed frame's node width: its chevron, icon, title, and the mark of the agent that drew it (`agent`, its name), clamped to 240–400. */
-export function frameNodeWidth(title: string, agent: string | null, measure: Measure): number {
-  const mark = agent !== null ? GAP + MARK_GLYPH + measure(agent, MARK_FONT) : 0;
-  const header = PADDING * 2 + BORDER + TOGGLE + GAP + ICON + GAP + measure(title, FRAME_TITLE_FONT) + mark;
+/** A collapsed frame's node width: its title, chevron, and count, clamped to 240–400. */
+export function frameNodeWidth(title: string, measure: Measure): number {
+  const header = FRAME_NODE_PADDING_X * 2 + BORDER + measure(title, FRAME_TITLE_FONT) + GAP + TOGGLE + GAP + measure(COUNT_SAMPLE, FRAME_COUNT_FONT);
   return clampCardWidth(header, FRAME_NODE_MIN_WIDTH, FRAME_NODE_MAX_WIDTH);
 }
 
-/** A collapsed frame's node: its width, and its header, wrapped description, and what it holds. */
-export function frameNodeSize(frame: Pick<Frame, "title" | "author" | "description">, measure: Measure): Size {
-  const width = frameNodeWidth(frame.title, agentName(frame.author), measure);
-  const room = Math.max(1, width - BORDER - PADDING * 2);
-  const lines = (frame.description?.text.split("\n") ?? []).reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
-  const header = HEADER_PADDING * 2 + TITLE_LINE + RULE;
-  return { width, height: BORDER + header + FRAME_BODY_PADDING + lines * DESCRIPTION_LINE + (lines > 0 ? HOLDS_GAP : 0) + HOLDS_LINE };
+/** A collapsed frame's node: its width, and its title line and wrapped description. */
+export function frameNodeSize(frame: Pick<Frame, "title" | "description">, measure: Measure): Size {
+  const width = frameNodeWidth(frame.title, measure);
+  const room = Math.max(1, width - BORDER - FRAME_NODE_PADDING_X * 2);
+  const text = frame.description?.text;
+  const about = text !== undefined ? FRAME_NODE_GAP + text.split("\n").reduce((count, paragraph) => count + wrappedLines(paragraph, SMALL_PROSE_FONT, room, measure), 0) * FRAME_NODE_LINE : 0;
+  return { width, height: BORDER + FRAME_NODE_PADDING_Y + FRAME_NODE_LINE + about };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Resource cards and notes
 
-/** A resource card sizes to its header between these widths; a table, to its columns too. */
-const RESOURCE_MIN_WIDTH = 200;
+/** A resource card sizes to its words between these widths; a table, to its columns too. */
+const RESOURCE_MIN_WIDTH = 240;
 const RESOURCE_MAX_WIDTH = 360;
 const TABLE_MIN_WIDTH = 240;
 const TABLE_MAX_WIDTH = 520;
-/** A resource card's header (no switch), and its columns' grid: block padding, a row, the gaps between columns, "N more". */
-const RESOURCE_HEADER = HEADER_PADDING * 2 + TITLE_LINE + RULE;
-const COLUMNS_PADDING = 18;
-const COLUMN_ROW = 20;
-const COLUMN_GAP = 8;
-const COLUMN_NAME_MIN = 64;
+/**
+ * A queue's, cache's, storage's, or outside service's card (resources.css): 14px of padding each
+ * side, the 32px glyph tile and the 12px gap after it, then the kind's small caps (a 14px line) over
+ * the name (a 20px line), 1px apart. The header has 12px above and 8 below (12 with nothing under it);
+ * the description's 18px lines have 12px under them (10 before a queue's lane).
+ */
+const TILE_PADDING = 14;
+const TILE = 32 + 12;
+const TILE_HEAD = 12 + 14 + 1 + 20;
+const TILE_LINE = 18;
+/** An outside service's dashed border is 1.5px each side. */
+const DASHED_BORDER = 3;
+/** A queue's lane: its rule, its padding (9 above, 10 below), the 16px row of slots, and the slots, arrow, and gaps before the type. */
+const LANE = 1 + 9 + 16 + 10;
+const LANE_LEAD = 3 * 14 + 4 * 6 + 16 + 4;
+/** A table: its 44px name band (with its rule), the glyph and gap before the name, its description's 16px lines with 8px above and below, its 28px rows, and the 22px key lane and the gap before a row's type. */
+const BAND = 44;
+const BAND_LEAD = 16 + 10;
+const TABLE_LINE = 16;
+const TABLE_ABOUT_PADDING = 16;
+const COLUMN_ROW = 28;
+const KEY_LANE = 22;
+const TYPE_GAP = 16;
+/** An actor's pill: 8px of padding around its 36px avatar (20 after its words), the 12px gap, its border; the description 10px under it, inset 8. */
+const PILL = 8 + 36 + 8 + BORDER;
+const PILL_LEAD = 8 + 36 + 12;
+const PILL_TAIL = 20;
+const ACTOR_GAP = 10;
+const ACTOR_INSET = 8;
+/** The least width an actor's description wraps in, and the least an actor takes. */
+const ACTOR_PROSE_WIDTH = 228;
+const ACTOR_MIN_WIDTH = 140;
+/** The small caps' letter spacing: 0.08em of 10px per character. */
+const KIND_TRACKING = 0.08 * 10;
 
-/** What sizing a resource card reads: its kind's word, its name, the agent that drew it (its name; null for a person), its description, and a table's columns. */
+/** What sizing a resource card reads: its kind, its name, its description, a table's columns, and the type a queue carries. */
 export interface ResourceSizeInput {
-  readonly word: string;
+  readonly kind: ResourceKind;
   readonly name: string;
-  readonly agent: string | null;
   readonly description?: Description;
   /** A table's columns (`tableColumns`); none for any other kind. */
   readonly columns: readonly TableColumn[];
+  /** The name of the type a queue carries, when the page says. */
+  readonly carries?: string;
 }
 
-/** A resource card's width: its header (glyph, kind's word, name, agent mark) and a table's widest column. */
+/** The kind's word in small caps (resources.css `.rcard-kind`). */
+function kindWidth(kind: ResourceKind, measure: Measure): number {
+  return measure(kind.toUpperCase(), RESOURCE_KIND_FONT) + kind.length * KIND_TRACKING;
+}
+
+/** How many lines `text` wraps to in `room` in `font`, paragraph by paragraph. */
+function proseLines(text: string, font: string, room: number, measure: Measure): number {
+  return text.split("\n").reduce((count, paragraph) => count + wrappedLines(paragraph, font, room, measure), 0);
+}
+
+/** A resource card's width: its words (and a table's columns, a queue's lane), clamped to its kind's widths. */
 export function resourceCardWidth(input: ResourceSizeInput, measure: Measure): number {
-  const mark = input.agent !== null ? GAP + MARK_GLYPH + measure(input.agent, MARK_FONT) : 0;
-  const header = PADDING * 2 + BORDER + ICON + GAP + measure(input.word, MARK_FONT) + GAP + measure(input.name, TITLE_FONT) + mark;
-  if (input.columns.length === 0) {
-    return clampCardWidth(header, RESOURCE_MIN_WIDTH, RESOURCE_MAX_WIDTH);
+  if (input.kind === "table") {
+    const band = PADDING * 2 + BORDER + BAND_LEAD + measure(input.name, TABLE_NAME_FONT);
+    const names = Math.max(0, ...input.columns.map((column) => measure(`${column.name}${column.optional ? "?" : ""}`, COLUMN_NAME_FONT)));
+    const types = Math.max(0, ...input.columns.map((column) => measure(columnTypeText(column), COLUMN_TYPE_FONT)));
+    const rows = input.columns.length > 0 ? PADDING * 2 + BORDER + KEY_LANE + names + TYPE_GAP + types : 0;
+    return clampCardWidth(Math.max(band, rows), TABLE_MIN_WIDTH, TABLE_MAX_WIDTH);
   }
-  const widest = (texts: readonly string[], min = 0) => Math.max(min, ...texts.map((text) => measure(text, CODE_FONT)));
-  const name = widest(input.columns.map((column) => `${column.name}${column.optional ? "?" : ""}`), COLUMN_NAME_MIN) + COLUMN_GAP;
-  const type = widest(input.columns.map(columnTypeText));
-  const marks = Math.max(0, ...input.columns.map((column) => measure(markText(column), LOCATION_FONT)));
-  const grid = PADDING * 2 + BORDER + name + type + (marks > 0 ? COLUMN_GAP + marks : 0);
-  return clampCardWidth(Math.max(header, grid), TABLE_MIN_WIDTH, TABLE_MAX_WIDTH);
+  const words = Math.max(kindWidth(input.kind, measure), measure(input.name, input.kind === "actor" ? ACTOR_NAME_FONT : RESOURCE_NAME_FONT));
+  if (input.kind === "actor") {
+    const pill = PILL_LEAD + words + PILL_TAIL + BORDER;
+    return clampCardWidth(Math.max(pill, input.description ? ACTOR_PROSE_WIDTH : 0), ACTOR_MIN_WIDTH, RESOURCE_MAX_WIDTH);
+  }
+  const border = input.kind === "external" ? DASHED_BORDER : BORDER;
+  const lane = input.kind === "queue" && input.carries !== undefined ? LANE_LEAD + measure(input.carries, LANE_TYPE_FONT) : 0;
+  return clampCardWidth(TILE_PADDING * 2 + border + Math.max(TILE + words, lane), RESOURCE_MIN_WIDTH, RESOURCE_MAX_WIDTH);
 }
 
-/** A resource card's size before it is drawn: its header, its whole description wrapped, and a table's listed columns. */
+/** How much a resource card's name may grow as the page zooms out and still fit its card `width` wide (as `nameFit`). */
+export function resourceNameFit(input: Pick<ResourceSizeInput, "kind" | "name">, width: number, measure: Measure): number {
+  if (input.kind === "table") {
+    return Math.max(1, (width - PADDING * 2 - BORDER - BAND_LEAD) / Math.max(1, measure(input.name, TABLE_NAME_FONT)));
+  }
+  const room = input.kind === "actor" ? width - PILL_LEAD - PILL_TAIL - BORDER : width - TILE_PADDING * 2 - BORDER - TILE;
+  return Math.max(1, room / Math.max(1, measure(input.name, input.kind === "actor" ? ACTOR_NAME_FONT : RESOURCE_NAME_FONT)));
+}
+
+/** A resource card's size before it is drawn: its header, its whole description wrapped, a table's listed columns, a queue's lane. */
 export function resourceCardSize(input: ResourceSizeInput, measure: Measure): Size {
   const width = resourceCardWidth(input, measure);
-  const { shown, hidden } = listedColumns(input.columns, false);
-  const columns = shown.length > 0 ? COLUMNS_PADDING + shown.length * COLUMN_ROW + (hidden > 0 ? MORE_ROW : 0) : 0;
-  return { width, height: BORDER + RESOURCE_HEADER + descriptionHeight(input.description, width, measure) + columns };
+  const text = input.description?.text;
+  if (input.kind === "table") {
+    const about = text !== undefined ? TABLE_ABOUT_PADDING + proseLines(text, TABLE_PROSE_FONT, width - BORDER - PADDING * 2, measure) * TABLE_LINE : 0;
+    const { shown, hidden } = listedColumns(input.columns, false);
+    return { width, height: BORDER + BAND + about + (shown.length + (hidden > 0 ? 1 : 0)) * COLUMN_ROW };
+  }
+  if (input.kind === "actor") {
+    const about = text !== undefined ? ACTOR_GAP + proseLines(text, RESOURCE_PROSE_FONT, width - ACTOR_INSET, measure) * TILE_LINE : 0;
+    return { width, height: PILL + about };
+  }
+  const border = input.kind === "external" ? DASHED_BORDER : BORDER;
+  const queue = input.kind === "queue";
+  const about = text !== undefined ? proseLines(text, RESOURCE_PROSE_FONT, width - border - TILE_PADDING * 2, measure) * TILE_LINE + (queue ? 10 : 12) : 0;
+  const head = TILE_HEAD + (text !== undefined || queue ? 8 : 12);
+  return { width, height: border + head + about + (queue ? LANE : 0) };
 }
 
 /** A note sizes to its text between these widths. */
 const NOTE_MIN_WIDTH = 140;
 const NOTE_MAX_WIDTH = 260;
-/** A note's padding (notes.css), the gap above its byline, and the byline's line. */
-const NOTE_PADDING_X = 10;
-const NOTE_PADDING_Y = 8;
-const NOTE_BYLINE = 4 + 16;
+/** A note's padding (notes.css: 12 above, 10 below, 14 each side; no border), the gap above its byline, and the byline's line. */
+const NOTE_PADDING_X = 14;
+const NOTE_PADDING_Y = 12 + 10;
+const NOTE_LINE = 20;
+const NOTE_BYLINE = 8 + 16;
 
 /** A note's size: its text wrapped between 140 and 260 px, and its byline. */
 export function noteSize(text: string, measure: Measure): Size {
   const longest = Math.max(0, ...text.split("\n").map((paragraph) => measure(paragraph, DESCRIPTION_FONT)));
-  const width = clampCardWidth(BORDER + NOTE_PADDING_X * 2 + longest, NOTE_MIN_WIDTH, NOTE_MAX_WIDTH);
-  const room = Math.max(1, width - BORDER - NOTE_PADDING_X * 2);
+  const width = clampCardWidth(NOTE_PADDING_X * 2 + longest, NOTE_MIN_WIDTH, NOTE_MAX_WIDTH);
+  const room = Math.max(1, width - NOTE_PADDING_X * 2);
   const lines = text.split("\n").reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
-  return { width, height: BORDER + NOTE_PADDING_Y * 2 + lines * DESCRIPTION_LINE + NOTE_BYLINE };
+  return { width, height: NOTE_PADDING_Y + lines * NOTE_LINE + NOTE_BYLINE };
 }

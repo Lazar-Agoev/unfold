@@ -20,9 +20,9 @@ describe("agentIdentity", () => {
     expect(agentIdentity("x".repeat(40)).author).toBe(`agent:${"x".repeat(32)}`);
   });
 
-  it("never signs as a person, even with no usable name", () => {
-    expect(agentIdentity(undefined)).toEqual({ author: "agent:unknown", name: "Unknown" });
-    expect(agentIdentity(" ✨ ")).toEqual({ author: "agent:unknown", name: "Unknown" });
+  it("never signs as a person, and names a client with no usable name Agent", () => {
+    expect(agentIdentity(undefined)).toEqual({ author: "agent:agent", name: "Agent" });
+    expect(agentIdentity(" ✨ ")).toEqual({ author: "agent:agent", name: "Agent" });
     expect(agentIdentity("person:lazar").author).toBe("agent:personlazar");
   });
 });
@@ -35,7 +35,7 @@ describe("AgentDirectory", () => {
     expect(directory.identify(undefined, "node").author).toBe("agent:codex");
     // Without initialize, the User-Agent's product token.
     expect(directory.identify(undefined, "claude-code/2.0.31 (cli)").author).toBe("agent:claude");
-    expect(directory.identify(undefined, null).author).toBe("agent:unknown");
+    expect(directory.identify(undefined, null).author).toBe("agent:agent");
   });
 
   it("lists the agents seen, the one seen last first, with when each last acted", () => {

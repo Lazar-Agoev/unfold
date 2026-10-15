@@ -1,0 +1,110 @@
+/*
+ * An agent writing (writing.tsx): the chip over the item, and the words arriving in the field it writes.
+ *
+ * The chip is white with a pale indigo edge and a soft indigo shadow: a 16px ring whose tail sweeps
+ * round once every 0.9 s, then the agent's name. It is drawn over everything (in the edge label layer),
+ * at its item's top-right corner, and keeps its size on screen (writing.tsx scales it by
+ * `--screen-scale`). It fades in over 150 ms and out over 300 ms.
+ */
+
+.writing-chip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px 0 4px;
+  border: 1px solid var(--color-writing-line);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-writing);
+  font: 500 var(--text-11) / var(--leading-16) var(--font-ui);
+  color: var(--color-accent-text);
+  white-space: nowrap;
+  pointer-events: none;
+  transform-origin: 0 0;
+  animation: writing-chip-in 150ms ease-out both;
+  transition: opacity 300ms ease-out;
+}
+
+.writing-chip.settling { opacity: 0; }
+
+/* On a connection, the ring alone, just above its chip's end. */
+.writing-chip.ring-only {
+  justify-content: center;
+  width: 24px;
+  padding: 0;
+}
+
+@keyframes writing-chip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The ring: a comet's tail in the accent, round a 12px hole. */
+.writing-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: conic-gradient(in oklab, rgb(88 98 192 / 0) 0%, rgb(88 98 192 / 0.12) 50%, var(--color-accent) 100%);
+  animation: writing-ring-spin 0.9s linear infinite;
+}
+
+.writing-ring::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+}
+
+@keyframes writing-ring-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* With reduced motion the ring stands still, full. */
+@media (prefers-reduced-motion: reduce) {
+  .writing-ring { background: var(--color-accent); }
+}
+
+/*
+ * The words being written: settled words in the field's own ink, then three tiers of two blurred words,
+ * fainter the further ahead, then the words still to come, kept in place but unseen. A field's ink sets
+ * its tiers (`--writing-1` to `--writing-3`); a description's are the muted grays. Settling, they sharpen.
+ */
+.writing-word {
+  transition:
+    filter 300ms ease-out,
+    color 300ms ease-out,
+    opacity 300ms ease-out;
+}
+
+.writing-word.tier-1 { filter: blur(2.5px); color: var(--writing-1, var(--color-muted)); }
+.writing-word.tier-2 { filter: blur(3px); color: var(--writing-2, var(--color-contour)); }
+.writing-word.tier-3 { filter: blur(3.5px); color: var(--writing-3, var(--color-placeholder-line)); }
+.writing-word.ahead { opacity: 0; }
+
+/* A connection's target while it is written: blurred, sharpening when it settles. */
+.writing-target { transition: filter 300ms ease-out; }
+.writing-target.blurred { filter: blur(2.5px); }
+
+/* Names and titles blur in their own ink; a note's words fade toward its byline's amber. */
+.card-title,
+.frame-title-text {
+  --writing-1: currentColor;
+  --writing-2: currentColor;
+  --writing-3: currentColor;
+}
+
+.board-note {
+  --writing-1: var(--color-note-writing);
+  --writing-2: var(--color-note-byline);
+  --writing-3: color-mix(in srgb, var(--color-note-byline) 55%, transparent);
+}

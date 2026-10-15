@@ -29,7 +29,6 @@ import type { Card, Connection, Frame, Health, Key, Note, Resource } from "../ip
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContextMenu } from "../components";
 import { AddResource } from "../explain";
-import { authorOf } from "../code/text";
 import { engineQueryOptions } from "../ipc/queries";
 import { isTyping } from "../lib/typing";
 import { useAuthor } from "../state/author";
@@ -53,7 +52,6 @@ import {
   updatePageView,
   useOpenBoard,
   usePageView,
-  useWorkingItems,
   type PageTarget,
 } from "../state/boards";
 import { findBlock } from "../state/cards";
@@ -63,17 +61,21 @@ import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
 import { claimProblem } from "./cards/ReviewBanner";
-import { chipForms, chipText } from "./connections/chip";
+import { chipForms, chipText, connectionTitle } from "./connections/chip";
 import { ConnectionEdge, type ConnectionData, type ConnectionEdgeType } from "./connections/ConnectionEdge";
 import { linkMenuEntries } from "./connections/linkMenu";
 import { lineHandles, relatedColumns, stepPorts, type DrawsStep } from "./connections/routing";
 import { FrameNode, type FrameNodeType } from "./frames/FrameNode";
 import { attachPoint, collapsedPlaces, fallbackItemSize, pageGeometry, type Drag } from "./frames/geometry";
 import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
+import { insideZones, titleFades } from "./frames/titles";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
+import { useMeasure } from "./measure";
 import { NoteNode, type NoteNodeType } from "./notes/NoteNode";
 import { ResourceNode, type ResourceNodeType } from "./resources/ResourceNode";
+import { WritingChips } from "./writing";
+import { ZoomScaleVariables } from "./zoom";
 import "./canvas.css";
 
 type CanvasNode = CardNodeType | FrameNodeType | ResourceNodeType | NoteNodeType;
@@ -108,23 +110,22 @@ function onFlowError(code: string, message: string): void {
   }
 }
 
-/** What a connection's edge reads besides the line: the page, its health, the selection, agents' work, and carried types' names. */
+/** What a connection's edge reads besides the line: the page, its health, the selection, and carried types' names. */
 interface ConnectionContext {
   readonly target: PageTarget;
   readonly page: { readonly resources?: readonly Resource[] | undefined };
   readonly health: Health | undefined;
   readonly selectedLink: string | null;
-  readonly working: ReadonlySet<string>;
   readonly typeName: (key: Key) => string | undefined;
 }
 
-/** What a connection's edge draws: its kind, chip, author, selection, health, ends' marks, and carried type. */
+/** What a connection's edge draws: its kind, chip, card, selection, health, ends' marks, and carried type. */
 function connectionData(routed: RoutedLink, context: ConnectionContext): ConnectionData {
   const { link, kind } = routed;
   const { target, page } = context;
   const subject = link ? (findResource(page, link.to) ?? findResource(page, link.from))?.name : undefined;
   const carries = link?.carries !== undefined ? context.typeName(link.carries) : undefined;
-  const forms = chipForms({
+  const input = {
     kind,
     ...(link?.channel !== undefined ? { channel: link.channel } : {}),
     ...(carries !== undefined ? { carries } : {}),
@@ -132,17 +133,17 @@ function connectionData(routed: RoutedLink, context: ConnectionContext): Connect
     ...(subject !== undefined ? { subject } : {}),
     ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
     ...(routed.count > 1 ? { count: routed.count } : {}),
-  });
-  const writer = link ? authorOf(link.author) : null;
+  };
+  const title = connectionTitle(input);
   const issue = link ? itemsFor(context.health, target.page, { connection: link.id })[0] : undefined;
   return {
     target,
     kind,
-    forms,
-    full: chipText(forms[0] ?? []),
-    agent: writer?.agent === true ? writer.name : null,
+    forms: chipForms(input),
+    title,
+    full: chipText(title),
+    description: link?.description?.text ?? null,
     selected: routed.id === context.selectedLink,
-    working: context.working.has(routed.id),
     problem: issue ? claimProblem(issue) : null,
     ...(link ? { linkId: link.id } : {}),
     ...(link?.cardinality !== undefined ? { cardinality: link.cardinality } : {}),
@@ -168,12 +169,12 @@ export interface BoardCanvasProps {
 
 export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_RESOURCES, notes = NO_NOTES, links = NO_LINKS, boardArrows }: BoardCanvasProps) {
   const flow = useReactFlow<CanvasNode, CanvasEdge>();
+  const measure = useMeasure();
   const sizes = usePageView(target, (view) => view.sizes);
   const focus = usePageView(target, (view) => view.focus);
   const defaultView = useOpenBoard(target.board, (board) => findPage(board.document, target.page)?.defaultView) ?? "compact";
   const selectedLink = usePageView(target, ({ selection }) => (selection.kind === "link" ? selection.linkId : null));
   const selectedArrow = usePageView(target, ({ selection }) => (selection.kind === "line" || selection.kind === "calls" ? selection.arrowId : null));
-  const working = useWorkingItems(target);
   const health = useOpenBoard(target.board, (board) => board.health);
   const author = useAuthor();
   const [labelLayout] = useState(() => new LabelLayout());
@@ -225,23 +226,28 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
 
   // Node objects keep their identity while nothing about them changes, so React Flow skips them.
   const [frameCache] = useState(() => new Map<string, FrameNodeType>());
+  // Boxes in a zone get a faint fill; a box title fades before it runs into a title around it.
+  const zoned = useMemo(() => insideZones(frames), [frames]);
+  const fades = useMemo(() => titleFades(geometry.frames.filter((drawn) => !drawn.collapsed), measure), [geometry, measure]);
   const frameNodes = useMemo(() => {
     const live = new Set<string>();
     const deepest = geometry.frames.reduce((most, drawn) => Math.max(most, drawn.depth), 0);
     const list = geometry.frames.map(({ frame, rect, depth, collapsed }) => {
       const framePorts = ports.get(frame.id) ?? NO_PORTS;
       const cached = frameCache.get(frame.id);
-      const className = working.has(frame.id) ? "agent-working" : undefined;
       const box = collapsed ? undefined : { width: rect.width, height: rect.height };
+      const inZone = !collapsed && zoned.has(frame.id);
+      const titleFadeAt = collapsed ? undefined : fades.get(frame.id);
       // Behind the lines and cards, outer frames behind inner ones; a collapsed frame is a node like a card.
       const zIndex = collapsed ? 0 : depth - deepest - 1;
       const node: FrameNodeType =
         cached?.position.x === rect.x &&
         cached.position.y === rect.y &&
         cached.zIndex === zIndex &&
-        cached.className === className &&
         cached.data.box?.width === box?.width &&
         cached.data.box?.height === box?.height &&
+        cached.data.inZone === inZone &&
+        cached.data.titleFadeAt === titleFadeAt &&
         cached.data.ports.join("\u0000") === framePorts.join("\u0000")
           ? cached
           : {
@@ -250,8 +256,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
               position: { x: rect.x, y: rect.y },
               dragHandle: ".frame-drag",
               zIndex,
-              ...(className !== undefined ? { className } : {}),
-              data: { target, ports: framePorts, ...(box ? { box } : {}) },
+              data: { target, ports: framePorts, inZone, ...(box ? { box } : {}), ...(titleFadeAt !== undefined ? { titleFadeAt } : {}) },
             };
       frameCache.set(frame.id, node);
       live.add(frame.id);
@@ -263,7 +268,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [geometry, ports, target, frameCache, working]);
+  }, [geometry, ports, target, frameCache, zoned, fades]);
 
   const [nodeCache] = useState(() => new Map<string, CardNodeType>());
   const cardNodes = useMemo(() => {
@@ -276,17 +281,14 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       const cardPorts = ports.get(card.id) ?? NO_PORTS;
       const cached = nodeCache.get(card.id);
       const keptPorts = cached?.data.ports.join("\u0000") === cardPorts.join("\u0000") ? cached.data.ports : undefined;
-      // An agent changed it and is still working: the node gets the soft outline.
-      const className = working.has(card.id) ? "agent-working" : undefined;
       const node: CardNodeType =
-        cached && keptPorts && cached.position.x === at.x && cached.position.y === at.y && cached.className === className
+        cached && keptPorts && cached.position.x === at.x && cached.position.y === at.y
           ? cached
           : {
               id: card.id,
               type: "card",
               position: at,
               dragHandle: ".card-drag",
-              ...(className !== undefined ? { className } : {}),
               data: { target, ports: keptPorts ?? cardPorts },
             };
       nodeCache.set(card.id, node);
@@ -299,7 +301,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [cards, display, ports, target, nodeCache, working]);
+  }, [cards, display, ports, target, nodeCache]);
   // Resource cards (with the columns relationships use) and notes.
   const [itemCache] = useState(() => new Map<string, { readonly signature: string; readonly node: ResourceNodeType | NoteNodeType }>());
   const itemNodes = useMemo(() => {
@@ -313,20 +315,19 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     };
     const placed = (id: string) => {
       const at = display.get(id);
-      const className = working.has(id) ? "agent-working" : undefined;
-      return at ? { at, extra: className !== undefined ? { className } : {}, signature: [at.x, at.y, className].join("\u0001") } : undefined;
+      return at ? { at, signature: [at.x, at.y].join("\u0001") } : undefined;
     };
     const list = [
       ...resources.flatMap((resource) => {
         const spot = placed(resource.id);
         const used = columns.get(resource.id) ?? NO_PORTS;
         return spot
-          ? [cached(resource.id, `${spot.signature}\u0001${used.join("\u0000")}`, (): ResourceNodeType => ({ id: resource.id, type: "resource", position: spot.at, dragHandle: ".resource-drag", ...spot.extra, data: { target, columns: used } }))]
+          ? [cached(resource.id, `${spot.signature}\u0001${used.join("\u0000")}`, (): ResourceNodeType => ({ id: resource.id, type: "resource", position: spot.at, dragHandle: ".resource-drag", data: { target, columns: used } }))]
           : [];
       }),
       ...notes.flatMap((note) => {
         const spot = placed(note.id);
-        return spot ? [cached(note.id, spot.signature, (): NoteNodeType => ({ id: note.id, type: "note", position: spot.at, dragHandle: ".note-drag", ...spot.extra, data: { target } }))] : [];
+        return spot ? [cached(note.id, spot.signature, (): NoteNodeType => ({ id: note.id, type: "note", position: spot.at, dragHandle: ".note-drag", data: { target } }))] : [];
       }),
     ];
     for (const id of [...itemCache.keys()]) {
@@ -335,7 +336,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [resources, notes, display, columns, working, target, itemCache]);
+  }, [resources, notes, display, columns, target, itemCache]);
   const nodes = useMemo((): CanvasNode[] => [...frameNodes, ...cardNodes, ...itemNodes], [frameNodes, cardNodes, itemNodes]);
 
   const [edgeCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: ArrowEdgeType }>());
@@ -403,8 +404,8 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
       const handles = lineHandles(routed.link, routed, from, to, drawsStep);
       const ends = { id: routed.id, source: routed.from, sourceHandle: handles.source, target: routed.to, targetHandle: handles.target, focusable: false, selectable: false };
-      const data = connectionData(routed, { target, page: framed, health, selectedLink, working, typeName });
-      const signature = JSON.stringify([ends, routed.kind, data.full, data.forms.map(chipText), data.agent, data.selected, data.working, data.problem, data.cardinality]);
+      const data = connectionData(routed, { target, page: framed, health, selectedLink, typeName });
+      const signature = JSON.stringify([ends, routed.kind, data.full, data.forms.map(chipText), data.description, data.selected, data.problem, data.cardinality]);
       const known = linkCache.get(routed.id);
       const edge = known?.signature === signature ? known.edge : { ...ends, type: "connection" as const, className: "board-connection-edge", data };
       linkCache.set(routed.id, { signature, edge });
@@ -417,7 +418,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [links, shownAs, display, drawsStep, selectedLink, target, linkCache, working, framed, health, typeName]);
+  }, [links, shownAs, display, drawsStep, selectedLink, target, linkCache, framed, health, typeName]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards (and collapsed frames) as drawn, which the lines' labels keep clear of.
@@ -613,6 +614,8 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         className={`board-canvas${linking ? " linking" : ""}`}
       >
         <Background gap={DOT_GAP} size={DOT_SIZE} />
+        <ZoomScaleVariables />
+        <WritingChips target={target} rects={display} />
       </ReactFlow>
       {paneMenu.element}
       {addingResource ? (

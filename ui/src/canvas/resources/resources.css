@@ -1,8 +1,10 @@
 /*
- * Resource cards are authored, so they use the authored tokens (theme tokens) and never look like
- * code cards: an authored edge and a tinted header with the kind's glyph and word, the name in code
- * type. A table's columns share one grid, as a type card's fields do. Sizes follow `resourceCardSize`
- * (sizing.ts).
+ * Resource cards are outside the code, so they are blue (theme tokens) and never look like code cards:
+ * a blue outline, the kind's glyph on a pale tile, the kind in small caps, the name in code type. A
+ * table is an ERD entity: a tinted name band, then its description and one 28px row per column. Each
+ * other kind changes one thing about its shape: a queue's lane, storage's stack, an outside service's
+ * dashed edge, an actor's pill. Selected is the accent edge and ring, as for any card. Sizes follow
+ * `resourceCardSize` (sizing.ts).
  */
 
 .board-canvas .react-flow__node-resource,
@@ -14,80 +16,238 @@
   cursor: default;
 }
 
-.board-card.resource-card { border-color: var(--color-authored-line); }
+.board-card.resource-card { border-color: var(--color-resource-line); }
 .board-card.resource-card.selected { border-color: var(--color-accent); }
 
+.rcard-glyph { flex-shrink: 0; color: var(--color-resource); }
+
+/* A queue's, cache's, storage's, or outside service's header: the tile, then the kind over the name. */
 .resource-card > .card-header {
-  background: var(--color-authored-tint);
-  border-bottom-color: var(--color-authored-line);
+  gap: 12px;
+  padding: 12px 14px 8px;
+  border-bottom: 0;
 }
 
-.resource-card:not(:has(.card-review, .card-description, .card-body)) > .card-header { border-bottom-color: transparent; }
+/* With nothing under it, the header has as much room below as above. */
+.resource-card:not(.kind-actor) > .card-header:not(:has(~ .card-review, ~ .card-description, ~ .rcard-lane)) { padding-bottom: 12px; }
 
-.rcard-glyph { flex-shrink: 0; color: var(--color-authored); }
+.rcard-tile {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--color-resource-tint);
+}
+
+.rcard-words {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
 
 .rcard-kind {
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-resource);
+}
+
+/*
+ * The name grows with the page's zoom as a card's does (cards.css), within its card (`--name-fit`) and
+ * at most twice its size, the line it shares with the kind; the kind, too small to read by then, fades.
+ */
+.resource-card .rcard-name-text {
+  font-size: calc(14px * min(var(--name-grow, 1), var(--name-fit, 1), 2));
+  line-height: 20px;
+}
+
+.rcard-kind { opacity: clamp(0, calc((var(--zoom, 1) - 0.6) / 0.15), 1); }
+
+/* Its description: muted prose under the words. */
+.resource-card .card-description {
+  padding: 0 14px 12px;
+  border-bottom: 0;
+  font: 12.5px/18px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.resource-card .card-review { margin-bottom: 8px; }
+
+/* A queue: a lane of messages waiting, and the type they carry. */
+.kind-queue .card-description { padding-bottom: 10px; }
+
+.rcard-lane {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px 10px;
+  border-top: 1px solid var(--color-resource-row);
+  background: var(--color-resource-lane);
+}
+
+.rcard-slot {
   flex-shrink: 0;
-  font: var(--text-11) / var(--leading-16) var(--font-ui);
-  color: var(--color-authored);
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--color-resource-rule);
 }
 
-.resource-card .card-title { flex: 1; }
-.resource-card .agent-mark { font: var(--text-11) / var(--leading-16) var(--font-ui); color: var(--color-authored); }
-.resource-card .card-description { border-bottom: 0; }
+.rcard-slot.last { background: var(--color-resource-slot); }
 
-/* A table's columns: name, written type, marks. */
-.rcard-columns {
-  display: grid;
-  grid-template-columns: minmax(64px, max-content) minmax(0, 1fr) max-content;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--color-card-rule-soft);
-  font: 12px/16px var(--font-code);
+.rcard-lane-arrow {
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--color-resource-dash);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rcard-carries {
+  min-width: 0;
+  padding-left: 4px;
+  overflow: hidden;
+  font: 11.5px/16px var(--font-code);
+  color: var(--color-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Storage holds many files: a second card stacked behind it. */
+.board-card.resource-card.kind-storage {
+  box-shadow:
+    4px 4px 0 -1px var(--color-surface),
+    4px 4px 0 0 var(--color-resource-rule);
+}
+
+.board-card.resource-card.kind-storage.selected {
+  box-shadow:
+    0 0 0 0.5px var(--color-accent),
+    0 0 0 3.5px var(--color-accent-ring),
+    4px 4px 0 -1px var(--color-surface),
+    4px 4px 0 0 var(--color-resource-rule);
+}
+
+/* An outside service is outside your system: dashed. */
+.board-card.resource-card.kind-external { border: 1.5px dashed var(--color-resource-dash); }
+.board-card.resource-card.kind-external.selected { border-color: var(--color-accent); }
+
+/* An actor isn't a box: a pill with a round avatar tile, its name in the UI font, its description under it. */
+.resource-actor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.board-card.resource-card.kind-actor { border-radius: var(--radius-full); }
+
+.kind-actor > .card-header { padding: 8px 20px 8px 8px; }
+.kind-actor .rcard-tile { width: 36px; height: 36px; border-radius: var(--radius-full); }
+.kind-actor .rcard-name-text { font-family: var(--font-ui); }
+
+.resource-actor > .card-description {
+  align-self: stretch;
+  padding: 0 0 0 8px;
+  border-bottom: 0;
+  font: 12.5px/18px var(--font-ui);
+  color: var(--color-muted);
+}
+
+.resource-actor > .card-review { align-self: stretch; border-radius: var(--radius-control); }
+
+/* Lines meet a resource card level with its words. */
+.resource-card .card-link-handles.left > .react-flow__handle,
+.resource-card .card-link-handles.right > .react-flow__handle { top: 28px; }
+.kind-actor .card-link-handles.left > .react-flow__handle,
+.kind-actor .card-link-handles.right > .react-flow__handle { top: 26px; }
+
+/*
+ * A table: an entity. Its band is tinted, with the glyph and the name; its description sits under the
+ * band; each column is a 28px row: its key in a 22px lane (PK in blue), its name, and its type aligned
+ * right. With no columns, the card is the band and the description.
+ */
+.resource-card > .card-header.rcard-band {
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-resource-rule);
+  background: var(--color-resource-tint);
+}
+
+.resource-card > .card-header.rcard-band:not(:has(~ .card-review, ~ .card-description, ~ .card-body)) { border-bottom-color: transparent; }
+
+.rcard-band .rcard-name-text {
+  flex: 1;
+  font-size: calc(13.5px * min(var(--name-grow, 1), var(--name-fit, 1)));
+  line-height: 18px;
+}
+
+.kind-table .card-description {
+  padding: 8px 12px;
+  font: 12px/16px var(--font-ui);
+}
+
+.kind-table .card-review { margin-bottom: 0; }
+
+.rcard-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 12px;
+  border-top: 1px solid var(--color-resource-row);
+  font: 12.5px/16px var(--font-code);
   color: var(--color-text);
+  text-align: left;
 }
 
-.rcard-name,
-.rcard-type,
-.rcard-mark { padding: 2px 0; }
+.rcard-key {
+  flex-shrink: 0;
+  width: 22px;
+  font: 700 9px/12px var(--font-ui);
+  letter-spacing: 0.04em;
+  color: var(--color-subtle);
+}
+
+.rcard-key.key-primary { color: var(--color-resource); }
 
 .rcard-name {
-  padding-right: 8px;
-  color: var(--color-contour);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   white-space: pre;
+  text-overflow: ellipsis;
 }
 
-.rcard-type { min-width: 0; overflow-wrap: anywhere; }
+.rcard-row.primary .rcard-name { font-weight: 600; }
 
-.rcard-mark {
-  padding-left: 8px;
-  font: 11px/16px var(--font-code);
-  color: var(--color-authored);
-  text-align: right;
+.rcard-type {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 60%;
+  padding-left: 16px;
+  overflow: hidden;
+  font: 12px/16px var(--font-code);
+  color: var(--color-muted);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .rcard-more {
-  position: relative;
-  grid-column: 1 / -1;
-  margin-top: 4px;
-  padding: 2px 0;
   font: 11px/16px var(--font-ui);
   color: var(--color-accent-text);
-  text-align: left;
+  cursor: pointer;
 }
 
 .rcard-more:hover { text-decoration: underline; }
 
-.rcard-empty {
-  padding: 10px 12px;
-  border-top: 1px solid var(--color-card-rule-soft);
-  font: 12px/16px var(--font-ui);
-  color: var(--color-muted);
-}
-
-/* A relationship leaves and enters a column's row at the card's edges (12px of padding and the border away). */
-.rcard-name,
-.rcard-mark { position: relative; }
-.board-card .react-flow__handle.column-handle { top: 10px; }
-.board-card .react-flow__handle.column-handle.left { left: -13px; }
-.board-card .react-flow__handle.column-handle.right { right: -13px; left: auto; }
+/* A relationship leaves and enters a column's row at the card's edges. */
+.board-card .react-flow__handle.column-handle { top: 50%; }
+.board-card .react-flow__handle.column-handle.left { left: -1px; }
+.board-card .react-flow__handle.column-handle.right { right: -1px; left: auto; }

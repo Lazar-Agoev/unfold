@@ -1,6 +1,6 @@
 /**
- * A note on the canvas: short plain text in the authored style, with who wrote it: an agent's mark
- * (`✦ Claude`), or "by you". Free, it stays where it is put; attached, it moves with its card, frame,
+ * A note on the canvas: short plain text on a yellow sticky, with who wrote it: an agent's mark
+ * (`✦ Claude`), "You", or another person's name. Free, it stays where it is put; attached, it moves with its card, frame,
  * resource card, or connection. A click selects it; dragging moves it (an attached note keeps its
  * attachment, at a new offset); double-clicking edits it in place (Enter keeps, Shift+Enter breaks the
  * line, Escape cancels), which makes it yours; its menu has Edit, Copy link, and Remove note.
@@ -8,11 +8,13 @@
 
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo, useState } from "react";
-import { Author, copyLink } from "../../agent";
+import { AgentMark, copyLink } from "../../agent";
 import { authorOf } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { useAuthor } from "../../state/author";
 import { editNote, findNote, findPage, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import type { ItemWriting } from "../../state/boards/agent/working";
+import { WritingText, useItemWriting } from "../writing";
 import "./notes.css";
 
 interface NoteNodeData extends Record<string, unknown> {
@@ -21,10 +23,24 @@ interface NoteNodeData extends Record<string, unknown> {
 
 export type NoteNodeType = Node<NoteNodeData, "note">;
 
-/** The note's text, or the field that rewrites it in place. */
-function NoteText({ text, editing, onDone }: { readonly text: string; readonly editing: boolean; readonly onDone: (text: string | null) => void }) {
+/** The note's text (arriving while an agent writes it), or the field that rewrites it in place. */
+function NoteText({
+  text,
+  editing,
+  writing,
+  onDone,
+}: {
+  readonly text: string;
+  readonly editing: boolean;
+  readonly writing: ItemWriting | undefined;
+  readonly onDone: (text: string | null) => void;
+}) {
   if (!editing) {
-    return <p className="note-text">{text}</p>;
+    return (
+      <p className="note-text">
+        <WritingText text={text} writing={writing} field="text" />
+      </p>
+    );
   }
   return (
     <textarea
@@ -53,6 +69,15 @@ function NoteText({ text, editing, onDone }: { readonly text: string; readonly e
   );
 }
 
+/** Who wrote a note: an agent's mark (`✦ Claude`), "You", or another person's name. */
+function Byline({ author, you }: { readonly author: string; readonly you: string | null }) {
+  const writer = authorOf(author);
+  if (writer.agent) {
+    return <AgentMark name={writer.name} />;
+  }
+  return <>{author === you ? "You" : writer.name}</>;
+}
+
 export const NoteNode = memo(function NoteNode({ id, data }: NodeProps<NoteNodeType>) {
   const { target } = data;
   const note = useOpenBoard(target.board, (board) => {
@@ -62,6 +87,7 @@ export const NoteNode = memo(function NoteNode({ id, data }: NodeProps<NoteNodeT
   const selected = usePageView(target, (view) => view.selection.kind === "note" && view.selection.noteId === id);
   const author = useAuthor();
   const [editing, setEditing] = useState(false);
+  const writing = useItemWriting(target, id);
   const menu = useContextMenu("Note actions", 196);
   if (!note) {
     return null;
@@ -109,10 +135,9 @@ export const NoteNode = memo(function NoteNode({ id, data }: NodeProps<NoteNodeT
         ]);
       }}
     >
-      <NoteText text={note.text} editing={editing} onDone={finish} />
+      <NoteText text={note.text} editing={editing} writing={writing} onDone={finish} />
       <span className="note-byline">
-        {authorOf(note.author).agent ? null : "by "}
-        <Author author={note.author} />
+        <Byline author={note.author} you={author} />
       </span>
       {menu.element}
     </aside>

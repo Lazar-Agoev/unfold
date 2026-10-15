@@ -151,6 +151,9 @@ function present<T>(value: T | null | undefined): T {
 
 const resourceCard = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`[data-resource-id="${id}"]`);
 const chipOf = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`.connection-chip[data-link="${id}"]`);
+/** A table card's rows: each column's key, name, and type. */
+const rows = (card: HTMLElement) =>
+  [...card.querySelectorAll(".rcard-row:not(.rcard-more)")].map((row) => [".rcard-key", ".rcard-name", ".rcard-type"].map((part) => row.querySelector(part)?.textContent ?? ""));
 
 beforeEach(() => {
   store.resetBoards();
@@ -184,7 +187,7 @@ afterEach(() => {
 });
 
 describe("resource cards", () => {
-  it("draw a table backed by a type: its kind, name, and agent mark, the type's fields with the marks laid on, and 'N more' past 12", async () => {
+  it("draw a table backed by a type as an entity: its band, then the type's fields with the marks laid on, and 'N more' past 12", async () => {
     open({ resources: [table("orders", ORDER, [0, 600], { columns: [{ name: "id", key: "primary" }, { name: "customerId", key: "foreign", references: "customers.id" }] })] });
     const { container } = renderBoard();
     const card = await waitFor(() => {
@@ -192,20 +195,24 @@ describe("resource cards", () => {
       expect(found?.querySelector(".rcard-columns")).not.toBeNull();
       return present(found);
     });
-    expect(card.querySelector(".rcard-kind")?.textContent).toBe("table");
-    expect(card.querySelector(".rcard-glyph")?.getAttribute("data-icon")).toBe("resource-table");
+    // The glyph says it is a table, so the band needs no word; who added it shows in Selected.
+    expect(card.querySelector(".rcard-band .rcard-glyph")?.getAttribute("data-icon")).toBe("resource-table");
     expect(card.querySelector(".card-title")?.textContent).toBe("orders");
-    expect(card.querySelector(".agent-mark")?.textContent).toBe("Claude");
-    const cells = [...(card.querySelector(".rcard-columns")?.children ?? [])].map((cell) => cell.textContent);
-    expect(cells.slice(0, 12)).toEqual(["id", "string", "PK", "status", "string", "", "note?", "string", "", "customerId", "string", "FK → customers.id"]);
+    expect(card.querySelector(".rcard-kind, .agent-mark")).toBeNull();
+    expect(rows(card).slice(0, 4)).toEqual([
+      ["PK", "id", "string"],
+      ["", "status", "string"],
+      ["", "note?", "string"],
+      ["FK", "customerId", "string"],
+    ]);
     // Three own fields and eleven inherited: twelve listed, two behind "N more".
     expect(card.querySelectorAll(".rcard-name")).toHaveLength(12);
-    expect(card.querySelector(".rcard-name[title='From OrderDraft']")?.textContent).toBe("customerId");
+    expect(card.querySelector(".rcard-row[title='FK → customers.id · From OrderDraft'] .rcard-name")?.textContent).toBe("customerId");
     fireEvent.click(within(card).getByRole("button", { name: "2 more" }));
     expect(card.querySelectorAll(".rcard-name")).toHaveLength(14);
   });
 
-  it("draw a table that lists its own columns as written, and other kinds as their glyph, word, name, and description", async () => {
+  it("draw a table that lists its own columns as written, and other kinds as their glyph tile, word, name, and description", async () => {
     open({
       resources: [
         { id: "items", kind: "table", name: "order_items", columns: [{ name: "sku", type: "text", key: "unique" }, { name: "qty", type: "int", optional: true }], anchors: [], at: [0, 600], author: "person:maya" },
@@ -214,12 +221,17 @@ describe("resource cards", () => {
     });
     const { container } = renderBoard();
     const items = await waitFor(() => present(resourceCard(container, "items")));
-    expect([...(items.querySelector(".rcard-columns")?.children ?? [])].map((cell) => cell.textContent)).toEqual(["sku", "text", "unique", "qty?", "int", ""]);
-    expect(items.querySelector(".agent-mark")).toBeNull();
+    expect(rows(items)).toEqual([
+      ["UQ", "sku", "text"],
+      ["", "qty?", "int"],
+    ]);
     const emails = present(resourceCard(container, "emails"));
-    expect(emails.querySelector(".rcard-glyph")?.getAttribute("data-icon")).toBe("resource-queue");
+    expect(emails.querySelector(".rcard-tile .rcard-glyph")?.getAttribute("data-icon")).toBe("resource-queue");
+    expect(emails.querySelector(".rcard-kind")?.textContent).toBe("queue");
     expect(emails.querySelector(".rcard-columns")).toBeNull();
-    // Its header carries the agent's mark; its description, like every card's, none.
+    // A queue draws its lane of messages; no agent mark, on the card or its description.
+    expect(emails.querySelector(".rcard-lane")).not.toBeNull();
+    expect(emails.querySelector(".agent-mark")).toBeNull();
     expect(emails.querySelector(".card-description")?.textContent).toBe("Confirmation emails, sent in turn.");
   });
 
@@ -275,7 +287,7 @@ describe("a card's review banner", () => {
 });
 
 describe("connections", () => {
-  it("draw each kind's line in the authored style, with a chip saying its kind and what travels, and the agent mark", async () => {
+  it("draw each kind's line in its pattern, with a chip saying its kind and what it touches, and no agent mark", async () => {
     open({
       resources: [table("orders", ORDER, [0, 1200]), table("customers", CUSTOMER, [2400, 1200])],
       links: [
@@ -288,20 +300,21 @@ describe("connections", () => {
     // The carried type's name comes from its definition.
     const chip = await waitFor(() => {
       const found = present(chipOf(container, "enqueue"));
-      expect(found.getAttribute("aria-label")).toBe("Connection queue · orders · OrderJob · place-order job");
+      expect(found.getAttribute("aria-label")).toBe("Connection queue orders · OrderJob · place-order job");
       return found;
     });
-    expect(chip.querySelector(".agent-mark")?.textContent).toBe("Claude");
+    expect(chip.textContent).toBe("queueorders");
+    expect(chip.querySelector(".agent-mark")).toBeNull();
     expect(container.querySelector('.board-connection[data-link="enqueue"]')?.classList.contains("kind-queue")).toBe(true);
     expect(container.querySelector('.board-connection[data-link="enqueue"] .connection-head')).not.toBeNull();
-    // Writes: the chip names the table; a relationship has crow's-foot ends and no head, and joins columns.
-    expect(await waitFor(() => present(chipOf(container, "writes")?.getAttribute("aria-label")))).toBe("Connection writes · orders");
+    // Writes: the chip names the table; a relationship has crow's-foot ends, no head, and no chip, and joins columns.
+    expect(await waitFor(() => present(chipOf(container, "writes")?.getAttribute("aria-label")))).toBe("Connection writes orders");
     // A relationship is drawn once its tables' columns (their types' fields) are there to join.
     const relates = await waitFor(() => present(container.querySelector('.board-connection[data-link="owner"]')));
     expect(relates.classList.contains("kind-relates")).toBe(true);
     expect(relates.querySelector(".connection-foot")).not.toBeNull();
     expect(relates.querySelector(".connection-head")).toBeNull();
-    expect(chipOf(container, "owner")?.getAttribute("aria-label")).toBe("Connection N : 1");
+    expect(chipOf(container, "owner")).toBeNull();
     expect(resourceCard(container, "orders")?.querySelector('[data-handleid="col-out-right:customerId"]')).not.toBeNull();
     expect(resourceCard(container, "customers")?.querySelector('[data-handleid="col-in-left:id"]')).not.toBeNull();
   });
@@ -351,16 +364,27 @@ describe("connections", () => {
     expect(container.querySelector(`[data-card-id="create-order"] [data-handleid="${port}"]`)).toBeNull();
   });
 
-  it("are selected from the chip, its carried type's name included", async () => {
-    open({ links: [queue] });
+  it("are selected from the chip, and selected or hovered show their card: the carried type's name and the label included", async () => {
+    open({ links: [{ ...queue, description: { text: "One job per order.", author: "agent:claude", signature: "" } }] });
     const { container } = renderBoard();
-    const chip = await waitFor(() => {
-      const found = present(chipOf(container, "enqueue"));
-      expect(found.textContent).toContain("OrderJob");
-      return found;
-    });
+    const chip = await waitFor(() => present(chipOf(container, "enqueue")));
     fireEvent.click(chip);
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "link", linkId: "enqueue" });
+    const card = await waitFor(() => {
+      const found = present(container.querySelector<HTMLElement>('.connection-card[data-link="enqueue"]'));
+      expect(found.querySelector(".connection-card-title")?.textContent).toBe("queueorders· OrderJob· place-order job");
+      return found;
+    });
+    expect(card.querySelector(".connection-card-description")?.textContent).toBe("One job per order.");
+    expect(container.querySelector('.board-connection[data-link="enqueue"]')?.classList.contains("open")).toBe(true);
+    act(() => {
+      store.select(PAGE, { kind: "none" });
+    });
+    await waitFor(() => {
+      expect(container.querySelector('.connection-card[data-link="enqueue"]')).toBeNull();
+    });
+    fireEvent.mouseEnter(present(container.querySelector('.board-connection[data-link="enqueue"]')));
+    expect(await waitFor(() => present(container.querySelector('.connection-card[data-link="enqueue"]')))).not.toBeNull();
   });
 
   it("show a review dot on the chip while something about them needs review", async () => {

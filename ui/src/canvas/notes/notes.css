@@ -1,32 +1,36 @@
 /*
- * Notes are authored text on the page: the authored color on its tint, an authored edge,
- * and who wrote it underneath. Sizes follow `noteSize` (sizing.ts): 140–260px wide, 8px by 10px of
- * padding, 18px lines, and a 16px byline 4px under the text.
+ * A note is a sticky on the page: pale yellow, no outline, a hairline shadow. It reads as a comment
+ * on the code, never as code, with who wrote it underneath. Sizes follow `noteSize` (sizing.ts):
+ * 140–260px wide, 12px of padding above, 10px below and 14px each side, 20px lines, and a 16px byline
+ * 8px under the text.
  */
 
 .board-note {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   width: max-content;
   min-width: 140px;
   max-width: 260px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-authored-line);
-  border-radius: var(--radius-control);
-  background: var(--color-authored-tint);
-  color: var(--color-authored);
+  padding: 12px 14px 10px;
+  border-radius: var(--radius-chip);
+  background: var(--color-note);
+  box-shadow: var(--shadow-note);
+  color: var(--color-note-ink);
   font-family: var(--font-ui);
   cursor: grab;
 }
 
+/* Selected: the accent edge and ring any card gets, drawn outside the sticky so nothing moves. */
 .board-note.selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-ring);
+  box-shadow:
+    var(--shadow-note),
+    0 0 0 1.5px var(--color-accent),
+    0 0 0 4.5px var(--color-accent-ring);
 }
 
 .note-text {
-  font: 12px/18px var(--font-ui);
+  font: 13px/20px var(--font-ui);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -38,17 +42,11 @@
   outline: none;
   resize: none;
   background: transparent;
-  font: 12px/18px var(--font-ui);
+  font: 13px/20px var(--font-ui);
   color: inherit;
 }
 
 .note-byline {
-  font: var(--text-11) / var(--leading-16) var(--font-ui);
-  color: var(--color-authored);
-}
-
-/* A note an agent changed while it is still working: the soft authored outline cards get. */
-.react-flow__node.agent-working > .board-note {
-  outline: 2px solid var(--color-authored-line);
-  outline-offset: 3px;
+  font: 500 var(--text-11) / var(--leading-16) var(--font-ui);
+  color: var(--color-note-byline);
 }

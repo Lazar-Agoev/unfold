@@ -1,25 +1,27 @@
 /*
- * Connections are authored: every one is in the authored color, and its kind shows in
- * its line's pattern and its chip's word, never in color alone. Selected, it is the accent at 1.75px.
- * The chip's sizes follow `chipWidth` (ConnectionEdge.tsx): 20px high, 8px of padding, an 11px text.
+ * Connections are slate lines (the contour gray, 1.25px) whose kind shows in their pattern and their
+ * chip's word, never in color alone; a relationship is a blue ERD line, as tables are. Hovered or
+ * selected, a line is the accent at 1.75px and its card floats where its chip was. The chip is
+ * borderless on the canvas's ground: 20px high, 6px of padding, the kind's word then what it touches
+ * 5px apart (`chipWidth` in ConnectionEdge.tsx follows these sizes).
  */
 
-.board-connection { color: var(--color-authored); cursor: pointer; }
-.board-connection.selected { color: var(--color-accent); }
+.board-connection { color: var(--color-contour); cursor: pointer; }
+.board-connection.kind-relates { color: var(--color-resource-dash); }
+.board-connection.open { color: var(--color-accent); }
 
 .connection-line {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 1.25;
 }
 
-.board-connection.selected .connection-line { stroke-width: 1.75; }
+.board-connection.open .connection-line { stroke-width: 1.75; }
 
-/* Each kind's line: solid (HTTP, reads, writes), long dashes (a queue), short dashes (a runtime call),
-   thin (a relationship), dashed (other). */
+/* Each kind's line: solid (HTTP, reads, writes, a relationship), long dashes (a queue), short dashes
+   (a runtime call), dashed (other). */
 .kind-queue .connection-line { stroke-dasharray: 10 5; }
 .kind-calls .connection-line { stroke-dasharray: 4 3; }
-.kind-relates .connection-line { stroke-width: 1; }
 .kind-other .connection-line { stroke-dasharray: 5 4; }
 
 .connection-head { fill: currentColor; }
@@ -36,46 +38,95 @@
   stroke-width: 16;
 }
 
-/* While an agent that changed it is working: a soft authored band under the line. */
-.board-connection.working .connection-hit { stroke: var(--color-authored-tint); stroke-width: 10; }
-
 /* The chip: placed by the label layout, over the lines, never over a card. */
 .connection-chip {
   position: absolute;
   display: flex;
   align-items: center;
+  gap: 5px;
   height: 20px;
-  padding: 0 8px;
-  border: 1px solid var(--color-authored-line);
-  border-radius: var(--radius-chip);
-  background: var(--color-surface);
-  font: 11px/16px var(--font-ui);
+  padding: 0 6px;
+  background: var(--color-canvas);
+  font: var(--text-11) / var(--leading-16) var(--font-ui);
   white-space: nowrap;
-  color: var(--color-authored);
+  color: var(--color-prose);
   pointer-events: all;
   cursor: pointer;
+  transition: opacity var(--duration) ease-out;
 }
 
-.connection-chip > span { white-space: pre; }
+.connection-chip > span,
+.connection-card-title > span { white-space: pre; }
 .chip-word { font-weight: 600; }
-.chip-code { font-family: var(--font-code); }
-.chip-sep { color: var(--color-muted); }
+.chip-code { font-family: var(--font-code); color: var(--color-muted); }
 
-.connection-chip .agent-mark { margin-left: 4px; }
+/* Below 60% the chips fade out; hovering a line still shows its card, and a chip being written stays. */
+.board-canvas[data-far] .connection-chip:not(:hover, :focus-visible, :has(.writing-chip)) {
+  opacity: 0;
+  pointer-events: none;
+}
 
 .chip-review {
   flex-shrink: 0;
   width: 6px;
   height: 6px;
-  margin-left: 6px;
+  margin-left: 1px;
   border-radius: var(--radius-full);
   background: var(--color-review);
 }
 
 .connection-chip:focus-visible { outline: none; box-shadow: 0 0 0 1.5px var(--color-focus-ring); }
 
-.connection-chip.selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-ring);
+/*
+ * Hovered or selected: a floating card where the chip was, its first line level with the chip's (all it
+ * says: the word, what it touches, then any type and label), its description under it. It keeps its size
+ * on screen when the page is zoomed out (`--hover-scale`).
+ */
+.connection-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: 300px;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  font-family: var(--font-ui);
+  transform-origin: 0 0;
+  pointer-events: all;
+  cursor: pointer;
+  animation: hover-layer-in var(--duration-fast) ease-out;
 }
 
+.connection-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 5px;
+  font: var(--text-11) / var(--leading-16) var(--font-ui);
+  color: var(--color-muted);
+}
+
+.connection-card-title .chip-word { color: var(--color-text); }
+
+.connection-card-description {
+  font: var(--text-12) / 18px var(--font-ui);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+/* An agent writing it: the ring alone, just above the chip's (or the card's) end, its size kept on screen. */
+.writing-chip.connection-writing {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: auto;
+  transform: scale(var(--screen-scale, 1));
+  transform-origin: 100% 100%;
+}
+
+/* In the card, which already keeps its size on screen when zoomed out, the ring undoes the rest. */
+.connection-card .writing-chip.connection-writing { transform: scale(calc(var(--screen-scale, 1) / var(--hover-scale, 1))); }

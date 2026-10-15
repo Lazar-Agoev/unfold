@@ -2,15 +2,15 @@
  * An agent's session (docs/ipc.md#agents), end to end on a copy of
  * `ts-orders`: an MCP client connects to the app's server as Claude Code, reads the guide, the
  * entrances, and the compiled tree; traces "Place an order" onto a new board, which the person opens
- * while "Claude is working…" and what it changed is outlined; shapes createOrder in one call (a name, a
+ * while "Claude is working…", a chip with its name over what it writes; shapes createOrder in one call (a name, a
  * combined step, a call opened in place), which Edit › Undo takes off in one step and Redo puts back;
  * frames the service, adds the customer, connects it over HTTP citing the entrance, and adds a note;
- * checks and finishes, which clears the marks and shows its summary; and, because the person asks,
+ * checks and finishes, which settles the chips and shows its summary; and, because the person asks,
  * declares an entrance in `unfold.toml`, one line.
  */
 
 import { join } from "node:path";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { AGENT_ADDRESS, AgentClient, revisionOf } from "../src/agents";
 import { boardView, card, cards, expectCardsLoaded, showBoard } from "../src/board";
 import { savedPage } from "../src/explain";
@@ -46,10 +46,9 @@ function shapedLines(text: string): string[] {
     .map((line) => line.replace(/\s+key=.*$/, ""));
 }
 
-/** Whether the canvas outlines a card, resource card, frame, or note as what a working agent changed. */
-async function expectWorkingOutline(item: Locator, outlined = true): Promise<void> {
-  const node = item.locator("xpath=ancestor::div[contains(@class, 'react-flow__node')][1]");
-  await (outlined ? expect(node).toHaveClass(/\bagent-working\b/) : expect(node).not.toHaveClass(/\bagent-working\b/));
+/** The chips over what a working agent writes (`canvas/writing.tsx`): its name, or a ring alone on a connection. */
+function writingChips(page: Page): Locator {
+  return boardView(page).getByRole("status", { name: "Claude is writing", exact: true });
 }
 
 test("an agent traces, shapes, composes, and finishes a page while the person watches", async ({ launch, sandbox }) => {
@@ -57,7 +56,6 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
   const folder = folders[0] ?? "";
   const agent = await AgentClient.connect(AGENT_ADDRESS);
   const working = boardView(page).locator(".board-topbar .board-working");
-  const entranceCard = card(page, "Server · Place an order");
   const createOrder = card(page, "createOrder");
 
   let entrance = "";
@@ -108,9 +106,8 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
     await expect(cards(page)).toHaveCount(4);
     await expectCardsLoaded(page);
     await expect(working).toHaveText("Claude is working…");
-    for (const name of ["Server · Place an order", "requireUser", "validateBody", "createOrder"]) {
-      await expectWorkingOutline(card(page, name));
-    }
+    // Tracing wrote no words: nothing on the canvas marks the cards it added.
+    await expect(writingChips(page)).toHaveCount(0);
   });
 
   await test.step("shape_card names a branch, combines two steps, and opens a call in place, as one undo step", async () => {
@@ -154,7 +151,10 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
     await expect(createOrder.locator(".flow-inset-name")).toHaveText("place");
     await expect(createOrder.locator(".flow-call-name", { hasText: /^this\.repo\.insert$/ })).toBeVisible();
     await expect(createOrder.locator(".card-description")).toContainText(DESCRIPTION);
-    await expectWorkingOutline(createOrder);
+    // The card it wrote shows a chip with its name; only the field it wrote, the description, animates.
+    await expect(writingChips(page)).toHaveCount(1);
+    await expect(writingChips(page)).toHaveText("Claude");
+    await expect(createOrder.locator(".card-description .writing-word").first()).toBeAttached();
 
     const saved = savedPage(boardFile);
     expect(saved.names?.map(({ text, author }) => ({ text, author }))).toEqual([{ text: BRANCH, author: "agent:claude" }]);
@@ -197,7 +197,6 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
   const customer = boardView(page).getByRole("article", { name: "actor Customer", exact: true });
   const frame = boardView(page).getByRole("region", { name: `Frame ${FRAME}`, exact: true });
   const note = boardView(page).getByRole("complementary", { name: `Note: ${NOTE}`, exact: true });
-  const http = boardView(page).locator(".board-connection.kind-http");
   await test.step("the agent frames the service, adds the customer, connects it over HTTP citing the entrance, and adds a note", async () => {
     const framed = await agent.ok("frame_cards", {
       board: boardId,
@@ -237,11 +236,11 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
     await expect(frame.locator(".frame-description")).toHaveText(FRAME_ABOUT);
     await expect(customer).toBeVisible();
     await expect(note).toBeVisible();
-    await expect(boardView(page).getByRole("button", { name: "Connection HTTP · POST /orders", exact: true })).toBeVisible();
-    for (const item of [customer, frame, note, entranceCard]) {
-      await expectWorkingOutline(item);
-    }
-    await expect(http).toHaveClass(/\bworking\b/);
+    const chip = boardView(page).getByRole("button", { name: "Connection HTTP POST /orders", exact: true });
+    await expect(chip).toBeVisible();
+    // A chip over createOrder, the customer, the frame, and the note; the connection's ring above its chip.
+    await expect(writingChips(page)).toHaveCount(5);
+    await expect(chip.getByRole("status", { name: "Claude is writing", exact: true })).toBeVisible();
     await expect(working).toHaveText("Claude is working…");
 
     const saved = savedPage(boardFile);
@@ -260,9 +259,9 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
     await expect(finishedToast.locator(".toast-title")).toHaveText("Claude finished");
     await expect(finishedToast.locator(".toast-body")).toHaveText(SUMMARY);
     await expect(working).toHaveCount(0);
-    await expect(boardView(page).locator(".react-flow__node.agent-working")).toHaveCount(0);
-    await expect(http).not.toHaveClass(/\bworking\b/);
-    await expectWorkingOutline(createOrder, false);
+    // Finished: the words sharpen and the chips fade out.
+    await expect(writingChips(page)).toHaveCount(0);
+    await expect(boardView(page).locator(".writing-word")).toHaveCount(0);
   });
 
   await test.step("asked to, the agent declares an entrance, and unfold.toml gains exactly that line", async () => {

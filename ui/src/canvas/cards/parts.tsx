@@ -13,7 +13,9 @@ import { useAuthor } from "../../state/author";
 import { describeCard, editPage, setCardView, type PageTarget } from "../../state/boards";
 import type { HeaderMark } from "../cardText";
 import { LINK_SIDES } from "../linkSides";
+import type { ItemWriting } from "../../state/boards/agent/working";
 import type { HeaderText } from "../sizing";
+import { WritingText, useItemWriting } from "../writing";
 
 /** The handle every arrow into a card attaches to: its header's left edge. */
 export const TARGET_HANDLE = "in";
@@ -89,13 +91,14 @@ export function titleLabel(text: Pick<HeaderText, "name" | "code">): string {
 /**
  * A definition's title in its card's header: its code name, in the code font; or a title the page gave
  * it, in words (the UI font, so it never reads as code), then the code name, smaller and muted. The
- * title gives way to the code name when the header is too narrow for both.
+ * title gives way to the code name when the header is too narrow for both. While an agent writes the
+ * title, its words arrive (`writing`, the card's mark).
  */
-export function CardTitle({ text }: { readonly text: Pick<HeaderText, "name" | "code"> }) {
+export function CardTitle({ text, writing }: { readonly text: Pick<HeaderText, "name" | "code">; readonly writing?: ItemWriting | undefined }) {
   return (
     <>
       <h3 className={`card-title${text.code !== undefined ? " authored" : ""}`} title={titleLabel(text)}>
-        {text.name}
+        {text.code !== undefined ? <WritingText text={text.name} writing={writing} field="title" /> : text.name}
       </h3>
       {text.code !== undefined ? (
         <span className="card-code-name" title={text.code}>
@@ -117,7 +120,7 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 }
 
 /**
- * The card's description, in the authored color and without a mark, whoever wrote it (Selected says who):
+ * The card's description, in prose ink and without a mark, whoever wrote it (Selected says who):
  * all of it, wrapped (`wrap`, as a definition's, an entrance's, or a resource card's), or one line with
  * **more** (a type card's). Double-click edits it in place (Enter saves, Shift+Enter breaks the line,
  * Escape keeps the old text), which makes it yours; clearing it removes it. `onSave` writes it for an
@@ -139,6 +142,7 @@ export function DescriptionStrip({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const author = useAuthor();
+  const writing = useItemWriting(target, cardId);
   if (!description) {
     return null;
   }
@@ -190,7 +194,9 @@ export function DescriptionStrip({
         setEditing(true);
       }}
     >
-      <p title={shown ? undefined : description.text}>{description.text}</p>
+      <p title={shown ? undefined : description.text}>
+        <WritingText text={description.text} writing={writing} field="description" />
+      </p>
       {wrap ? null : (
         <button
           type="button"

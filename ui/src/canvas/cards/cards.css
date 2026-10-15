@@ -38,13 +38,6 @@
   right: 10px;
 }
 
-/* A card an agent changed while it is still working: a soft authored outline. */
-.react-flow__node.agent-working > .board-card,
-.react-flow__node.agent-working > .start-node > .board-card {
-  outline: 2px solid var(--color-authored-line);
-  outline-offset: 3px;
-}
-
 .card-header {
   position: relative;
   display: flex;
@@ -89,16 +82,27 @@
   color: var(--color-muted);
 }
 
+/*
+ * As the page zooms out a card's name grows a little on screen (zoom.ts `--name-grow`): 13px at 100%,
+ * 15px at 50%; further out it shrinks with the card. Each card caps it so it always fits its header
+ * (`--name-fit`, sizing.ts `nameFit`), and the `ƒ` grows with it, less. Their lines stay 16px, so the
+ * header keeps its height, and the file gives way to the name, gone by 60%.
+ */
+.board-card .card-glyph { font-size: calc(13px * (0.4 + 0.6 * min(var(--name-grow, 1), var(--name-fit, 1)))); }
+.board-card .card-location { opacity: clamp(0, calc((var(--zoom, 1) - 0.6) / 0.15), 1); }
+
 .board-card.selected .card-glyph { color: var(--color-accent-text); }
 
 .card-title {
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
+  overflow: clip visible;
   font: 600 13px/16px var(--font-code);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+.board-card .card-title { font-size: calc(13px * min(var(--name-grow, 1), var(--name-fit, 1))); }
 
 /*
  * A title the page gave the definition is words, not code; its code name follows, smaller and muted.
@@ -165,16 +169,16 @@
 .card-review-text { flex: 1; min-width: 0; }
 .card-review .card-review-action { font-weight: 600; color: var(--color-warn); }
 
-/* The description strip. */
+/* The description strip: prose ink at the size a person reads, whoever wrote it (Selected says who). */
 .card-description {
   display: flex;
   flex-shrink: 0;
   align-items: baseline;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 10px 12px 12px;
   border-bottom: 1px solid var(--color-card-rule-soft);
-  font: 12px/18px var(--font-ui);
-  color: var(--color-authored);
+  font: 13px/20px var(--font-ui);
+  color: var(--color-prose);
   cursor: text;
 }
 
@@ -191,7 +195,7 @@
 .card-more {
   flex-shrink: 0;
   font: 12px/16px var(--font-ui);
-  color: var(--color-authored);
+  color: var(--color-accent-text);
 }
 
 .card-description-input {

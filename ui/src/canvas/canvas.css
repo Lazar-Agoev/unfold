@@ -3,6 +3,13 @@
 .board-canvas {
   --xy-background-color: var(--color-canvas);
   --xy-background-pattern-color: var(--color-dotgrid);
+  /* The camera's zoom and what it sets (zoom.ts), at 100% until it does. */
+  --zoom: 1;
+  --name-grow: 1;
+  --box-title-size: 13px;
+  --zone-title-size: 20px;
+  --screen-scale: 1;
+  --hover-scale: 1;
 }
 
 /* While a link is being drawn, what it can end at takes a crosshair. */

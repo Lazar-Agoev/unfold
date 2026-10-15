@@ -25,7 +25,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { flowBlocks } from "@unfold/desktop/drawing";
 import { useUpdateNodeInternals } from "@xyflow/react";
-import { useLayoutEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { CodeButton } from "../../code/CodeButton";
 import { markedLine, useCodeView } from "../../code/view";
 import { viewCode } from "../../code/open";
@@ -42,7 +42,8 @@ import { heldBlocks, isMissing } from "../../state/cards";
 import { openGap, useCodeHover, useCodePanel } from "../../state/codePanel";
 import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";
-import { compactCardWidth, expandedCardWidth, headerText } from "../sizing";
+import { compactCardWidth, expandedCardWidth, headerText, nameFit } from "../sizing";
+import { useItemWriting } from "../writing";
 import { blockMenuEntries, type CombineRequest, type ProposeRequest } from "./blockMenu";
 import { useCardMenu } from "./cardMenu";
 import { CardHandles, CardMark, CardNote, CardTitle, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, titleLabel } from "./parts";
@@ -280,6 +281,8 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
     }
     return geometry ? expandedCardWidth(flow.header, geometry, measure) : compactCardWidth(text, measure);
   }, [flow, text, geometry, measure]);
+  const fit = useMemo(() => (text && width !== undefined ? nameFit(text, width, measure) : undefined), [text, width, measure]);
+  const writing = useItemWriting(target, card.id);
   const placement = useMemo(() => (geometry ? placePorts(geometry, ports) : { placed: new Map<string, number>(), header: [...ports] }), [geometry, ports]);
   const lit = useHoverHeld(flow, expanded);
 
@@ -318,7 +321,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
       data-card-id={card.id}
       data-key={key}
       data-loading={query.isPending ? "true" : undefined}
-      style={width !== undefined ? { width } : undefined}
+      style={width !== undefined ? ({ width, "--name-fit": fit } as CSSProperties) : undefined}
       aria-label={name}
       onClick={() => {
         clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
@@ -329,7 +332,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
       <header className="card-header card-drag">
         <ExpandToggle target={target} cardId={card.id} expanded={expanded} name={name} />
         {text ? <CardMark mark={text.mark} /> : null}
-        <CardTitle text={text ?? { name: key }} />
+        <CardTitle text={text ?? { name: key }} writing={writing} />
         {text?.async === true ? <span className="card-tag">async</span> : null}
         {text ? (
           <span className="card-location" title={flow ? `${flow.header.path}:${flow.header.line}` : undefined}>

@@ -172,9 +172,9 @@ textarea.explain-input {
 }
 
 .resource-kind[aria-pressed="true"] {
-  background: var(--color-authored-tint);
-  box-shadow: inset 0 0 0 1px var(--color-authored-line);
-  color: var(--color-authored);
+  background: var(--color-resource-tint);
+  box-shadow: inset 0 0 0 1px var(--color-resource-line);
+  color: var(--color-resource);
 }
 
 /* A table's columns: name, type, and key mark, then + Column and From a type…. */
@@ -232,7 +232,7 @@ textarea.explain-input {
   padding: 0 2px;
   border: none;
   background: transparent;
-  color: var(--color-authored);
+  color: var(--color-resource);
   font-family: var(--font-code);
   font-size: var(--text-11);
   text-align: right;

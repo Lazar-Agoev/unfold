@@ -10,7 +10,7 @@ import * as store from "../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, HEALTHY, page, projectRow, workspaceView } from "../test/workspace";
 import canvasCss from "./canvas.css?raw";
-import { markWorking, resetWorking } from "../state/boards/agent/working";
+import { finishWorking, markWorking, resetWorking } from "../state/boards/agent/working";
 import { BoardView } from "../board/BoardView";
 
 const createOrder = fixture("card", "card_create_order");
@@ -118,7 +118,7 @@ describe("cards on the board view", () => {
     expect(card()).toBe(before);
   });
 
-  it("shows an agent at work: the top bar says so, and the cards it changed are outlined; a card's description carries no mark", async () => {
+  it("shows an agent at work: the top bar says so, a chip with its name floats over what it writes, and the words arrive", async () => {
     const description = { text: "Takes an order.", author: "agent:claude", signature: "" };
     store.adoptBoardState(
       state([
@@ -132,13 +132,32 @@ describe("cards on the board view", () => {
     expect(screen.queryByText(/is working…/)).toBeNull();
 
     act(() => {
-      markWorking(PAGE, { author: "agent:claude", name: "Claude" }, ["create-order"]);
+      markWorking(PAGE, { author: "agent:claude", name: "Claude" }, [
+        { id: "create-order", fields: ["description"] },
+        { id: "gone", fields: [] },
+      ]);
     });
     expect(screen.getByText("Claude is working…")).not.toBeNull();
-    await waitFor(() => {
-      expect(container.querySelector('.react-flow__node.agent-working > .board-card[data-card-id="create-order"]')).not.toBeNull();
+    // One chip, over the card it wrote; nothing outlines either card.
+    const chip = await screen.findByRole("status", { name: "Claude is writing" });
+    expect(chip.textContent).toBe("Claude");
+    expect(container.querySelectorAll(".writing-chip")).toHaveLength(1);
+    expect(container.querySelector(".agent-working")).toBeNull();
+    // Only the field it writes animates: its words, the last ones still blurred.
+    const words = [...container.querySelectorAll('[data-card-id="create-order"] .card-description .writing-word')];
+    expect(words.map((word) => word.textContent)).toEqual(["Takes", "an", "order."]);
+    expect(container.querySelector('[data-card-id="create-order"] .card-title .writing-word')).toBeNull();
+
+    // When it finishes, the words sharpen and the chip fades out, then both are plain again.
+    act(() => {
+      finishWorking(PAGE.board, "agent:claude");
     });
-    expect(container.querySelector('.react-flow__node.agent-working [data-card-id="gone"]')).toBeNull();
+    expect(screen.queryByText(/is working…/)).toBeNull();
+    expect(container.querySelector(".writing-chip")?.classList.contains("settling")).toBe(true);
+    expect(container.querySelectorAll('.card-description .writing-word[class*="tier"], .card-description .writing-word.ahead')).toHaveLength(0);
+    await waitFor(() => {
+      expect(container.querySelector(".writing-chip, .writing-word")).toBeNull();
+    });
   });
 
   it("shows a card whose key is gone as a missing card, and says so once: in its banner", async () => {

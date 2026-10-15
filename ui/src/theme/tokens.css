@@ -57,10 +57,33 @@
   --color-danger: #dc2626;
   --color-on-danger: #ffffff;
 
-  /* Authored text (descriptions, labels): magenta */
-  --color-authored: #a8346f;
-  --color-authored-tint: #fbeff5;
-  --color-authored-line: #e7b1cc;
+  /* Words on a card a person or an agent wrote (a description): ink, never a color of their own */
+  --color-prose: #3f4451;
+
+  /* Resource cards (what the code talks to outside it): blue */
+  --color-resource: #2563eb;
+  --color-resource-line: #93c5fd;
+  --color-resource-dash: #60a5fa;
+  --color-resource-tint: #eff6ff;
+  --color-resource-rule: #bfdbfe;
+  --color-resource-slot: #dbeafe;
+  --color-resource-lane: #f8fbff;
+  --color-resource-row: #eef2f7;
+
+  /* Notes: a yellow sticky */
+  --color-note: #fef9c3;
+  --color-note-ink: #422006;
+  --color-note-byline: #a16207;
+  --color-note-writing: #713f12;
+  --shadow-note: 0 1px 2px rgb(113 63 18 / 0.1);
+
+  /* Frames: a box's hairline, a zone's ground */
+  --color-frame-line: #d5d8de;
+  --color-zone: #eef0f3;
+
+  /* The chip an agent's writing shows */
+  --color-writing-line: #e0e3f6;
+  --shadow-writing: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px rgb(88 98 192 / 0.12);
 
   /* Cards and arrows */
   --color-step: #f4f5f8;

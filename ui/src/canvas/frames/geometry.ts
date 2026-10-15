@@ -8,21 +8,18 @@
  * DOM.
  */
 
-import { agentName } from "../../code/text";
 import type { Card, Connection, Frame, Note, Resource, View } from "../../ipc/generated";
 import { boundsOf, fallbackSize, reflow, type Point, type Rect, type Size } from "../layout";
 import { measureText } from "../measure";
 import { tableColumns } from "../resources/columns";
-import { RESOURCE_WORDS } from "../resources/kinds";
 import { frameNodeSize, noteSize, resourceCardSize } from "../sizing";
 
 /** A resource card's size before it is drawn, from what the page says (a table backed by a type lists its columns once drawn). */
 export function estimatedResourceSize(resource: Resource, columns = tableColumns(resource, null)): Size {
   return resourceCardSize(
     {
-      word: RESOURCE_WORDS[resource.kind],
+      kind: resource.kind,
       name: resource.name,
-      agent: agentName(resource.author),
       columns,
       ...(resource.description ? { description: resource.description } : {}),
     },
@@ -59,15 +56,15 @@ interface FramePadding {
   readonly left: number;
 }
 
-/** A box's title bar (frames.css) and the gap under it. */
-const BOX_TITLE = 32;
-const BOX_GAP = 12;
+/** A box's title in its top-left corner (frames.css: 12px down, an 18px line) and the room under it. */
+const BOX_TITLE = 12 + 18;
+const BOX_GAP = 14;
 const BOX_SIDE = 16;
-/** A zone's title band: its padding, the large title's line, the description's line, and the gap under it. */
-const ZONE_PAD = 16;
-const ZONE_TITLE = 24;
-const ZONE_DESCRIPTION = 20;
-const ZONE_SIDE = 24;
+/** A zone's title band: 18px down, the large title's 26px line, the description's line 2px under it, and the gap under them. */
+const ZONE_PAD = 18;
+const ZONE_TITLE = 26;
+const ZONE_DESCRIPTION = 2 + 18;
+const ZONE_SIDE = 20;
 
 /** The room a frame leaves around its members. */
 export function framePadding(frame: Pick<Frame, "look" | "description">): FramePadding {

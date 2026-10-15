@@ -47,6 +47,7 @@ import { prepareAddResources } from "./resources";
 import { applyShapeCard } from "./shape";
 import { applyDescribe } from "./text";
 import { finishWorking, markWorking } from "./working";
+import { writtenItems } from "./written";
 
 /** The board a request names, as this window's store keys it. */
 function refOf(request: { readonly board: { readonly project: string; readonly id: string } }): BoardRef {
@@ -82,7 +83,7 @@ async function prepare(op: AgentOp, ctx: OpContext): Promise<ApplyOp> {
 }
 
 /**
- * The items an edit changed, as its working marks outline them: cards, combined steps, connections,
+ * The items an edit changed, as its working marks hold them: cards, combined steps, connections,
  * frames, resource cards, notes, and proposed steps.
  */
 function changedItems(items: readonly AgentItemResult[]): string[] {
@@ -175,7 +176,7 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
     }
     const changed = changedItems(outcome.value.items);
     if (changed.length > 0) {
-      markWorking({ board: ref, page: request.page }, request.agent, changed);
+      markWorking({ board: ref, page: request.page }, request.agent, writtenItems(page, saved, changed));
     }
     const { state } = outcome;
     return {

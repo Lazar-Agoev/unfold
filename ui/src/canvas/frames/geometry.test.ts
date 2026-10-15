@@ -17,10 +17,10 @@ const BOX = framePadding({ look: "box" });
 const ZONE = framePadding({ look: "zone" });
 
 describe("frame boxes", () => {
-  it("leave room for a box's title bar and a zone's title band, more with a description", () => {
+  it("leave room for a box's title in its corner and a zone's title band, more with a description", () => {
     expect(BOX).toEqual({ top: 44, right: 16, bottom: 16, left: 16 });
-    expect(ZONE).toEqual({ top: 56, right: 24, bottom: 24, left: 24 });
-    expect(framePadding({ look: "zone", description: { text: "Everything.", author: "agent:claude", signature: "" } }).top).toBe(76);
+    expect(ZONE).toEqual({ top: 62, right: 20, bottom: 20, left: 20 });
+    expect(framePadding({ look: "zone", description: { text: "Everything.", author: "agent:claude", signature: "" } }).top).toBe(82);
   });
 
   it("are their members' bounds plus padding, nested from the inside out, outermost first", () => {
@@ -119,8 +119,9 @@ describe("sizes before anything is measured", () => {
     const table = fallbackItemSize(page, "orders");
     const queue = fallbackItemSize(page, "queue");
     expect(table.width).toBeGreaterThanOrEqual(240);
-    // Two column rows (20px each) and the grid's padding over the queue's header alone.
-    expect(table.height - queue.height).toBe(18 + 2 * 20);
+    // A table: its border, its 44px band, and two 28px rows; a queue: its border, its header, and its lane.
+    expect(table.height).toBe(2 + 44 + 2 * 28);
+    expect(queue.height).toBe(2 + 12 + 14 + 1 + 20 + 8 + 36);
     expect(fallbackItemSize(page, "n").width).toBeGreaterThanOrEqual(140);
   });
 });

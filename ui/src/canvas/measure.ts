@@ -127,11 +127,27 @@ export const START_NAME_FONT = '600 14px "Inter Variable", system-ui, sans-serif
 export const START_ON_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A type card's kind before its name (`interface`, cards.css `.tcard-kind`). */
 export const TYPE_KIND_FONT = '13px "JetBrains Mono Variable", ui-monospace, monospace';
-/** A description's text (cards.css). */
-export const DESCRIPTION_FONT = '12px "Inter Variable", system-ui, sans-serif';
-/** A collapsed frame's title, and the agent mark's name beside it (frames.css). */
+/** A description's text (cards.css), and a note's (notes.css). */
+export const DESCRIPTION_FONT = '13px "Inter Variable", system-ui, sans-serif';
+/** Smaller prose: an app's or entrance's sentence (cards.css `.start-about`), and a frame's description (frames.css). */
+export const SMALL_PROSE_FONT = '12px "Inter Variable", system-ui, sans-serif';
+/** A collapsed frame's title, and the count of the cards it holds (frames.css). */
 export const FRAME_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
-export const MARK_FONT = '11px "Inter Variable", system-ui, sans-serif';
+export const FRAME_COUNT_FONT = '11px "Inter Variable", system-ui, sans-serif';
+/**
+ * A resource card (resources.css): its kind in small caps, its name (an actor's in the UI font), its
+ * description, and a queue's carried type; a table's name in its band, its description, and a row's
+ * column name and type.
+ */
+export const RESOURCE_KIND_FONT = '600 10px "Inter Variable", system-ui, sans-serif';
+export const RESOURCE_NAME_FONT = '600 14px "JetBrains Mono Variable", ui-monospace, monospace';
+export const ACTOR_NAME_FONT = '600 14px "Inter Variable", system-ui, sans-serif';
+export const RESOURCE_PROSE_FONT = '12.5px "Inter Variable", system-ui, sans-serif';
+export const LANE_TYPE_FONT = '11.5px "JetBrains Mono Variable", ui-monospace, monospace';
+export const TABLE_NAME_FONT = '600 13.5px "JetBrains Mono Variable", ui-monospace, monospace';
+export const TABLE_PROSE_FONT = '12px "Inter Variable", system-ui, sans-serif';
+export const COLUMN_NAME_FONT = '600 12.5px "JetBrains Mono Variable", ui-monospace, monospace';
+export const COLUMN_TYPE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A connection's chip (connections.css): its kind's word, its words, and the code it names. */
 export const CHIP_WORD_FONT = '600 11px "Inter Variable", system-ui, sans-serif';
 export const CHIP_TEXT_FONT = '11px "Inter Variable", system-ui, sans-serif';

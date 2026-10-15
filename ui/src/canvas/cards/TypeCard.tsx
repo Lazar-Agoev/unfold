@@ -18,7 +18,7 @@
 
 import { fieldRows, type FieldRef, type FieldRow } from "@unfold/desktop/drawing";
 import { useUpdateNodeInternals } from "@xyflow/react";
-import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { CodeButton } from "../../code/CodeButton";
 import { viewCode } from "../../code/open";
 import { TypeText } from "../../code/TypeText";
@@ -30,7 +30,8 @@ import { isMissing } from "../../state/cards";
 import { useCodeHover } from "../../state/codePanel";
 import { NODE_PORT, fieldPort } from "../arrows";
 import { useMeasure } from "../measure";
-import { fieldTexts, headerText, listedFields, typeCardWidth } from "../sizing";
+import { fieldTexts, headerText, listedFields, nameFit, typeCardWidth } from "../sizing";
+import { useItemWriting } from "../writing";
 import { useCardMenu } from "./cardMenu";
 import { CardHandles, CardMark, CardNote, CardTitle, DescriptionStrip, ExpandToggle, HeaderPorts, renderPorts, titleLabel } from "./parts";
 import { ReviewBanner } from "./ReviewBanner";
@@ -188,6 +189,8 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
   const expandable = header.kind === "class";
   const text = useMemo(() => headerText(header, expandable), [header, expandable]);
   const width = useMemo(() => typeCardWidth(text, definition ? fieldTexts(definition) : [], measure), [text, definition, measure]);
+  const fit = useMemo(() => nameFit(text, width, measure), [text, width, measure]);
+  const writing = useItemWriting(target, card.id);
   const portSet = useMemo(() => new Set(ports), [ports]);
 
   const portsKey = ports.join("\u0000");
@@ -226,7 +229,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
       data-card-id={card.id}
       data-key={key}
       data-loading={typeQuery.isPending ? "true" : undefined}
-      style={{ width }}
+      style={{ width, "--name-fit": fit } as CSSProperties}
       aria-label={`${text.mark.text} ${titleLabel(text)}`}
       onClick={() => {
         clickItem(target, card.id, { kind: "card", cardId: card.id, key: null });
@@ -237,7 +240,7 @@ export function TypeCard({ target, card, drawn, ports, selected }: TypeCardProps
       <header className="card-header card-drag">
         {expandable ? <ExpandToggle target={target} cardId={card.id} expanded={false} name={titleLabel(text)} /> : null}
         <CardMark mark={text.mark} />
-        <CardTitle text={text} />
+        <CardTitle text={text} writing={writing} />
         <span className="card-location" title={`${header.path}:${header.line}`}>
           {text.location}
         </span>

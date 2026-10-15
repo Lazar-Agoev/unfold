@@ -1,6 +1,6 @@
 /**
  * The marks at the ends of connections: a filled arrowhead where the data goes, and a
- * relationship's crow's-foot ends (a bar for one, a crow's foot for many). Pure SVG path data.
+ * relationship's ERD ends (two bars for one, a crow's foot for many). Pure SVG path data.
  */
 
 import { Position } from "@xyflow/react";
@@ -23,28 +23,33 @@ export function arrowHead(x: number, y: number, [dx, dy]: readonly [number, numb
   return `M${bx + nx} ${by + ny} L${x} ${y} L${bx - nx} ${by - ny} Z`;
 }
 
-/** How far a crow's foot reaches out of its card, and how wide it opens. */
+/** How far a crow's foot reaches out of its card, and how wide it opens at the card. */
 const FOOT_LENGTH = 10;
-const FOOT_HALF = 6;
-/** How far a "one" bar stands out of its card. */
-const BAR_OUT = 7;
+const FOOT_HALF = 7;
+/** A "one" end's two bars: how far out each stands, and how long they are each side of the line. */
+const ONE_BARS = [8, 13] as const;
+const BAR_HALF = 6;
 
 /**
- * The mark of one end of a relationship at (x, y), where the line meets a card on `side`: a crow's
- * foot for "many" (three strokes fanning into the card), a bar across the line for "one".
+ * The mark of one end of a relationship at (x, y), where the line meets a card on `side`, as an ERD
+ * draws it: for "many", a crow's foot (two toes from the card's edge meeting the line 10px out) with a
+ * bar across its tip; for "one", two bars across the line.
  */
 export function cardinalityMark(x: number, y: number, side: Position, many: boolean): string {
   const [ix, iy] = INTO[side];
   const [dx, dy] = [-ix, -iy];
   const [nx, ny] = [-dy, dx];
+  const bar = (out: number, half: number) => {
+    const bx = x + dx * out;
+    const by = y + dy * out;
+    return `M${bx + nx * half} ${by + ny * half} L${bx - nx * half} ${by - ny * half}`;
+  };
   if (many) {
     const tx = x + dx * FOOT_LENGTH;
     const ty = y + dy * FOOT_LENGTH;
-    return `M${tx} ${ty} L${x + nx * FOOT_HALF} ${y + ny * FOOT_HALF} M${tx} ${ty} L${x} ${y} M${tx} ${ty} L${x - nx * FOOT_HALF} ${y - ny * FOOT_HALF}`;
+    return `M${x + nx * FOOT_HALF} ${y + ny * FOOT_HALF} L${tx} ${ty} L${x - nx * FOOT_HALF} ${y - ny * FOOT_HALF} ${bar(FOOT_LENGTH, FOOT_HALF)}`;
   }
-  const bx = x + dx * BAR_OUT;
-  const by = y + dy * BAR_OUT;
-  return `M${bx + nx * FOOT_HALF} ${by + ny * FOOT_HALF} L${bx - nx * FOOT_HALF} ${by - ny * FOOT_HALF}`;
+  return ONE_BARS.map((out) => bar(out, BAR_HALF)).join(" ");
 }
 
 /** Whether each end of a relationship is "many" (`one-to-many`: the `to` end). */
