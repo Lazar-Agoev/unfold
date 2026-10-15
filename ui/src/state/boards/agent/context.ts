@@ -5,6 +5,7 @@
  */
 
 import type { AgentBoardInfo, AgentCardResult, AgentCombinedResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
+import { cardShape } from "@unfold/desktop/drawing";
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
 import type { BoardState, Card, Combined, Connection, Description, Note, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
@@ -12,7 +13,9 @@ import { tableColumns, type TableColumn } from "../../../canvas/resources/column
 import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
 import type { Rect, Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
-import { estimatedCardSize } from "../../../canvas/sizing";
+import { estimatedCardSize, portEstimator } from "../../../canvas/sizing";
+import { routePage } from "../../../canvas/lines/pageLines";
+import type { RoutedLine } from "../../../canvas/lines/route";
 import { authorName } from "../../../code/text";
 import { cardName as drawnName } from "../../cards";
 import { cardKey, cardView, findCard, findCombined } from "../document";
@@ -203,6 +206,24 @@ export function cardSize(ctx: OpContext, page: Pick<Page, "defaultView">, card: 
 }
 
 /** The page's arrows between cards (calls, starts, type arrows), from the loaded models, each card in the view it shows. */
+/** Each card's ports below its top, estimated from what it drew (an agent's page may never have been shown): `portEstimator`. */
+export function cardPorts(ctx: OpContext, page: Page): (card: string, port: string) => number | undefined {
+  return portEstimator((id) => {
+    const card = findCard(page, id);
+    if (!card) {
+      return undefined;
+    }
+    const key = cardKey(card);
+    const model = ctx.data.model(ctx.board.project, key);
+    return { model, shape: cardShape(model, cardView(card, page.defaultView)), description: card.description, definition: ctx.data.definition(ctx.board.project, key) };
+  }, measureText);
+}
+
+/** The page's lines as the canvas routes them, from its document, the sizes the canvas measured (else estimated), and estimated ports (`routePage`). */
+export function pageRoutes(ctx: OpContext, page: Page): Map<string, RoutedLine> {
+  return routePage(page, (id) => itemSize(ctx, page, id), pageArrows(ctx, page), cardPorts(ctx, page));
+}
+
 export function pageArrows(ctx: OpContext, page: Page): Arrow[] {
   return computeArrows(
     page.cards.map((card) => ({

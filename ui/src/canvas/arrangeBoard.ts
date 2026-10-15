@@ -4,6 +4,7 @@ import { editPage, findPage, getOpenBoard, moveItems, type PageTarget } from "..
 import { arrangePage, lineNoteSpots } from "./arrangePage";
 import type { Arrow } from "./arrows";
 import { fallbackItemSize, pageGeometry } from "./frames/geometry";
+import { routePage } from "./lines/pageLines";
 
 /**
  * Lays the page out (`arrangePage`) as one edit, with the sizes the canvas measured (else estimated
@@ -40,7 +41,7 @@ export function arrangeBoard(target: PageTarget, arrows: readonly Arrow[], portO
     editPage(target, (draft) => {
       moveItems(draft, moves);
       // Then the notes on connections, beside their lines as they now run.
-      moveItems(draft, lineNoteSpots(draft, sizeOf));
+      moveItems(draft, lineNoteSpots(draft, sizeOf, () => routePage(draft, sizeOf, arrows, portOffset)));
     });
   }
   return moved;

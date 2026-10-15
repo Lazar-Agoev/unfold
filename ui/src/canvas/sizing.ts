@@ -15,7 +15,7 @@ import { cardShape, fieldRows, type CardShape } from "@unfold/desktop/drawing";
 import type { CardView, Description, Frame, Header, ResourceKind, StartCard, TypeDefinition, View } from "../ipc/generated";
 import { layoutFlow, type FlowGeometry, type Measure, type Point as FlowPoint, type Rect as FlowRect } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
-import { callPort, stepPort } from "./arrows";
+import { callPort, fieldPort, stepPort } from "./arrows";
 import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
 import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import {
@@ -280,6 +280,43 @@ export function flowPortSpots(geometry: FlowGeometry, right: number): Map<string
     }
   }
   return spots;
+}
+
+/** What estimating a card's ports reads: what the reader drew, how the card shows, its description, and a type card's definition. */
+export interface PortCard {
+  readonly model: CardView | undefined;
+  readonly shape: CardShape;
+  readonly description?: Description | undefined;
+  readonly definition?: TypeDefinition | undefined;
+}
+
+/**
+ * A port's offset below its card's top before the card is drawn: a call's or a step's on an expanded
+ * card (`estimatedPortOffsets`, each card's flow laid out once), a type card's field's
+ * (`estimatedFieldOffset`); undefined where it can't say (then the line leaves the header).
+ */
+export function portEstimator(cardOf: (id: string) => PortCard | undefined, measure: Measure): (card: string, port: string) => number | undefined {
+  const flows = new Map<string, ReadonlyMap<string, number>>();
+  const field = fieldPort("");
+  return (id, port) => {
+    const card = cardOf(id);
+    if (!card) {
+      return undefined;
+    }
+    if (port.startsWith(field)) {
+      return card.definition ? estimatedFieldOffset(card.definition, port.slice(field.length), descriptionHeight(card.description, null, measure)) : undefined;
+    }
+    const { model } = card;
+    if (model?.type !== "definition" || card.shape !== "expanded") {
+      return undefined;
+    }
+    let offsets = flows.get(id);
+    if (!offsets) {
+      offsets = estimatedPortOffsets(model.flow.header, layoutFlow(model.flow, { measure }), card.description, measure);
+      flows.set(id, offsets);
+    }
+    return offsets.get(port);
+  };
 }
 
 /** Each port of an expanded card below its top, before it is drawn: where it leaves the card (`flowPortSpots`), under the flow's top. */

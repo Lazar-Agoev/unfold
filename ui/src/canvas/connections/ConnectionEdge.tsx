@@ -1,8 +1,10 @@
 /**
  * A connection: a slate line in its kind's pattern (solid for HTTP, reads and writes; long dashes for
- * a queue; short dashes for a runtime call; dashed for other), with a filled head where the data goes
- * (into the table for `writes`, back into the code for `reads`); a relationship is a blue line with an
- * ERD's ends (two bars for one, a crow's foot for many). At rest its chip, borderless on the canvas,
+ * a queue; short dashes for a runtime call; dashed for other), drawn by the page's router
+ * (`useLineRoute`): orthogonal, around the cards it doesn't join, spread along the side it enters
+ * beside the page's other connections there. A filled head goes where the data goes (into the table
+ * for `writes`, back into the code for `reads`); a relationship is a blue line with an ERD's ends (two
+ * bars for one, a crow's foot for many), row to row, a "C" between stacked tables. At rest its chip, borderless on the canvas,
  * says its kind's word and what it touches, with a review dot while something about it needs review.
  * Hovered or selected, the line turns the accent and its card floats where the chip is: everything it
  * says, and its description. The chip joins the page's label layout, so it never covers a card, a
@@ -14,7 +16,7 @@
  * the link menu. Memoized.
  */
 
-import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
+import { EdgeLabelRenderer, type Edge, type EdgeProps } from "@xyflow/react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useContextMenu } from "../../components";
 import type { Cardinality, ConnectionKind } from "../../ipc/generated";
@@ -23,7 +25,9 @@ import { select, type PageTarget } from "../../state/boards";
 import { showInSelected } from "../cards/cardMenu";
 import { CHIP_CODE_FONT, CHIP_TEXT_FONT, CHIP_WORD_FONT, useMeasure } from "../measure";
 import { useLabelLayout, useLabelPlacement } from "../lines/labelLayout";
-import { bezierCurve, pointAt, type Curve } from "../lines/placeLabels";
+import { useLineRoute } from "../lines/lineRoutes";
+import { lineMiddle, roundedPath, trimmed } from "../lines/paths";
+import type { Point } from "../layout";
 import type { Measure } from "../../flow/layout";
 import type { ItemWriting } from "../../state/boards/agent/working";
 import { WritingRing, useItemWriting } from "../writing";
@@ -96,7 +100,8 @@ function Parts({ parts, writing }: { readonly parts: readonly ChipPart[]; readon
 
 interface ChipProps {
   readonly id: string;
-  readonly curve: Curve;
+  /** Its line's points. */
+  readonly points: readonly Point[];
   readonly data: ConnectionData;
   /** Whether the pointer is on its line, chip, or card. */
   readonly hovered: boolean;
@@ -104,7 +109,7 @@ interface ChipProps {
 }
 
 /** The chip, where the page's label layout puts it; hovered or selected, the card in its place. */
-function ConnectionChip({ id, curve, data, hovered, onHover }: ChipProps) {
+function ConnectionChip({ id, points, data, hovered, onHover }: ChipProps) {
   const layout = useLabelLayout();
   const measure = useMeasure();
   const author = useAuthor();
@@ -113,8 +118,8 @@ function ConnectionChip({ id, curve, data, hovered, onHover }: ChipProps) {
   const writing = useItemWriting(target, linkId ?? id);
   const widths = useMemo(() => forms.map((form) => chipWidth(form, problem !== null, measure)), [forms, problem, measure]);
   useLayoutEffect(() => {
-    layout.report(id, widths.length > 0 ? { curve, widths, height: CHIP_HEIGHT } : null);
-  }, [layout, id, curve, widths]);
+    layout.report(id, widths.length > 0 ? { points, widths, height: CHIP_HEIGHT } : null);
+  }, [layout, id, points, widths]);
   useLayoutEffect(
     () => () => {
       layout.report(id, null);
@@ -127,7 +132,7 @@ function ConnectionChip({ id, curve, data, hovered, onHover }: ChipProps) {
   if (!open && (!placement || !parts)) {
     return null;
   }
-  const at = placement ?? pointAt(curve, 0.5);
+  const at = placement ?? lineMiddle(points);
   const handlers = {
     onMouseEnter: () => {
       onHover(true);
@@ -225,31 +230,37 @@ function useHover(): readonly [boolean, (hovered: boolean) => void] {
   return [hovered, onHover];
 }
 
-export const ConnectionEdge = memo(function ConnectionEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<ConnectionEdgeType>) {
+export const ConnectionEdge = memo(function ConnectionEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<ConnectionEdgeType>) {
   const kind = data?.kind ?? "other";
   const relates = kind === "relates";
   // The head goes where the data goes: back into the code for reads, else into `to`; a relationship has none.
   const headAtSource = kind === "reads";
-  const out = INTO[sourcePosition];
-  const into = INTO[targetPosition];
-  const startX = headAtSource ? sourceX - out[0] * HEAD_LENGTH : sourceX;
-  const startY = headAtSource ? sourceY - out[1] * HEAD_LENGTH : sourceY;
-  const endX = relates || headAtSource ? targetX : targetX - into[0] * HEAD_LENGTH;
-  const endY = relates || headAtSource ? targetY : targetY - into[1] * HEAD_LENGTH;
-  const [path] = getBezierPath({ sourceX: startX, sourceY: startY, sourcePosition, targetX: endX, targetY: endY, targetPosition });
-  // The same curve as `path`, for the label layout (a new object only when an end moves).
-  const curve = useMemo(
-    () => bezierCurve({ x: startX, y: startY }, sourcePosition, { x: endX, y: endY }, targetPosition),
-    [startX, startY, sourcePosition, endX, endY, targetPosition],
+  const route = useLineRoute(id);
+  const middle = (sourceX + targetX) / 2;
+  // Until it is routed: across, then down the gap.
+  const points = useMemo(
+    () =>
+      route?.points ?? [
+        { x: sourceX, y: sourceY },
+        { x: middle, y: sourceY },
+        { x: middle, y: targetY },
+        { x: targetX, y: targetY },
+      ],
+    [route, sourceX, sourceY, middle, targetX, targetY],
   );
+  const from = route?.from ?? "right";
+  const to = route?.to ?? "left";
+  const start = points[0] ?? { x: sourceX, y: sourceY };
+  const end = points[points.length - 1] ?? { x: targetX, y: targetY };
+  const path = roundedPath(relates ? points : trimmed(points, headAtSource ? HEAD_LENGTH : 0, headAtSource ? 0 : HEAD_LENGTH));
   const selected = data?.selected ?? false;
   const [hovered, onHover] = useHover();
   let marks: string | null = null;
   if (relates) {
     const many = data?.cardinality ? manyEnds(data.cardinality) : null;
-    marks = many ? `${cardinalityMark(sourceX, sourceY, sourcePosition, many.from)} ${cardinalityMark(targetX, targetY, targetPosition, many.to)}` : null;
+    marks = many ? `${cardinalityMark(start.x, start.y, from, many.from)} ${cardinalityMark(end.x, end.y, to, many.to)}` : null;
   }
-  const head = relates ? null : headAtSource ? arrowHead(sourceX, sourceY, out, HEAD_LENGTH, HEAD_WIDTH) : arrowHead(targetX, targetY, into, HEAD_LENGTH, HEAD_WIDTH);
+  const head = relates ? null : headAtSource ? arrowHead(start.x, start.y, INTO[from], HEAD_LENGTH, HEAD_WIDTH) : arrowHead(end.x, end.y, INTO[to], HEAD_LENGTH, HEAD_WIDTH);
   return (
     <>
       <g
@@ -269,7 +280,7 @@ export const ConnectionEdge = memo(function ConnectionEdge({ id, sourceX, source
       </g>
       {data ? (
         <EdgeLabelRenderer>
-          <ConnectionChip id={id} curve={curve} data={data} hovered={hovered} onHover={onHover} />
+          <ConnectionChip id={id} points={points} data={data} hovered={hovered} onHover={onHover} />
         </EdgeLabelRenderer>
       ) : null}
     </>

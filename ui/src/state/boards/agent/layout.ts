@@ -9,24 +9,16 @@
  */
 
 import type { AgentCardResult, AgentItemResult, AgentMove, AgentViewSpec, ArrangeOp, SetViewOp } from "@unfold/desktop/agent-api";
-import { cardShape } from "@unfold/desktop/drawing";
 import { arrangePage, lineNoteSpots } from "../../../canvas/arrangePage";
-import { fieldPort } from "../../../canvas/arrows";
 import { FOLLOW_GAP, STACK_GAP, clearSpot } from "../../../canvas/layout";
-import { measureText } from "../../../canvas/measure";
-import { descriptionHeight, estimatedFieldOffset, estimatedPortOffsets } from "../../../canvas/sizing";
-import { layoutFlow } from "../../../flow/layout";
 import type { Card, Page } from "../../../ipc/generated";
 import { cardKey, cardView, findCard, findCombined, moveItems, openPaths, setCardView, updateCombined } from "../document";
 import { findFrame, frameChain, frameItems, moveFrame, updateFrame } from "../frames";
 import { findNote } from "../notes";
 import { findResource } from "../resources";
-import { cardName, cardResult, combinedResult, invalid, itemSize, pageArrows, pageRects, type OpContext } from "./context";
+import { cardName, cardPorts, cardResult, combinedResult, invalid, itemSize, pageArrows, pageRects, pageRoutes, type OpContext } from "./context";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
-
-/** The start of a type card's field ports (`fieldPort`). */
-const FIELD_PORT = fieldPort("");
 
 /** Applies a card's part of `set_view`: compact or expanded. */
 function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec): AgentCardResult {
@@ -136,7 +128,7 @@ function applyMove(ctx: OpContext, page: Page, move: AgentMove): void {
 function movedLineNotes(ctx: OpContext, page: Page, moves: readonly AgentMove[]): Record<string, [number, number]> {
   const moved = new Set(moves.flatMap((move) => [move.id, ...frameItems(page, move.id)]));
   const lines = new Set(page.links.filter((link) => moved.has(link.from) || moved.has(link.to)).map((link) => link.id));
-  const spots = lineNoteSpots(page, (id) => itemSize(ctx, page, id), lines);
+  const spots = lineNoteSpots(page, (id) => itemSize(ctx, page, id), () => pageRoutes(ctx, page), lines);
   return Object.fromEntries(Object.entries(spots).filter(([id]) => !moved.has(id)));
 }
 
@@ -168,28 +160,7 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
   if (page.cards.length > 0 || (page.resources ?? []).length > 0) {
     // A field's row in a type card; a call's or a step's row in an expanded card, from its drawn flow
     // laid out as the card lays it out; else the header.
-    const flows = new Map<string, ReadonlyMap<string, number>>();
-    const port = (cardId: string, handle: string) => {
-      const card = findCard(page, cardId);
-      if (!card) {
-        return undefined;
-      }
-      const key = cardKey(card);
-      if (handle.startsWith(FIELD_PORT)) {
-        const definition = ctx.data.definition(ctx.board.project, key);
-        return definition ? estimatedFieldOffset(definition, handle.slice(FIELD_PORT.length), descriptionHeight(card.description, null, measureText)) : undefined;
-      }
-      const model = ctx.data.model(ctx.board.project, key);
-      if (model?.type !== "definition" || cardShape(model, cardView(card, page.defaultView)) !== "expanded") {
-        return undefined;
-      }
-      let offsets = flows.get(card.id);
-      if (!offsets) {
-        offsets = estimatedPortOffsets(model.flow.header, layoutFlow(model.flow, { measure: measureText }), card.description, measureText);
-        flows.set(card.id, offsets);
-      }
-      return offsets.get(handle);
-    };
+    const port = cardPorts(ctx, page);
     const positions = arrangePage({
       page,
       rects: pageRects(ctx, page),
@@ -206,7 +177,7 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
   // Then the notes on links (a frame's: those on its items' links), beside their lines as they now run.
   const held = frame ? new Set([frame.id, ...frameItems(page, frame.id)]) : undefined;
   const lines = held ? new Set(page.links.filter((link) => held.has(link.from) || held.has(link.to)).map((link) => link.id)) : undefined;
-  moveItems(page, lineNoteSpots(page, (id) => itemSize(ctx, page, id), lines));
+  moveItems(page, lineNoteSpots(page, (id) => itemSize(ctx, page, id), () => pageRoutes(ctx, page), lines));
   const moved = movedItems(ctx, page, before);
   const arranged = frame ? findFrame(page, frame.id) : undefined;
   return turned && arranged ? [frameResult(ctx, page, arranged, "updated"), ...moved] : moved;

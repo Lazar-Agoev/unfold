@@ -107,7 +107,7 @@ export function openBoards(): OpenBoard[] {
 // Page views
 
 function pageView(): PageView {
-  return { camera: null, selection: { kind: "none" }, sizes: {}, focus: null, linking: null };
+  return { camera: null, selection: { kind: "none" }, sizes: {}, ports: {}, focus: null, linking: null };
 }
 
 /** What a page that was never shown reads as (frozen: selectors get stable values from it). */

@@ -4,6 +4,8 @@ import { arrangePage, lineNoteSpots, type ArrangeInput } from "./arrangePage";
 import type { Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, arrange, type Point, type Rect } from "./layout";
+import { routePage } from "./lines/pageLines";
+import { lineMiddle } from "./lines/paths";
 
 const card = (id: string, at: [number, number], entrance = false): Card => (entrance ? { id, ref: { entrance: `entrance:${id}` }, at } : { id, ref: { block: `src/a.ts#${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
@@ -298,7 +300,8 @@ describe("Arrange with frames", () => {
       cards: CARDS.map((item) => ({ ...item, at: at(item.id) })),
       resources: resources.map((item) => ({ ...item, at: at(item.id) })),
     };
-    const spots = lineNoteSpots(arranged, sizeOf);
+    const routes = () => routePage(arranged, sizeOf, ARROWS, portOffset);
+    const spots = lineNoteSpots(arranged, sizeOf, routes);
     expect(Object.keys(spots)).toEqual(["on-c", "on-c-too", "on-w"]);
     const drawn = (id: string): Rect => ({ x: spots[id]?.[0] ?? 0, y: spots[id]?.[1] ?? 0, ...sizeOf(id) });
     for (const id of Object.keys(spots)) {
@@ -307,11 +310,10 @@ describe("Arrange with frames", () => {
       }
     }
     expect(overlaps(drawn("on-c"), drawn("on-c-too"))).toBe(false);
-    // createOrder → OrderService.place leaves createOrder's right side: the note sits over the line's middle, clear of both.
-    const create = placed(positions, "create");
-    const place = placed(positions, "place");
-    expect(drawn("on-c").x + sizeOf("on-c").width / 2).toBe((create.x + create.width + place.x) / 2);
-    expect(drawn("on-c").y + sizeOf("on-c").height).toBeLessThanOrEqual(Math.min(create.y, place.y) - NOTE_GAP);
+    // createOrder → OrderService.place: the note is centered on the middle of the routed line's longest straight run (and clear, above).
+    const middle = lineMiddle(routes().get("c")?.points ?? []);
+    expect(drawn("on-c").x).toBe(Math.round(middle.x - sizeOf("on-c").width / 2));
+    expect(drawn("on-c").y + sizeOf("on-c").height).toBeLessThanOrEqual(middle.y - NOTE_GAP);
     // Placed again from where they now are, they stay.
     const offset = (note: Note): Note => {
       const link = links.find((item) => item.id === note.attach);
@@ -319,8 +321,8 @@ describe("Arrange with frames", () => {
       return { ...note, at: [(spots[note.id]?.[0] ?? 0) - mx, (spots[note.id]?.[1] ?? 0) - my] };
     };
     const settled = { ...arranged, notes: notes.map(offset) };
-    expect(lineNoteSpots(settled, sizeOf)).toEqual(spots);
+    expect(lineNoteSpots(settled, sizeOf, () => routePage(settled, sizeOf, ARROWS, portOffset))).toEqual(spots);
     // Only the notes on the links asked for.
-    expect(Object.keys(lineNoteSpots(arranged, sizeOf, new Set(["w"])))).toEqual(["on-w"]);
+    expect(Object.keys(lineNoteSpots(arranged, sizeOf, routes, new Set(["w"])))).toEqual(["on-w"]);
   });
 });

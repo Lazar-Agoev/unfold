@@ -230,14 +230,21 @@ interface LayerEdge {
 /** Where `edge` sits along its end in `side`'s node, as a rank in its column: the node's place, plus the line's place among the node's lines. */
 type Slots = (edge: LayerEdge, side: "source" | "target") => number;
 
-/** How many times the lines between two neighboring columns cross, for the columns' order (`slot`). */
+/**
+ * How many times the lines between two neighboring columns cross, for the columns' order (`slot`).
+ * Lines from one port (a compact card's header) leave as a tree, and lines into one node join or
+ * spread there in order: neither cross each other.
+ */
 function crossingsBetween(edges: readonly LayerEdge[], slot: Slots): number {
   let count = 0;
   for (let i = 0; i < edges.length; i += 1) {
     const a = edges[i];
     for (let j = i + 1; a && j < edges.length; j += 1) {
       const b = edges[j];
-      if (b && (slot(a, "source") - slot(b, "source")) * (slot(a, "target") - slot(b, "target")) < 0) {
+      if (!b || (a.source === b.source && a.port === b.port) || a.target === b.target) {
+        continue;
+      }
+      if ((slot(a, "source") - slot(b, "source")) * (slot(a, "target") - slot(b, "target")) < 0) {
         count += 1;
       }
     }

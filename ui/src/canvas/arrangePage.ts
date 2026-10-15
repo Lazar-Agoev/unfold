@@ -27,7 +27,9 @@ import { frameChain } from "../state/boards/frames";
 import { stepPort, type Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, STACK_GAP, arrange, boundsOf, type ArrangeCall, type Point, type Rect, type Size } from "./layout";
-import { lineMiddle, lineNoteSpot } from "./notes/spots";
+import { lineMiddle } from "./lines/paths";
+import type { RoutedLine } from "./lines/route";
+import { lineNoteSpot } from "./notes/spots";
 
 export interface ArrangeInput {
   readonly page: FramedPage & { readonly links: readonly Connection[] };
@@ -486,29 +488,35 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
 
 /**
  * Where Arrange puts the notes on links, once the items they join are placed (`page` as arranged):
- * each beside its line's middle (`lineNoteSpot`), in id order, clear of the cards, resource cards,
- * collapsed frames, and other notes drawn, the notes it placed before, and the frames the line doesn't
- * start or end in. A note whose line isn't drawn between its own ends (one is hidden in a collapsed
- * frame) stays as it is. `links`, when given, limits it to the notes on those links.
+ * each beside its line's middle as routed (`routes`, asked for only when a note needs them;
+ * `lineMiddle`, `lineNoteSpot`), in id order, clear of the cards, resource cards, collapsed frames,
+ * and other notes drawn, the notes it placed before, and the frames the line doesn't start or end in.
+ * A note whose line isn't drawn between its own ends (one is hidden in a collapsed frame) stays as it
+ * is. `links`, when given, limits it to the notes on those links.
  */
-export function lineNoteSpots(page: FramedPage & { readonly links: readonly Connection[] }, sizeOf: (id: string) => Size, links?: ReadonlySet<string>): Record<string, [number, number]> {
+export function lineNoteSpots(
+  page: FramedPage & { readonly links: readonly Connection[] },
+  sizeOf: (id: string) => Size,
+  routes: () => ReadonlyMap<string, RoutedLine>,
+  links?: ReadonlySet<string>,
+): Record<string, [number, number]> {
   const lines = new Map(page.links.filter((link) => links?.has(link.id) ?? true).map((link) => [link.id, link]));
   const notes = (page.notes ?? []).filter((note) => note.attach !== undefined && lines.has(note.attach)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const placing = new Set(notes.map((note) => note.id));
   const { rects } = pageGeometry(page, sizeOf);
   const occupied = [...rects].filter(([id]) => !placing.has(id));
   const spots: Record<string, [number, number]> = {};
+  const routed = notes.length > 0 ? routes() : new Map<string, RoutedLine>();
   for (const note of notes) {
     const link = note.attach !== undefined ? lines.get(note.attach) : undefined;
-    const from = link ? rects.get(link.from) : undefined;
-    const to = link ? rects.get(link.to) : undefined;
-    if (!link || !from || !to || !rects.has(note.id)) {
+    const route = link && rects.has(link.from) && rects.has(link.to) ? routed.get(link.id) : undefined;
+    if (!link || !route || !rects.has(note.id)) {
       continue;
     }
     // The frames around its ends hold the line, so the note may sit in them.
     const around = new Set([...frameChain(page, link.from), ...frameChain(page, link.to)].map((frame) => frame.id));
     const size = sizeOf(note.id);
-    const [x, y] = lineNoteSpot(lineMiddle(from, to), size, occupied.flatMap(([id, rect]) => (around.has(id) ? [] : [rect])));
+    const [x, y] = lineNoteSpot(lineMiddle(route.points), size, occupied.flatMap(([id, rect]) => (around.has(id) ? [] : [rect])));
     spots[note.id] = [x, y];
     occupied.push([note.id, { x, y, ...size }]);
   }

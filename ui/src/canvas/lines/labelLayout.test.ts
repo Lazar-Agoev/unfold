@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { LabelLayout } from "./labelLayout";
-import { bezierCurve } from "./placeLabels";
 
-const spec = (x2: number) => ({ curve: bezierCurve({ x: 0, y: 0 }, "right", { x: x2, y: 0 }, "left"), widths: [100, 60], height: 20 });
+const spec = (x2: number) => ({ points: [{ x: 0, y: 0 }, { x: x2, y: 0 }], widths: [100, 60], height: 20 });
 
 describe("LabelLayout", () => {
   it("places what was reported, tells listeners once per batch, and ignores reports that change nothing", async () => {
@@ -20,7 +19,7 @@ describe("LabelLayout", () => {
     expect(first).toEqual({ x: 200, y: 0, form: 0 });
     expect(layout.placement("b")).not.toBeNull();
 
-    // The same curve, widths, and cards again: nothing to place, nobody to tell.
+    // The same line, widths, and cards again: nothing to place, nobody to tell.
     layout.report("a", spec(400));
     layout.setCards([{ x: 400, y: -100, width: 300, height: 200 }]);
     await Promise.resolve();
@@ -31,9 +30,9 @@ describe("LabelLayout", () => {
   it("keeps an unchanged placement's identity when another label moves, and forgets a label that is gone", async () => {
     const layout = new LabelLayout();
     layout.report("a", spec(400));
-    layout.report("far", { ...spec(400), curve: bezierCurve({ x: 0, y: 500 }, "right", { x: 400, y: 500 }, "left") });
+    layout.report("far", { ...spec(400), points: [{ x: 0, y: 500 }, { x: 400, y: 500 }] });
     const kept = layout.placement("a");
-    layout.report("far", { ...spec(400), curve: bezierCurve({ x: 0, y: 600 }, "right", { x: 400, y: 600 }, "left") });
+    layout.report("far", { ...spec(400), points: [{ x: 0, y: 600 }, { x: 400, y: 600 }] });
     expect(layout.placement("a")).toBe(kept);
     expect(layout.placement("far")).toEqual({ x: 200, y: 600, form: 0 });
 

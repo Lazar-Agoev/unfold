@@ -1,15 +1,13 @@
 /**
- * Where a connection leaves and enters: from its step's call on an expanded card that
- * draws it (a `stepPort` the card places level with the call, as arrows leave from their calls), from
- * the card's edge otherwise (a compact card, a resource card, a frame); a relationship from one table
- * column's row to the other's. An end inside a collapsed frame attaches to the frame's edge. Otherwise
- * it leaves and enters by the sides facing each other (`linkEnds`). Pure.
+ * Where a connection's edge attaches: its step's port on an expanded card that draws the step (where
+ * the card's line from the call leaves it), a relationship's columns' rows, else the sides the page's
+ * router drew it on (`routePageLines`, which also picks those sides). An end inside a collapsed frame
+ * attaches to the frame. The edge draws the routed line; its handles only say where it attaches. Pure.
  */
 
 import type { Connection, Key } from "../../ipc/generated";
 import { stepPort, type CardPort } from "../arrows";
-import type { Rect } from "../layout";
-import { linkEnds } from "../linkSides";
+import type { Side } from "../lines/route";
 import { columnHandle } from "../resources/columns";
 
 /** A line's two handles. */
@@ -28,21 +26,20 @@ interface DrawnEnds {
 export type DrawsStep = (cardId: string, step: Key) => boolean;
 
 /**
- * The handles of a line drawn between `ends` (rectangles `from` and `to`): a connection's step port or
- * columns where its ends are drawn as themselves, else the facing sides.
+ * The handles of a line drawn between `ends` on `sides` (the router's; until it is routed, right to
+ * left): a connection's step port or columns where its ends are drawn as themselves, else the sides.
  */
-export function lineHandles(link: Connection | undefined, ends: DrawnEnds, from: Rect, to: Rect, drawsStep: DrawsStep): Handles {
-  const sides = linkEnds(from, to);
+export function lineHandles(link: Connection | undefined, ends: DrawnEnds, sides: { readonly from: Side; readonly to: Side } | undefined, drawsStep: DrawsStep): Handles {
+  const { from, to } = sides ?? { from: "right", to: "left" };
   const own = { from: link?.from === ends.from, to: link?.to === ends.to };
-  let source = `link-out-${sides.from}`;
-  let target = `link-in-${sides.to}`;
+  let source = `link-out-${from}`;
+  let target = `link-in-${to}`;
   if (link?.kind === "relates") {
-    const rightward = to.x + to.width / 2 >= from.x + from.width / 2;
     if (own.from && link.fromColumn !== undefined) {
-      source = columnHandle(link.fromColumn, "out", rightward ? "right" : "left");
+      source = columnHandle(link.fromColumn, "out", from === "left" ? "left" : "right");
     }
     if (own.to && link.toColumn !== undefined) {
-      target = columnHandle(link.toColumn, "in", rightward ? "left" : "right");
+      target = columnHandle(link.toColumn, "in", to === "right" ? "right" : "left");
     }
   } else if (link?.step !== undefined && own.from && drawsStep(link.from, link.step)) {
     source = stepPort(link.step);

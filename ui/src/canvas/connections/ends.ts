@@ -3,15 +3,15 @@
  * relationship's ERD ends (two bars for one, a crow's foot for many). Pure SVG path data.
  */
 
-import { Position } from "@xyflow/react";
 import type { Cardinality } from "../../ipc/generated";
+import type { Side } from "../lines/route";
 
 /** Which way a line entering a card by `side` points, as a unit vector. */
-export const INTO: Readonly<Record<Position, readonly [number, number]>> = {
-  [Position.Left]: [1, 0],
-  [Position.Right]: [-1, 0],
-  [Position.Top]: [0, 1],
-  [Position.Bottom]: [0, -1],
+export const INTO: Readonly<Record<Side, readonly [number, number]>> = {
+  left: [1, 0],
+  right: [-1, 0],
+  top: [0, 1],
+  bottom: [0, -1],
 };
 
 /** A filled head with its tip at (x, y), pointing along (dx, dy). */
@@ -35,7 +35,7 @@ const BAR_HALF = 6;
  * draws it: for "many", a crow's foot (two toes from the card's edge meeting the line 10px out) with a
  * bar across its tip; for "one", two bars across the line.
  */
-export function cardinalityMark(x: number, y: number, side: Position, many: boolean): string {
+export function cardinalityMark(x: number, y: number, side: Side, many: boolean): string {
   const [ix, iy] = INTO[side];
   const [dx, dy] = [-ix, -iy];
   const [nx, ny] = [-dy, dx];

@@ -1,6 +1,6 @@
 /**
  * The page's line labels (connections' chips) and the cards they must not
- * cover: each label reports its curve and the widths of its forms, the canvas reports the cards'
+ * cover: each label reports its line's points and the widths of its forms, the canvas reports the cards'
  * rectangles, and each label reads back where `placeLabels` puts it (or that it isn't drawn at rest). One per canvas (`LabelLayoutContext`).
  * Reports in one commit are placed together: listeners hear once, after the commit's reports are in.
  */
@@ -17,10 +17,8 @@ function sameSpec(a: LabelSpec, b: LabelSpec): boolean {
     a.height === b.height &&
     a.widths.length === b.widths.length &&
     a.widths.every((width, index) => width === b.widths[index]) &&
-    samePoint(a.curve.from, b.curve.from) &&
-    samePoint(a.curve.c1, b.curve.c1) &&
-    samePoint(a.curve.c2, b.curve.c2) &&
-    samePoint(a.curve.to, b.curve.to)
+    a.points.length === b.points.length &&
+    a.points.every((point, index) => samePoint(point, b.points[index] ?? { x: Number.NaN, y: Number.NaN }))
   );
 }
 

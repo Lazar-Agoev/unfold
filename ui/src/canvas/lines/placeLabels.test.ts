@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { bezierCurve, placeLabels, pointAt, type LabelSpec, type Placement, type Rect } from "./placeLabels";
+import { alongLine } from "./paths";
+import { placeLabels, type LabelSpec, type Placement, type Rect } from "./placeLabels";
 
 const HEIGHT = 20;
 
-/** A line from the right edge of one card at (x1, y1) into the left of another at (x2, y2). */
+/** A line from the right edge of one card at (x1, y1) into the left of another at (x2, y2): across, down the middle of the gap, across. */
 function line(id: string, x1: number, y1: number, x2: number, y2: number, widths: readonly number[] = [190, 110, 80]): LabelSpec {
-  return { id, curve: bezierCurve({ x: x1, y: y1 }, "right", { x: x2, y: y2 }, "left"), widths, height: HEIGHT };
+  const middle = (x1 + x2) / 2;
+  const points =
+    y1 === y2
+      ? [
+          { x: x1, y: y1 },
+          { x: x2, y: y2 },
+        ]
+      : [
+          { x: x1, y: y1 },
+          { x: middle, y: y1 },
+          { x: middle, y: y2 },
+          { x: x2, y: y2 },
+        ];
+  return { id, points, widths, height: HEIGHT };
 }
 
 function box(label: LabelSpec, placement: Placement): Rect {
@@ -33,20 +47,28 @@ function expectClear(labels: readonly LabelSpec[], cards: readonly Rect[], place
   }
 }
 
-describe("bezierCurve", () => {
-  it("has React Flow's label point at its middle", () => {
-    // getBezierPath's label point for (0, 0) → (400, 100), right to left.
-    const curve = bezierCurve({ x: 0, y: 0 }, "right", { x: 400, y: 100 }, "left");
-    expect(pointAt(curve, 0.5)).toEqual({ x: 200, y: 50 });
-    expect(pointAt(curve, 0)).toEqual({ x: 0, y: 0 });
-    expect(pointAt(curve, 1)).toEqual({ x: 400, y: 100 });
+describe("where a label tries along its line", () => {
+  it("starts at the middle of its longest straight run, then goes out from it, then along the next longest", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 300 },
+      { x: 150, y: 300 },
+    ];
+    const along = alongLine(points);
+    expect(along.slice(0, 3)).toEqual([
+      { x: 100, y: 150 },
+      { x: 100, y: 120 },
+      { x: 100, y: 180 },
+    ]);
+    expect(along[7]).toEqual({ x: 50, y: 0 });
   });
 });
 
 describe("placeLabels", () => {
-  it("puts a label at its curve's midpoint when the canvas is free there", () => {
+  it("puts a label at the middle of its line's longest straight run when the canvas is free there", () => {
     const label = line("a", 0, 0, 500, 200);
-    expect(placeLabels([label], [])).toEqual(new Map([["a", { x: 250, y: 100, form: 0 }]]));
+    expect(placeLabels([label], [])).toEqual(new Map([["a", { x: 125, y: 0, form: 0 }]]));
   });
 
   it("never covers a card in a short gap: a shorter form fits, else the label isn't drawn", () => {
@@ -86,16 +108,16 @@ describe("placeLabels", () => {
     expectClear(labels, [caller, upper, lower], placed);
   });
 
-  it("keeps labels of crossing lines apart", () => {
-    // Two lines crossing at (250, 100), and a third close by.
+  it("keeps labels of lines running side by side apart", () => {
+    // a and c start 20px apart: their first runs' middles are too close for both labels.
     const labels = [line("a", 0, 0, 500, 200), line("b", 0, 200, 500, 0), line("c", 0, 20, 500, 180)];
     const placed = placeLabels(labels, []);
     expect([...placed.values()].every((placement) => placement !== null)).toBe(true);
     expectClear(labels, [], placed);
-    // All three cross at (250, 100): the first by id keeps it, the others move along their curves.
-    expect(placed.get("a")).toEqual({ x: 250, y: 100, form: 0 });
-    expect(placed.get("b")?.form).toBe(0);
-    expect(placed.get("b")?.x).not.toBe(250);
+    // The first by place keeps its middle; c moves along its line.
+    expect(placed.get("a")).toEqual({ x: 125, y: 0, form: 0 });
+    expect(placed.get("c")?.form).toBe(0);
+    expect(placed.get("c")).not.toEqual({ x: 125, y: 20, form: 0 });
   });
 
   it("gives the same placements whatever order the labels come in", () => {

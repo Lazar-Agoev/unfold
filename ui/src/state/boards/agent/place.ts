@@ -6,10 +6,11 @@
 
 import { FOLLOW_GAP, STACK_GAP, clearSpot, newCardPlacement, type Point, type Rect, type Size } from "../../../canvas/layout";
 import { NOTE_GAP, framePadding } from "../../../canvas/frames/geometry";
-import { lineMiddle, lineNoteSpot } from "../../../canvas/notes/spots";
+import { lineMiddle } from "../../../canvas/lines/paths";
+import { lineNoteSpot } from "../../../canvas/notes/spots";
 import type { Page } from "../../../ipc/generated";
 import { findFrame, frameChain } from "../frames";
-import { invalid, pageRects, type OpContext } from "./context";
+import { invalid, pageRects, pageRoutes, type OpContext } from "./context";
 
 function meets(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width + STACK_GAP && b.x < a.x + a.width + STACK_GAP && a.y < b.y + b.height + STACK_GAP && b.y < a.y + a.height + STACK_GAP;
@@ -21,13 +22,12 @@ export function occupiedFor(page: Page, rects: ReadonlyMap<string, Rect>, frame:
   return [...rects].flatMap(([id, rect]) => (within.has(id) ? [] : [rect]));
 }
 
-/** The rectangle of item `id` as drawn: a card, resource card, note, frame, or (a link) its line's middle (`lineMiddle`). */
-export function nearRect(page: Page, rects: ReadonlyMap<string, Rect>, id: string): Rect {
+/** The rectangle of item `id` as drawn: a card, resource card, note, frame, or (a link) its line's middle as routed (`lineMiddle`). */
+export function nearRect(ctx: OpContext, page: Page, rects: ReadonlyMap<string, Rect>, id: string): Rect {
   const link = page.links.find((item) => item.id === id);
-  const from = link ? rects.get(link.from) : undefined;
-  const to = link ? rects.get(link.to) : undefined;
-  if (from && to) {
-    return { ...lineMiddle(from, to), width: 0, height: 0 };
+  const route = link && rects.has(link.from) && rects.has(link.to) ? pageRoutes(ctx, page).get(link.id) : undefined;
+  if (route) {
+    return { ...lineMiddle(route.points), width: 0, height: 0 };
   }
   const rect = rects.get(id);
   if (!rect) {
@@ -45,7 +45,7 @@ export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: strin
   const occupied = occupiedFor(page, rects, frame);
   let at: Point | undefined;
   if (near !== undefined) {
-    const rect = nearRect(page, rects, near);
+    const rect = nearRect(ctx, page, rects, near);
     at = { x: rect.x + rect.width + FOLLOW_GAP, y: rect.y };
   }
   const box = frame !== undefined ? rects.get(frame) : undefined;
@@ -68,7 +68,7 @@ export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: strin
  */
 export function noteSpot(ctx: OpContext, page: Page, size: Size, id: string): [number, number] {
   const rects = pageRects(ctx, page);
-  const rect = nearRect(page, rects, id);
+  const rect = nearRect(ctx, page, rects, id);
   const link = page.links.find((item) => item.id === id);
   if (link) {
     const around = new Set([...frameChain(page, link.from), ...frameChain(page, link.to)].map((frame) => frame.id));

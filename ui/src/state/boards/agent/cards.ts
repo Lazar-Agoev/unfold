@@ -289,7 +289,7 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
   if (near !== undefined) {
     // Beside a card it relates to; else right of the item as drawn (a resource card, a frame, a note).
     const card = nearCard(page, near);
-    const rect = card ? rects.get(card.id) : nearRect(page, rects, near);
+    const rect = card ? rects.get(card.id) : nearRect(ctx, page, rects, near);
     at = (card ? beside(card) : undefined) ?? (rect ? rightOf(rect, HEADER_PORT) : undefined);
   } else {
     for (const card of page.cards) {

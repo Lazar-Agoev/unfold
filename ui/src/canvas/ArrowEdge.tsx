@@ -1,7 +1,9 @@
 /**
- * One arrow between cards: a curve from the call at the card's right edge (or the card's edge) into
- * the target's header, with a filled head. Call arrows are `--color-arrow`; an app's or entrance's
- * arrow to its code is the gray contour, dashed to stale code. Memoized.
+ * One arrow between cards: the page's router draws it (`useLineRoute`), orthogonal with rounded
+ * corners, from its port (a call's row, a compact card's header) into the target's header, around the
+ * cards in between; arrows into one card join into one trunk there. It ends in a filled head pointing
+ * into the side it enters. Call arrows are `--color-arrow`; an app's or entrance's arrow to its code is
+ * the gray contour, dashed to stale code. Memoized.
  *
  * A call's arrow takes the click on a wide invisible stroke over its curve: it selects the call, and
  * Selected shows its contract. An arrow from a compact card that stands for several calls selects them
@@ -9,9 +11,12 @@
  * and arrows that join several at a collapsed frame select nothing.
  */
 
-import { getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
+import type { Edge, EdgeProps } from "@xyflow/react";
 import { memo } from "react";
 import { select, type PageTarget, type SelectedCalls, type SelectedLine } from "../state/boards";
+import { INTO, arrowHead } from "./connections/ends";
+import { useLineRoute } from "./lines/lineRoutes";
+import { roundedPath, trimmed } from "./lines/paths";
 
 interface ArrowData extends Record<string, unknown> {
   readonly dashed: boolean;
@@ -29,12 +34,7 @@ interface ArrowData extends Record<string, unknown> {
 
 export type ArrowEdgeType = Edge<ArrowData, "arrow">;
 
-/** A filled arrowhead pointing right whose tip is at (x, y): `length` long, `width` wide. */
-function arrowHead(x: number, y: number, length: number, width: number): string {
-  return `M${x - length} ${y - width / 2} L${x} ${y} L${x - length} ${y + width / 2} Z`;
-}
-
-/** The head is 7 long and 8 wide; the curve stops where it starts. */
+/** The head is 7 long and 8 wide; the line stops where it starts. */
 const HEAD_LENGTH = 7;
 const HEAD_WIDTH = 8;
 
@@ -60,15 +60,25 @@ function selectionOf(data: ArrowData | undefined): { readonly name: string; read
   return null;
 }
 
-export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data }: EdgeProps<ArrowEdgeType>) {
-  const [path] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX: targetX - HEAD_LENGTH, targetY, targetPosition });
+export const ArrowEdge = memo(function ArrowEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<ArrowEdgeType>) {
+  const route = useLineRoute(id);
+  // Until it is routed: across from the port, then down the gap into the header.
+  const middle = (sourceX + targetX) / 2;
+  const points = route?.points ?? [
+    { x: sourceX, y: sourceY },
+    { x: middle, y: sourceY },
+    { x: middle, y: targetY },
+    { x: targetX, y: targetY },
+  ];
+  const end = points[points.length - 1] ?? { x: targetX, y: targetY };
+  const path = roundedPath(trimmed(points, 0, HEAD_LENGTH));
   const tone = data?.start ? " start" : "";
   const selected = data?.selected === true ? " selected" : "";
   const selection = selectionOf(data);
   return (
     <g className={`board-arrow${tone}${selected}`}>
       <path d={path} className={`board-arrow-line${data?.dashed ? " dashed" : ""}`} />
-      <path d={arrowHead(targetX, targetY, HEAD_LENGTH, HEAD_WIDTH)} className="board-arrow-head" />
+      <path d={arrowHead(end.x, end.y, INTO[route?.to ?? "left"], HEAD_LENGTH, HEAD_WIDTH)} className="board-arrow-head" />
       {selection ? (
         <path
           d={path}

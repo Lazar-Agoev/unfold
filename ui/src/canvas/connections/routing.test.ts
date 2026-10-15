@@ -3,34 +3,35 @@ import type { Connection } from "../../ipc/generated";
 import { lineHandles, relatedColumns, stepPorts } from "./routing";
 
 const STEP = "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add";
-const left = { x: 0, y: 0, width: 300, height: 200 };
-const right = { x: 600, y: 0, width: 300, height: 200 };
+const across = { from: "right", to: "left" } as const;
 const queue: Connection = { id: "enqueue", from: "create-order", to: "worker", kind: "queue", step: STEP, author: "agent:claude" };
 const relates: Connection = { id: "owner", from: "orders", to: "customers", kind: "relates", fromColumn: "customerId", toColumn: "id", cardinality: "many-to-one", author: "agent:claude" };
 /** Whether create-order draws the step (expanded, its flow drawing it). */
 const draws = (drawn: boolean) => (id: string, step: string) => drawn && id === "create-order" && step === STEP;
 
-describe("where a connection leaves and enters", () => {
-  it("leaves from its step's call on an expanded card that draws it, and from the card's edge otherwise", () => {
+describe("where a connection's edge attaches", () => {
+  it("at its step's port on an expanded card that draws it, and at the card's side otherwise", () => {
     const own = { from: queue.from, to: queue.to };
-    expect(lineHandles(queue, own, left, right, draws(true))).toEqual({ source: `step:${STEP}`, target: "link-in-left" });
-    expect(lineHandles(queue, own, left, right, draws(false))).toEqual({ source: "link-out-right", target: "link-in-left" });
+    expect(lineHandles(queue, own, across, draws(true))).toEqual({ source: `step:${STEP}`, target: "link-in-left" });
+    expect(lineHandles(queue, own, across, draws(false))).toEqual({ source: "link-out-right", target: "link-in-left" });
   });
 
-  it("attaches to a collapsed frame's edge when an end is hidden in it", () => {
-    expect(lineHandles(queue, { from: "server", to: queue.to }, left, right, draws(true))).toEqual({ source: "link-out-right", target: "link-in-left" });
+  it("at a collapsed frame's side when an end is hidden in it", () => {
+    expect(lineHandles(queue, { from: "server", to: queue.to }, across, draws(true))).toEqual({ source: "link-out-right", target: "link-in-left" });
   });
 
-  it("joins a relationship's columns, leaving and entering by the edges facing each other", () => {
+  it("at a relationship's columns, on the sides it is routed on (a C on one side between stacked tables)", () => {
     const own = { from: relates.from, to: relates.to };
-    expect(lineHandles(relates, own, left, right, () => false)).toEqual({ source: "col-out-right:customerId", target: "col-in-left:id" });
-    expect(lineHandles(relates, own, right, left, () => false)).toEqual({ source: "col-out-left:customerId", target: "col-in-right:id" });
-    expect(lineHandles(relates, { from: relates.from, to: "data" }, left, right, () => false)).toEqual({ source: "col-out-right:customerId", target: "link-in-left" });
+    expect(lineHandles(relates, own, across, () => false)).toEqual({ source: "col-out-right:customerId", target: "col-in-left:id" });
+    expect(lineHandles(relates, own, { from: "left", to: "right" }, () => false)).toEqual({ source: "col-out-left:customerId", target: "col-in-right:id" });
+    expect(lineHandles(relates, own, { from: "left", to: "left" }, () => false)).toEqual({ source: "col-out-left:customerId", target: "col-in-left:id" });
+    expect(lineHandles(relates, { from: relates.from, to: "data" }, across, () => false)).toEqual({ source: "col-out-right:customerId", target: "link-in-left" });
   });
 
-  it("leaves a connection without a step by the facing sides", () => {
+  it("at the sides its route uses, right to left until it is routed", () => {
     const below = { id: "l", from: "a", to: "b", kind: "http" as const, author: "agent:claude" };
-    expect(lineHandles(below, { from: "a", to: "b" }, left, { ...left, y: 400 }, draws(true))).toEqual({ source: "link-out-bottom", target: "link-in-top" });
+    expect(lineHandles(below, { from: "a", to: "b" }, { from: "bottom", to: "top" }, draws(true))).toEqual({ source: "link-out-bottom", target: "link-in-top" });
+    expect(lineHandles(below, { from: "a", to: "b" }, undefined, draws(true))).toEqual({ source: "link-out-right", target: "link-in-left" });
   });
 });
 

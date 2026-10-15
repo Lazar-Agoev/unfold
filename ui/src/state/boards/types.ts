@@ -88,6 +88,8 @@ export interface PageView {
   selection: Selection;
   /** Measured card sizes, in canvas units. */
   sizes: Record<string, CardSize>;
+  /** Measured ports (and side and column handles): each item's, by handle id, below its top, in canvas units. */
+  ports: Record<string, Record<string, number>>;
   focus: FocusRequest | null;
   /** A link being drawn: the item it starts at, and (once clicked) the item it ends at, waiting for its label. */
   linking: Linking | null;

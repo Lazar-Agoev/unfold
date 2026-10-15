@@ -1,8 +1,9 @@
 /**
- * Orthogonal lines as SVG paths: straight runs joined by rounded corners. Pure.
+ * Orthogonal lines as SVG paths (straight runs joined by rounded corners), and the places along a line
+ * its chip and notes go: the middle of its longest straight run first. Pure.
  */
 
-import type { Point } from "./placeLabels";
+import type { Point } from "../layout";
 
 /** The radius of a line's corners. */
 const CORNER_RADIUS = 8;
@@ -55,4 +56,50 @@ export function roundedPath(points: readonly Point[], radius = CORNER_RADIUS): s
     d += ` L${enter.x} ${enter.y} Q${point.x} ${point.y} ${leave.x} ${leave.y}`;
   }
   return d;
+}
+
+/** The straight runs of a line, longest first (the first among equals). */
+function runs(points: readonly Point[]): (readonly [Point, Point])[] {
+  const out: (readonly [Point, Point, number])[] = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const [a, b] = [points[index - 1], points[index]];
+    if (a && b) {
+      out.push([a, b, index]);
+    }
+  }
+  return out.sort(([a1, b1, i], [a2, b2, j]) => Math.abs(b2.x - a2.x) + Math.abs(b2.y - a2.y) - (Math.abs(b1.x - a1.x) + Math.abs(b1.y - a1.y)) || i - j).map(([a, b]) => [a, b] as const);
+}
+
+function between(a: Point, b: Point, t: number): Point {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/** The middle of a line's longest straight run: where its chip and a note on it go. */
+export function lineMiddle(points: readonly Point[]): Point {
+  const [run] = runs(points);
+  return run ? between(run[0], run[1], 0.5) : (points[0] ?? { x: 0, y: 0 });
+}
+
+/** Points tried along a run, in order: its middle, then out from it. */
+const ALONG_RUN: readonly number[] = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
+
+/** The points along a line a label tries, in order: along its longest straight run (its middle, then out from it), then along the next longest. */
+export function alongLine(points: readonly Point[]): Point[] {
+  return runs(points).flatMap(([a, b]) => ALONG_RUN.map((t) => between(a, b, t)));
+}
+
+/** `points` with its first run shortened by `start` and its last by `end` (where an end's mark goes). */
+export function trimmed(points: readonly Point[], start: number, end: number): Point[] {
+  const out = [...points];
+  const cut = (at: number, toward: number, by: number) => {
+    const [a, b] = [out[at], out[toward]];
+    if (!a || !b || by <= 0) {
+      return;
+    }
+    const length = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+    out[at] = length > 0 ? between(a, b, Math.min(by, length) / length) : a;
+  };
+  cut(0, 1, start);
+  cut(out.length - 1, out.length - 2, end);
+  return out;
 }

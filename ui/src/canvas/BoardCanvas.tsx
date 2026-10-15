@@ -6,9 +6,11 @@
  * arrow shows its call's contract in Selected; Escape or a click on the canvas clears it. An expanded
  * card sends an arrow from each call to the callee's card; a compact card, one from its edge to each
  * card it calls; a type card, one from each field to each type it names on the page. A connection
- * leaves from its step's call on an expanded card (`lineHandles`), a relationship from a table's
- * column. A collapsed frame is one node: what it holds isn't drawn, and their arrows and connections
- * attach to it, merged (`routeArrows`, `routeLinks`). Dragging a frame moves everything in it, as one
+ * leaves from its step's call on an expanded card, a relationship from a table's column. Every line
+ * is routed from the page itself (`routePageLines`, with the ports the canvas measured, kept per page
+ * like sizes, else estimated): orthogonal, around the cards, each edge reading its route by id; while
+ * an item is dragged, only its lines follow it until it drops. A collapsed frame is one node: what it
+ * holds isn't drawn, and their arrows and connections attach to it, merged (`routeArrows`, `routeLinks`). Dragging a frame moves everything in it, as one
  * undo step; an attached note moves with its item. The canvas's menu has Add resource… (placed where the
  * menu opened) and Fit; while a link is being drawn, the cursor is a crosshair and a click on the
  * canvas lets go of it.
@@ -22,6 +24,7 @@ import {
   useStore,
   type NodeChange,
   type OnMove,
+  type ReactFlowState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useQueries } from "@tanstack/react-query";
@@ -71,6 +74,9 @@ import { routeArrows, routeLinks, type RoutedLink } from "./frames/routes";
 import { FLAT, edgeInsets, frameNesting, insideZones, titleWidth } from "./frames/edges";
 import { boundsOf, type Rect } from "./layout";
 import { LabelLayout, LabelLayoutContext } from "./lines/labelLayout";
+import { LineRoutes, LineRoutesContext } from "./lines/lineRoutes";
+import { routePageLines } from "./lines/pageLines";
+import { portEstimator } from "./sizing";
 import { useMeasure } from "./measure";
 import { NoteNode, type NoteNodeType } from "./notes/NoteNode";
 import { ResourceNode, type ResourceNodeType } from "./resources/ResourceNode";
@@ -85,6 +91,42 @@ const nodeTypes = { card: CardNode, frame: FrameNode, resource: ResourceNode, no
 const edgeTypes = { arrow: ArrowEdge, connection: ConnectionEdge };
 const NO_PORTS: readonly CardPort[] = [];
 const NO_COLUMNS: readonly string[] = [];
+
+/**
+ * Where React Flow measured each node's source handles (its ports, side handles, and columns' handles):
+ * below its top, to the half pixel, as one string, so it changes only when a handle moves.
+ */
+function measuredPorts(state: ReactFlowState): string {
+  let out = "";
+  for (const node of state.nodeLookup.values()) {
+    const handles = node.internals.handleBounds?.source;
+    if (!handles || handles.length === 0) {
+      continue;
+    }
+    out += node.id;
+    for (const handle of handles) {
+      out += `\u0001${handle.id ?? ""}\u0002${Math.round((handle.y + handle.height / 2) * 2) / 2}`;
+    }
+    out += "\u0000";
+  }
+  return out;
+}
+
+/** The ports in `measuredPorts`' string, by node and handle. */
+function parsePorts(measured: string): Map<string, Record<string, number>> {
+  const out = new Map<string, Record<string, number>>();
+  for (const entry of measured.split("\u0000")) {
+    const [node, ...handles] = entry.split("\u0001");
+    if (!node) {
+      continue;
+    }
+    out.set(node, Object.fromEntries(handles.map((handle) => {
+      const [id, offset] = handle.split("\u0002");
+      return [id ?? "", Number(offset)];
+    })));
+  }
+  return out;
+}
 
 /** Everything about a card's ports its node draws, as one string. */
 function portsSignature(ports: readonly CardPort[]): string {
@@ -206,6 +248,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   // What a collapsed frame hides is drawn as the frame: its arrows and links attach there.
   const shownAs = useMemo(() => collapsedPlaces(framed), [framed]);
   const arrows = useMemo(() => routeArrows(boardArrows.arrows, shownAs), [boardArrows.arrows, shownAs]);
+  const routedLinks = useMemo(() => routeLinks(links, shownAs), [links, shownAs]);
   // A card's ports, each with its line's look: its arrows', and the steps its connections leave from (on an expanded card).
   const ports = useMemo(() => {
     const merged = portsByCard(arrows, selectedArrow);
@@ -225,8 +268,54 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   // card or frame follows the pointer.
   const [drag, setDrag] = useState<Drag | null>(null);
   const sizeOf = useCallback((id: string) => sizes[id] ?? fallbackItemSize(framed, id), [sizes, framed]);
-  const geometry = useMemo(() => pageGeometry(framed, sizeOf, drag), [framed, sizeOf, drag]);
+  const resting = useMemo(() => pageGeometry(framed, sizeOf), [framed, sizeOf]);
+  const geometry = useMemo(() => (drag ? pageGeometry(framed, sizeOf, drag) : resting), [framed, sizeOf, drag, resting]);
   const display = geometry.rects;
+
+  // Lines: the router draws every one from the page (`routePageLines`), not from the edges React Flow
+  // renders (a large page renders only what is in view). Ports are where the canvas measured them
+  // (kept per page, like sizes), else estimated from what the cards drew.
+  const measured = useStore(measuredPorts);
+  useEffect(() => {
+    const found = parsePorts(measured);
+    const recorded = getPageView(target).ports;
+    const changed = [...found].filter(([item, offsets]) => JSON.stringify(recorded[item]) !== JSON.stringify(offsets));
+    if (changed.length > 0) {
+      updatePageView(target, (view) => {
+        for (const [item, offsets] of changed) {
+          view.ports[item] = offsets;
+        }
+      });
+    }
+  }, [measured, target]);
+  const recordedPorts = usePageView(target, (view) => view.ports);
+  const estimate = useMemo(
+    () =>
+      portEstimator((id) => {
+        const card = cards.find((item) => item.id === id);
+        const shape = shapes.get(id);
+        return card && shape ? { model: views.get(id), shape, description: card.description } : undefined;
+      }, measure),
+    [cards, views, shapes, measure],
+  );
+  const portOffset = useCallback((item: string, port: string) => recordedPorts[item]?.[port] ?? estimate(item, port), [recordedPorts, estimate]);
+  // While something is dragged, only its lines (and those of what a dragged frame holds) follow it; the
+  // rest are routed again when it is dropped.
+  const restingRoutes = useMemo(
+    () => routePageLines({ page: framed, geometry: resting, arrows, links: routedLinks, portOffset, drawsStep }),
+    [framed, resting, arrows, routedLinks, portOffset, drawsStep],
+  );
+  const routes = useMemo(() => {
+    if (!drag) {
+      return restingRoutes;
+    }
+    const only = new Set([drag.id, ...(geometry.inside.get(drag.id) ?? [])]);
+    return new Map([...restingRoutes, ...routePageLines({ page: framed, geometry, arrows, links: routedLinks, portOffset, drawsStep, only })]);
+  }, [drag, geometry, restingRoutes, framed, arrows, routedLinks, portOffset, drawsStep]);
+  const [lineRoutes] = useState(() => new LineRoutes());
+  useLayoutEffect(() => {
+    lineRoutes.set(routes);
+  }, [lineRoutes, routes]);
   // An expanded frame's size is its box's, never measured: only collapsed frames' nodes are.
   const boxes = useMemo(() => new Set(geometry.frames.flatMap(({ frame, collapsed }) => (collapsed ? [] : [frame.id]))), [geometry]);
 
@@ -404,19 +493,16 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     return list;
   }, [arrows, edgeCache, selectedArrow, target]);
 
-  // Connections leave from their step or column where they can (`lineHandles`), else by the sides
-  // facing each other, so they follow the cards as they move. Connections of a kind that join at a
-  // collapsed frame merge into one that counts them.
+  // Connections attach at their step or column where they can (`lineHandles`), else by the sides they
+  // are routed on. Connections of a kind that join at a collapsed frame merge into one that counts them.
   const [linkCache] = useState(() => new Map<string, { readonly signature: string; readonly edge: ConnectionEdgeType }>());
   const linkEdges = useMemo(() => {
     const live = new Set<string>();
-    const list = routeLinks(links, shownAs).flatMap((routed): ConnectionEdgeType[] => {
-      const from = display.get(routed.from);
-      const to = display.get(routed.to);
-      if (!from || !to) {
+    const list = routedLinks.flatMap((routed): ConnectionEdgeType[] => {
+      if (!display.has(routed.from) || !display.has(routed.to)) {
         return [];
       }
-      const handles = lineHandles(routed.link, routed, from, to, drawsStep);
+      const handles = lineHandles(routed.link, routed, routes.get(routed.id), drawsStep);
       const ends = { id: routed.id, source: routed.from, sourceHandle: handles.source, target: routed.to, targetHandle: handles.target, focusable: false, selectable: false };
       const data = connectionData(routed, { target, page: framed, health, selectedLink, typeName });
       const signature = JSON.stringify([ends, routed.kind, data.full, data.forms.map(chipText), data.description, data.selected, data.problem, data.cardinality]);
@@ -432,7 +518,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
     }
     return list;
-  }, [links, shownAs, display, drawsStep, selectedLink, target, linkCache, framed, health, typeName]);
+  }, [routedLinks, routes, display, drawsStep, selectedLink, target, linkCache, framed, health, typeName]);
   const edges = useMemo((): CanvasEdge[] => [...arrowEdges, ...linkEdges], [arrowEdges, linkEdges]);
 
   // The cards (and collapsed frames) as drawn, which the lines' labels keep clear of.
@@ -572,6 +658,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   }, [focus, width, height, settled, sizes, target, flow, geometry, display, boxes]);
 
   return (
+    <LineRoutesContext.Provider value={lineRoutes}>
     <LabelLayoutContext.Provider value={labelLayout}>
       <ReactFlow<CanvasNode, CanvasEdge>
         nodes={nodes}
@@ -648,5 +735,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         </>
       ) : null}
     </LabelLayoutContext.Provider>
+    </LineRoutesContext.Provider>
   );
 }

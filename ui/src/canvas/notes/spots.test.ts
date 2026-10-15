@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { HEADER_PORT, STACK_GAP } from "../layout";
+import { STACK_GAP } from "../layout";
 import { NOTE_GAP } from "../frames/geometry";
-import { lineMiddle, lineNoteSpot } from "./spots";
+import { lineMiddle } from "../lines/paths";
+import { lineNoteSpot } from "./spots";
 
 const NOTE = { width: 160, height: 40 };
 
 describe("lineMiddle", () => {
-  it("is halfway between the sides facing each other: side ends at the header, top and bottom ends mid-edge", () => {
-    const left = { x: 0, y: 0, width: 400, height: 600 };
-    expect(lineMiddle(left, { x: 520, y: 100, width: 200, height: 60 })).toEqual({ x: 460, y: 50 + HEADER_PORT });
-    expect(lineMiddle({ x: 520, y: 100, width: 200, height: 60 }, left)).toEqual({ x: 460, y: 50 + HEADER_PORT });
-    expect(lineMiddle({ x: 0, y: 0, width: 200, height: 100 }, { x: 100, y: 300, width: 200, height: 80 })).toEqual({ x: 150, y: 200 });
+  it("is the middle of the routed line's longest straight run (the first, among equals)", () => {
+    expect(lineMiddle([{ x: 400, y: 22 }, { x: 520, y: 22 }])).toEqual({ x: 460, y: 22 });
+    const turns = [
+      { x: 200, y: 22 },
+      { x: 260, y: 22 },
+      { x: 260, y: 322 },
+      { x: 300, y: 322 },
+    ];
+    expect(lineMiddle(turns)).toEqual({ x: 260, y: 172 });
+    expect(lineMiddle([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }])).toEqual({ x: 50, y: 0 });
   });
 });
 
