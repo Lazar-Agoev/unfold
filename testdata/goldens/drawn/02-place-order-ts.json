@@ -6,6 +6,7 @@
     "label": "placeOrder",
     "signature": "async function placeOrder(id: string)",
     "path": "src/service.ts",
+    "state": "current",
     "line": 3,
     "async": true,
     "generator": false,
@@ -64,6 +65,7 @@
         "form": "switch",
         "header": "order.status",
         "headerCalls": [],
+        "headerUnknown": [],
         "lanes": [
           {
             "id": 3,
@@ -77,7 +79,8 @@
             "state": "reached",
             "test": {
               "text": "\"paid\"",
-              "calls": []
+              "calls": [],
+              "unknown": []
             },
             "types": [],
             "fallsThrough": false,
@@ -126,7 +129,8 @@
             "state": "reached",
             "test": {
               "text": "\"cancelled\"",
-              "calls": []
+              "calls": [],
+              "unknown": []
             },
             "types": [],
             "fallsThrough": false,

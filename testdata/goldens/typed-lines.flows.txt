@@ -162,14 +162,14 @@
 === py/src/shop/payments.py#Gateway.charge
 ( charge )   key=py/src/shop/payments.py#Gateway.charge
   IF not cart.items   key=py/src/shop/payments.py#Gateway.charge/if[0] py/src/shop/payments.py#Gateway.charge/if[0]/then
-      RAISE ▸ CardDeclined → the caller   key=py/src/shop/payments.py#Gateway.charge/if[0]/then/raise[0]
+      RAISE ▸ CardDeclined → the caller   key=py/src/shop/payments.py#Gateway.charge/if[0]/then/raise[0] py/src/shop/payments.py#Gateway.charge/if[0]/then/raise[0]/call:CardDeclined
   ▸ self.total · into Receipt(…)   key=py/src/shop/payments.py#Gateway.charge/return[0]/call:Receipt/call:self.total
-  RETURN Receipt ? → End   key=py/src/shop/payments.py#Gateway.charge/return[0]
+  RETURN Receipt ? → End   key=py/src/shop/payments.py#Gateway.charge/return[0] py/src/shop/payments.py#Gateway.charge/return[0]/call:Receipt
 ( End )
 
 === py/src/shop/payments.py#Gateway.total
 ( total )   key=py/src/shop/payments.py#Gateway.total
-  RETURN sum → End   key=py/src/shop/payments.py#Gateway.total/return[0]
+  RETURN sum + Decimal → End   key=py/src/shop/payments.py#Gateway.total/return[0] py/src/shop/payments.py#Gateway.total/return[0]/call:sum py/src/shop/payments.py#Gateway.total/return[0]/call:sum/call:Decimal
 ( End )
 
 === py/src/shop/payments.py#Gateway.fee
@@ -181,7 +181,7 @@
 === py/src/shop/payments.py#Gateway.from_env
 ( from_env )   key=py/src/shop/payments.py#Gateway.from_env
   runs when defined · @classmethod   key=py/src/shop/payments.py#Gateway/call:classmethod
-  RETURN cls ? → End   key=py/src/shop/payments.py#Gateway.from_env/return[0]
+  RETURN cls ? → End   key=py/src/shop/payments.py#Gateway.from_env/return[0] py/src/shop/payments.py#Gateway.from_env/return[0]/call:cls
 ( End )
 
 === ts/src/cart.ts#
@@ -252,7 +252,7 @@
 === ts/src/inventory.ts#reserveInventory
 ( reserveInventory )   key=ts/src/inventory.ts#reserveInventory
   IF items.length === 0   key=ts/src/inventory.ts#reserveInventory/if[0] ts/src/inventory.ts#reserveInventory/if[0]/then
-      THROW ▸ OutOfStockError → the caller   key=ts/src/inventory.ts#reserveInventory/if[0]/then/throw[0]
+      THROW ▸ OutOfStockError → the caller   key=ts/src/inventory.ts#reserveInventory/if[0]/then/throw[0] ts/src/inventory.ts#reserveInventory/if[0]/then/throw[0]/call:OutOfStockError
   RETURN { id: "hold-1", items, expiresAt: new Date() } → End   key=ts/src/inventory.ts#reserveInventory/return[0]
 ( End )
 
@@ -293,9 +293,9 @@
   ▸ reserveInventory → hold · AWAIT   key=ts/src/orders/create.ts#createOrder/call:reserveInventory
   TRY   key=ts/src/orders/create.ts#createOrder/try[0] ts/src/orders/create.ts#createOrder/try[0]/body
       ▸ chargePayment → charge · AWAIT   key=ts/src/orders/create.ts#createOrder/try[0]/body/call:chargePayment
-      RETURN ▸ toOrder → End   key=ts/src/orders/create.ts#createOrder/try[0]/body/return[0]
+      RETURN ▸ toOrder → End   key=ts/src/orders/create.ts#createOrder/try[0]/body/return[0] ts/src/orders/create.ts#createOrder/try[0]/body/return[0]/call:toOrder
   ON ERROR → catch (error)   key=ts/src/orders/create.ts#createOrder/try[0]/catch
-      THROW ▸ PaymentError → the caller   key=ts/src/orders/create.ts#createOrder/try[0]/catch/throw[0]
+      THROW ▸ PaymentError → the caller   key=ts/src/orders/create.ts#createOrder/try[0]/catch/throw[0] ts/src/orders/create.ts#createOrder/try[0]/catch/throw[0]/call:PaymentError
 ( End )
 
 === ts/src/orders/create.ts#toOrder
@@ -385,13 +385,13 @@
   ▸ total · into stripe.paymentIntents.create(…)   key=ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create/call:total
   · stripe.paymentIntents.create → intent   key=ts/src/payments.ts#chargePayment/call:stripe.paymentIntents.create
   IF intent.status !== "succeeded"   key=ts/src/payments.ts#chargePayment/if[0] ts/src/payments.ts#chargePayment/if[0]/then
-      THROW ▸ CardDeclinedError → the caller   key=ts/src/payments.ts#chargePayment/if[0]/then/throw[0]
+      THROW ▸ CardDeclinedError → the caller   key=ts/src/payments.ts#chargePayment/if[0]/then/throw[0] ts/src/payments.ts#chargePayment/if[0]/then/throw[0]/call:CardDeclinedError
   RETURN { id: intent.id, amount: intent.amount, intent } → End   key=ts/src/payments.ts#chargePayment/return[0]
 ( End )
 
 === ts/src/payments.ts#total
 ( total )   key=ts/src/payments.ts#total
-  RETURN cart.items.reduce ? → End   key=ts/src/payments.ts#total/return[0]
+  RETURN cart.items.reduce ? → End   key=ts/src/payments.ts#total/return[0] ts/src/payments.ts#total/return[0]/call:cart.items.reduce
       ↳ callback (sum, item) =>   key=ts/src/payments.ts#total/return[0]/call:cart.items.reduce/callback[0]
 ( End )
 

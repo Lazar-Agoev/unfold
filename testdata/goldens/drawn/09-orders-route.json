@@ -5,6 +5,7 @@
     "form": "module",
     "label": "src/routes/orders.ts",
     "path": "src/routes/orders.ts",
+    "state": "current",
     "line": 1,
     "async": false,
     "generator": false,

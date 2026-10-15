@@ -65,7 +65,7 @@
 
 /* A compact card is its header, review banner, and whole description; with neither, the header alone. */
 .block-card.compact .card-description { border-bottom: 0; }
-.block-card.compact:not(:has(.card-review, .card-description, .card-note)) .card-header { border-bottom-color: transparent; }
+.block-card.compact:not(:has(.card-state, .card-review, .card-description, .card-note)) .card-header { border-bottom-color: transparent; }
 
 /* The chevron at the start of a card's header: compact or expanded. */
 .card-expand {
@@ -118,7 +118,9 @@
   width: 0;
 }
 
-/* The review banner under the header. */
+/* Under the header: the line saying the card's file changed since the last compile (or doesn't
+   parse), and the review banner, in the code panel's banner look. */
+.card-state,
 .card-review {
   display: flex;
   flex-shrink: 0;

@@ -21,7 +21,7 @@
  */
 
 import type { CallBox, Callback, CombinedStep, DrawnFlow, ExitStep, FlowFrame, GapTick, Key, Lane, LinkEnd, OtherCall, ProposedStep, RepoPath, Route, RouteKind, Sequence, Step, ThinRow } from "../ipc/generated";
-import { callMeta, combinedExits, combinedSummary, exitDestination, exitWord, frameWord, gapWords, hasMeta, headWords, outcomeWords, sectionWords, type CallMeta, type CombinedExit } from "./words";
+import { callMeta, combinedExits, combinedSummary, exitDestination, exitWord, frameWord, gapWords, hasMeta, headWords, listedCalls, listedWords, outcomeWords, sectionWords, type CallMeta, type CombinedExit } from "./words";
 
 /** Measures the width of `text` in pixels for a CSS font shorthand. */
 export type Measure = (text: string, font: string) => number;
@@ -74,17 +74,22 @@ export type FlowPiece =
   /** A control block's frame. `path` is the open path for the chips in its title (its header calls). */
   | (PieceBase & { readonly kind: "frame"; readonly frame: FlowFrame; readonly look: FrameLook; readonly path: readonly Key[] })
   /**
-   * A decision part's head: a test (`test`, amber, with the project calls written in it as chips),
-   * `else`, a case, or a switch's `no match`. A switch's subject is a test head with no part.
+   * A decision part's head: a test (`test`, amber, with the project calls written in it as chips, then
+   * its unknown calls), `else`, a case, or a switch's `no match`. A switch's subject is a test head with
+   * no part.
    */
   | (PieceBase & {
       readonly kind: "head";
       readonly look: "test" | "else" | "case" | "none";
       readonly lane: Lane | null;
+      /** Its words, whole: a test, `else`, a case, or `no match`. */
       readonly text: string;
-      /** The width the text gets (it is cut short past it). */
+      /** What it draws of its part's name and its words: the same, or cut short with a visible `…` when a test head can't hold them. */
+      readonly shown: { readonly name: string | null; readonly text: string };
+      /** The width its words get. */
       readonly textWidth: number;
       readonly chips: readonly CallBox[];
+      readonly unknown: readonly OtherCall[];
       readonly path: readonly Key[];
     })
   /** A part drawn as a section: a try's TRY, EXCEPT, ELSE, and FINALLY, or a loop's ELSE. `path` is the open path for the chips in its title (a handler's clause calls). */
@@ -156,6 +161,7 @@ const FONT = {
   callNameUi: `600 12.5px ${UI}`,
   chipName: `600 11.5px ${CODE}`,
   chipNameUi: `600 11.5px ${UI}`,
+  listed: `10.5px ${CODE}`,
   codeName: `11px ${CODE}`,
   binds: `500 11px ${CODE}`,
   why: `10.5px ${UI}`,
@@ -201,6 +207,8 @@ const PILL_HEIGHT = 26;
 /** A horizontal arrow from a head to its lane: 5px, a 30px line, 5px. */
 const HARROW = 40;
 const HEAD_HEIGHT = 28;
+/** The widest a test head is drawn; longer words are cut short with a visible `…`. */
+const TEST_HEAD_MAX = 320;
 const CHIP_HEIGHT = 22;
 const CHEVRON = 18;
 const GAP_HEIGHT = 17;
@@ -240,6 +248,8 @@ interface Scope {
   readonly inset: boolean;
   /** The routes the wire into End (or an inset's "returns to the caller") stands for. */
   readonly toEnd: ReadonlySet<Route>;
+  /** Every lane, by id: a transfer can land in one. */
+  readonly lanes: ReadonlyMap<number, Lane>;
 }
 
 function stepOf(route: Route): number | null {
@@ -254,10 +264,12 @@ function scopeOf(flow: DrawnFlow, path: readonly Key[], inset: boolean): Scope {
     from.set(route.from, list);
   }
   const within = new Map<number, ReadonlySet<number>>([[0, new Set([0])]]);
+  const lanes = new Map<number, Lane>();
   const inSequence = (sequence: Sequence): number[] => sequence.steps.flatMap(inStep);
   const inLane = (lane: Lane): number[] => {
     const ids = [lane.id, ...inSequence(lane.steps)];
     within.set(lane.id, new Set(ids));
+    lanes.set(lane.id, lane);
     return ids;
   };
   function inStep(step: Step): number[] {
@@ -281,7 +293,8 @@ function scopeOf(flow: DrawnFlow, path: readonly Key[], inset: boolean): Scope {
   }
   inSequence(flow.steps);
   const last = flow.steps.steps.at(-1);
-  const ends = [...(within.get(last?.id ?? 0) ?? [])].flatMap((id) => from.get(id) ?? []);
+  // The start too: a truncated definition may continue from it to End.
+  const ends = [...(within.get(last?.id ?? 0) ?? []), 0].flatMap((id) => from.get(id) ?? []);
   const toEnd = ends.filter((route) => {
     if (route.to !== "end" || route.kind === "raise") {
       return false;
@@ -289,7 +302,7 @@ function scopeOf(flow: DrawnFlow, path: readonly Key[], inset: boolean): Scope {
     // The last step's own return draws the wire into End, as its words would; one inside it keeps its words.
     return route.kind !== "return" || (!inset && last?.kind === "exit" && route.from === last.id && route.through.length === 0);
   });
-  return { flow, from, within, path, inset, toEnd: new Set(toEnd) };
+  return { flow, from, within, path, inset, toEnd: new Set(toEnd), lanes };
 }
 
 function routesFrom(scope: Scope, ids: Iterable<number>): Route[] {
@@ -663,27 +676,61 @@ class Builder {
     return { width: extent, height, box: rect };
   }
 
+  /** The calls listed on a call drawn on a test, a header, or an exit (`+ x.foo ?, logger.info`); 0 when it lists none. */
+  private listedWidth(calls: readonly OtherCall[]): number {
+    const words = listedWords(calls);
+    if (words === null) {
+      return 0;
+    }
+    return this.text(words, FONT.listed) + listedCalls(calls).filter((call) => call.to.outcome === "unknown").length * UNKNOWN_MARK;
+  }
+
   private chipWidth(box: CallBox): number {
+    const listed = this.listedWidth(box.calls);
     return (
       1 +
       7 +
       this.nameWidth(box.name, box.callee, FONT.chipName, FONT.chipNameUi) +
       (box.to.outcome === "unknown" ? UNKNOWN_MARK : 0) +
+      (listed > 0 ? 4 + listed : 0) +
       (box.actions.open ? 4 + CHEVRON + 2 : 7) +
       1
     );
   }
 
-  /** Chips in a row from x, centered on `middle`; each one's box is reported. Returns where the row ends. */
-  private chips(boxes: readonly CallBox[], x: number, middle: number, gap: number): number {
+  /** An unknown call listed after a test or header: a chip with its `?`. */
+  private unknownChipWidth(call: OtherCall): number {
+    return 1 + 7 + this.text(call.callee, FONT.chipName) + UNKNOWN_MARK + 7 + 1;
+  }
+
+  /** How wide `boxes`, then `unknown`, are as chips, each after `gap`. */
+  private chipsWidth(boxes: readonly CallBox[], unknown: readonly OtherCall[], gap: number): number {
+    return [...boxes.map((box) => this.chipWidth(box)), ...unknown.map((call) => this.unknownChipWidth(call))].reduce((sum, width) => sum + gap + width, 0);
+  }
+
+  /**
+   * Chips in a row from x, centered on `middle`: the boxes, then the unknown calls. Each one's box is
+   * reported, and a box's for the calls listed on it too. Returns where the row ends.
+   */
+  private chips(boxes: readonly CallBox[], unknown: readonly OtherCall[], x: number, middle: number, gap: number): number {
     let cx = x;
-    boxes.forEach((box, index) => {
-      cx += index > 0 ? gap : 0;
-      const rect = { x: cx, y: middle - CHIP_HEIGHT / 2, width: this.chipWidth(box), height: CHIP_HEIGHT };
+    const place = (width: number): Rect => {
+      cx += cx > x ? gap : 0;
+      const rect = { x: cx, y: middle - CHIP_HEIGHT / 2, width, height: CHIP_HEIGHT };
+      cx += width;
+      return rect;
+    };
+    for (const box of boxes) {
+      const rect = place(this.chipWidth(box));
       this.block(box.key, rect);
+      for (const call of listedCalls(box.calls)) {
+        this.block(call.key, rect);
+      }
       this.anchor(box.key, box.to, rect, middle);
-      cx += rect.width;
-    });
+    }
+    for (const call of unknown) {
+      this.block(call.key, place(this.unknownChipWidth(call)));
+    }
     return cx;
   }
 
@@ -789,7 +836,7 @@ class Builder {
   /** An exit pill: its word, its value (text, or a project call as a chip), and where it goes in words. */
   private exit(exit: ExitStep, id: number, x: number, y: number, scope: Scope, dim: boolean): Placed {
     const own = (scope.from.get(id) ?? []).filter((route) => !scope.toEnd.has(route));
-    const destination = exitDestination(own, exit.form, scope.inset);
+    const destination = exitDestination(own, exit.form, scope.inset, scope.lanes);
     const value = exit.value;
     const chip = value?.kind === "call" && value.to.outcome === "project" ? value : null;
     let cx = x + 1.5 + 9 + this.caps(exitWord(exit.form), FONT.word, 9.5, 0.09);
@@ -804,6 +851,8 @@ class Builder {
       cx += this.chipWidth(chip);
     } else if (value) {
       cx += 7 + this.text(value.kind === "text" ? value.text : value.callee, FONT.value) + (value.kind === "call" && value.to.outcome === "unknown" ? UNKNOWN_MARK : 0);
+      const listed = value.kind === "call" ? this.listedWidth(value.calls) : 0;
+      cx += listed > 0 ? 7 + listed : 0;
     }
     if (destination !== null) {
       cx += 7 + this.text(`→ ${destination}`, FONT.destination);
@@ -812,9 +861,12 @@ class Builder {
     this.pieces.push({ kind: "exit", rect, dim, exit, destination, path: scope.path });
     this.block(exit.key, rect);
     if (chip) {
-      this.chips([chip], chipStart, y + height / 2, 0);
+      this.chips([chip], [], chipStart, y + height / 2, 0);
     } else if (value?.kind === "call") {
       this.block(value.key, rect);
+      for (const call of listedCalls(value.calls)) {
+        this.block(call.key, rect);
+      }
     }
     let extent = rect.width;
     let total = height;
@@ -828,9 +880,10 @@ class Builder {
 
   // -- Frames ---------------------------------------------------------------------------------
 
-  /** A frame's title row: its keyword, name, header, header calls as chips, and binds. Returns its size. */
+  /** A frame's title row: its keyword, name, header, header calls as chips (then its unknown calls), and binds. Returns its size. */
   private title(frame: FlowFrame, word: string, x: number, y: number, withHeader: boolean): Size {
-    const height = frame.headerCalls.length > 0 && withHeader ? CHIP_HEIGHT : FRAME.title;
+    const chips = frame.headerCalls.length + frame.headerUnknown.length > 0;
+    const height = chips && withHeader ? CHIP_HEIGHT : FRAME.title;
     let cx = x + this.caps(word, FONT.word, 9.5, 0.09);
     if (frame.name !== undefined) {
       cx += 8 + this.text(frame.name, FONT.name);
@@ -838,8 +891,8 @@ class Builder {
     if (withHeader && frame.header !== undefined) {
       cx += 8 + this.text(frame.header, FONT.head);
     }
-    if (withHeader && frame.headerCalls.length > 0) {
-      cx = this.chips(frame.headerCalls, cx + 8, y + height / 2, 8);
+    if (withHeader && chips) {
+      cx = this.chips(frame.headerCalls, frame.headerUnknown, cx + 8, y + height / 2, 8);
     }
     if (frame.binds !== undefined) {
       cx += 8 + this.text(`→ ${frame.binds}`, FONT.binds);
@@ -854,28 +907,41 @@ class Builder {
     return rect;
   }
 
-  /** A test head: ◆, the test (or the part's name and its test), and the project calls in it as chips. */
-  private testHead(lane: Lane | null, text: string, chips: readonly CallBox[], x: number, y: number, scope: Scope, dim: boolean): Rect {
-    const name = lane?.name;
-    const words = name !== undefined ? this.text(name, FONT.name) + 8 + this.text(text, FONT.codeName) : this.text(text, FONT.head);
-    const chipsWidth = chips.reduce((sum, box) => sum + 6 + this.chipWidth(box), 0);
-    const fixed = 1.5 + 8 + this.text("◆", FONT.diamond) + 6 + chipsWidth + 10 + 1.5;
-    const textWidth = Math.ceil(Math.max(Math.min(words, 320 - fixed), 40));
-    const height = chips.length > 0 ? 2 * 1.5 + 2 * 3 + CHIP_HEIGHT : HEAD_HEIGHT;
+  /**
+   * A test head: ◆, the test (or the part's name and its test), the project calls in it as chips, then
+   * its unknown calls. Words wider than the head holds are cut short with a visible `…`, the test before the name.
+   */
+  private testHead(lane: Lane | null, text: string, chips: readonly CallBox[], unknown: readonly OtherCall[], x: number, y: number, scope: Scope, dim: boolean): Rect {
+    const fixed = 1.5 + 8 + this.text("◆", FONT.diamond) + 6 + this.chipsWidth(chips, unknown, 6) + 10 + 1.5;
+    const room = TEST_HEAD_MAX - fixed;
+    const shown = this.fitHead(lane?.name, text, room);
+    const words = shown.name !== null ? this.text(shown.name, FONT.name) + (shown.text ? 8 + this.text(shown.text, FONT.codeName) : 0) : this.text(shown.text, FONT.head);
+    const textWidth = Math.ceil(Math.max(Math.min(words, room), 40));
+    const height = chips.length + unknown.length > 0 ? 2 * 1.5 + 2 * 3 + CHIP_HEIGHT : HEAD_HEIGHT;
     const rect = { x, y, width: Math.ceil(fixed + textWidth), height };
-    this.pieces.push({ kind: "head", rect, dim, look: "test", lane, text, textWidth, chips, path: scope.path });
+    this.pieces.push({ kind: "head", rect, dim, look: "test", lane, text, shown, textWidth, chips, unknown, path: scope.path });
     if (lane) {
       this.block(lane.key, rect);
     }
-    this.chips(chips, x + 1.5 + 8 + this.text("◆", FONT.diamond) + 6 + textWidth + 6, y + height / 2, 6);
+    this.chips(chips, unknown, x + 1.5 + 8 + this.text("◆", FONT.diamond) + 6 + textWidth + 6, y + height / 2, 6);
     return rect;
+  }
+
+  /** A test head's words in `room`: its part's name whole when it fits, and the test in what is left; a name cut short leaves no room for the test. */
+  private fitHead(name: string | undefined, text: string, room: number): { readonly name: string | null; readonly text: string } {
+    if (name === undefined) {
+      return { name: null, text: fit(text, room, FONT.head, this.measure) };
+    }
+    const shown = fit(name, room, FONT.name, this.measure);
+    const rest = room - this.text(shown, FONT.name) - 8;
+    return { name: shown, text: shown === name ? fit(text, rest, FONT.codeName, this.measure) : "" };
   }
 
   /** A head with words only: `else`, `case "paid"`, `default`, `no match`. */
   private plainHead(lane: Lane | null, look: "else" | "case" | "none", text: string, x: number, y: number, scope: Scope, dim: boolean): Rect {
     const textWidth = Math.ceil(lane?.name !== undefined ? this.text(lane.name, FONT.name) + 8 + this.text(text, FONT.codeName) : this.text(text, FONT.head));
     const rect = { x, y, width: textWidth + 23, height: HEAD_HEIGHT };
-    this.pieces.push({ kind: "head", rect, dim, look, lane, text, textWidth, chips: [], path: scope.path });
+    this.pieces.push({ kind: "head", rect, dim, look, lane, text, shown: { name: lane?.name ?? null, text }, textWidth, chips: [], unknown: [], path: scope.path });
     if (lane) {
       this.block(lane.key, rect);
     }
@@ -897,7 +963,7 @@ class Builder {
 
   /**
    * A part's steps as a column at (x, y): `no calls` when it has none, its end gap, a dashed stub
-   * when its last step may continue, and `continues after …` when its end leaves the frame.
+   * when it or its last step may continue, and `continues after …` when its end leaves the frame.
    */
   private lane(lane: Lane, x: number, y: number, scope: Scope, frame: number, cont: string | null, dim: boolean): Size {
     const file = scope.flow.header.path;
@@ -914,13 +980,11 @@ class Builder {
       cy += line.height;
       width = Math.max(width, line.width);
     }
-    if (last) {
-      const uncertain = (scope.from.get(last.id) ?? []).filter((route) => route.kind === "mayContinue");
-      if (uncertain.length > 0) {
-        const link = this.link(x, cy, uncertain, null, undefined, file);
-        cy += link.height;
-        width = Math.max(width, link.width);
-      }
+    const uncertain = [...(last ? [last.id] : []), lane.id].flatMap((id) => scope.from.get(id) ?? []).filter((route) => route.kind === "mayContinue");
+    if (uncertain.length > 0) {
+      const link = this.link(x, cy, uncertain, null, undefined, file);
+      cy += link.height;
+      width = Math.max(width, link.width);
     }
     if (last && lane.fallsThrough) {
       width = Math.max(width, this.note("↓ falls into the next case", x, cy + 5, "faint", dim).width);
@@ -945,7 +1009,7 @@ class Builder {
       const routes = scope.from.get(lane.id) ?? [];
       const laneDim = dim || lane.state === "unreachable";
       const head = lane.test
-        ? this.testHead(lane, lane.test.text ?? "", lane.test.calls, cx, cy, scope, laneDim)
+        ? this.testHead(lane, lane.test.text ?? "", lane.test.calls, lane.test.unknown, cx, cy, scope, laneDim)
         : this.plainHead(lane, "else", headWords(lane), cx, cy, scope, laneDim);
       const middle = cy + HEAD_HEIGHT / 2;
       const into = routes.filter((route) => route.kind === (lane.test ? "yes" : "on"));
@@ -984,7 +1048,7 @@ class Builder {
     const title = this.title(frame, frameWord(frame.form), cx, cy, false);
     let inner = title.width;
     cy += title.height + FRAME.titleGap;
-    const subject = this.testHead(null, frame.header ?? "", frame.headerCalls, cx, cy, scope, dim);
+    const subject = this.testHead(null, frame.header ?? "", frame.headerCalls, frame.headerUnknown, cx, cy, scope, dim);
     inner = Math.max(inner, subject.width);
     cy += subject.height;
     const insets = this.chipInsets(frame.headerCalls, cx + SPINE + INSET.indent, cy, scope, dim);
@@ -1063,7 +1127,7 @@ class Builder {
       let width: number;
       if (lane.test) {
         const routes = scope.from.get(lane.id) ?? [];
-        const head = this.testHead(null, lane.test.text ?? "", lane.test.calls, cx, cy, scope, laneDim);
+        const head = this.testHead(null, lane.test.text ?? "", lane.test.calls, lane.test.unknown, cx, cy, scope, laneDim);
         this.harrow(
           head.x + head.width,
           cy + HEAD_HEIGHT / 2,
@@ -1111,13 +1175,14 @@ class Builder {
     this.block(lane.key, rect);
     const words = sectionWords(lane, loop);
     const chips = lane.test?.calls ?? [];
-    const title = chips.length > 0 ? CHIP_HEIGHT : SECTION.title;
+    const unknown = lane.test?.unknown ?? [];
+    const title = chips.length + unknown.length > 0 ? CHIP_HEIGHT : SECTION.title;
     const cx = x + 1 + SECTION.padX;
     let titleWidth = this.caps(words.title, FONT.word, 9.5, 0.09);
     titleWidth += lane.name !== undefined ? 8 + this.text(lane.name, FONT.name) : 0;
     titleWidth += words.clause !== null ? 8 + this.text(words.clause, FONT.head) : 0;
-    if (chips.length > 0) {
-      titleWidth = this.chips(chips, cx + titleWidth + 8, y + 1 + SECTION.padTop + title / 2, 8) - cx;
+    if (chips.length + unknown.length > 0) {
+      titleWidth = this.chips(chips, unknown, cx + titleWidth + 8, y + 1 + SECTION.padTop + title / 2, 8) - cx;
     }
     titleWidth += words.note !== null ? 8 + this.text(words.note, FONT.sectionNote) : 0;
     let top = y + 1 + SECTION.padTop + title + SECTION.titleGap;
@@ -1225,7 +1290,7 @@ class Builder {
   private combined(step: CombinedStep, id: number, x: number, y: number, scope: Scope, dim: boolean): Placed {
     const rect: MutableRect = { x, y, width: 0, height: 0 };
     const routes = scope.from.get(id) ?? [];
-    const exits = step.collapsed ? combinedExits(routes, scope.inset) : [];
+    const exits = step.collapsed ? combinedExits(routes, scope.inset, scope.lanes) : [];
     this.pieces.push({ kind: "combined", rect, dim, step, exits });
     this.items.set(step.item, rect);
     const glyph = this.text("⊞", FONT.glyph) + 7;
@@ -1305,9 +1370,10 @@ export function thinCount(row: ThinRow): string | null {
   return `${row.calls.length} calls${row.unknown > 0 ? `, ${row.unknown} unknown` : ""}`;
 }
 
-/** A callback row's words: its signature, else its label. */
+/** A callback row's words: the property it is written as, then its signature; else its label. */
 export function callbackText(callback: Callback): string {
-  return callback.signature ?? callback.label;
+  const words = [callback.property, callback.signature].filter((word) => word !== undefined);
+  return words.length > 0 ? words.join(" ") : callback.label;
 }
 
 /** An inset's place: its file and first line. */
@@ -1331,6 +1397,25 @@ function packLines(widths: readonly number[], width: number): number {
     line += item;
   }
   return lines;
+}
+
+/** `text` whole when it fits in `width`, else the longest start of it that fits followed by `…`, so a cut never reads as the whole. */
+function fit(text: string, width: number, font: string, measure: Measure): string {
+  if (measure(text, font) <= width) {
+    return text;
+  }
+  const characters = Array.from(new Intl.Segmenter().segment(text), (part) => part.segment);
+  let low = 0;
+  let high = characters.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (measure(`${characters.slice(0, middle).join("")}…`, font) <= width) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return `${characters.slice(0, low).join("").trimEnd()}…`;
 }
 
 /** Wraps `text` into lines no wider than `width` (long words break), returning the line count. */

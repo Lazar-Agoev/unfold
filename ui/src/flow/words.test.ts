@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DrawnFlow, Lane } from "../ipc/generated";
-import { sectionWords } from "./words";
+import type { DrawnFlow, Lane, Route } from "../ipc/generated";
+import { combinedExits, exitDestination, sectionWords } from "./words";
 
 const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
 
@@ -22,7 +22,7 @@ function laneOf(name: string, form: Lane["form"]): Lane {
 }
 
 function withClause(lane: Lane, text: string): Lane {
-  return { ...lane, test: { text, calls: lane.test?.calls ?? [] } };
+  return { ...lane, test: { text, calls: lane.test?.calls ?? [], unknown: lane.test?.unknown ?? [] } };
 }
 
 describe("sectionWords", () => {
@@ -36,5 +36,28 @@ describe("sectionWords", () => {
     for (const text of ["except* PaymentDeclined as error", "except *PaymentDeclined as error"]) {
       expect(sectionWords(withClause(handler, text), false)).toEqual({ title: "Except*", clause: "PaymentDeclined as error", note: null });
     }
+  });
+});
+
+describe("where a transfer lands", () => {
+  const handler = { ...withClause(laneOf("01-place-order", "except"), "except ValueError"), id: 7 };
+  const cleanup = { ...laneOf("03-sync-inbox", "finally"), id: 9 };
+  const lanes = new Map<number, Lane>([
+    [handler.id, handler],
+    [cleanup.id, cleanup],
+  ]);
+  const route = (kind: Route["kind"], to: Route["to"], through: number[] = []): Route => ({ from: 3, kind, to, through });
+
+  it("names the handler that catches a raise", () => {
+    expect(exitDestination([route("raise", { step: 7 })], "raise", false, lanes)).toBe("except ValueError");
+    expect(exitDestination([route("raise", "caller", [9])], "raise", false, lanes)).toBe("finally, then raises to the caller");
+  });
+
+  it("ends a transfer a finally always leaves in that finally", () => {
+    expect(exitDestination([route("break", { step: 9 })], "break", false, lanes)).toBe("finally");
+    expect(combinedExits([route("continue", { step: 9 }), route("return", "end")], false, lanes)).toEqual([
+      { kind: "continue", verb: "continues", destination: "finally" },
+      { kind: "return", verb: "returns", destination: "End" },
+    ]);
   });
 });

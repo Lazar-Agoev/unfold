@@ -297,6 +297,17 @@
 .flow-chip:has(.flow-chevron) { padding-right: 2px; }
 .flow-chip.sometimes { border-style: dashed; }
 .flow-chip .flow-chevron { margin-left: 0; }
+.flow-chip.other { border-color: var(--color-border); background: var(--color-step); }
+.flow-chip.other .flow-chip-name { color: var(--color-text); }
+
+/* The library and unknown calls written inside a call drawn on a test, a header, or an exit. */
+.flow-listed {
+  font: 10.5px/16px var(--font-code);
+  color: var(--color-faint);
+  white-space: nowrap;
+}
+
+.flow-listed .flow-unknown { margin-left: 4px; }
 
 .flow-chip-name {
   font: 600 11.5px/18px var(--font-code);
@@ -462,13 +473,13 @@
 .flow-head.else { cursor: pointer; }
 .flow-diamond { font-size: 9px; color: var(--color-decision); }
 
+/* Its width is laid out, and words wider than a test head holds arrive cut short with a `…`. */
 .flow-head-text {
   display: inline-flex;
   flex-shrink: 0;
   align-items: baseline;
   gap: 8px;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Sections: a try's TRY, EXCEPT (dashed, peach), ELSE, and FINALLY; a loop's ELSE */

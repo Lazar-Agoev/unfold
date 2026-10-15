@@ -144,7 +144,9 @@ A call gives an instance of a class only when it is proven ([link/value.rs](../.
   as for its `types` link, and calls to its members are `wrapper`.
 - **Standard-library stubs:** eight modules (`builtins`, `logging`, `os` with `os.path`, `json`, `re`, `datetime`,
   `pathlib`, `asyncio`) and every class their members reach, generated into `stubs.rs` by
-  `cargo xtask gen-py-stubs` from typeshed at the commit pinned in `stdlib.rs`. Nothing is read at run time.
+  `cargo xtask gen-py-stubs` from typeshed at the commit pinned in `stdlib.rs`. Nothing is read at run time. The
+  same run writes the builtin exception classes and their bases into the reader (`python_exceptions.rs`), which
+  tells which `except` catches a raise ([Reader › Contracts](../reader.md#contracts)).
   - Type arguments are dropped (`list[str]` is `list`); a class or `None`, `Optional`, quoted names, and
     `async` through `await` are kept.
   - `Self` in a stub reads as the receiver's class (`datetime.datetime.now()`); `LiteralString` reads as `str`.

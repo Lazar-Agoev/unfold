@@ -2,14 +2,33 @@
 //! worked examples, `place_order` drawn and shaped, and the
 //! playgrounds' drawn-flow goldens.
 
+use std::path::Path;
+
 use rustc_hash::FxHashMap;
-use unfold_core::testkit::{GraphBuilder, assert_golden, builtin, project, sample, unknown};
-use unfold_core::vocab::{Flag, Form, Language, Outcome, Reason};
-use unfold_core::{Key, LineSpan};
+use unfold_core::highlight::Highlighter;
+use unfold_core::testkit::{GraphBuilder, assert_golden, builtin, library, project, sample, unknown};
+use unfold_core::vocab::{Flag, Form, Language, LinkKind, Outcome, Reason};
+use unfold_core::{Key, LineSpan, LinkTarget};
 
 use super::examples::{self, Code, ORDERS_HANDLER};
 use super::*;
+use crate::source::SourceCache;
 use crate::testing::Playground;
+
+/// The real highlighters.
+const HIGHLIGHTERS: &[&dyn Highlighter] = &[
+    &unfold_lang_python::PythonHighlighter,
+    &unfold_lang_typescript::TypeScriptHighlighter,
+];
+
+/// Text from the files under `root`, keeping what verified in `kept`.
+fn sources<'a>(root: &'a Path, kept: &'a SourceCache) -> TextSources<'a> {
+    TextSources {
+        root,
+        highlighters: HIGHLIGHTERS,
+        kept,
+    }
+}
 
 fn key(text: &str) -> Key {
     Key::from_text(text)
@@ -35,7 +54,13 @@ fn drawn_with(
             .collect(),
         show_all_calls: all,
     };
-    draw(&trees, &playground.root, overlay, &card).expect("the definition draws")
+    draw(
+        &trees,
+        &sources(&playground.root, &SourceCache::new()),
+        overlay,
+        &card,
+    )
+    .expect("the definition draws")
 }
 
 fn drawn(graph: &GraphBuilder, definition: &str) -> DrawnFlow {
@@ -195,6 +220,80 @@ fn place_order_draws_as_the_design_shows() {
     assert_eq!(
         gaps,
         [LineSpan { start: 17, end: 17 }, LineSpan { start: 24, end: 24 }]
+    );
+}
+
+/// While its file changes on disk or stops parsing, a card keeps the words of the text its facts
+/// came from, kept from when it last verified, and its header says so in the code panel's words.
+/// With no such text kept, it says so without the words.
+#[test]
+fn a_changed_file_keeps_its_words_and_says_so() {
+    let mut shop = Playground::built(&sample::shop());
+    let card = Card {
+        definition: key(PLACE_ORDER),
+        open: Vec::new(),
+        show_all_calls: false,
+    };
+    let draw_from = |shop: &Playground, kept: &SourceCache| {
+        draw(
+            &shop.trees(),
+            &sources(&shop.root, kept),
+            &Overlay::default(),
+            &card,
+        )
+        .expect("the definition draws")
+    };
+    let kept = SourceCache::new();
+    let current = draw_from(&shop, &kept);
+    assert_eq!(current.header.state, FlowState::Current);
+    assert_eq!(plain(&current), PLACE_ORDER_DRAWN);
+
+    let service = shop.root.join("shop/service.py");
+    let text = std::fs::read_to_string(&service).unwrap();
+    std::fs::write(&service, format!("{text}\n# edited\n")).unwrap();
+    let changed = draw_from(&shop, &kept);
+    assert_eq!(changed.header.state, FlowState::Changed);
+    assert_eq!(
+        plain(&changed),
+        PLACE_ORDER_DRAWN.replacen(
+            "( place_order )",
+            "( place_order ) · Changed since the last compile",
+            1
+        )
+    );
+    assert_eq!(
+        changed.header,
+        Header {
+            state: FlowState::Changed,
+            ..current.header
+        }
+    );
+
+    let unseen = draw_from(&shop, &SourceCache::new());
+    assert_eq!(unseen.header.state, FlowState::Changed);
+    assert_eq!(
+        (
+            unseen.header.signature.as_deref(),
+            unseen.header.description.as_deref()
+        ),
+        (None, None)
+    );
+    assert!(plain(&unseen).contains("  IF\n"), "{}", plain(&unseen));
+
+    let file = shop
+        .graph
+        .files
+        .iter_mut()
+        .find(|file| file.file.path.as_str() == "shop/service.py")
+        .map(std::sync::Arc::make_mut)
+        .expect("the service's file");
+    file.file.state = unfold_core::vocab::FileState::LastGood;
+    std::fs::write(&service, "def place_order(:\n").unwrap();
+    let broken = draw_from(&shop, &kept);
+    assert_eq!(broken.header.state, FlowState::DoesNotParse);
+    assert_eq!(
+        plain(&broken),
+        PLACE_ORDER_DRAWN.replacen("( place_order )", "( place_order ) · Doesn't parse", 1)
     );
 }
 
@@ -584,6 +683,42 @@ fn the_shaped_place_order_reads_as_the_shape_card_result() {
     assert!(stop.steps.is_none());
 }
 
+/// A step written between a combined step's blocks since it was combined joins it: the combined
+/// step draws from its first block through its last, as if it listed every block between.
+#[test]
+fn a_step_written_between_a_combined_steps_blocks_draws_inside_it() {
+    let combined = |members: &[&str]| {
+        let overlay = Overlay {
+            combined: vec![Combine {
+                id: "head".to_owned(),
+                title: "Load it and charge it".to_owned(),
+                members: members
+                    .iter()
+                    .map(|member| key(&format!("{PLACE_ORDER}/{member}")))
+                    .collect(),
+                collapsed: true,
+            }],
+            ..Overlay::default()
+        };
+        let flow = drawn_with(&sample::shop(), PLACE_ORDER, &overlay, &[], false);
+        let Shape::Combined(step) = &flow.steps.steps[0].shape else {
+            panic!("the first step is combined:\n{}", plain(&flow));
+        };
+        (plain(&flow), step.clone())
+    };
+    let (text, joined) = combined(&["call:load_order", "try[0]"]);
+    let (listed_text, listed) = combined(&["call:load_order", "if[0]", "try[0]"]);
+    assert_eq!(text, listed_text);
+    assert_eq!(
+        CombinedStep {
+            members: listed.members.clone(),
+            ..joined
+        },
+        listed
+    );
+    assert_eq!(listed.conditions, 2, "the decision between them is inside");
+}
+
 /// Combined steps apply page-wide: inside another card's opened call too. Open, a combined
 /// step draws its steps under its title.
 #[test]
@@ -758,7 +893,13 @@ fn parts_carry_their_opening_text_and_lines() {
         open: Vec::new(),
         show_all_calls: false,
     };
-    let flow = draw(&trees, &ts.root, &Overlay::default(), &card).expect("the definition draws");
+    let flow = draw(
+        &trees,
+        &sources(&ts.root, &SourceCache::new()),
+        &Overlay::default(),
+        &card,
+    )
+    .expect("the definition draws");
     let text = plain(&flow);
     assert!(text.contains("\n  ELSE IF typeof email !== \"string\""), "{text}");
     assert!(!text.contains("ELIF"), "{text}");
@@ -822,6 +963,403 @@ fn proposals_sit_after_a_block_or_at_the_start_of_a_body() {
             "save_order -On-> Write an audit row",
             "Write an audit row -On-> for",
         ],
+    );
+}
+
+/// `sum.py`: a loop with nothing drawn inside, which hides it.
+fn summing() -> GraphBuilder {
+    const CODE: &str =
+        "def add(xs):\n    total = 0\n    for x in xs:\n        total += x\n    return total\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "sum.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "add", 1, 5, "def add(xs)");
+    let header = c.at(3, "for x in xs");
+    let loop_block = c.block(function, Form::For, c.lines(3, 4), Some(header), None);
+    c.suite(loop_block, Form::Body, 4, 4);
+    c.exit(function, Form::Return, 5, Some("total"));
+    g
+}
+
+fn propose(spots: &[(&str, ProposalSpot)]) -> Overlay {
+    Overlay {
+        proposed: spots
+            .iter()
+            .map(|(title, spot)| Proposal {
+                id: title.to_lowercase().replace(' ', "-"),
+                spot: spot.clone(),
+                title: (*title).to_owned(),
+            })
+            .collect(),
+        ..Overlay::default()
+    }
+}
+
+/// A proposal after a hidden control block sits after the code the block's gap tick counts.
+#[test]
+fn a_proposal_after_a_hidden_block_follows_its_gap_tick() {
+    let overlay = propose(&[("Log the total", ProposalSpot::After(key("sum.py#add/for[0]")))]);
+    let flow = drawn_with(&summing(), "sum.py#add", &overlay, &[], false);
+    assert_eq!(
+        plain(&flow),
+        "( add )\n  ⋯ 3 lines · for loop\n  + PROPOSED Log the total\n  RETURN total → End\n( End )\n"
+    );
+}
+
+/// What the overlay puts inside a control block draws it as a frame, though nothing else in it
+/// is drawn: a proposal at the start of its body, or a name on one of its parts.
+#[test]
+fn the_overlay_draws_a_hidden_block_it_touches() {
+    let overlay = propose(&[
+        (
+            "Validate each item",
+            ProposalSpot::Start(key("sum.py#add/for[0]/body")),
+        ),
+        ("Log the total", ProposalSpot::After(key("sum.py#add/for[0]"))),
+    ]);
+    let flow = drawn_with(&summing(), "sum.py#add", &overlay, &[], false);
+    assert_eq!(
+        plain(&flow),
+        "( add )
+  ⋯ 1 line
+  LOOP for x in xs
+      + PROPOSED Validate each item
+      ⋯ 1 line
+  + PROPOSED Log the total
+  RETURN total → End
+( End )
+"
+    );
+    assert_routes(
+        &flow,
+        &[
+            "body -On-> Validate each item",
+            "Validate each item -Next-> for",
+            "for -Done-> Log the total",
+        ],
+    );
+
+    let named = drawn_with(
+        &summing(),
+        "sum.py#add",
+        &naming("sum.py#add", &[("for[0]/body", "Add each item")]),
+        &[],
+        false,
+    );
+    assert_eq!(
+        plain(&named),
+        "( add )\n  ⋯ 1 line\n  LOOP Add each item · for x in xs\n      ⋯ 1 line\n  RETURN total → End\n( End )\n"
+    );
+    // A name on the block itself is its gap tick's.
+    let tick = drawn_with(
+        &summing(),
+        "sum.py#add",
+        &naming("sum.py#add", &[("for[0]", "Add them up")]),
+        &[],
+        false,
+    );
+    assert_eq!(
+        plain(&tick),
+        "( add )\n  ⋯ 3 lines · Add them up · for loop\n  RETURN total → End\n( End )\n"
+    );
+}
+
+/// A gap tick counts every line of a string, comment marks and all, and no line after a case's
+/// `break` that only a comment follows.
+#[test]
+fn gap_ticks_count_the_lines_of_strings_and_skip_comments() {
+    const PYTHON: &str =
+        "def f():\n    text = \"\"\"\n# looks like a comment\n\"\"\"\n    # a comment\n    send(text)\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "f.py", Language::Python, PYTHON);
+    let module = c.module;
+    let function = c.function(module, "f", 1, 6, "def f()");
+    c.call(function, "send", 6, "send(text)", project(&key("f.py#send")));
+    assert_eq!(
+        plain(&drawn(&g, "f.py#f")),
+        "( f )\n  ⋯ 3 lines\n  ▸ send\n( End )\n"
+    );
+
+    const TYPESCRIPT: &str = "function g(x: string) {\n  switch (x) {\n    case \"a\":\n      a();\n      break; // done with a\n  }\n}\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "g.ts", Language::TypeScript, TYPESCRIPT);
+    let module = c.module;
+    let function = c.def(
+        module,
+        Form::Function,
+        "g",
+        c.lines(1, 7),
+        c.at(1, "function g(x: string)"),
+        Code::span(c.at(1, "{"), c.line(7)),
+    );
+    let switch = c.block(function, Form::Switch, c.lines(2, 6), Some(c.at(2, "x")), None);
+    let case = c.block(
+        switch,
+        Form::Case,
+        c.lines(3, 5),
+        Some(c.at(3, "\"a\"")),
+        Some(c.lines(4, 5)),
+    );
+    c.call(case, "a", 4, "a()", project(&key("g.ts#a")));
+    assert_eq!(
+        plain(&drawn(&g, "g.ts#g")),
+        "( g )\n  SWITCH x\n  CASE \"a\"\n      ▸ a\n( End )\n"
+    );
+}
+
+/// `checks.py`: tests and headers that call unknown, builtin, and library functions.
+fn checks() -> GraphBuilder {
+    const CODE: &str = r#"def check(xs, path, thing):
+    if thing.mystery():
+        a()
+    if len(xs):
+        a()
+    if os.path.exists(path):
+        a()
+    for x in thing.fetch():
+        a()
+    with thing.resource() as r:
+        a()
+    if thing.idle():
+        x = 1
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "checks.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "check", 1, 13, "def check(xs, path, thing)");
+    let a = || project(&key("checks.py#a"));
+    let decision = |c: &mut Code<'_>, line: u32, test: &str, callee: &str, to: LinkTarget| {
+        let decision = c.block(function, Form::If, c.lines(line, line + 1), None, None);
+        let then = c.part(decision, Form::Then, line, line + 1, Some(test));
+        let call = c.call(then, callee, line, test, to);
+        c.set(call).role = Some(CallRole::Test);
+        c.set(call).stmt = None;
+        then
+    };
+    for (line, test, callee, to) in [
+        (
+            2,
+            "thing.mystery()",
+            "thing.mystery",
+            unknown(Reason::UnknownReceiver),
+        ),
+        (4, "len(xs)", "len", builtin("python:builtins")),
+        (6, "os.path.exists(path)", "os.path.exists", library("os")),
+    ] {
+        let then = decision(&mut c, line, test, callee, to);
+        c.call(then, "a", line + 1, "a()", a());
+    }
+    let header = c.at(8, "for x in thing.fetch()");
+    let loop_block = c.block(function, Form::For, c.lines(8, 9), Some(header), None);
+    c.call(
+        loop_block,
+        "thing.fetch",
+        8,
+        "thing.fetch()",
+        unknown(Reason::UnknownReceiver),
+    );
+    let body = c.suite(loop_block, Form::Body, 9, 9);
+    c.call(body, "a", 9, "a()", a());
+    let header = c.at(10, "thing.resource() as r");
+    let with = c.block(function, Form::With, c.lines(10, 11), Some(header), None);
+    c.call(
+        with,
+        "thing.resource",
+        10,
+        "thing.resource()",
+        unknown(Reason::UnknownReceiver),
+    );
+    let body = c.suite(with, Form::Body, 11, 11);
+    c.call(body, "a", 11, "a()", a());
+    decision(
+        &mut c,
+        12,
+        "thing.idle()",
+        "thing.idle",
+        unknown(Reason::UnknownReceiver),
+    );
+    g
+}
+
+/// A test's or header's unknown calls are listed after it with their `?`, like the boxes drawn
+/// on it, so a block whose test calls one is drawn. Library and builtin calls stay its written
+/// text, with Show all calls too.
+#[test]
+fn unknown_calls_in_tests_and_headers_keep_their_question_mark() {
+    const DRAWN: &str = "( check )
+  IF thing.mystery() · thing.mystery ?
+      ▸ a
+  IF len(xs)
+      ▸ a
+  IF os.path.exists(path)
+      ▸ a
+  LOOP for x in thing.fetch() · thing.fetch ?
+      ▸ a
+  WITH thing.resource() as r · thing.resource ?
+      ▸ a
+  IF thing.idle() · thing.idle ?
+      ⋯ 1 line
+( End )
+";
+    let flow = drawn(&checks(), "checks.py#check");
+    assert_eq!(plain(&flow), DRAWN);
+    let all = drawn_with(&checks(), "checks.py#check", &Overlay::default(), &[], true);
+    assert_eq!(plain(&all), DRAWN);
+
+    let text = flow_text(&flow);
+    assert!(
+        text.contains("IF thing.mystery() · thing.mystery ?   key=checks.py#check/if[0] checks.py#check/if[0]/then checks.py#check/if[0]/then/call:thing.mystery\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("LOOP for x in thing.fetch() · thing.fetch ?   key=checks.py#check/for[0] checks.py#check/for[0]/body checks.py#check/for[0]/call:thing.fetch\n"),
+        "{text}"
+    );
+    let Shape::Loop(frame) = &flow.steps.steps[3].shape else {
+        panic!("a loop: {:?}", flow.steps.steps[3].shape);
+    };
+    let unknown: Vec<&str> = frame
+        .header_unknown
+        .iter()
+        .map(|call| call.callee.as_str())
+        .collect();
+    assert_eq!(unknown, ["thing.fetch"]);
+    let Shape::Decision(frame) = &flow.steps.steps[0].shape else {
+        panic!("a decision: {:?}", flow.steps.steps[0].shape);
+    };
+    let test = frame.lanes[0].test.as_ref().expect("the test");
+    let unknown: Vec<&str> = test.unknown.iter().map(|call| call.key.as_str()).collect();
+    assert_eq!(unknown, ["checks.py#check/if[0]/then/call:thing.mystery"]);
+}
+
+/// `leave.py`: library and unknown calls written inside a test's box and an exit's value.
+fn leaving() -> GraphBuilder {
+    const CODE: &str = r#"def leave(x, logger):
+    if check(x.baz()):
+        return a(x.foo(), logger.info("hi"))
+    raise ValueError(x.bar())
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "leave.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "leave", 1, 4, "def leave(x, logger)");
+    let decision = c.block(function, Form::If, c.lines(2, 3), None, None);
+    let then = c.part(decision, Form::Then, 2, 3, Some("check(x.baz())"));
+    let check = c.call(
+        then,
+        "check",
+        2,
+        "check(x.baz())",
+        project(&key("leave.py#check")),
+    );
+    c.set(check).role = Some(CallRole::Test);
+    c.set(check).stmt = None;
+    c.call(check, "x.baz", 2, "x.baz()", unknown(Reason::UnknownReceiver));
+    let exit = c.exit(then, Form::Return, 3, Some("a(x.foo(), logger.info(\"hi\"))"));
+    let value = c.call(
+        exit,
+        "a",
+        3,
+        "a(x.foo(), logger.info(\"hi\"))",
+        project(&key("leave.py#a")),
+    );
+    c.flag(value, Flag::ExitValue);
+    c.call(value, "x.foo", 3, "x.foo()", unknown(Reason::UnknownReceiver));
+    c.call(value, "logger.info", 3, "logger.info(\"hi\")", library("logging"));
+    let raise = c.exit(function, Form::Raise, 4, Some("ValueError(x.bar())"));
+    let error = c.call(
+        raise,
+        "ValueError",
+        4,
+        "ValueError(x.bar())",
+        builtin("python:builtins"),
+    );
+    c.flag(error, Flag::ExitValue);
+    c.call(error, "x.bar", 4, "x.bar()", unknown(Reason::UnknownReceiver));
+    g
+}
+
+/// The calls listed on a box drawn on a test, or on an exit's value, are printed with it, and
+/// every line carries their keys.
+#[test]
+fn calls_listed_on_tests_and_exits_are_printed_with_their_keys() {
+    let flow = drawn(&leaving(), "leave.py#leave");
+    assert_eq!(
+        plain(&flow),
+        "( leave )
+  IF check(x.baz()) · ▸ check + x.baz ?
+      RETURN ▸ a + x.foo ?, logger.info → End
+  RAISE ValueError + x.bar ? → the caller
+( End )
+"
+    );
+    let text = flow_text(&flow);
+    let then = "leave.py#leave/if[0]/then";
+    for line in [
+        format!("   key=leave.py#leave/if[0] {then} {then}/call:check {then}/call:check/call:x.baz\n"),
+        format!("   key={then}/return[0] {then}/return[0]/call:a {then}/return[0]/call:a/call:x.foo {then}/return[0]/call:a/call:logger.info\n"),
+        "   key=leave.py#leave/raise[0] leave.py#leave/raise[0]/call:ValueError leave.py#leave/raise[0]/call:ValueError/call:x.bar\n".to_owned(),
+    ] {
+        assert!(text.contains(&line), "{line} in {text}");
+    }
+}
+
+/// A callback written as an object's property reads as that property, then its signature.
+#[test]
+fn a_callback_row_shows_its_property_then_its_signature() {
+    const CODE: &str = "function useThing() {\n  useMutation({ onSuccess: () => refresh(), onError: (e: unknown) => report(e) });\n  [1].map((n) => n);\n}\n";
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "t.ts", Language::TypeScript, CODE);
+    let module = c.module;
+    let function = c.def(
+        module,
+        Form::Function,
+        "useThing",
+        c.lines(1, 4),
+        c.at(1, "function useThing()"),
+        Code::span(c.at(1, "{"), c.line(4)),
+    );
+    let mutation = c.call(
+        function,
+        "useMutation",
+        2,
+        "useMutation({ onSuccess: () => refresh(), onError: (e: unknown) => report(e) })",
+        library("react-query"),
+    );
+    for (index, (property, written, head, body)) in [
+        ("onSuccess", "() => refresh()", "() =>", "refresh()"),
+        (
+            "onError",
+            "(e: unknown) => report(e)",
+            "(e: unknown) =>",
+            "report(e)",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let callback = c.callback(
+            mutation,
+            u32::try_from(index).unwrap(),
+            c.at(2, written),
+            c.at(2, head),
+            c.at(2, body),
+        );
+        c.set(callback).name = Some(property.into());
+    }
+    let map = c.call(function, "[1].map", 3, "[1].map((n) => n)", builtin("ecmascript"));
+    c.callback(map, 0, c.at(3, "(n) => n"), c.at(3, "(n) =>"), c.last(3, "n"));
+    let text = plain(&drawn(&g, "t.ts#useThing"));
+    assert_eq!(
+        text,
+        "( useThing )
+  □ useMutation
+      ↳ callback onSuccess () =>
+      ↳ callback onError (e: unknown) =>
+  □ [1].map
+      ↳ callback (n) =>
+( End )
+"
     );
 }
 
@@ -1001,18 +1539,21 @@ def guard(order):
         "ValueError",
         11,
         "ValueError(\"bad\")",
-        unknown(Reason::NotFound),
+        builtin("python:builtins"),
     );
     c.flag(error, Flag::ExitValue);
-    let first = c.part(try_block, Form::Except, 12, 13, Some("except ValueError"));
-    c.exit(first, Form::Return, 13, Some("None"));
-    let second = c.part(try_block, Form::Except, 14, 15, Some("except KeyError"));
-    c.exit(second, Form::Return, 15, Some("None"));
+    for (line, class) in [(12, "ValueError"), (14, "KeyError")] {
+        let clause = format!("except {class}");
+        let handler = c.part(try_block, Form::Except, line, line + 1, Some(&clause));
+        let named = c.last(line, class);
+        c.g.link(handler, LinkKind::Types, named, class, builtin("python:builtins"));
+        c.exit(handler, Form::Return, line + 1, Some("None"));
+    }
     g
 }
 
-/// Code after a decision whose every lane exits never runs; a raise in a try body goes to its
-/// handlers.
+/// Code after a decision whose every lane exits never runs; a raise in a try body goes to the
+/// handler that catches it.
 #[test]
 fn unreachable_steps_never_run_and_raises_reach_handlers() {
     let graph = stop();
@@ -1029,13 +1570,18 @@ fn unreachable_steps_never_run_and_raises_reach_handlers() {
 "#
     );
     let guard = drawn(&graph, "stop.py#guard");
-    assert!(plain(&guard).contains("      RAISE ValueError ? → the handlers\n"));
+    assert!(plain(&guard).contains("      RAISE ValueError → except ValueError\n"));
     assert_routes(
         &guard,
         &[
             "raise ValueError -Raise-> except except ValueError",
-            "raise ValueError -Raise-> except except KeyError",
+            "body -OnError-> except except KeyError",
         ],
+    );
+    assert!(
+        !routes(&guard)
+            .iter()
+            .any(|route| route == "raise ValueError -Raise-> except except KeyError")
     );
 }
 
@@ -1122,7 +1668,13 @@ fn cases_fall_through_and_default() {
         open: Vec::new(),
         show_all_calls: false,
     };
-    let flow = draw(&trees, &playground.root, &Overlay::default(), &card).expect("main draws");
+    let flow = draw(
+        &trees,
+        &sources(&playground.root, &SourceCache::new()),
+        &Overlay::default(),
+        &card,
+    )
+    .expect("main draws");
     assert_routes(
         &flow,
         &[
@@ -1148,7 +1700,13 @@ fn a_yield_goes_on() {
         open: Vec::new(),
         show_all_calls: false,
     };
-    let flow = draw(&trees, &playground.root, &Overlay::default(), &card).expect("records draws");
+    let flow = draw(
+        &trees,
+        &sources(&playground.root, &SourceCache::new()),
+        &Overlay::default(),
+        &card,
+    )
+    .expect("records draws");
     assert_routes(&flow, &["yield normalize -Next-> for", "for -Done-> End"]);
 }
 
@@ -1253,7 +1811,7 @@ fn the_drawn_flow_serializes_for_the_canvas() {
 fn the_compiled_tree_prints_every_block_with_its_key() {
     let playground = Playground::built(&sample::shop());
     let (tree, id) = playground.block(PLACE_ORDER);
-    let code = code_text(&tree, &playground.root, id);
+    let code = code_text(&tree, &sources(&playground.root, &SourceCache::new()), id);
     let lines: Vec<&str> = code
         .text
         .lines()
@@ -1269,27 +1827,27 @@ fn the_compiled_tree_prints_every_block_with_its_key() {
             "shop/service.py#place_order",
             "  function · lines 9–28 · doc \"Charge an order and save it.\"",
             "",
-            "L11  call:load_order                              ▸ shop/store.py#load_order · binds order",
-            "L12  if[0]                                        if",
-            "L12  if[0]/then                                   test order is None",
-            "L13  if[0]/then/raise[0]                          raise · value ValueError(\"unknown order\")",
-            "L13  if[0]/then/raise[0]/call:ValueError          builtin · exit value",
-            "L14  if[0]/elif[0]                                test order[\"paid\"]",
-            "L15  if[0]/elif[0]/return[0]                      return · value order",
-            "L17  call:sum                                     builtin · binds total",
-            "L18  try[0]                                       try",
-            "L19  try[0]/body                                  body",
-            "L19  try[0]/body/call:charge_card                 ▸ shop/payments.py#charge_card · binds receipt",
-            "L20  try[0]/except[0]                             clause except PaymentDeclined as error · types ▸ shop/payments.py#PaymentDeclined",
-            "L21  try[0]/except[0]/call:logger.warning         library python:logging",
-            "L22  try[0]/except[0]/return[0]                   return · value mark_failed(order)",
-            "L22  try[0]/except[0]/return[0]/call:mark_failed  ▸ shop/store.py#mark_failed · exit value",
-            "L24  ⋯ order[\"receipt\"] = receipt                 code",
-            "L25  call:save_order                              ▸ shop/store.py#save_order",
-            "L26  for[0]                                       for · for item in order[\"items\"]",
-            "L27  for[0]/body                                  body",
-            "L27  for[0]/body/call:reserve_stock               ▸ shop/store.py#reserve_stock",
-            "L28  return[0]                                    return · value order",
+            "L11  call:load_order                           ▸ shop/store.py#load_order · binds order",
+            "L12  if[0]                                     if",
+            "L12  if[0]/then                                test order is None",
+            "L13  if[0]/then/raise[0]                       raise · value ValueError(\"unknown order\")",
+            "L13  if[0]/then/raise[0]/call:ValueError       builtin · exit value",
+            "L14  if[0]/elif[0]                             test order[\"paid\"]",
+            "L15  if[0]/elif[0]/return[0]                   return · value order",
+            "L17  call:sum                                  builtin · binds total",
+            "L18  try[0]                                    try",
+            "L19  try[0]/body                               body",
+            "L19  try[0]/body/call:charge_card              ▸ shop/payments.py#charge_card · binds receipt",
+            "L20  try[0]/except[0]                          clause except PaymentDeclined as error · types ▸ shop/payments.py#PaymentDeclined",
+            "L21  try[0]/except[0]/call:logger.warning      library python:logging",
+            "L22  try[0]/except[0]/return[0]                return · value mark_failed(order)",
+            "L22  try[0]/except[0]/return[0]/call:mark_failed ▸ shop/store.py#mark_failed · exit value",
+            "L24  ⋯ order[\"receipt\"] = receipt              code",
+            "L25  call:save_order                           ▸ shop/store.py#save_order",
+            "L26  for[0]                                    for · for item in order[\"items\"]",
+            "L27  for[0]/body                               body",
+            "L27  for[0]/body/call:reserve_stock            ▸ shop/store.py#reserve_stock",
+            "L28  return[0]                                 return · value order",
         ]
     );
     assert!(code.text.contains(
@@ -1305,7 +1863,7 @@ fn the_compiled_tree_prints_every_block_with_its_key() {
 
     let module = Playground::built(&examples::orders_route());
     let (tree, id) = module.block("src/routes/orders.ts#");
-    let code = code_text(&tree, &module.root, id);
+    let code = code_text(&tree, &sources(&module.root, &SourceCache::new()), id);
     assert!(
         code.text
             .contains("L6  call:ordersRouter.post(\"/orders/:id\")/callback[0]"),
@@ -1327,7 +1885,13 @@ fn playground_flows(playground: &Playground) -> String {
                 open: Vec::new(),
                 show_all_calls: false,
             };
-            let flow = draw(&trees, &playground.root, &overlay, &card).expect("a definition draws");
+            let flow = draw(
+                &trees,
+                &sources(&playground.root, &SourceCache::new()),
+                &overlay,
+                &card,
+            )
+            .expect("a definition draws");
             out.push_str("=== ");
             out.push_str(node.key.as_str());
             out.push('\n');
@@ -1850,4 +2414,708 @@ fn the_examples_serialize_as_their_drawn_goldens() {
         json.push('\n');
         assert_golden(format!("goldens/drawn/{name}.json"), &json);
     }
+}
+
+/// A `raise` (Python) or `throw` (TypeScript) on line `line` of `c`, whose value is the call
+/// `text` of `callee`.
+fn raise(
+    c: &mut Code<'_>,
+    parent: unfold_core::testkit::NodeRef,
+    form: Form,
+    line: u32,
+    callee: &str,
+    text: &str,
+    to: LinkTarget,
+) {
+    let exit = c.exit(parent, form, line, Some(text));
+    let call = c.call(exit, callee, line, text, to);
+    if form == Form::Throw {
+        c.set(call).form = Form::New;
+    }
+    c.flag(call, Flag::ExitValue);
+}
+
+/// A Python `except` part of `attempt` on lines `first` and `first + 1` (a bare `return`),
+/// whose clause names `class`, or is bare without one.
+fn handler(
+    c: &mut Code<'_>,
+    attempt: unfold_core::testkit::NodeRef,
+    first: u32,
+    class: Option<(&str, LinkTarget)>,
+) {
+    let clause = class
+        .as_ref()
+        .map_or_else(|| "except".to_owned(), |(name, _)| format!("except {name}"));
+    let part = c.part(attempt, Form::Except, first, first + 1, Some(&clause));
+    if let Some((name, to)) = class {
+        let named = c.last(first, name);
+        c.g.link(part, LinkKind::Types, named, name, to);
+    }
+    c.exit(part, Form::Return, first + 1, None);
+}
+
+/// `r.py`: raises in try bodies, and handlers that name a builtin class, a project class
+/// deriving from a builtin one, or nothing.
+fn raises() -> GraphBuilder {
+    const CODE: &str = r#"class AppError(Exception):
+    pass
+
+
+class NotFound(AppError):
+    pass
+
+
+def guard():
+    try:
+        raise ValueError("bad")
+    except KeyError:
+        return
+    except Exception:
+        return
+
+
+def escape():
+    try:
+        raise ValueError("bad")
+    except KeyError:
+        return
+    finally:
+        cleanup()
+
+
+def nested():
+    try:
+        try:
+            raise NotFound()
+        except KeyError:
+            return
+        finally:
+            cleanup()
+    except AppError:
+        return
+
+
+def anything():
+    try:
+        raise make_error()
+    except Exception:
+        return
+    except:
+        return
+"#;
+    let python = || builtin("python:builtins");
+    let to = |name: &str| project(&key(&format!("r.py#{name}")));
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "r.py", Language::Python, CODE);
+    let module = c.module;
+    for (name, line, base, from) in [
+        ("AppError", 1, "Exception", python()),
+        ("NotFound", 5, "AppError", to("AppError")),
+    ] {
+        let head = c.at(line, &format!("class {name}({base})"));
+        let class = c.def(
+            module,
+            Form::Class,
+            name,
+            c.lines(line, line + 1),
+            head,
+            c.line(line + 1),
+        );
+        let named = c.last(line, base);
+        c.g.link(class, LinkKind::Extends, named, base, from);
+    }
+
+    let guard = c.function(module, "guard", 9, 15, "def guard()");
+    let attempt = c.block(guard, Form::Try, c.lines(10, 15), None, None);
+    let body = c.suite(attempt, Form::Body, 11, 11);
+    raise(
+        &mut c,
+        body,
+        Form::Raise,
+        11,
+        "ValueError",
+        "ValueError(\"bad\")",
+        python(),
+    );
+    handler(&mut c, attempt, 12, Some(("KeyError", python())));
+    handler(&mut c, attempt, 14, Some(("Exception", python())));
+
+    let escape = c.function(module, "escape", 18, 24, "def escape()");
+    let attempt = c.block(escape, Form::Try, c.lines(19, 24), None, None);
+    let body = c.suite(attempt, Form::Body, 20, 20);
+    raise(
+        &mut c,
+        body,
+        Form::Raise,
+        20,
+        "ValueError",
+        "ValueError(\"bad\")",
+        python(),
+    );
+    handler(&mut c, attempt, 21, Some(("KeyError", python())));
+    let finally = c.part(attempt, Form::Finally, 23, 24, None);
+    c.call(finally, "cleanup", 24, "cleanup()", to("cleanup"));
+
+    let nested = c.function(module, "nested", 27, 36, "def nested()");
+    let outer = c.block(nested, Form::Try, c.lines(28, 36), None, None);
+    let outer_body = c.suite(outer, Form::Body, 29, 34);
+    let inner = c.block(outer_body, Form::Try, c.lines(29, 34), None, None);
+    let body = c.suite(inner, Form::Body, 30, 30);
+    raise(
+        &mut c,
+        body,
+        Form::Raise,
+        30,
+        "NotFound",
+        "NotFound()",
+        to("NotFound"),
+    );
+    handler(&mut c, inner, 31, Some(("KeyError", python())));
+    let finally = c.part(inner, Form::Finally, 33, 34, None);
+    c.call(finally, "cleanup", 34, "cleanup()", to("cleanup"));
+    handler(&mut c, outer, 35, Some(("AppError", to("AppError"))));
+
+    let anything = c.function(module, "anything", 39, 45, "def anything()");
+    let attempt = c.block(anything, Form::Try, c.lines(40, 45), None, None);
+    let body = c.suite(attempt, Form::Body, 41, 41);
+    raise(
+        &mut c,
+        body,
+        Form::Raise,
+        41,
+        "make_error",
+        "make_error()",
+        unknown(Reason::NotFound),
+    );
+    handler(&mut c, attempt, 42, Some(("Exception", python())));
+    handler(&mut c, attempt, 44, None);
+    g
+}
+
+/// A raise goes to the first handler proven to catch it: one naming a class the raised class
+/// derives from (through project classes and Python's builtin exceptions), or a bare `except`.
+/// Otherwise it goes to the caller through `finally`, and the try's dashed on-error routes say
+/// that a handler may catch it first.
+#[test]
+fn a_raise_goes_to_the_handler_that_catches_it_or_to_the_caller() {
+    let graph = raises();
+    let guard = drawn(&graph, "r.py#guard");
+    assert_routes(
+        &guard,
+        &[
+            "raise ValueError -Raise-> except except Exception",
+            "body -OnError-> except except KeyError",
+            "body -OnError-> except except Exception",
+        ],
+    );
+    assert!(!routes(&guard).contains(&"raise ValueError -Raise-> except except KeyError".to_owned()));
+    assert!(
+        plain(&guard).contains("      RAISE ValueError → except Exception\n"),
+        "{}",
+        plain(&guard)
+    );
+
+    let escape = drawn(&graph, "r.py#escape");
+    assert_routes(
+        &escape,
+        &[
+            "raise ValueError -Raise-> caller via finally",
+            "body -OnError-> except except KeyError",
+        ],
+    );
+    assert!(
+        plain(&escape).contains("      RAISE ValueError → finally → the caller\n"),
+        "{}",
+        plain(&escape)
+    );
+
+    let nested = drawn(&graph, "r.py#nested");
+    assert_routes(
+        &nested,
+        &["raise NotFound -Raise-> except except AppError via finally"],
+    );
+    assert!(
+        plain(&nested).contains("RAISE ▸ NotFound → finally → except AppError\n"),
+        "{}",
+        plain(&nested)
+    );
+
+    let anything = drawn(&graph, "r.py#anything");
+    assert_routes(&anything, &["raise make_error -Raise-> except except"]);
+}
+
+/// `done.ts`: the design's labeled plain block, `done: { if (x) break done; a(); } b();`, and
+/// one whose `break` is written in the block itself, which truncates the function.
+fn labeled_blocks() -> GraphBuilder {
+    const CODE: &str = r#"function run(x) {
+  done: {
+    if (x) break done;
+    a();
+  }
+  b();
+}
+function stop() {
+  done: {
+    a();
+    break done;
+  }
+  b();
+}
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "done.ts", Language::TypeScript, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("done.ts#{name}")));
+    let run = c.def(
+        module,
+        Form::Function,
+        "run",
+        c.lines(1, 7),
+        c.at(1, "function run(x)"),
+        Code::span(c.at(1, "{"), c.line(7)),
+    );
+    let decision = c.block(run, Form::If, c.line(3), None, None);
+    let then = c.block(
+        decision,
+        Form::Then,
+        c.line(3),
+        Some(c.at(3, "(x)")),
+        Some(c.at(3, "break done;")),
+    );
+    c.flag(then, Flag::Truncated);
+    c.call(run, "a", 4, "a()", to("a"));
+    c.call(run, "b", 6, "b()", to("b"));
+    let stop = c.def(
+        module,
+        Form::Function,
+        "stop",
+        c.lines(8, 14),
+        c.at(8, "function stop()"),
+        Code::span(c.at(8, "{"), c.line(14)),
+    );
+    c.flag(stop, Flag::Truncated);
+    c.call(stop, "a", 10, "a()", to("a"));
+    c.call(stop, "b", 13, "b()", to("b"));
+    g
+}
+
+/// A truncated part, or a truncated definition, may continue: a dashed route from it to where
+/// its end goes says the path is uncertain there, never that it ends.
+#[test]
+fn a_truncated_part_or_definition_may_continue() {
+    let graph = labeled_blocks();
+    let run = drawn(&graph, "done.ts#run");
+    assert_routes(&run, &["then (x) -Yes-> a", "then (x) -MayContinue-> a"]);
+    let Shape::Decision(frame) = &run.steps.steps[0].shape else {
+        panic!("the `if` comes first: {:#?}", run.steps.steps[0]);
+    };
+    assert_eq!(frame.lanes[0].state, RouteState::Truncated);
+    assert!(plain(&run).contains("  IF (x) · truncated\n"), "{}", plain(&run));
+
+    let stop = drawn(&graph, "done.ts#stop");
+    assert_routes(&stop, &["start -MayContinue-> End"]);
+    assert!(
+        plain(&stop).starts_with("( stop ) · truncated\n"),
+        "{}",
+        plain(&stop)
+    );
+}
+
+/// `finals.ts`: a `break`, `continue`, `return`, and `throw` whose `finally` always exits
+/// itself, and a `throw` a `catch` catches.
+fn finals_ts() -> GraphBuilder {
+    const CODE: &str = r#"function brk() {
+  do {
+    try {
+      step();
+      break;
+    } finally {
+      return;
+    }
+  } while (true);
+  after();
+}
+function cont(xs) {
+  for (const x of xs) {
+    try {
+      continue;
+    } finally {
+      return;
+    }
+  }
+  after();
+}
+function ret() {
+  try {
+    return work();
+  } finally {
+    throw new Error("x");
+  }
+  after();
+}
+function thr(xs) {
+  for (const x of xs) {
+    try {
+      throw new Error("x");
+    } finally {
+      break;
+    }
+  }
+  after();
+}
+function caught() {
+  try {
+    throw new Error("x");
+  } catch (error) {
+    recover();
+  }
+}
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "finals.ts", Language::TypeScript, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("finals.ts#{name}")));
+    let error = || builtin("ecmascript");
+    let function = |c: &mut Code<'_>, name: &str, first: u32, last: u32, head: &str| {
+        let head = c.at(first, head);
+        let body = Code::span(c.at(first, "{"), c.line(last));
+        c.def(module, Form::Function, name, c.lines(first, last), head, body)
+    };
+    // A loop on lines `first` to `last` (`do … while (true)` or `for (const x of xs)`), and its body.
+    let looping = |c: &mut Code<'_>, parent, form: Form, first: u32, last: u32| {
+        let (written, header) = if form == Form::Do {
+            (
+                Code::span(c.at(first, "do"), c.line(last)),
+                c.at(last, "while (true)"),
+            )
+        } else {
+            (
+                Code::span(c.at(first, "for"), c.line(last)),
+                c.at(first, "for (const x of xs)"),
+            )
+        };
+        let block = c.block(parent, form, written, Some(header), None);
+        let suite = Code::span(c.at(first, "{"), c.at(last, "}"));
+        let body = c.block(block, Form::Body, suite, None, Some(suite));
+        (block, body)
+    };
+    // A try on lines `first` to `last` whose last part, from line `part`, is `form`.
+    let attempt = |c: &mut Code<'_>, parent, first: u32, part: u32, last: u32, form: Form| {
+        let block = c.block(
+            parent,
+            Form::Try,
+            Code::span(c.at(first, "try"), c.at(last, "}")),
+            None,
+            None,
+        );
+        let suite = Code::span(c.at(first, "{"), c.at(part, "}"));
+        let body = c.block(block, Form::Body, suite, None, Some(suite));
+        let keyword = if form == Form::Catch {
+            "catch (error)"
+        } else {
+            "finally"
+        };
+        let written = Code::span(c.at(part, keyword), c.at(last, "}"));
+        let suite = Code::span(c.at(part, "{"), c.at(last, "}"));
+        let clause = (form == Form::Catch).then(|| c.at(part, keyword));
+        let tail = c.block(block, form, written, clause, Some(suite));
+        (body, tail)
+    };
+
+    let brk = function(&mut c, "brk", 1, 11, "function brk()");
+    let (do_loop, body) = looping(&mut c, brk, Form::Do, 2, 9);
+    let (body, finally) = attempt(&mut c, body, 3, 6, 8, Form::Finally);
+    c.call(body, "step", 4, "step()", to("step"));
+    let leave = c.exit(body, Form::Break, 5, None);
+    c.set(leave).target = Some(do_loop.local_id());
+    c.exit(finally, Form::Return, 7, None);
+    c.call(brk, "after", 10, "after()", to("after"));
+
+    let cont = function(&mut c, "cont", 12, 21, "function cont(xs)");
+    let (for_loop, body) = looping(&mut c, cont, Form::For, 13, 19);
+    let (body, finally) = attempt(&mut c, body, 14, 16, 18, Form::Finally);
+    let next = c.exit(body, Form::Continue, 15, None);
+    c.set(next).target = Some(for_loop.local_id());
+    c.exit(finally, Form::Return, 17, None);
+    c.call(cont, "after", 20, "after()", to("after"));
+
+    let ret = function(&mut c, "ret", 22, 29, "function ret()");
+    let (body, finally) = attempt(&mut c, ret, 23, 25, 27, Form::Finally);
+    let exit = c.exit(body, Form::Return, 24, Some("work()"));
+    let work = c.call(exit, "work", 24, "work()", to("work"));
+    c.flag(work, Flag::ExitValue);
+    raise(&mut c, finally, Form::Throw, 26, "Error", "Error(\"x\")", error());
+    c.call(ret, "after", 28, "after()", to("after"));
+
+    let thr = function(&mut c, "thr", 30, 39, "function thr(xs)");
+    let (for_loop, body) = looping(&mut c, thr, Form::For, 31, 37);
+    let (body, finally) = attempt(&mut c, body, 32, 34, 36, Form::Finally);
+    raise(&mut c, body, Form::Throw, 33, "Error", "Error(\"x\")", error());
+    let leave = c.exit(finally, Form::Break, 35, None);
+    c.set(leave).target = Some(for_loop.local_id());
+    c.call(thr, "after", 38, "after()", to("after"));
+
+    let caught = function(&mut c, "caught", 40, 46, "function caught()");
+    let (body, handler) = attempt(&mut c, caught, 41, 43, 45, Form::Catch);
+    raise(&mut c, body, Form::Throw, 42, "Error", "Error(\"x\")", error());
+    c.call(handler, "recover", 44, "recover()", to("recover"));
+    g
+}
+
+/// `finals.py`: the same transfers through a `finally` that always exits, and a `break` and
+/// `continue` through one that ends.
+fn finals_py() -> GraphBuilder {
+    const CODE: &str = r#"def brk(xs):
+    for x in xs:
+        try:
+            step()
+            break
+        finally:
+            return
+
+
+def cont(xs):
+    for x in xs:
+        try:
+            continue
+        finally:
+            return
+    after()
+
+
+def ret():
+    try:
+        return work()
+    finally:
+        raise Stop()
+    after()
+
+
+def thr(xs):
+    for x in xs:
+        try:
+            raise Stop()
+        finally:
+            break
+    after()
+
+
+def loop(xs):
+    for x in xs:
+        try:
+            if x:
+                break
+            continue
+        finally:
+            cleanup()
+    after()
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "finals.py", Language::Python, CODE);
+    let module = c.module;
+    let to = |name: &str| project(&key(&format!("finals.py#{name}")));
+    // A `for x in xs` loop on lines `first` to `last`, and its body.
+    let looping = |c: &mut Code<'_>, parent, first: u32, last: u32| {
+        let header = c.at(first, "for x in xs");
+        let block = c.block(parent, Form::For, c.lines(first, last), Some(header), None);
+        let body = c.suite(block, Form::Body, first + 1, last);
+        (block, body)
+    };
+    // A try on lines `first` to `last` whose `finally` starts on line `part`.
+    let attempt = |c: &mut Code<'_>, parent, first: u32, part: u32, last: u32| {
+        let block = c.block(parent, Form::Try, c.lines(first, last), None, None);
+        let body = c.suite(block, Form::Body, first + 1, part - 1);
+        let finally = c.part(block, Form::Finally, part, last, None);
+        (body, finally)
+    };
+
+    let brk = c.function(module, "brk", 1, 7, "def brk(xs)");
+    let (for_loop, body) = looping(&mut c, brk, 2, 7);
+    let (body, finally) = attempt(&mut c, body, 3, 6, 7);
+    c.call(body, "step", 4, "step()", to("step"));
+    let leave = c.exit(body, Form::Break, 5, None);
+    c.set(leave).target = Some(for_loop.local_id());
+    c.exit(finally, Form::Return, 7, None);
+
+    let cont = c.function(module, "cont", 10, 16, "def cont(xs)");
+    let (for_loop, body) = looping(&mut c, cont, 11, 15);
+    let (body, finally) = attempt(&mut c, body, 12, 14, 15);
+    let next = c.exit(body, Form::Continue, 13, None);
+    c.set(next).target = Some(for_loop.local_id());
+    c.exit(finally, Form::Return, 15, None);
+    c.call(cont, "after", 16, "after()", to("after"));
+
+    let ret = c.function(module, "ret", 19, 24, "def ret()");
+    let (body, finally) = attempt(&mut c, ret, 20, 22, 23);
+    let exit = c.exit(body, Form::Return, 21, Some("work()"));
+    let work = c.call(exit, "work", 21, "work()", to("work"));
+    c.flag(work, Flag::ExitValue);
+    raise(&mut c, finally, Form::Raise, 23, "Stop", "Stop()", to("Stop"));
+    c.call(ret, "after", 24, "after()", to("after"));
+
+    let thr = c.function(module, "thr", 27, 33, "def thr(xs)");
+    let (for_loop, body) = looping(&mut c, thr, 28, 32);
+    let (body, finally) = attempt(&mut c, body, 29, 31, 32);
+    raise(&mut c, body, Form::Raise, 30, "Stop", "Stop()", to("Stop"));
+    let leave = c.exit(finally, Form::Break, 32, None);
+    c.set(leave).target = Some(for_loop.local_id());
+    c.call(thr, "after", 33, "after()", to("after"));
+
+    let looped = c.function(module, "loop", 36, 44, "def loop(xs)");
+    let (for_loop, body) = looping(&mut c, looped, 37, 43);
+    let (body, finally) = attempt(&mut c, body, 38, 42, 43);
+    let decision = c.block(body, Form::If, c.lines(39, 40), None, None);
+    let then = c.part(decision, Form::Then, 39, 40, Some("x"));
+    let leave = c.exit(then, Form::Break, 40, None);
+    c.set(leave).target = Some(for_loop.local_id());
+    let next = c.exit(body, Form::Continue, 41, None);
+    c.set(next).target = Some(for_loop.local_id());
+    c.call(finally, "cleanup", 43, "cleanup()", to("cleanup"));
+    c.call(looped, "after", 44, "after()", to("after"));
+    g
+}
+
+/// The overlay that combines `members` (keys) into one collapsed step titled `title`.
+fn combining(title: &str, members: &[&str]) -> Overlay {
+    Overlay {
+        combined: vec![Combine {
+            id: "combined".to_owned(),
+            title: title.to_owned(),
+            members: members.iter().map(|member| key(member)).collect(),
+            collapsed: true,
+        }],
+        ..Overlay::default()
+    }
+}
+
+/// A `finally` that always exits replaces the transfer that entered it: a `break`, `continue`,
+/// `return`, or `throw` through it ends in the lane, whose own exit goes on, so code only the
+/// replaced transfer reached never runs. A collapsed combined step's transfer ends there too.
+#[test]
+fn a_finally_that_always_exits_replaces_the_transfer_through_it() {
+    let ts = finals_ts();
+    let brk = drawn(&ts, "finals.ts#brk");
+    assert_routes(&brk, &["break -Break-> finally", "return -Return-> End"]);
+    assert!(
+        !routes(&brk).iter().any(|route| route.ends_with("-> after")),
+        "{:#?}",
+        routes(&brk)
+    );
+    let text = plain(&brk);
+    assert!(text.contains("          BREAK → finally\n"), "{text}");
+    assert!(text.contains("  ▸ after · never runs\n"), "{text}");
+    let members = [
+        "finals.ts#brk/do[0]/body/try[0]/body/call:step",
+        "finals.ts#brk/do[0]/body/try[0]/body/break[0]",
+    ];
+    let combined = drawn_with(&ts, "finals.ts#brk", &combining("Leave", &members), &[], false);
+    assert_routes(&combined, &["Leave -Break-> finally"]);
+    assert!(
+        plain(&combined).contains("⊞ Leave   step · breaks → finally\n"),
+        "{}",
+        plain(&combined)
+    );
+
+    let cont = drawn(&ts, "finals.ts#cont");
+    assert_routes(&cont, &["continue -Continue-> finally", "for -Done-> after"]);
+    assert!(!routes(&cont).contains(&"continue -Continue-> for".to_owned()));
+    assert!(
+        plain(&cont).contains("          CONTINUE → finally\n"),
+        "{}",
+        plain(&cont)
+    );
+
+    let ret = drawn(&ts, "finals.ts#ret");
+    assert_routes(
+        &ret,
+        &["return work -Return-> finally", "throw Error -Raise-> caller"],
+    );
+    assert!(
+        plain(&ret).contains("      RETURN ▸ work → finally\n"),
+        "{}",
+        plain(&ret)
+    );
+
+    let thr = drawn(&ts, "finals.ts#thr");
+    assert_routes(&thr, &["throw Error -Raise-> finally", "break -Break-> after"]);
+    assert!(
+        plain(&thr).contains("          THROW Error → finally\n"),
+        "{}",
+        plain(&thr)
+    );
+
+    let caught = drawn(&ts, "finals.ts#caught");
+    assert_routes(&caught, &["throw Error -Raise-> catch catch (error)"]);
+
+    let py = finals_py();
+    let brk = drawn(&py, "finals.py#brk");
+    assert_routes(&brk, &["break -Break-> finally"]);
+    assert!(
+        plain(&brk).contains("          BREAK → finally\n"),
+        "{}",
+        plain(&brk)
+    );
+    let members = [
+        "finals.py#brk/for[0]/body/try[0]/body/call:step",
+        "finals.py#brk/for[0]/body/try[0]/body/break[0]",
+    ];
+    let combined = drawn_with(&py, "finals.py#brk", &combining("Leave", &members), &[], false);
+    assert_routes(&combined, &["Leave -Break-> finally"]);
+    assert!(
+        plain(&combined).contains("⊞ Leave   step · breaks → finally\n"),
+        "{}",
+        plain(&combined)
+    );
+    let cont = drawn(&py, "finals.py#cont");
+    assert_routes(&cont, &["continue -Continue-> finally"]);
+    let ret = drawn(&py, "finals.py#ret");
+    assert_routes(&ret, &["return work -Return-> finally"]);
+    assert!(
+        plain(&ret).contains("  ▸ after · never runs\n"),
+        "{}",
+        plain(&ret)
+    );
+    let thr = drawn(&py, "finals.py#thr");
+    assert_routes(&thr, &["raise Stop -Raise-> finally", "break -Break-> after"]);
+}
+
+/// A `break` or `continue` through a `finally` that ends runs the lane and goes on to its own
+/// target, and so does one leaving a collapsed combined step.
+#[test]
+fn a_break_or_continue_goes_through_finally_to_its_loop() {
+    let py = finals_py();
+    let flow = drawn(&py, "finals.py#loop");
+    assert_routes(
+        &flow,
+        &[
+            "break -Break-> after via finally",
+            "continue -Continue-> for via finally",
+        ],
+    );
+    let text = plain(&flow);
+    assert!(
+        text.contains("              BREAK → finally → after the loop\n"),
+        "{text}"
+    );
+    assert!(text.contains("          CONTINUE → finally → next\n"), "{text}");
+
+    let members = [
+        "finals.py#loop/for[0]/body/try[0]/body/if[0]",
+        "finals.py#loop/for[0]/body/try[0]/body/continue[0]",
+    ];
+    let combined = drawn_with(&py, "finals.py#loop", &combining("Skip", &members), &[], false);
+    assert_routes(
+        &combined,
+        &[
+            "Skip -Break-> after via finally",
+            "Skip -Continue-> for via finally",
+        ],
+    );
+    assert!(
+        plain(&combined).contains(
+            "⊞ Skip   1 condition · breaks → finally → after the loop · continues → finally → next\n"
+        ),
+        "{}",
+        plain(&combined)
+    );
 }

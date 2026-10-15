@@ -18,8 +18,10 @@
 //! in-memory `Graph`), so one request reads each file once.
 
 mod call;
+pub(crate) mod catching;
 mod definition;
 mod facts;
+mod python_exceptions;
 mod text;
 
 #[cfg(test)]

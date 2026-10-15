@@ -30,7 +30,7 @@ function seedEmpty<C extends CommandName>(command: C, args: CommandArgs<C>): voi
 /** A drawn flow of a definition in `path`, opening `inset` in place when given. */
 function flow(key: string, path: string, inset?: DrawnFlow): DrawnFlow {
   const actions = { after: false, start: false, open: false };
-  const header: Header = { key, kind: "function", form: "function", label: key, path, line: 1, async: false, generator: false, definedWith: [], imports: [], actions };
+  const header: Header = { key, kind: "function", form: "function", label: key, path, state: "current", line: 1, async: false, generator: false, definedWith: [], imports: [], actions };
   const steps: Step[] = inset
     ? [{ id: 0, state: "reached", kind: "call", key: `${key}-call`, callee: "pay", form: "call", to: { outcome: "project" }, awaited: false, sometimes: false, calls: [], callbacks: [], inset, actions }]
     : [];

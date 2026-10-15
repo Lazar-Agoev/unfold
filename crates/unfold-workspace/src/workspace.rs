@@ -16,6 +16,7 @@ use unfold_engine::settings::edit::{EntryEdit, SettingsEdit, apply_edits};
 use unfold_engine::settings::{SETTINGS_PATH, SettingsError, SettingsFile};
 use unfold_engine::{CancelToken, Language};
 use unfold_reader::ReaderIndex;
+use unfold_reader::source::SourceCache;
 use unfold_store::{Opened, ReadPool};
 
 use crate::compile::{CompileJob, CompileTicket, ProgressFn};
@@ -385,7 +386,12 @@ impl Workspace {
         self.languages.iter().find(|language| language.id() == id)
     }
 
-    /// Every registered language's highlighter, for the code panel.
+    /// The sources the drawings verified most recently ([`SourceCache`]).
+    pub fn kept_sources(&self) -> &SourceCache {
+        &self.shared.sources
+    }
+
+    /// Every registered language's highlighter, for the code panel and the drawings.
     pub fn highlighters(&self) -> Vec<&dyn Highlighter> {
         self.languages
             .iter()

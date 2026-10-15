@@ -125,14 +125,20 @@ shows its signature and docstring, then the **drawn flow**: what the function do
 - **Open in place:** the chevron on a call box draws the callee's flow inside the card, up to three levels deep.
 - **Other calls** (libraries, and calls Unfold can't follow) gather into thin rows such as
   `· ordersQueue.add → job, res.status().json ?`. A `?` marks a call Unfold can't follow, and the row counts them.
+  The ones written in a test or a loop's header are listed after it, each with its `?`, and the ones written inside a
+  call drawn on a test or an exit are listed on it (`+ x.foo ?`).
 - **Builtin calls** (`len`, `JSON.parse`) are hidden. **Show all calls** in the top bar shows them on every card.
-- **Decisions** draw a diamond per test, with each branch as a lane; **loops** are frames titled by their header;
+- **Decisions** draw a diamond per test, with each branch as a lane. A test too long to draw whole ends in `…`; hover
+  it to read all of it. **Loops** are frames titled by their header;
   **try** shows TRY with dashed "on error" arrows to its EXCEPT (or CATCH) sections, each titled by its clause;
   exits read like `RETURN → End`.
 - **`⋯ 2 lines`** on an arrow means code is left out there (assignments and other lines that call nothing). Click it
   to read those lines. It names a loop or branch that has nothing drawn inside (`⋯ 3 lines · for loop`).
 - **"never runs"**, dimmed, marks code nothing reaches, such as code after a `return`. **"may continue"**, dashed,
   marks a place Unfold couldn't follow to the end.
+
+If a card's file changed since the last compile, or doesn't parse, a line under its header says so, and the card keeps
+showing what the last compile read until the graph catches up.
 
 A class's card shows its fields when compact and its class-level code when expanded; its methods are cards of their
 own. A type's card shows its fields, inherited fields included.
@@ -189,7 +195,8 @@ Everything you write is signed with your name, and against the code it describes
 
 When code under a description, name, or combined step changes, its card shows "Changed since it was described ·
 Review". **Review** offers **Accept** (still true), **Reconnect…** (the code was renamed or moved: pick its new name),
-and **Remove from page**. Unfold never moves your words to other code by itself. A page with something to review has
+and **Remove from page**. Unfold never moves your words to other code by itself. A call written inside a combined
+step joins it and sends it to review; **Accept** keeps the call in the step. A page with something to review has
 a mark in Pages, and Home's Health line counts the boards that need review. An entrance's card keeps up
 too: its description goes to review when its code is found or changes, and an entrance renamed or removed in
 `unfold.toml` shows as missing at once, with **Reconnect…** offering the entrance that has the same code.

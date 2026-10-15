@@ -5,7 +5,7 @@
 //!
 //! | Overlay | Rule |
 //! | --- | --- |
-//! | Combine | Consecutive steps of one body, or exactly one whole control block ([`check_combined`]); a page's combined steps never overlap or nest ([`check_disjoint`]) |
+//! | Combine | Consecutive steps of one body, or exactly one whole control block ([`check_combined`]); steps written between its blocks later join it ([`covered`]); a page's combined steps never overlap or nest ([`check_disjoint`]) |
 //! | Propose | After a step of a body, or at the start of a definition's or a part's body ([`check_proposal`]) |
 //! | Open in place | A project call or a callback; a path is 1 to [`MAX_OPEN_DEPTH`] such blocks, outermost first, each inside what the previous one opens; at most [`MAX_OPEN_PATHS`] paths per card ([`check_open_paths`]) |
 //! | Name | Any block |
@@ -266,9 +266,17 @@ fn find<'a>(blocks: &'a impl Blocks, key: &Key) -> Result<Block<'a>, OverlayErro
         .ok_or_else(|| OverlayError::Missing(key.clone()))
 }
 
-/// Checks one combined step's blocks: consecutive steps of one body in written order, or
-/// exactly one whole control block.
-pub fn check_combined(blocks: &impl Blocks, members: &[Key]) -> Result<(), OverlayError> {
+/// Where a combined step's blocks lie: the steps of their body, and each block's position among
+/// them. Both are empty for one whole control block.
+struct Laid<'a> {
+    tree: &'a FileTree,
+    steps: Vec<u32>,
+    positions: Vec<usize>,
+}
+
+/// Finds a combined step's blocks: steps of one body in written order, or exactly one whole
+/// control block. Steps written between two of them are the caller's to judge.
+fn lay_out<'a>(blocks: &'a impl Blocks, members: &[Key]) -> Result<Laid<'a>, OverlayError> {
     let Some(first_key) = members.first() else {
         return Err(OverlayError::NoMembers);
     };
@@ -279,35 +287,70 @@ pub fn check_combined(blocks: &impl Blocks, members: &[Key]) -> Result<(), Overl
     let Combinable::Steps { container } = combine else {
         return match members.get(1) {
             Some(second) => Err(OverlayError::NotCombinable(second.clone())),
-            None => Ok(()),
+            None => Ok(Laid {
+                tree: first.tree,
+                steps: Vec::new(),
+                positions: Vec::new(),
+            }),
         };
     };
     let steps: Vec<u32> = steps(first.tree, container).collect();
-    let mut position = steps.iter().position(|&id| id == first.id);
-    for (index, key) in members.iter().enumerate().skip(1) {
+    let mut positions: Vec<usize> = Vec::with_capacity(members.len());
+    for (index, key) in members.iter().enumerate() {
         let block = find(blocks, key)?;
         if members[..index].contains(key) {
             return Err(OverlayError::Repeated(key.clone()));
         }
-        let same_body = std::ptr::eq(block.tree, first.tree)
-            && is_step(block.tree, block.id)
-            && block.tree.parent(block.id) == Some(container);
-        if !same_body {
+        let position = std::ptr::eq(block.tree, first.tree)
+            .then(|| steps.iter().position(|&id| id == block.id))
+            .flatten();
+        let Some(position) = position else {
             return Err(OverlayError::OtherBody {
                 key: key.clone(),
                 first: first_key.clone(),
             });
-        }
-        let next = position.map(|position| position + 1);
-        if steps.get(next.unwrap_or(usize::MAX)) != Some(&block.id) {
+        };
+        if positions.last().is_some_and(|&previous| position <= previous) {
             return Err(OverlayError::NotConsecutive {
                 key: key.clone(),
                 previous: members[index - 1].clone(),
             });
         }
-        position = next;
+        positions.push(position);
     }
-    Ok(())
+    Ok(Laid {
+        tree: first.tree,
+        steps,
+        positions,
+    })
+}
+
+/// Checks one combined step's blocks: consecutive steps of one body in written order, or
+/// exactly one whole control block.
+pub fn check_combined(blocks: &impl Blocks, members: &[Key]) -> Result<(), OverlayError> {
+    let laid = lay_out(blocks, members)?;
+    match laid.positions.windows(2).position(|pair| pair[1] != pair[0] + 1) {
+        Some(index) => Err(OverlayError::NotConsecutive {
+            key: members[index + 1].clone(),
+            previous: members[index].clone(),
+        }),
+        None => Ok(()),
+    }
+}
+
+/// The blocks a combined step covers now: the steps of its body from its first block through its
+/// last, steps written between them since it was combined included (they join it), or its one
+/// whole control block. It fails as [`check_combined`] does, except that a gap between two of
+/// its blocks is no failure.
+pub fn covered(blocks: &impl Blocks, members: &[Key]) -> Result<Vec<Key>, OverlayError> {
+    let laid = lay_out(blocks, members)?;
+    Ok(match (laid.positions.first(), laid.positions.last()) {
+        (Some(&first), Some(&last)) => laid.steps[first..=last]
+            .iter()
+            .map(|&id| laid.tree.key(id).clone())
+            .collect(),
+        _ => members.to_vec(),
+    })
 }
 
 /// Checks that a page's combined steps never share a block and never hold one another's

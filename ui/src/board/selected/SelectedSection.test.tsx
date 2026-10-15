@@ -34,6 +34,7 @@ const cartView: CardView = {
       form: "interface",
       label: "Cart",
       path: "src/cart.ts",
+      state: "current",
       line: 12,
       async: false,
       generator: false,

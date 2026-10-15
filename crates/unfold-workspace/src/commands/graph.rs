@@ -5,14 +5,14 @@
 //! and reads its committed graph; the reader draws and prints.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{NodeKind, TargetState};
 use unfold_core::{Key, LinkTarget, RepoPath};
 use unfold_reader::catalog::{self, Start};
-use unfold_reader::drawing::{self, CodeLabel, CodeText, Combine, DrawnFlow, Overlay, Proposal};
+use unfold_reader::drawing::{self, CodeLabel, CodeText, Combine, DrawnFlow, Overlay, Proposal, TextSources};
 use unfold_reader::overlay::{MAX_OPEN_DEPTH, MAX_OPEN_PATHS, ProposalSpot};
 use unfold_reader::{Blocks, FileTree, Trees};
 use unfold_store::Reader;
@@ -21,6 +21,7 @@ use super::{ProjectKeyArgs, count, key_arg, key_of};
 use crate::ipc::context::Ctx;
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
+use crate::workspace::Workspace;
 
 /// The most names an overlay may hold.
 pub const MAX_NAMES: usize = 4_000;
@@ -192,6 +193,8 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
     let (overlay, open) = (overlay(args.overlay)?, open_paths(args.open)?);
     let workspace = ctx.live(&args.project)?;
     let reader = workspace.readers()?.get()?;
+    let highlighters = workspace.highlighters();
+    let sources = text_sources(&workspace, &highlighters);
     let show_all_calls = args.show_all_calls.unwrap_or(false);
     reader
         .snapshot(|reader| {
@@ -202,10 +205,8 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
             let Some(trees) = trees(reader, key, &open)? else {
                 return Ok(None);
             };
-            Ok(
-                draw(&trees, workspace.root(), key, &overlay, open, show_all_calls)
-                    .map(|flow| CardView::Definition { flow: Box::new(flow) }),
-            )
+            Ok(draw(&trees, &sources, key, &overlay, open, show_all_calls)
+                .map(|flow| CardView::Definition { flow: Box::new(flow) }))
         })?
         .ok_or_else(|| CommandError::not_found(format!("no card `{key}`")))
 }
@@ -228,7 +229,8 @@ pub fn flow_text(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<FlowText> {
     let (overlay, open) = (overlay(args.overlay)?, open_paths(args.open)?);
     let workspace = ctx.live(&args.project)?;
     let reader = workspace.readers()?.get()?;
-    let root = workspace.root();
+    let highlighters = workspace.highlighters();
+    let sources = text_sources(&workspace, &highlighters);
     let show_all_calls = args.show_all_calls.unwrap_or(false);
     reader
         .snapshot(|reader| {
@@ -236,11 +238,11 @@ pub fn flow_text(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<FlowText> {
                 return Ok(None);
             };
             let labels = match trees.block(key) {
-                Some(block) => drawing::code_text(block.tree, root, block.id).labels,
+                Some(block) => drawing::code_text(block.tree, &sources, block.id).labels,
                 None => Vec::new(),
             };
             Ok(
-                draw(&trees, root, key, &overlay, open, show_all_calls).map(|flow| FlowText {
+                draw(&trees, &sources, key, &overlay, open, show_all_calls).map(|flow| FlowText {
                     text: drawing::flow_text(&flow),
                     labels,
                 }),
@@ -256,12 +258,23 @@ pub fn code_text(ctx: &Ctx<'_>, args: ProjectKeyArgs) -> CommandResult<CodeText>
     let key = key_arg(&args.key)?;
     let workspace = ctx.live(&args.project)?;
     let reader = workspace.readers()?.get()?;
-    let root = workspace.root();
+    let highlighters = workspace.highlighters();
+    let sources = text_sources(&workspace, &highlighters);
     reader
         .snapshot(|reader| {
-            Ok(definition_tree(reader, key)?.map(|(tree, id)| drawing::code_text(&tree, root, id)))
+            Ok(definition_tree(reader, key)?.map(|(tree, id)| drawing::code_text(&tree, &sources, id)))
         })?
         .ok_or_else(|| no_definition(key))
+}
+
+/// Where a drawing reads its files' text: the folder, with the languages' highlighters and the
+/// sources kept from when they last verified.
+fn text_sources<'a>(workspace: &'a Workspace, highlighters: &'a [&'a dyn Highlighter]) -> TextSources<'a> {
+    TextSources {
+        root: workspace.root(),
+        highlighters,
+        kept: workspace.kept_sources(),
+    }
 }
 
 fn no_definition(key: &str) -> CommandError {
@@ -304,7 +317,7 @@ fn trees(reader: &Reader, key: &str, open: &[Vec<Key>]) -> unfold_store::Result<
 /// The drawn flow of definition `key`, whose [`trees`] are loaded.
 fn draw(
     trees: &Trees,
-    root: &Path,
+    sources: &TextSources<'_>,
     key: &str,
     overlay: &Overlay,
     open: Vec<Vec<Key>>,
@@ -315,7 +328,7 @@ fn draw(
         open,
         show_all_calls,
     };
-    drawing::draw(trees, root, overlay, &card)
+    drawing::draw(trees, sources, overlay, &card)
 }
 
 /// Loads the files of the callees an open path reaches, outermost first: a project call opens

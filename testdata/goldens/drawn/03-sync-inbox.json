@@ -7,6 +7,7 @@
     "signature": "def sync_inbox(account)",
     "description": "Pull new mail for one account and store it.",
     "path": "inbox/sync.py",
+    "state": "current",
     "line": 8,
     "async": false,
     "generator": false,
@@ -56,6 +57,7 @@
             }
           }
         ],
+        "headerUnknown": [],
         "lanes": [
           {
             "id": 2,
@@ -81,6 +83,7 @@
                   "key": "inbox/sync.py#sync_inbox/with[0]/body/try[0]",
                   "form": "try",
                   "headerCalls": [],
+                  "headerUnknown": [],
                   "lanes": [
                     {
                       "id": 4,
@@ -145,7 +148,8 @@
                       "state": "reached",
                       "test": {
                         "text": "except RateLimited as error",
-                        "calls": []
+                        "calls": [],
+                        "unknown": []
                       },
                       "types": [
                         {

@@ -256,6 +256,44 @@ fn combined_steps_are_consecutive_steps_of_one_body_or_one_control_block() {
     );
 }
 
+/// A combined step covers its first block through its last: steps written between its blocks
+/// since it was combined join it. Everything else that breaks the rules still fails.
+#[test]
+fn a_combined_step_covers_the_steps_written_between_its_blocks() {
+    let tree = tree();
+    let cover = |members: &[&str]| covered(&tree, &keys(members));
+    assert_eq!(
+        cover(&["m.py#f/call:a", "m.py#f/call:c"]),
+        Ok(keys(&["m.py#f/call:a", "m.py#f/if[0]", "m.py#f/call:c"]))
+    );
+    assert_eq!(
+        cover(&["m.py#f/call:a", "m.py#f/if[0]"]),
+        Ok(keys(&["m.py#f/call:a", "m.py#f/if[0]"]))
+    );
+    assert_eq!(
+        cover(&["m.py#f/call:p/ternary[0]"]),
+        Ok(keys(&["m.py#f/call:p/ternary[0]"]))
+    );
+    assert_eq!(
+        cover(&["m.py#f/call:c", "m.py#f/call:a"]),
+        Err(OverlayError::NotConsecutive {
+            key: key("m.py#f/call:a"),
+            previous: key("m.py#f/call:c"),
+        })
+    );
+    assert_eq!(
+        cover(&["m.py#f/call:a", "m.py#f/if[0]/then/call:b"]),
+        Err(OverlayError::OtherBody {
+            key: key("m.py#f/if[0]/then/call:b"),
+            first: key("m.py#f/call:a"),
+        })
+    );
+    assert_eq!(
+        cover(&["m.py#f/call:a", "m.py#f/call:absent"]),
+        Err(OverlayError::Missing(key("m.py#f/call:absent")))
+    );
+}
+
 #[test]
 fn combined_steps_never_overlap_or_nest() {
     let tree = tree();

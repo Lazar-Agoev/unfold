@@ -36,6 +36,7 @@ function typeModel(key: Key): CardView {
         form: kind === "class" ? "class" : "interface",
         label: NAMES[key] ?? key,
         path: "src/cart.ts",
+        state: "current",
         line: 1,
         async: false,
         generator: false,

@@ -11,10 +11,14 @@
 //! | try | into the body, with an on-error route to each handler; the body's end to `else`, then `finally`, then past the try; a handler's end to `finally`, then past the try |
 //! | with | into the body, then past the frame |
 //! | `return` | End, through every enclosing `finally` |
-//! | `raise`, `throw` | the handlers of the nearest try whose body holds it, or the caller, through the `finally` lanes between |
+//! | `raise`, `throw` | the first handler proven to catch it ([`crate::contracts::catching`]) of the nearest enclosing try whose body holds it and that has one, else the caller; through the `finally` lanes between |
 //! | `break` | past its loop or `switch`; `continue`: its loop's header; through the `finally` lanes between |
 //! | `yield` | on to the next step |
-//! | truncated | also "may continue" to wherever its end goes |
+//! | truncated | a step, a lane, or the definition (from the start) also "may continue" to wherever its end goes |
+//!
+//! A `finally` lane whose own end no route reaches (it always returns, raises, breaks, or
+//! continues) replaces the transfer that entered it: an exit routed through it ends in the lane
+//! instead, and the lane's own exits go on.
 //!
 //! A search from the start marks what no route reaches as unreachable. An exit that passes
 //! through a `finally` lane reaches the lane and goes on to its own target: the lane's own end
@@ -25,6 +29,8 @@
 //! goes becomes its own "on" route, and exits keep their kind and target. A reached one keeps
 //! only the routes the search takes, so it draws no "on" route that nothing reaches.
 
+use std::ops::Range;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::Key;
 use unfold_core::vocab::{Flag, Form};
@@ -32,6 +38,7 @@ use unfold_core::vocab::{Flag, Form};
 use super::{
     DrawnFlow, ExitStep, Frame, Lane, Route, RouteEnd, RouteKind, RouteState, Sequence, Shape, Step,
 };
+use crate::contracts::catching::{Raised, catches, exit_raises, lineage};
 use crate::tree::FileTree;
 
 /// Where a body's end goes, and how.
@@ -61,8 +68,8 @@ enum Scope {
     },
     /// A `switch` or `match`, which a TypeScript `break` may leave.
     Switch { key: Key, form: Form, after: RouteEnd },
-    /// A try's body, whose handlers may catch.
-    Handlers(Vec<u32>),
+    /// A try's body, whose handlers may catch: each handler lane's id, and its part's node.
+    Handlers(Vec<(u32, Option<u32>)>),
     /// The body, handlers, or `else` of a try with this `finally` lane.
     Finally(u32),
 }
@@ -79,6 +86,9 @@ pub(super) fn route(flow: &mut DrawnFlow, tree: &FileTree) {
     };
     let entry = router.sequence(&flow.steps, Next::on(RouteEnd::End));
     router.push(0, RouteKind::On, entry, Vec::new());
+    if router.is_truncated(&flow.header.key) {
+        router.push(0, RouteKind::MayContinue, RouteEnd::End, Vec::new());
+    }
     let Router {
         routes,
         groups,
@@ -86,7 +96,7 @@ pub(super) fn route(flow: &mut DrawnFlow, tree: &FileTree) {
         gates,
         ..
     } = router;
-    let reach = reach(&routes, &gates);
+    let reach = reach(&routes, &gates, 0, 0);
     let mut routes: Vec<(Route, bool)> = routes.into_iter().zip(reach.taken).collect();
     collapse(&mut flow.steps, &mut routes, &groups, &reach.ids);
     let mut routes: Vec<Route> = routes.into_iter().map(|(route, _)| route).collect();
@@ -140,13 +150,15 @@ impl Router<'_> {
             .map_or(next.to, |first| RouteEnd::Step(first.id))
     }
 
-    /// Enters `lane` with a `kind` route, its end going to `next`.
+    /// Enters `lane` with a `kind` route, its end going to `next`. A truncated lane also may
+    /// continue to where its end goes.
     fn lane(&mut self, lane: &Lane, kind: RouteKind, next: Next) {
-        if self.is_truncated(&lane.key) {
-            self.truncated.insert(lane.id);
-        }
         let entry = self.sequence(&lane.steps, next);
         self.push(lane.id, kind, entry, Vec::new());
+        if self.is_truncated(&lane.key) {
+            self.truncated.insert(lane.id);
+            self.push(lane.id, RouteKind::MayContinue, next.to, Vec::new());
+        }
     }
 
     fn step(&mut self, step: &Step, next: Next) {
@@ -329,6 +341,7 @@ impl Router<'_> {
             to: RouteEnd::Step(finally.id),
             kind: RouteKind::Finally,
         });
+        let start = self.routes.len();
         if let Some(finally) = finally {
             self.scopes.push(Scope::Finally(finally.id));
         }
@@ -345,7 +358,10 @@ impl Router<'_> {
             let after_body = otherwise.map_or(to_finally, |otherwise| Next::on(RouteEnd::Step(otherwise.id)));
             if !handlers.is_empty() {
                 self.scopes.push(Scope::Handlers(
-                    handlers.iter().map(|handler| handler.id).collect(),
+                    handlers
+                        .iter()
+                        .map(|handler| (handler.id, self.tree.id(handler.key.as_str())))
+                        .collect(),
                 ));
             }
             self.lane(body, RouteKind::On, after_body);
@@ -361,17 +377,50 @@ impl Router<'_> {
         }
         if let Some(finally) = finally {
             self.scopes.pop();
-            let start = self.routes.len();
+            let entered = self.routes.len();
             self.lane(finally, RouteKind::On, next);
             // The lane's own end: what goes where its end goes, other than an exit.
-            for index in start..self.routes.len() {
-                let route = &self.routes[index];
-                let flows = route.kind.is_flow() || route.kind == RouteKind::MayContinue;
-                if flows && route.to == next.to {
-                    self.gates.entry(index).or_default().push(finally.id);
-                }
+            let ends: Vec<usize> = (entered..self.routes.len())
+                .filter(|&index| {
+                    let route = &self.routes[index];
+                    let flows = route.kind.is_flow() || route.kind == RouteKind::MayContinue;
+                    flows && route.to == next.to
+                })
+                .collect();
+            for &index in &ends {
+                self.gates.entry(index).or_default().push(finally.id);
+            }
+            // A lane whose own end nothing inside it reaches replaces what entered it.
+            let inside = reach(&self.routes, &self.gates, finally.id, entered);
+            if !ends.iter().any(|&index| inside.taken[index]) {
+                self.end_in(finally.id, start..entered);
             }
         }
+    }
+
+    /// Ends in `finally` lane `lane`, which never reaches its own end, every route of `range`
+    /// that passes through it: the lane's own exits replace the transfer that entered it.
+    fn end_in(&mut self, lane: u32, range: Range<usize>) {
+        for route in &mut self.routes[range] {
+            if let Some(at) = route.through.iter().position(|&passed| passed == lane) {
+                route.through.truncate(at);
+                route.to = RouteEnd::Step(lane);
+                route.leaves = None;
+            }
+        }
+    }
+
+    /// What `raise` or `throw` exit `exit` raises, and every class it derives from, as far as
+    /// this file proves.
+    fn raises(&self, exit: &Key) -> Vec<Raised> {
+        let Some(node) = self.tree.id(exit.as_str()) else {
+            return Vec::new();
+        };
+        let mut classes = self.tree;
+        // Reading one file's tree never fails.
+        exit_raises(&mut classes, self.tree, node)
+            .and_then(|raised| lineage(&mut classes, raised))
+            .unwrap_or_default()
     }
 
     fn exit(&mut self, id: u32, exit: &ExitStep, next: Next) {
@@ -386,25 +435,24 @@ impl Router<'_> {
                 self.push(id, RouteKind::Return, RouteEnd::End, through);
             }
             Form::Raise | Form::Throw => {
-                let mut handlers = None;
+                let lineage = self.raises(&exit.key);
+                let mut to = RouteEnd::Caller;
                 for scope in self.scopes.iter().rev() {
                     match scope {
                         Scope::Finally(lane) => through.push(*lane),
-                        Scope::Handlers(lanes) => {
-                            handlers = Some(lanes.clone());
-                            break;
+                        Scope::Handlers(handlers) => {
+                            let caught = handlers.iter().find(|(_, part)| {
+                                part.is_some_and(|part| catches(self.tree, part, &lineage))
+                            });
+                            if let Some(&(lane, _)) = caught {
+                                to = RouteEnd::Step(lane);
+                                break;
+                            }
                         }
                         Scope::Loop { .. } | Scope::Switch { .. } => {}
                     }
                 }
-                match handlers {
-                    Some(lanes) => {
-                        for lane in lanes {
-                            self.push(id, RouteKind::Raise, RouteEnd::Step(lane), through.clone());
-                        }
-                    }
-                    None => self.push(id, RouteKind::Raise, RouteEnd::Caller, through),
-                }
+                self.push(id, RouteKind::Raise, to, through);
             }
             Form::Break | Form::Continue => {
                 let leaving = exit.form == Form::Break;
@@ -447,6 +495,40 @@ impl Router<'_> {
             }
             _ => self.push(id, next.kind, next.to, Vec::new()),
         }
+    }
+}
+
+/// The lane of `flow` with id `id`, for wording a route that goes to it.
+pub(super) fn lane(flow: &DrawnFlow, id: u32) -> Option<&Lane> {
+    fn find(sequence: &Sequence, id: u32) -> Option<&Lane> {
+        sequence.steps.iter().find_map(|step| match &step.shape {
+            Shape::Decision(frame) | Shape::Loop(frame) | Shape::Try(frame) | Shape::With(frame) => {
+                frame.lanes.iter().find_map(|lane| {
+                    if lane.id == id {
+                        Some(lane)
+                    } else {
+                        find(&lane.steps, id)
+                    }
+                })
+            }
+            Shape::Combined(combined) => combined.steps.as_ref().and_then(|steps| find(steps, id)),
+            Shape::Call(_) | Shape::Thin(_) | Shape::Exit(_) | Shape::Proposed(_) => None,
+        })
+    }
+    find(&flow.steps, id)
+}
+
+/// The route state of `flow`'s start: truncated when its definition is, which may continue to
+/// its end.
+pub(super) fn start_state(flow: &DrawnFlow) -> RouteState {
+    let truncated = flow
+        .routes
+        .iter()
+        .any(|route| route.from == 0 && route.kind == RouteKind::MayContinue);
+    if truncated {
+        RouteState::Truncated
+    } else {
+        RouteState::Reached
     }
 }
 
@@ -548,21 +630,22 @@ struct Reach {
     taken: Vec<bool>,
 }
 
-/// Searches `routes` from the start. A route is taken when its start is reached, except that a
-/// route gated on `finally` lanes (`gates`, by index: a lane's own end) is taken only once
-/// ordinary flow entered each of them, by a route that goes to the lane rather than through it.
-fn reach(routes: &[Route], gates: &FxHashMap<usize, Vec<u32>>) -> Reach {
+/// Searches `routes` from id `start`, taking only the routes from index `first` on. A route is
+/// taken when its start is reached, except that a route gated on `finally` lanes (`gates`, by
+/// index: a lane's own end) is taken only once ordinary flow entered each of them, by a route
+/// that goes to the lane rather than through it. The start counts as entered.
+fn reach(routes: &[Route], gates: &FxHashMap<usize, Vec<u32>>, start: u32, first: usize) -> Reach {
     let mut from: FxHashMap<u32, Vec<usize>> = FxHashMap::default();
-    for (index, route) in routes.iter().enumerate() {
+    for (index, route) in routes.iter().enumerate().skip(first) {
         from.entry(route.from).or_default().push(index);
     }
     let mut ids = FxHashSet::default();
-    ids.insert(0);
+    ids.insert(start);
     let mut entered = ids.clone();
     let mut taken = vec![false; routes.len()];
     // Gated routes whose start is reached, by the lane they wait for.
     let mut waiting: FxHashMap<u32, Vec<usize>> = FxHashMap::default();
-    let mut queue: Vec<usize> = from.get(&0).cloned().unwrap_or_default();
+    let mut queue: Vec<usize> = from.get(&start).cloned().unwrap_or_default();
     while let Some(index) = queue.pop() {
         if taken[index] {
             continue;

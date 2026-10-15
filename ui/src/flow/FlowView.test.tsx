@@ -2,7 +2,7 @@
 import "../test/dom";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { DrawnFlow, Key } from "../ipc/generated";
+import type { DrawnFlow, Key, OtherCall } from "../ipc/generated";
 import { FlowView, type FlowViewProps } from "./FlowView";
 import { layoutFlow, type Measure } from "./layout";
 
@@ -28,7 +28,71 @@ function all(container: HTMLElement, selector: string): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>(selector)];
 }
 
+/** A library or unknown call written at `key`. */
+function other(key: Key, callee: string, outcome: "library" | "unknown"): OtherCall {
+  return {
+    key,
+    callee,
+    form: "call",
+    to: outcome === "unknown" ? { outcome, reason: "unknown_receiver" } : { outcome, module: "logging" },
+    awaited: false,
+    sometimes: false,
+    inside: [],
+    actions: { after: false, start: false, open: false },
+  };
+}
+
+/** place_order, with unknown calls written in its first test and its loop's header, and calls written inside its exits' values. */
+function withListedCalls(): DrawnFlow {
+  const flow = structuredClone(drawn("01-place-order"));
+  for (const step of flow.steps.steps) {
+    if (step.kind === "decision") {
+      const test = step.lanes[0]?.test;
+      if (test) {
+        test.unknown = [other("p/if[0]/then/call:order.mystery", "order.mystery", "unknown")];
+      }
+      const raise = step.lanes[0]?.steps.steps[0];
+      if (raise?.kind === "exit" && raise.value?.kind === "call") {
+        raise.value.calls = [other("p/raise[0]/call:ValueError/call:x.bar", "x.bar", "unknown")];
+      }
+    }
+    if (step.kind === "loop") {
+      step.headerUnknown = [other("p/for[0]/call:order.items", "order.items", "unknown")];
+    }
+    if (step.kind === "try") {
+      const back = step.lanes[1]?.steps.steps.find((inner) => inner.kind === "exit");
+      if (back?.kind === "exit" && back.value?.kind === "call") {
+        back.value.calls = [other("p/return[0]/call:mark_failed/call:x.foo", "x.foo", "unknown"), other("p/return[0]/call:mark_failed/call:logger.info", "logger.info", "library")];
+      }
+    }
+  }
+  return flow;
+}
+
 describe("FlowView", () => {
+  it("lists a test's and a header's unknown calls after them as chips with their `?`, and the calls written inside an exit's value on its pill", () => {
+    const onSelect = vi.fn();
+    const geometry = layoutFlow(withListedCalls(), { measure });
+    const { container } = render(<FlowView geometry={geometry} onSelect={onSelect} />);
+    const unknown = all(container, ".flow-chip.other");
+    expect(unknown.map((chip) => [chip.dataset["key"], chip.textContent])).toEqual([
+      ["p/if[0]/then/call:order.mystery", "order.mystery?"],
+      ["p/for[0]/call:order.items", "order.items?"],
+    ]);
+    expect(all(container, ".flow-head.test")[0]?.textContent).toBe("◆order is Noneorder.mystery?");
+    expect(all(container, ".flow-frame.loop .flow-frame-title")[0]?.textContent).toContain('for item in order["items"]order.items?');
+    expect(all(container, ".flow-exit.x-raise")[0]?.textContent).toBe("RaiseValueError+ x.bar?→ raises to the caller");
+    expect(container.querySelector(".flow-exit .flow-chip .flow-listed")?.textContent).toBe("+ x.foo?, logger.info");
+    for (const key of ["p/if[0]/then/call:order.mystery", "p/for[0]/call:order.items", "p/raise[0]/call:ValueError/call:x.bar", "p/return[0]/call:mark_failed/call:x.foo", "p/return[0]/call:mark_failed/call:logger.info"]) {
+      expect(geometry.blocks.has(key), key).toBe(true);
+    }
+    fireEvent.click(screen.getByText("order.mystery"));
+    expect(onSelect).toHaveBeenLastCalledWith({ kind: "block", key: "p/if[0]/then/call:order.mystery" });
+    const plain = layoutFlow(drawn("01-place-order"), { measure });
+    const pill = (laid: typeof geometry) => laid.pieces.find((piece) => piece.kind === "exit" && piece.exit.form === "raise")?.rect.width ?? 0;
+    expect(pill(geometry)).toBeGreaterThan(pill(plain));
+  });
+
   it("draws place_order's pieces at their rects, with a wire per drawn route", () => {
     const { geometry, container } = show("01-place-order");
     const root = container.querySelector<HTMLElement>(".flow");
@@ -160,6 +224,32 @@ describe("FlowView", () => {
     const sometimes = show("05-route-message");
     expect(all(sometimes.container, ".flow-call.sometimes").map((item) => item.dataset["key"])).toEqual(["mail/route.py#route_message/call:fetch_profile"]);
     expect(all(sometimes.container, ".flow-tag.sometimes")).toHaveLength(1);
+  });
+
+  it("cuts a long test short with a visible …, and keeps it whole in its tooltip", () => {
+    const test = 'not isinstance(value.get("email"), str) or "@" not in value["email"]';
+    const flow = structuredClone(drawn("01-place-order"));
+    const decision = flow.steps.steps.find((step) => step.kind === "decision");
+    const [first, second] = decision?.kind === "decision" ? decision.lanes : [];
+    if (!first?.test || !second?.test) {
+      throw new Error("place_order's decision has two tests");
+    }
+    first.test.text = test;
+    second.test.text = test;
+    second.name = "Is the email missing?";
+    const { container } = render(<FlowView geometry={layoutFlow(flow, { measure })} />);
+    const [unnamed, named] = all(container, ".flow-head.test .flow-head-text");
+    expect(unnamed?.textContent).toMatch(/^not isinstance\(.*…$/);
+    expect(unnamed?.title).toBe(test);
+    expect(named?.querySelector(".flow-name")?.textContent).toBe("Is the email missing?");
+    expect(named?.querySelector(".flow-code-name")?.textContent).toMatch(/…$/);
+    expect(named?.title).toBe(`Is the email missing?\n${test}`);
+    // A test that fits has no tooltip.
+    const whole = show("01-place-order");
+    expect(all(whole.container, ".flow-head.test .flow-head-text").map((item) => [item.textContent, item.title])).toEqual([
+      ["order is None", ""],
+      ['order["paid"]', ""],
+    ]);
   });
 });
 

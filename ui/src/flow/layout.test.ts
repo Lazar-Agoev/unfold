@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DrawnFlow, Key, Route, Step } from "../ipc/generated";
 import { flowBlocks } from "../state/cards";
-import { layoutFlow, type FlowGeometry, type FlowPiece, type FlowWire, type Measure, type Rect } from "./layout";
+import { callbackText, layoutFlow, type FlowGeometry, type FlowPiece, type FlowWire, type Measure, type Rect } from "./layout";
 
 /** The reader's drawn flows of the nine examples and the shaped `place_order`, as the IPC sends them. */
 const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
@@ -191,6 +191,17 @@ describe("call boxes", () => {
     // An unknown call has no anchor: no card to point at.
     expect(geometry.anchors.some((anchor) => anchor.call === post.box.key)).toBe(false);
   });
+
+  it("words a callback row by the property it is written as, then its signature", () => {
+    const [callback] = pieces(lay(drawn("09-orders-route")), "callback");
+    if (!callback) {
+      throw new Error("no callback row");
+    }
+    expect(callbackText(callback.callback)).toBe("async (req, res) =>");
+    expect(callbackText({ ...callback.callback, property: "onSuccess" })).toBe("onSuccess async (req, res) =>");
+    const { signature: _signature, ...unwritten } = callback.callback;
+    expect(callbackText(unwritten)).toBe("callback to ordersRouter.post");
+  });
 });
 
 describe("thin rows", () => {
@@ -242,6 +253,31 @@ describe("decisions", () => {
     expect(wireOf(geometry, 3, "no", { step: 5 })?.label?.text).toBe("no");
     // The last test's no goes past the decision: down to the frame's bottom, then on to the try.
     expect(wireOf(geometry, 5, "no", { step: 7 })).toBeDefined();
+  });
+
+  it("cuts a test too long for its head short with a visible …, keeping it whole", () => {
+    const test = 'not isinstance(value.get("email"), str) or "@" not in value["email"]';
+    const long = drawn("01-place-order");
+    const decision = long.steps.steps.find((step) => step.kind === "decision");
+    const [first, second] = decision?.kind === "decision" ? decision.lanes : [];
+    if (!first?.test || !second?.test) {
+      throw new Error("place_order's decision has two tests");
+    }
+    first.test.text = test;
+    second.test.text = test;
+    second.name = "Is the email missing?";
+    const [unnamed, named] = pieces(lay(long), "head");
+    expect(unnamed?.text).toBe(test);
+    expect(unnamed?.shown.name).toBeNull();
+    expect(unnamed?.shown.text).toMatch(/…$/);
+    expect(test.startsWith(unnamed?.shown.text.slice(0, -1) ?? "")).toBe(true);
+    expect(unnamed?.rect.width).toBeLessThanOrEqual(320);
+    // A part's name stays whole; its test is cut.
+    expect(named?.shown.name).toBe("Is the email missing?");
+    expect(named?.shown.text).toMatch(/…$/);
+    expect(named?.rect.width).toBeLessThanOrEqual(320);
+    // A test that fits is drawn whole.
+    expect(pieces(geometry, "head").map((head) => head.shown.text)).toEqual(["order is None", 'order["paid"]']);
   });
 
   it("labels a ternary's value and draws its else part as an else head", () => {
@@ -474,6 +510,27 @@ describe("route states", () => {
     stepById(flow, 3).state = "truncated";
     flow.routes = flow.routes.map((route) => (route.from === 3 ? { ...route, kind: "mayContinue" } : route));
     expect(wireOf(lay(flow), 3, "mayContinue", { step: 4 })?.label?.text).toBe("may continue");
+  });
+
+  it("draws a truncated part's may-continue route dashed at the part's end", () => {
+    const flow = drawn("01-place-order");
+    const loop = stepById(flow, 14);
+    const body = loop.kind === "loop" ? loop.lanes[0] : undefined;
+    if (!body) {
+      throw new Error("step 14 is a loop");
+    }
+    body.state = "truncated";
+    flow.routes.push({ from: body.id, kind: "mayContinue", to: { step: 14 }, through: [] });
+    expect(wireOf(lay(flow), body.id, "mayContinue", { step: 14 })).toMatchObject({ dashed: true, label: { text: "may continue" } });
+    body.steps.steps = [];
+    flow.routes = flow.routes.filter((route) => route.from !== 16);
+    expect(wireOf(lay(flow), body.id, "mayContinue", { step: 14 })?.dashed).toBe(true);
+  });
+
+  it("draws a truncated definition's may-continue route into End dashed", () => {
+    const flow = drawn("01-place-order");
+    flow.routes.push({ from: 0, kind: "mayContinue", to: "end", through: [] });
+    expect(wireOf(lay(flow), 0, "mayContinue", "end")?.dashed).toBe(true);
   });
 });
 

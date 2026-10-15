@@ -8,6 +8,7 @@
     "signature": "def place_order(order_id)",
     "description": "Charge an order and save it.",
     "path": "shop/service.py",
+    "state": "current",
     "line": 9,
     "async": false,
     "generator": false,
@@ -103,6 +104,7 @@
         "key": "shop/service.py#place_order/try[0]",
         "form": "try",
         "headerCalls": [],
+        "headerUnknown": [],
         "lanes": [
           {
             "id": 9,
@@ -168,7 +170,8 @@
             "name": "Card declined",
             "test": {
               "text": "except PaymentDeclined as error",
-              "calls": []
+              "calls": [],
+              "unknown": []
             },
             "types": [
               {

@@ -8,8 +8,10 @@
 //!   into one row unless a gap tick sits between them. Builtins are hidden unless Show all calls
 //!   is on; the calls inside a hidden call surface on their own.
 //! - **Control blocks** are frames whose parts are lanes. One with nothing drawn inside is
-//!   hidden and named in its gap tick. The boxes written in a header, a test, or a handler's
-//!   clause are drawn on it.
+//!   hidden and named in its gap tick, unless the overlay puts something in it. The boxes
+//!   written in a header, a test, or a handler's clause are drawn on it, and the unknown calls
+//!   outside them are listed after it with their `?` (its library and builtin calls stay its
+//!   written text).
 //! - **Exits** are labeled by the call that is their value, or by their value as written.
 //! - **Gap ticks** count the code lines of a body that no drawn step covers.
 //! - **The overlay:** names; combined steps (one step when collapsed, their steps under a title
@@ -18,34 +20,33 @@
 //!   block a combined step holds can't be combined again, and a call opens in place only within
 //!   [`MAX_OPEN_DEPTH`] levels and [`MAX_OPEN_PATHS`] paths (closing an open one always can).
 
-use std::path::Path;
 use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome, Reason};
-use unfold_core::{ByteRange, Key, LineBreaks, LineSpan, LinkTarget, Node, RepoPath};
+use unfold_core::{ByteRange, Key, LineSpan, LinkTarget, Node, RepoPath};
 
-use super::lines::{FileText, candidates, doc_text};
+use super::lines::{FileText, candidates, doc_text, file_text};
 use super::{
     Actions, CallBox, CallRef, Callback, Combine, CombineWith, CombinedStep, DrawnFlow, ExitStep, ExitTarget,
-    ExitValue, Frame, GapTick, Header, HeldCall, HiddenBlock, Import, Lane, OtherCall, Overlay, ProposedStep,
-    RouteState, Sequence, Shape, Step, Test, ThinRow, routes,
+    ExitValue, FlowState, Frame, GapTick, Header, HeldCall, HiddenBlock, Import, Lane, OtherCall, Overlay,
+    ProposedStep, RouteState, Sequence, Shape, Step, Test, TextSources, ThinRow, routes,
 };
 use crate::code_view;
 use crate::notes::LinkEnd;
 use crate::overlay::{self, Combinable, MAX_OPEN_DEPTH, MAX_OPEN_PATHS, Openable, ProposalSpot};
-use crate::source::verify_file;
 use crate::tree::{Blocks, FileTree, Trees};
 
-/// What every flow of one drawing shares: the graph, the overlay, and the verified texts.
+/// What every flow of one drawing shares: the graph, the overlay, and the files' texts.
 pub(super) struct Drawer<'a> {
     trees: &'a Trees,
-    root: &'a Path,
+    sources: &'a TextSources<'a>,
     overlay: &'a Overlay,
     show_all: bool,
     /// How many paths the card opens.
     paths: usize,
-    texts: FxHashMap<RepoPath, Option<Rc<FileText>>>,
+    /// Each file's state and text, read once.
+    texts: FxHashMap<RepoPath, (FlowState, Option<Rc<FileText>>)>,
     /// The overlay's combined steps, by their first block.
     groups: FxHashMap<&'a Key, &'a Combine>,
 }
@@ -53,7 +54,7 @@ pub(super) struct Drawer<'a> {
 impl<'a> Drawer<'a> {
     pub(super) fn new(
         trees: &'a Trees,
-        root: &'a Path,
+        sources: &'a TextSources<'a>,
         overlay: &'a Overlay,
         show_all: bool,
         paths: usize,
@@ -65,7 +66,7 @@ impl<'a> Drawer<'a> {
             .collect();
         Self {
             trees,
-            root,
+            sources,
             overlay,
             show_all,
             paths,
@@ -74,20 +75,14 @@ impl<'a> Drawer<'a> {
         }
     }
 
-    /// The verified text of `tree`'s file, read once.
-    fn text(&mut self, tree: &FileTree) -> Option<Rc<FileText>> {
-        let root = self.root;
+    /// The state of `tree`'s file and the facts' text ([`file_text`]), read once.
+    fn text(&mut self, tree: &FileTree) -> (FlowState, Option<Rc<FileText>>) {
+        let sources = self.sources;
         self.texts
             .entry(tree.path().clone())
             .or_insert_with(|| {
-                verify_file(
-                    root,
-                    tree.path(),
-                    tree.file().hash,
-                    LineBreaks::of(tree.language()),
-                )
-                .into_source()
-                .map(|source| Rc::new(FileText::new(source, tree.language())))
+                let (state, text) = file_text(sources, tree);
+                (state, text.map(Rc::new))
             })
             .clone()
     }
@@ -101,14 +96,17 @@ impl<'a> Drawer<'a> {
         depth: usize,
         open: &[&'a [Key]],
     ) -> DrawnFlow {
-        let text = self.text(tree);
+        let (state, text) = self.text(tree);
+        let touched = self.touched(tree, definition);
         let mut builder = Builder {
             drawer: self,
             tree,
             definition,
             depth,
+            state,
             text,
             open,
+            touched,
             next: 1,
             deferred: None,
             combining: false,
@@ -129,12 +127,43 @@ impl<'a> Drawer<'a> {
         routes::route(&mut flow, tree);
         flow
     }
+
+    /// The blocks of `definition` (in `tree`) that the overlay puts something on or in: those it
+    /// names, those its proposals follow or start, and the first blocks of its combined steps.
+    fn touched(&self, tree: &FileTree, definition: u32) -> Vec<u32> {
+        let overlay = self.overlay;
+        let proposals = overlay.proposed.iter().map(|proposal| match &proposal.spot {
+            ProposalSpot::After(key) | ProposalSpot::Start(key) => key,
+        });
+        let combined = overlay
+            .combined
+            .iter()
+            .filter_map(|combine| combine.members.first());
+        overlay
+            .names
+            .keys()
+            .chain(proposals)
+            .chain(combined)
+            .filter_map(|key| tree.id(key.as_str()))
+            .filter(|&id| tree.owner(id) == Some(definition))
+            .collect()
+    }
 }
 
 /// A step waiting for its gap tick, with the lines it covers.
 struct Item {
     step: Step,
     span: Option<LineSpan>,
+    /// A proposed step's place, which covers no lines: the last line of the block it goes after.
+    follows: Option<u32>,
+}
+
+impl Item {
+    /// The last line this item comes after or covers: the code no item covers up to it is the
+    /// gap tick on the route into it (when no item before reaches that far).
+    fn reach(&self) -> Option<u32> {
+        self.span.map(|span| span.end).or(self.follows)
+    }
 }
 
 /// A hidden control block and its first line.
@@ -150,8 +179,13 @@ struct Builder<'d, 'a> {
     definition: u32,
     /// How many insets deep the flow is: the card's own is `0`.
     depth: usize,
+    /// Whether the file is the one the facts came from.
+    state: FlowState,
+    /// The facts' text.
     text: Option<Rc<FileText>>,
     open: &'d [&'a [Key]],
+    /// The blocks the overlay puts something on or in ([`Drawer::touched`]).
+    touched: Vec<u32>,
     /// The next step or lane id; `0` is the start.
     next: u32,
     /// While a collapsed combined step is built: the proposals inside it, drawn after it.
@@ -290,7 +324,7 @@ impl<'a> Builder<'_, 'a> {
         }
         match self.kind(id) {
             NodeKind::Exit => true,
-            NodeKind::Call if self.is_test(id) => self.has_box(id),
+            NodeKind::Call if self.is_test(id) => self.has_chip(id),
             NodeKind::Call => {
                 self.is_box(id)
                     || self.shown(id)
@@ -301,25 +335,38 @@ impl<'a> Builder<'_, 'a> {
             }
             NodeKind::Part => self.children(id).iter().any(|&child| {
                 if self.belongs_to_test(child) {
-                    self.has_box(child)
+                    self.has_chip(child)
                 } else {
                     self.draws(child)
                 }
             }),
-            kind if kind.is_control() => self.children(id).iter().any(|&child| match self.kind(child) {
-                NodeKind::Part => self.draws(child),
-                _ => self.has_box(child),
-            }),
+            kind if kind.is_control() => {
+                self.touched(id)
+                    || self.children(id).iter().any(|&child| match self.kind(child) {
+                        NodeKind::Part => self.draws(child),
+                        _ => self.has_chip(child),
+                    })
+            }
             _ => false,
         }
     }
 
-    /// Whether block `id` is or holds a box (outside the definitions written in it).
-    fn has_box(&self, id: u32) -> bool {
+    /// Whether the overlay puts something inside control block `id` (a proposal, a name, or a
+    /// combined step on a block written in it), which then draws it as a frame. A name on the
+    /// block itself is its gap tick's.
+    fn touched(&self, id: u32) -> bool {
+        self.touched
+            .iter()
+            .any(|&touched| touched != id && self.tree.contains(id, touched))
+    }
+
+    /// Whether block `id`, written in a test or a header, draws there: whether it is or holds a
+    /// box or an unknown call (outside the definitions written in it).
+    fn has_chip(&self, id: u32) -> bool {
         match self.kind(id) {
             kind if kind.is_definition() => false,
-            NodeKind::Call if self.is_box(id) => true,
-            _ => self.children(id).iter().any(|&child| self.has_box(child)),
+            NodeKind::Call if self.is_box(id) || self.outcome(id) == Outcome::Unknown => true,
+            _ => self.children(id).iter().any(|&child| self.has_chip(child)),
         }
     }
 
@@ -361,6 +408,7 @@ impl<'a> Builder<'_, 'a> {
                 .flatten(),
             description,
             path: self.tree.path().clone(),
+            state: self.state,
             line: node.lines.start,
             is_async: node.flags.contains(Flag::Async),
             generator: node.flags.contains(Flag::Generator),
@@ -401,12 +449,12 @@ impl<'a> Builder<'_, 'a> {
         let mut items = Vec::new();
         let mut hidden = Vec::new();
         if let Some(start) = start {
-            self.proposals(start, &mut items);
+            self.proposals(start, None, &mut items);
         }
         let mut index = 0;
         while index < steps.len() {
-            if let Some(group) = groups.then(|| self.group_at(&steps[index..])).flatten() {
-                let members = &steps[index..index + group.members.len()];
+            if let Some((group, covers)) = groups.then(|| self.group_at(&steps[index..])).flatten() {
+                let members = &steps[index..index + covers];
                 let (item, after) = self.group(group, members, lines);
                 items.push(item);
                 items.extend(after);
@@ -415,21 +463,27 @@ impl<'a> Builder<'_, 'a> {
             }
             let id = steps[index];
             self.step_items(id, &mut items, &mut hidden);
-            self.proposals(&ProposalSpot::After(self.key(id)), &mut items);
+            let follows = self.span(id).map(|span| span.end);
+            self.proposals(&ProposalSpot::After(self.key(id)), follows, &mut items);
             index += 1;
         }
         finish(items, &hidden, lines)
     }
 
-    /// The overlay's proposals at `spot`, as steps.
-    fn proposals(&mut self, spot: &ProposalSpot, items: &mut Vec<Item>) {
+    /// The overlay's proposals at `spot`, as steps after line `follows` (none at the start of a
+    /// body).
+    fn proposals(&mut self, spot: &ProposalSpot, follows: Option<u32>, items: &mut Vec<Item>) {
         let overlay = self.drawer.overlay;
         for proposal in overlay.proposed.iter().filter(|proposal| &proposal.spot == spot) {
             let step = self.step(Shape::Proposed(ProposedStep {
                 item: proposal.id.clone(),
                 title: proposal.title.clone(),
             }));
-            let item = Item { step, span: None };
+            let item = Item {
+                step,
+                span: None,
+                follows,
+            };
             match self.deferred.as_mut() {
                 Some(deferred) => deferred.push(item),
                 None => items.push(item),
@@ -437,17 +491,19 @@ impl<'a> Builder<'_, 'a> {
         }
     }
 
-    /// The combined step whose blocks are the first steps of `steps`, if there is one.
-    fn group_at(&self, steps: &[u32]) -> Option<&'a Combine> {
+    /// The combined step whose blocks cover the first steps of `steps`, if there is one, and how
+    /// many it covers: steps written between its blocks since it was combined join it
+    /// ([`overlay::covered`]).
+    fn group_at(&self, steps: &[u32]) -> Option<(&'a Combine, usize)> {
         let first = self.tree.key(*steps.first()?);
         let group = *self.drawer.groups.get(first)?;
-        let matches = group.members.len() <= steps.len()
-            && group
-                .members
+        let covered = overlay::covered(self.tree, &group.members).ok()?;
+        let matches = covered.len() <= steps.len()
+            && covered
                 .iter()
                 .zip(steps)
-                .all(|(member, &id)| member == self.tree.key(id));
-        matches.then_some(group)
+                .all(|(block, &id)| block == self.tree.key(id));
+        matches.then_some((group, covered.len()))
     }
 
     /// Combined step `group` over `members`, and the proposals a collapsed one draws after it.
@@ -509,6 +565,7 @@ impl<'a> Builder<'_, 'a> {
             Item {
                 step,
                 span: Some(span),
+                follows: None,
             },
             after,
         )
@@ -569,7 +626,11 @@ impl<'a> Builder<'_, 'a> {
             }
             _ => Vec::new(),
         };
-        items.extend(steps.into_iter().map(|step| Item { step, span }));
+        items.extend(steps.into_iter().map(|step| Item {
+            step,
+            span,
+            follows: None,
+        }));
     }
 
     /// Call `call` and what is written inside it, in the order they run: the boxes and
@@ -613,7 +674,7 @@ impl<'a> Builder<'_, 'a> {
     /// combined step that holds it alone.
     fn expression(&mut self, control: u32) -> Vec<Step> {
         match self.group_at(&[control]) {
-            Some(group) => {
+            Some((group, _)) => {
                 let (item, after) = self.group(group, &[control], &[]);
                 std::iter::once(item).chain(after).map(|item| item.step).collect()
             }
@@ -659,12 +720,13 @@ impl<'a> Builder<'_, 'a> {
         let id = self.id();
         let node = self.node(control);
         let mut header_calls = Vec::new();
+        let mut header_unknown = Vec::new();
         let mut lanes = Vec::new();
         for &child in self.children(control) {
             match self.kind(child) {
                 NodeKind::Part => lanes.push(self.lane(child)),
                 kind if kind.is_definition() => {}
-                _ => self.boxes(child, &mut header_calls),
+                _ => self.chips(child, false, &mut header_calls, &mut header_unknown),
             }
         }
         let frame = Frame {
@@ -673,6 +735,7 @@ impl<'a> Builder<'_, 'a> {
             name: self.name(control),
             header: self.one_line(node.head),
             header_calls,
+            header_unknown,
             binds: node.binds.as_deref().map(str::to_owned),
             lanes,
             actions: self.actions(control),
@@ -697,14 +760,16 @@ impl<'a> Builder<'_, 'a> {
         let node = self.node(part);
         let test = node.head.map(|head| {
             let mut calls = Vec::new();
+            let mut unknown = Vec::new();
             for &child in self.children(part) {
                 if self.belongs_to_test(child) {
-                    self.boxes(child, &mut calls);
+                    self.chips(child, false, &mut calls, &mut unknown);
                 }
             }
             Test {
                 text: self.one_line(Some(head)),
                 calls,
+                unknown,
             }
         });
         let types = self
@@ -739,15 +804,24 @@ impl<'a> Builder<'_, 'a> {
         }
     }
 
-    /// The boxes block `id` is or holds, in the order they run (outside definitions).
-    fn boxes(&mut self, id: u32, out: &mut Vec<CallBox>) {
+    /// What block `id`, written in a test or a header, draws there, in the order it runs
+    /// (outside definitions): the boxes it is or holds, and the unknown calls outside them, which
+    /// a box lists (`listed`: `id` is inside one).
+    fn chips(&mut self, id: u32, listed: bool, boxes: &mut Vec<CallBox>, unknown: &mut Vec<OtherCall>) {
+        let call = self.kind(id) == NodeKind::Call;
+        let boxed = call && self.is_box(id);
         for &child in self.children(id) {
             if !self.kind(child).is_definition() {
-                self.boxes(child, out);
+                self.chips(child, listed || boxed, boxes, unknown);
             }
         }
-        if self.kind(id) == NodeKind::Call && self.is_box(id) {
-            out.push(self.call_box(id, None));
+        if boxed {
+            boxes.push(self.call_box(id, None));
+        } else if call && !listed && self.outcome(id) == Outcome::Unknown {
+            unknown.push(OtherCall {
+                inside: Vec::new(),
+                ..self.other_call(id, None)
+            });
         }
     }
 
@@ -829,6 +903,7 @@ impl<'a> Builder<'_, 'a> {
             .map(|callback| Callback {
                 key: self.key(callback),
                 label: self.tree.label(callback),
+                property: self.node(callback).name.as_deref().map(str::to_owned),
                 name: self.name(callback),
                 signature: self.one_line(self.node(callback).head),
                 inset: self.callback_inset(callback),
@@ -896,21 +971,21 @@ fn hidden_label(form: Form) -> &'static str {
 /// The sequence of `items`, with gap ticks for the code `lines` no item covers and thin items
 /// gathered into rows.
 fn finish(items: Vec<Item>, hidden: &[Hidden], lines: &[u32]) -> Sequence {
-    let spanned: Vec<(usize, LineSpan)> = items
-        .iter()
-        .enumerate()
-        .filter_map(|(index, item)| item.span.map(|span| (index, span)))
-        .collect();
-    // Gaps by the spanned item they lead into; `spanned.len()` is the end.
+    // Gaps by the item they lead into: the first one whose code reaches past them;
+    // `items.len()` is the end.
     let mut gaps: Vec<(usize, GapTick)> = Vec::new();
     for &line in lines {
-        if spanned
+        if items
             .iter()
-            .any(|(_, span)| (span.start..=span.end).contains(&line))
+            .filter_map(|item| item.span)
+            .any(|span| (span.start..=span.end).contains(&line))
         {
             continue;
         }
-        let position = spanned.iter().filter(|(_, span)| span.end < line).count();
+        let position = items
+            .iter()
+            .position(|item| item.reach().is_some_and(|reach| reach >= line))
+            .unwrap_or(items.len());
         match gaps.last_mut() {
             Some((at, gap)) if *at == position => {
                 gap.count += 1;
@@ -937,11 +1012,10 @@ fn finish(items: Vec<Item>, hidden: &[Hidden], lines: &[u32]) -> Sequence {
             .filter(|hidden| (gap.lines.start..=gap.lines.end).contains(&hidden.line))
             .map(|hidden| hidden.block.clone())
             .collect();
-        match spanned.get(position) {
-            Some(&(index, _)) => {
-                before.insert(index, gap);
-            }
-            None => end_gap = Some(gap),
+        if position < items.len() {
+            before.insert(position, gap);
+        } else {
+            end_gap = Some(gap);
         }
     }
     let mut steps: Vec<Step> = Vec::new();

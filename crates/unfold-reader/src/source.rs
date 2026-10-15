@@ -8,9 +8,17 @@
 //!
 //! Stored ranges are UTF-8 byte ranges (the engine's unit); what is rendered uses UTF-16
 //! offsets (the UI's unit). [`Source`] converts between them for one verified file.
+//!
+//! A [`SourceCache`] keeps the sources verified most recently, by path and hash, so a drawing
+//! keeps its words while a file changes on disk and the compile hasn't caught up, or while the
+//! file doesn't parse (its last good facts keep the hash they came from). A source is kept only
+//! after it verified, and found only by the hash the facts came from: its text is exactly the
+//! facts' text.
 
 use std::path::Path;
+use std::sync::{Arc, Mutex, PoisonError};
 
+use rustc_hash::FxHashMap;
 use serde::Serialize;
 use unfold_core::text::OffsetError;
 use unfold_core::{
@@ -140,6 +148,109 @@ pub enum SourceState {
     Missing,
 }
 
+/// How many bytes of text a [`SourceCache`] keeps before it forgets the sources used least
+/// recently.
+const KEPT_BYTES: usize = 32 << 20;
+
+/// The sources verified most recently, by path and hash, within [`KEPT_BYTES`] of text.
+#[derive(Debug)]
+pub struct SourceCache {
+    /// How many bytes of text it keeps.
+    budget: usize,
+    kept: Mutex<Kept>,
+}
+
+#[derive(Debug, Default)]
+struct Kept {
+    /// Each source with when it was last used.
+    sources: FxHashMap<(RepoPath, ContentHash), (Arc<Source>, u64)>,
+    bytes: usize,
+    clock: u64,
+}
+
+/// A file checked against its facts' hash, with the text to show for it.
+#[derive(Debug, Clone)]
+pub struct Checked {
+    /// Whether the bytes on disk are the facts'.
+    pub state: SourceState,
+    /// The facts' text: the file's when current, else the one kept from when it last verified.
+    pub source: Option<Arc<Source>>,
+}
+
+impl SourceCache {
+    /// An empty cache.
+    pub fn new() -> Self {
+        Self {
+            budget: KEPT_BYTES,
+            kept: Mutex::default(),
+        }
+    }
+
+    /// Verifies `path` under `root` against `expected` ([`verify_file`]) and keeps its source
+    /// when it is current. When the file changed or is gone, the source kept for `expected` is
+    /// the text, if it is still kept.
+    pub fn check(
+        &self,
+        root: &Path,
+        path: &RepoPath,
+        expected: Option<ContentHash>,
+        breaks: LineBreaks,
+    ) -> Checked {
+        let verified = verify_file(root, path, expected, breaks);
+        let state = verified.state();
+        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        let source = match (verified, expected) {
+            (Verified::Current(source), _) => Some(kept.keep(source, self.budget)),
+            (Verified::Changed | Verified::Missing, Some(hash)) => kept.get(path, hash),
+            (Verified::Changed | Verified::Missing, None) => None,
+        };
+        Checked { state, source }
+    }
+}
+
+impl Kept {
+    fn tick(&mut self) -> u64 {
+        self.clock += 1;
+        self.clock
+    }
+
+    fn get(&mut self, path: &RepoPath, hash: ContentHash) -> Option<Arc<Source>> {
+        let now = self.tick();
+        let (source, used) = self.sources.get_mut(&(path.clone(), hash))?;
+        *used = now;
+        Some(Arc::clone(source))
+    }
+
+    /// Keeps `source`, forgetting the sources used least recently past `budget` bytes (never
+    /// the one just kept).
+    fn keep(&mut self, source: Source, budget: usize) -> Arc<Source> {
+        let now = self.tick();
+        let key = (source.path().clone(), source.hash());
+        if let Some((kept, used)) = self.sources.get_mut(&key) {
+            *used = now;
+            return Arc::clone(kept);
+        }
+        let source = Arc::new(source);
+        self.bytes += source.text().len();
+        self.sources.insert(key.clone(), (Arc::clone(&source), now));
+        while self.bytes > budget {
+            let Some(oldest) = self
+                .sources
+                .iter()
+                .filter(|(other, _)| **other != key)
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(other, _)| other.clone())
+            else {
+                break;
+            };
+            if let Some((forgotten, _)) = self.sources.remove(&oldest) {
+                self.bytes -= forgotten.text().len();
+            }
+        }
+        source
+    }
+}
+
 /// Reads `path` under `root` and verifies it against `expected`, the hash its facts came from
 /// (`None` for a failed file, which has no facts). Its lines end at `breaks`: a source's
 /// language's, [`LineBreaks::Newlines`] for any other file.
@@ -164,9 +275,58 @@ pub fn verify_file(
     }
 }
 
+impl Default for SourceCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cache_keeps_the_text_a_file_had_when_it_verified() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = RepoPath::new("a.py").unwrap();
+        let write = |text: &str| std::fs::write(dir.path().join("a.py"), text).unwrap();
+        let first = ContentHash::of(b"a = 1\n");
+        let cache = SourceCache {
+            budget: 10,
+            kept: Mutex::default(),
+        };
+        let check = |hash| cache.check(dir.path(), &path, Some(hash), LineBreaks::Newlines);
+        let text = |checked: &Checked| checked.source.as_ref().map(|source| source.text().to_owned());
+
+        // Nothing was verified yet, so a changed file has no text.
+        write("a = 2\n");
+        let unseen = check(first);
+        assert_eq!((unseen.state, text(&unseen)), (SourceState::Changed, None));
+
+        write("a = 1\n");
+        let current = check(first);
+        assert_eq!(current.state, SourceState::Current);
+        write("a = 2\n");
+        let changed = check(first);
+        assert_eq!(
+            (changed.state, text(&changed).as_deref()),
+            (SourceState::Changed, Some("a = 1\n"))
+        );
+        std::fs::remove_file(dir.path().join("a.py")).unwrap();
+        let missing = check(first);
+        assert_eq!(
+            (missing.state, text(&missing).as_deref()),
+            (SourceState::Missing, Some("a = 1\n"))
+        );
+
+        // Past the budget, the source used least recently is forgotten.
+        write("a = 2\n");
+        let second = ContentHash::of(b"a = 2\n");
+        assert_eq!(check(second).state, SourceState::Current);
+        write("a = 3\n");
+        assert_eq!(text(&check(second)).as_deref(), Some("a = 2\n"));
+        assert_eq!(text(&check(first)), None);
+    }
 
     #[test]
     fn verifies_matching_changed_and_missing_files() {

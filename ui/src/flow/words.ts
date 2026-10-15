@@ -5,7 +5,7 @@
  * renders.
  */
 
-import type { CallBox, CombinedStep, Form, GapTick, Lane, LinkEnd, Route } from "../ipc/generated";
+import type { CallBox, CombinedStep, Form, GapTick, Lane, LinkEnd, OtherCall, Route } from "../ipc/generated";
 
 /** Where a library, builtin, or unknown call goes, in words; empty for a project call. */
 export function outcomeWords(to: LinkEnd): string {
@@ -38,6 +38,17 @@ export function callMeta(box: CallBox): CallMeta {
     tags,
     why: why.length > 0 ? why : null,
   };
+}
+
+/** The library and unknown calls listed on a call drawn on a test, a header, or an exit, depth first. */
+export function listedCalls(calls: readonly OtherCall[]): OtherCall[] {
+  return calls.flatMap((call) => [call, ...listedCalls(call.inside)]);
+}
+
+/** The words of the calls listed on a call drawn on a test, a header, or an exit (`+ x.foo, logger.info`), without their `?`s; null when it lists none. */
+export function listedWords(calls: readonly OtherCall[]): string | null {
+  const listed = listedCalls(calls);
+  return listed.length > 0 ? `+ ${listed.map((call) => call.callee).join(", ")}` : null;
 }
 
 /** Whether a call box has anything in its meta row. */
@@ -78,9 +89,28 @@ export function exitWord(form: Form): string {
   return EXIT_WORDS.get(form) ?? form;
 }
 
+/**
+ * The lane a transfer lands in, in words: a `finally` that always exits ends the transfer there (`finally`), and a
+ * raise a handler catches goes to that handler (`except ValueError`, `catch`). Null for any other place.
+ */
+function landing(route: Route, lanes: ReadonlyMap<number, Lane>): string | null {
+  const lane = typeof route.to === "object" ? lanes.get(route.to.step) : undefined;
+  if (lane?.form === "finally") {
+    return "finally";
+  }
+  if (route.kind === "raise" && (lane?.form === "except" || lane?.form === "catch")) {
+    const { title, clause } = sectionWords(lane, false);
+    return clause === null ? title.toLowerCase() : `${title.toLowerCase()} ${clause}`;
+  }
+  return null;
+}
+
 /** Where one of an exit's routes goes, in words: `End`, `raises to the caller`, `leaves the loop`. */
-function routeWords(route: Route, inset: boolean): string | null {
-  let words: string | null;
+function routeWords(route: Route, inset: boolean, lanes: ReadonlyMap<number, Lane>): string | null {
+  let words = landing(route, lanes);
+  if (words !== null) {
+    return route.through.length > 0 ? `finally, then ${words}` : words;
+  }
   switch (route.kind) {
     case "return":
       words = inset ? "returns" : "End";
@@ -100,9 +130,12 @@ function routeWords(route: Route, inset: boolean): string | null {
   return words !== null && route.through.length > 0 ? `finally, then ${words}` : words;
 }
 
-/** Where an exit goes, in words (its routes' words, each once), or null when its routes are drawn as wires. */
-export function exitDestination(routes: readonly Route[], form: Form, inset: boolean): string | null {
-  const words = [...new Set(routes.map((route) => routeWords(route, inset)).filter((item) => item !== null))];
+/**
+ * Where an exit goes, in words (its routes' words, each once), or null when its routes are drawn as wires. `lanes`
+ * are the flow's lanes by id, for the transfers that land in one.
+ */
+export function exitDestination(routes: readonly Route[], form: Form, inset: boolean, lanes: ReadonlyMap<number, Lane>): string | null {
+  const words = [...new Set(routes.map((route) => routeWords(route, inset, lanes)).filter((item) => item !== null))];
   if (words.length === 0 && form === "yield") {
     return "resumes here";
   }
@@ -145,28 +178,31 @@ export interface CombinedExit {
 
 const EXIT_VERBS = { return: "returns", raise: "raises", break: "breaks", continue: "continues" } as const;
 
-/** The ways out of a collapsed combined step (its routes' exits, each once), in the order its routes list them. */
-export function combinedExits(routes: readonly Route[], inset: boolean): CombinedExit[] {
+/** Where a combined step's way out goes when it doesn't land in a lane. */
+function leavesTo(route: Route, kind: CombinedExit["kind"], inset: boolean): string {
+  switch (kind) {
+    case "return":
+      return inset ? "the caller" : "End";
+    case "raise":
+      return route.to === "caller" ? "the caller" : "the handlers";
+    case "break":
+      return route.leaves === "switch" ? "after the switch" : "after the loop";
+    case "continue":
+      return "next item";
+  }
+}
+
+/**
+ * The ways out of a collapsed combined step (its routes' exits, each once), in the order its routes list them. `lanes`
+ * are the flow's lanes by id, for the transfers that land in one.
+ */
+export function combinedExits(routes: readonly Route[], inset: boolean, lanes: ReadonlyMap<number, Lane>): CombinedExit[] {
   const exits: CombinedExit[] = [];
   for (const route of routes) {
     if (route.kind !== "return" && route.kind !== "raise" && route.kind !== "break" && route.kind !== "continue") {
       continue;
     }
-    let destination: string;
-    switch (route.kind) {
-      case "return":
-        destination = inset ? "the caller" : "End";
-        break;
-      case "raise":
-        destination = route.to === "caller" ? "the caller" : "the handlers";
-        break;
-      case "break":
-        destination = route.leaves === "switch" ? "after the switch" : "after the loop";
-        break;
-      case "continue":
-        destination = "next item";
-        break;
-    }
+    const destination = landing(route, lanes) ?? leavesTo(route, route.kind, inset);
     if (!exits.some((exit) => exit.kind === route.kind && exit.destination === destination)) {
       exits.push({ kind: route.kind, verb: EXIT_VERBS[route.kind], destination });
     }

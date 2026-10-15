@@ -5,7 +5,7 @@
 //! and tree.
 //!
 //! ```text
-//! draw(trees, root, overlay, card)
+//! draw(trees, sources, overlay, card)
 //!   build:  the definition's body, step by step ─► Sequence of Steps (ids in preorder)
 //!           presentation rules: boxes, thin rows, hidden builtins and empty control blocks,
 //!           gap ticks, combined steps, proposals, insets, overlay actions
@@ -21,9 +21,11 @@
 //! caller, possibly through `finally` lanes. An inset (a call or callback opened in place) is
 //! a drawn flow of its own, with its own ids.
 //!
-//! Without the verified source of a file (it changed since the compile, or is missing), its
-//! steps have no texts (tests, headers, values, signatures, docs) and no gap ticks: lines can't
-//! be told apart without the text.
+//! **Words** (tests, headers, values, signatures, docs) and gap ticks come from the text the
+//! facts came from: the file's own when it verifies, else the text [`SourceCache`] kept from
+//! when it last did, while the file changes or doesn't parse. Each flow's header says which
+//! ([`FlowState`]). With no such text, its steps have no words and no gap ticks: lines can't be
+//! told apart without the text.
 
 mod build;
 mod lines;
@@ -39,6 +41,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::Serialize;
+use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{CallRole, Form, Language, NodeKind};
 use unfold_core::{Key, LineSpan, RepoPath};
 
@@ -46,15 +49,37 @@ pub use text::{CodeLabel, CodeText, code_text, flow_text};
 
 use crate::notes::LinkEnd;
 use crate::overlay::ProposalSpot;
+use crate::source::SourceCache;
 use crate::tree::{Blocks, Trees};
+
+/// Where the drawing and the compiled tree read their files' text.
+#[derive(Clone, Copy)]
+pub struct TextSources<'a> {
+    /// The folder the files live in.
+    pub root: &'a Path,
+    /// One highlighter per language: its comment tokens tell which lines are code.
+    pub highlighters: &'a [&'a dyn Highlighter],
+    /// The sources verified before, whose text a flow keeps while its file changes.
+    pub kept: &'a SourceCache,
+}
+
+impl TextSources<'_> {
+    fn highlighter(&self, language: Language) -> Option<&dyn Highlighter> {
+        self.highlighters
+            .iter()
+            .copied()
+            .find(|highlighter| highlighter.language() == language)
+    }
+}
 
 /// The page's overlay, as the drawing reads it. It applies page-wide, by key: inside insets too.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overlay {
     /// Names, by block key: they replace the block's code name, which stays beside them.
     pub names: BTreeMap<Key, String>,
-    /// Combined steps. The board's checks keep them from overlapping or nesting; one whose
-    /// blocks aren't consecutive steps of a body drawn here is left out.
+    /// Combined steps. The board's checks keep them from overlapping or nesting. One covers its
+    /// first block through its last, steps written between them since it was combined included;
+    /// one whose blocks aren't steps of a body drawn here, in written order, is left out.
     pub combined: Vec<Combine>,
     /// Proposed steps.
     pub proposed: Vec<Proposal>,
@@ -95,15 +120,15 @@ pub struct Card {
     pub show_all_calls: bool,
 }
 
-/// Draws `card`. `trees` holds the card's file and the files of the callees it opens; source is
-/// verified under `root`. `None` when the card's key names no loaded definition.
-pub fn draw(trees: &Trees, root: &Path, overlay: &Overlay, card: &Card) -> Option<DrawnFlow> {
+/// Draws `card`. `trees` holds the card's file and the files of the callees it opens; their text
+/// comes from `sources`. `None` when the card's key names no loaded definition.
+pub fn draw(trees: &Trees, sources: &TextSources<'_>, overlay: &Overlay, card: &Card) -> Option<DrawnFlow> {
     let block = trees.block(card.definition.as_str())?;
     if !block.kind().is_definition() {
         return None;
     }
     let paths: Vec<&[Key]> = card.open.iter().map(Vec::as_slice).collect();
-    let mut drawer = build::Drawer::new(trees, root, overlay, card.show_all_calls, paths.len());
+    let mut drawer = build::Drawer::new(trees, sources, overlay, card.show_all_calls, paths.len());
     Some(drawer.flow(block.tree, block.id, 0, &paths))
 }
 
@@ -150,6 +175,8 @@ pub struct Header {
     pub description: Option<String>,
     /// The definition's file.
     pub path: RepoPath,
+    /// Whether the file is the one the words come from.
+    pub state: FlowState,
     /// Its first line.
     pub line: u32,
     /// An `async` function.
@@ -168,6 +195,21 @@ pub struct Header {
     #[serde(skip)]
     #[cfg_attr(feature = "ts", ts(skip))]
     pub language: Language,
+}
+
+/// Whether a flow's file is the one its facts came from: "Changed since the last compile" or
+/// "Doesn't parse", as the code panel says it. The words then come from the text kept from when
+/// the file last verified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum FlowState {
+    /// The file is the one the facts came from.
+    Current,
+    /// The file changed since the last compile, or is gone.
+    Changed,
+    /// The file doesn't parse: the facts are its last good version's.
+    DoesNotParse,
 }
 
 /// One import of a definition.
@@ -284,7 +326,7 @@ pub struct CallBox {
 }
 
 /// A library, unknown, or (with Show all calls) builtin call: in a thin row, listed on a box,
-/// or run when a definition is defined.
+/// run when a definition is defined, or an unknown call listed after a test or header.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -344,8 +386,12 @@ pub struct ThinRow {
 pub struct Callback {
     /// The callback.
     pub key: Key,
-    /// Its label: `callback to <callee>`.
+    /// Its label: the property it is written as, else `callback to <callee>`.
     pub label: String,
+    /// The property it is written as: `onSuccess` in `useMutation({ onSuccess: … })`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub property: Option<String>,
     /// The overlay's name.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -382,6 +428,9 @@ pub struct Frame {
     pub header: Option<String>,
     /// The project calls (and other boxes) written in the header, in the order they run.
     pub header_calls: Vec<CallBox>,
+    /// The unknown calls written in the header outside those boxes, in the order they run:
+    /// listed after it, each with its `?`.
+    pub header_unknown: Vec<OtherCall>,
     /// What a ternary's or comprehension's value is assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -446,6 +495,9 @@ pub struct Test {
     pub text: Option<String>,
     /// The project calls (and other boxes) written in it, in the order they run.
     pub calls: Vec<CallBox>,
+    /// The unknown calls written in it outside those boxes, in the order they run: listed after
+    /// it, each with its `?`.
+    pub unknown: Vec<OtherCall>,
 }
 
 /// An exit.

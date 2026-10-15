@@ -115,7 +115,10 @@ the card's open paths, and the Show all calls switch.
   UI code reads keys.
 - **Cards**: modules, classes, functions, and inline functions (compact, or expanded to their drawn flow), type cards
   (fields and inherited fields from `type_definition`), and app and entrance cards in the authored style. Code a
-  start names that isn't found is its own dashed card with its fix.
+  start names that isn't found is its own dashed card with its fix. A card whose file changed since the last compile,
+  or doesn't parse, says so in a line under its header, in the code panel's words and banner look ("Changed since
+  the last compile", "Doesn't parse"), and keeps the words its facts' text gives (`header.state`); an editor's save
+  refetches it at once (`files_changed`), and the compile's `graph_updated` again.
 - **Arrows** come from call boxes whose callee has a card on the page: from the call on an expanded card (insets and
   collapsed combined steps included), from the edge on a compact card (one per target, carrying its calls). Start
   cards point at their code in order; type fields point at their types. The board file holds no arrows.

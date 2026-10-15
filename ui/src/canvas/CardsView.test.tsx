@@ -292,6 +292,32 @@ describe("definition cards", () => {
     expect(callback.querySelector(".card-signature")?.textContent).toBe("async (req, res) =>");
   });
 
+  it("say when their file changed since the last compile or doesn't parse, keeping the last compile's words", async () => {
+    const flow = drawn("01-place-order");
+    let state: DrawnFlow["header"]["state"] = "changed";
+    engine.uninstall();
+    engine = installFakeEngine({ handlers: { card: () => ({ type: "definition", flow: { ...flow, header: { ...flow.header, state } } }), save_board: () => boardState(P, ID) } });
+    open([{ id: "place", ref: { block: PLACE }, at: [0, 0], view: "expanded" }]);
+    const { container } = renderBoard();
+    const card = await waitFor(() => present(cardElement(container, "place")?.querySelector(".flow") ? cardElement(container, "place") : null));
+    expect(within(card).getByRole("status").textContent).toBe("Changed since the last compile");
+    expect(card.querySelector(".card-signature")?.textContent).toBe("def place_order(order_id)");
+    state = "doesNotParse";
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    await waitFor(() => {
+      expect(within(present(cardElement(container, "place"))).getByRole("status").textContent).toBe("Doesn't parse");
+    });
+    state = "current";
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    await waitFor(() => {
+      expect(cardElement(container, "place")?.querySelector(".card-state")).toBeNull();
+    });
+  });
+
   it("show a card whose key is gone as a missing card", async () => {
     open([{ id: "gone", ref: { block: "shop/gone.py#gone" }, at: [0, 0] }]);
     const { container } = renderBoard();

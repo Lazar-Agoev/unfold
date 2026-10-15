@@ -69,7 +69,7 @@ function definitionCard(key: string, kind: NodeKind, form: "method" | "interface
   return {
     type: "definition",
     flow: {
-      header: { key, kind, form, label, path: key.slice(0, key.indexOf("#")), line, async: false, generator: false, definedWith: [], imports: [], actions: { after: false, start: true, open: false } },
+      header: { key, kind, form, label, path: key.slice(0, key.indexOf("#")), state: "current", line, async: false, generator: false, definedWith: [], imports: [], actions: { after: false, start: true, open: false } },
       combinable: [],
       steps: { steps: [] },
       routes: [],

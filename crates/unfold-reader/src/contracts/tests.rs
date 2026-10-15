@@ -1,7 +1,7 @@
 //! Contracts on the sample graph (with its sources written out) and on the playgrounds' goldens.
 
 use unfold_core::key::Callee;
-use unfold_core::testkit::{GraphBuilder, project, sample, unknown};
+use unfold_core::testkit::{GraphBuilder, builtin, project, sample, unknown};
 use unfold_core::vocab::{Flag, Form, Language, LinkKind, Outcome, Reason};
 use unfold_core::{Graph, Key, RepoPath};
 
@@ -539,4 +539,157 @@ fn only_a_bare_except_catches_everything() {
         .map(|raise| raise.caught_by)
         .collect();
     assert_eq!(caught, [Some(key("g.py#guarded/try[0]/except[1]"))]);
+}
+
+/// `e.py`: project exceptions derived from Python's builtins, a callee that raises them and
+/// builtins, and two callers whose handlers name a project class, `Exception`, `LookupError`,
+/// and `IOError` (which names `OSError`).
+fn builtin_exceptions() -> GraphBuilder {
+    const CODE: &str = r#"class AppError(Exception):
+    pass
+
+
+class NotFound(AppError):
+    pass
+
+
+class Missing(KeyError):
+    pass
+
+
+def finder():
+    raise NotFound()
+    raise ValueError("bad")
+    raise KeyError("k")
+    raise Missing()
+    raise FileNotFoundError("f")
+
+
+def caller_a():
+    try:
+        finder()
+    except AppError:
+        pass
+    except Exception:
+        pass
+
+
+def caller_b():
+    try:
+        finder()
+    except LookupError:
+        pass
+    except IOError:
+        pass
+"#;
+    let builtins = || builtin("python:builtins");
+    let mut g = GraphBuilder::new();
+    let file = g.file("e.py", Language::Python, CODE);
+    for (name, base, to) in [
+        ("AppError", "Exception", builtins()),
+        ("NotFound", "AppError", project(&key("e.py#AppError"))),
+        ("Missing", "KeyError", builtins()),
+    ] {
+        let written = format!("class {name}({base}):\n    pass");
+        let class = g.def(file, Form::Class, name, g.find(file, &written));
+        let head = g.find_in(class, base);
+        g.link(class, LinkKind::Extends, head, base, to);
+    }
+    let text = |from: &str, to: &str| &CODE[CODE.find(from).unwrap()..CODE.find(to).unwrap()];
+    let finder = g.def(
+        file,
+        Form::Function,
+        "finder",
+        g.find(file, text("def finder", "\n\n\ndef caller_a")),
+    );
+    for (class, written) in [
+        ("NotFound", "raise NotFound()"),
+        ("ValueError", "raise ValueError(\"bad\")"),
+        ("KeyError", "raise KeyError(\"k\")"),
+        ("Missing", "raise Missing()"),
+        ("FileNotFoundError", "raise FileNotFoundError(\"f\")"),
+    ] {
+        let raise = g.block(finder, Form::Raise, g.find_in(finder, written));
+        g.node_mut(raise).stmt = Some(g.range(raise));
+        let call = g.call(
+            raise,
+            &Callee::name(class),
+            g.find_in(raise, &written["raise ".len()..]),
+        );
+        g.node_mut(call).flags.insert(Flag::ExitValue);
+        let to = if class == "NotFound" || class == "Missing" {
+            project(&key(&format!("e.py#{class}")))
+        } else {
+            builtins()
+        };
+        let head = g.find_in(call, class);
+        g.link(call, LinkKind::Calls, head, class, to);
+    }
+    for (name, handlers) in [
+        (
+            "caller_a",
+            [
+                ("AppError", project(&key("e.py#AppError"))),
+                ("Exception", builtins()),
+            ],
+        ),
+        ("caller_b", [("LookupError", builtins()), ("IOError", builtins())]),
+    ] {
+        let end = if name == "caller_a" {
+            "\n\n\ndef caller_b"
+        } else {
+            "\n"
+        };
+        let written = &CODE[CODE.find(&format!("def {name}")).unwrap()..];
+        let written = &written[..written.rfind(end).unwrap()];
+        let caller = g.def(file, Form::Function, name, g.find(file, written));
+        let attempt = g.block(
+            caller,
+            Form::Try,
+            g.find_in(caller, &written[written.find("try").unwrap()..]),
+        );
+        let body = g.block(attempt, Form::Body, g.find_in(caller, "finder()"));
+        let call = g.call(body, &Callee::name("finder"), g.find_in(caller, "finder()"));
+        g.node_mut(call).stmt = Some(g.range(call));
+        let head = g.find_in(call, "finder");
+        g.link(
+            call,
+            LinkKind::Calls,
+            head,
+            "finder",
+            project(&key("e.py#finder")),
+        );
+        for (class, to) in handlers {
+            let clause = format!("except {class}");
+            let part = g.block(
+                attempt,
+                Form::Except,
+                g.find_in(caller, &format!("{clause}:\n        pass")),
+            );
+            g.node_mut(part).head = Some(g.find_in(part, &clause));
+            let named = g.find_in(part, class);
+            g.link(part, LinkKind::Types, named, class, to);
+        }
+    }
+    g
+}
+
+/// A handler catches what derives from the class it names, through project classes and
+/// Python's builtin exception classes alike: `except Exception` catches `ValueError` and a
+/// project class whose bases reach `Exception`, `except LookupError` catches `KeyError` and a
+/// project class deriving from it, and `except IOError` catches `FileNotFoundError`.
+#[test]
+fn handlers_catch_through_builtin_exception_bases() {
+    let playground = Playground::built(&builtin_exceptions());
+    let caught = |caller: &str| -> Vec<Option<String>> {
+        contract(&playground, &format!("e.py#{caller}/try[0]/body/call:finder"))
+            .raises
+            .iter()
+            .map(|raise| raise.caught_by.as_ref().map(ToString::to_string))
+            .collect()
+    };
+    let a = |n: u32| Some(format!("e.py#caller_a/try[0]/except[{n}]"));
+    assert_eq!(caught("caller_a"), [a(0), a(1), a(1), a(1), a(1)]);
+    let b = |n: u32| Some(format!("e.py#caller_b/try[0]/except[{n}]"));
+    assert_eq!(caught("caller_b"), [None, None, b(0), b(0), b(1)]);
 }

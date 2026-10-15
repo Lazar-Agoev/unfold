@@ -5,6 +5,7 @@
     "form": "module",
     "label": "shop/api.py",
     "path": "shop/api.py",
+    "state": "current",
     "line": 1,
     "async": false,
     "generator": false,

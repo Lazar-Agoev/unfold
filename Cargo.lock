@@ -2527,6 +2527,8 @@ dependencies = [
  "thiserror",
  "ts-rs",
  "unfold-core",
+ "unfold-lang-python",
+ "unfold-lang-typescript",
  "unfold-store",
  "unicode-normalization",
 ]

@@ -36,7 +36,7 @@ function drawnCard(key: string, step: "combined" | "proposed"): CardView {
   return {
     type: "definition",
     flow: {
-      header: { key, kind: "function", form: "function", label: key, path: "src/a.ts", line: 1, async: false, generator: false, definedWith: [], imports: [], actions },
+      header: { key, kind: "function", form: "function", label: key, path: "src/a.ts", state: "current", line: 1, async: false, generator: false, definedWith: [], imports: [], actions },
       combinable: [],
       steps: {
         steps: [

@@ -2,7 +2,8 @@
  * A definition's card (a module, class, or function, an inline function too), as the reader drew it.
  * Its header is the chevron that makes it compact or expanded, its
  * mark (`ƒ`, `λ`, `M`, or `class`), its name (the page's, else its code name: `callback to …` for an
- * inline function), and where it is; the review banner and the description follow.
+ * inline function), and where it is; a line saying its file changed since the last compile (or doesn't
+ * parse), whose words are then the last compile's, the review banner, and the description follow.
  *
  * Compact, that is all: its arrows leave from its edge. Expanded, it says what it has from its code
  * (the signature, the doc as a description from code, a module's imports, and what runs when it is
@@ -31,7 +32,7 @@ import { CombineSteps, ProposeStep } from "../../explain";
 import { flowActions, flowSelection, selectForMenu } from "../../flow/actions";
 import { FlowView, type FlowOutline } from "../../flow/FlowView";
 import { layoutFlow, type FlowGeometry } from "../../flow/layout";
-import type { Card, CardView, DrawnFlow, Header, Key, LinkEnd } from "../../ipc/generated";
+import type { Card, CardView, DrawnFlow, FlowState, Header, Key, LinkEnd } from "../../ipc/generated";
 import type { UnfoldError } from "../../ipc/unfold";
 import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { flowBlocks, heldBlocks, isMissing } from "../../state/cards";
@@ -60,6 +61,12 @@ const NO_VIEWS: ReadonlyMap<string, CardView> = new Map();
 function stop(event: MouseEvent | KeyboardEvent): void {
   event.stopPropagation();
 }
+
+/** What a card says when its file isn't the one its drawing came from, in the code panel's words. */
+const STATE_TEXT: Readonly<Record<Exclude<FlowState, "current">, string>> = {
+  changed: "Changed since the last compile",
+  doesNotParse: "Doesn't parse",
+};
 
 /** How a link from the header's code reads: accent for the project's, muted otherwise (its tooltip says why: `linkNote`). */
 function linkClass(to: LinkEnd): string {
@@ -333,6 +340,11 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
         />
         <HeaderPorts ids={placement.header} />
       </header>
+      {flow && flow.header.state !== "current" ? (
+        <p className="card-state" role="status">
+          {STATE_TEXT[flow.header.state]}
+        </p>
+      ) : null}
       <ReviewBanner target={target} cardId={card.id} view={query.data} />
       <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap={!expanded} />
       {expanded && flow ? <FromCode header={flow.header} /> : null}

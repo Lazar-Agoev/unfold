@@ -2,31 +2,32 @@
 //! the drawn flow for `shape_card` results and `read_page` ([`flow_text`]). The MCP server prints
 //! what these return.
 //!
-//! Both carry each block's full key at the end of its line, after `key=`, so the server can
-//! turn the short label an agent writes into a key by looking it up, never by joining or
-//! splitting key text. [`CodeText::labels`] holds the same lookup for the compiled tree.
+//! Both carry each block's full key at the end of its line, after `key=` (the calls listed on
+//! the line's calls too), so the server can turn the short label an agent writes into a key by
+//! looking it up, never by joining or splitting key text. [`CodeText::labels`] holds the same
+//! lookup for the compiled tree.
 //!
 //! The drawn flow's marks: `▸` a project call (it opens in place), `□` another box (a named or
-//! callback-taking library or unknown call), `·` a thin row, `?` an unknown call, `⊞`/`⊟` a
-//! collapsed/open combined step, `⋯` a gap tick, `↳` a callback, `+ PROPOSED` a proposal.
-//! Lanes are indented four spaces under their line; an inset is indented under its call and
-//! ends with `( returns )`.
+//! callback-taking library or unknown call), `·` a thin row, `?` an unknown call, `+` the calls
+//! listed inside a call, `⊞`/`⊟` a collapsed/open combined step, `⋯` a gap tick, `↳` a callback,
+//! `+ PROPOSED` a proposal. A flow whose file isn't the one its facts came from says so on its
+//! first line, in the code panel's words. Lanes are indented four spaces under their line; an
+//! inset is indented under its call and ends with `( returns )`.
 
 use std::fmt::Write as _;
-use std::path::Path;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 use unfold_core::vocab::{CallRole, Flag, Form, Language, LinkKind, NodeKind, Outcome};
-use unfold_core::{ByteRange, Key, LineBreaks, LinkTarget};
+use unfold_core::{ByteRange, Key, LinkTarget};
 
-use super::lines::{FileText, candidates, doc_text};
+use super::lines::{FileText, candidates, doc_text, file_text};
+use super::routes::{lane, start_state};
 use super::{
-    CallBox, CombinedStep, DrawnFlow, ExitStep, ExitValue, Frame, GapTick, Lane, OtherCall, Route, RouteEnd,
-    RouteKind, RouteState, Sequence, Shape, Step, ThinRow,
+    CallBox, CombinedStep, DrawnFlow, ExitStep, ExitValue, FlowState, Frame, GapTick, Lane, OtherCall, Route,
+    RouteEnd, RouteKind, RouteState, Sequence, Shape, Step, TextSources, ThinRow,
 };
 use crate::notes::module_text;
-use crate::source::verify_file;
 use crate::tree::FileTree;
 
 /// The drawn flow as text: the shaped flow a person sees.
@@ -98,6 +99,22 @@ fn listed(calls: &[OtherCall], out: &mut Vec<String>) {
     }
 }
 
+/// The keys of `calls` and of the calls listed inside them, depth first, as [`listed`] prints
+/// them.
+fn listed_keys<'a>(calls: &'a [OtherCall], out: &mut Vec<&'a Key>) {
+    for call in calls {
+        out.push(&call.key);
+        listed_keys(&call.inside, out);
+    }
+}
+
+/// A box's key, then the keys of the calls listed on it.
+fn box_keys(call: &CallBox) -> Vec<&Key> {
+    let mut keys = vec![&call.key];
+    listed_keys(&call.calls, &mut keys);
+    keys
+}
+
 fn plus(calls: &[OtherCall]) -> String {
     let mut names = Vec::new();
     listed(calls, &mut names);
@@ -159,18 +176,26 @@ fn thin_text(row: &ThinRow) -> String {
     text
 }
 
-/// The boxes drawn on a header or test.
-fn chips(calls: &[CallBox]) -> String {
-    if calls.is_empty() {
-        return String::new();
+/// What a header or test draws on its line: its boxes, each with the calls listed on it, then
+/// its unknown calls.
+fn chips(calls: &[CallBox], unknown: &[OtherCall]) -> String {
+    let titles: Vec<String> = calls
+        .iter()
+        .map(|call| format!("{}{}", box_title(call), plus(&call.calls)))
+        .chain(unknown.iter().map(thin_item))
+        .collect();
+    if titles.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", titles.join(", "))
     }
-    let titles: Vec<String> = calls.iter().map(box_title).collect();
-    format!(" · {}", titles.join(", "))
 }
 
-/// The keys of the boxes drawn on a header or test, which their line carries.
-fn chip_keys(calls: &[CallBox]) -> impl Iterator<Item = &Key> {
-    calls.iter().map(|call| &call.key)
+/// The keys of what a header or test draws, which its line carries, in [`chips`]' order.
+fn chip_keys<'a>(calls: &'a [CallBox], unknown: &'a [OtherCall]) -> Vec<&'a Key> {
+    let mut keys: Vec<&Key> = calls.iter().flat_map(box_keys).collect();
+    listed_keys(unknown, &mut keys);
+    keys
 }
 
 fn gap_text(gap: &GapTick) -> String {
@@ -180,6 +205,16 @@ fn gap_text(gap: &GapTick) -> String {
         let _ = write!(text, " · {}", labels.join(", "));
     }
     text
+}
+
+/// What a flow's header says when its file isn't the one its facts came from: the code panel's
+/// words.
+fn state_text(state: FlowState) -> Option<&'static str> {
+    match state {
+        FlowState::Current => None,
+        FlowState::Changed => Some("Changed since the last compile"),
+        FlowState::DoesNotParse => Some("Doesn't parse"),
+    }
 }
 
 /// A lane's test as written.
@@ -210,13 +245,11 @@ impl<'f> Printer<'f> {
     fn flow(&self, out: &mut String, indent: usize) {
         let header = &self.flow.header;
         let title = header.name.as_deref().unwrap_or(&header.label);
-        line(
-            out,
-            indent,
-            &format!("( {title} )"),
-            RouteState::Reached,
-            &[&header.key],
-        );
+        let mut text = format!("( {title} )");
+        if let Some(state) = state_text(header.state) {
+            let _ = write!(text, " · {state}");
+        }
+        line(out, indent, &text, start_state(self.flow), &[&header.key]);
         if header.kind == NodeKind::Type {
             return;
         }
@@ -229,7 +262,8 @@ impl<'f> Printer<'f> {
                     Some(role) => format!("{} ({role})", thin_item(call)),
                 })
                 .collect();
-            let keys: Vec<&Key> = header.defined_with.iter().map(|call| &call.key).collect();
+            let mut keys = Vec::new();
+            listed_keys(&header.defined_with, &mut keys);
             let text = format!("runs when defined · {}", calls.join(", "));
             line(out, indent + 2, &text, RouteState::Reached, &keys);
         }
@@ -258,11 +292,12 @@ impl<'f> Printer<'f> {
     fn step(&self, out: &mut String, step: &Step, indent: usize) {
         match &step.shape {
             Shape::Call(call) => {
-                line(out, indent, &box_text(call), step.state, &[&call.key]);
+                line(out, indent, &box_text(call), step.state, &box_keys(call));
                 self.below(out, call, indent + 4);
             }
             Shape::Thin(row) => {
-                let keys: Vec<&Key> = row.calls.iter().map(|call| &call.key).collect();
+                let mut keys = Vec::new();
+                listed_keys(&row.calls, &mut keys);
                 line(out, indent, &thin_text(row), step.state, &keys);
             }
             Shape::Decision(frame) => self.decision(out, step, frame, indent),
@@ -277,11 +312,11 @@ impl<'f> Printer<'f> {
                         body.and_then(|lane| lane.name.as_deref()),
                         frame.header.as_deref()
                     ]),
-                    chips(&frame.header_calls)
+                    chips(&frame.header_calls, &frame.header_unknown)
                 );
                 let keys: Vec<&Key> = std::iter::once(&frame.key)
                     .chain(body.map(|lane| &lane.key))
-                    .chain(chip_keys(&frame.header_calls))
+                    .chain(chip_keys(&frame.header_calls, &frame.header_unknown))
                     .collect();
                 line(out, indent, &text, step.state, &keys);
                 self.insets(out, &frame.header_calls, indent + 4);
@@ -306,9 +341,14 @@ impl<'f> Printer<'f> {
     /// A box's callbacks, with their insets, and its own inset.
     fn below(&self, out: &mut String, call: &CallBox, indent: usize) {
         for callback in &call.callbacks {
-            let code = match &callback.signature {
-                Some(signature) => format!("callback {signature}"),
-                None => callback.label.clone(),
+            let code = [callback.property.as_deref(), callback.signature.as_deref()];
+            let code = if code.iter().all(Option::is_none) {
+                callback.label.clone()
+            } else {
+                format!(
+                    "callback {}",
+                    code.iter().flatten().copied().collect::<Vec<_>>().join(" ")
+                )
             };
             let text = format!("↳ {}", named(&[callback.name.as_deref(), Some(&code)]));
             line(out, indent, &text, RouteState::Reached, &[&callback.key]);
@@ -340,16 +380,17 @@ impl<'f> Printer<'f> {
     ) {
         let label = named(label);
         let calls = lane.test.as_ref().map_or(&[][..], |test| test.calls.as_slice());
+        let unknown = lane.test.as_ref().map_or(&[][..], |test| test.unknown.as_slice());
         let mut text = words.to_owned();
         if !label.is_empty() {
             text.push(' ');
             text.push_str(&label);
         }
-        text.push_str(&chips(calls));
+        text.push_str(&chips(calls, unknown));
         if lane.falls_through {
             text.push_str(" → falls into the next case");
         }
-        let keys: Vec<&Key> = keys.iter().copied().chain(chip_keys(calls)).collect();
+        let keys: Vec<&Key> = keys.iter().copied().chain(chip_keys(calls, unknown)).collect();
         line(out, indent, &text, lane.state, &keys);
         self.insets(out, calls, indent + 4);
         self.sequence(out, &lane.steps, indent + 4);
@@ -366,10 +407,10 @@ impl<'f> Printer<'f> {
                 let text = format!(
                     "{word} {}{}",
                     named(&[frame.name.as_deref(), frame.header.as_deref()]),
-                    chips(&frame.header_calls)
+                    chips(&frame.header_calls, &frame.header_unknown)
                 );
                 let keys: Vec<&Key> = std::iter::once(&frame.key)
-                    .chain(chip_keys(&frame.header_calls))
+                    .chain(chip_keys(&frame.header_calls, &frame.header_unknown))
                     .collect();
                 line(out, indent, &text, step.state, &keys);
                 self.insets(out, &frame.header_calls, indent + 4);
@@ -434,10 +475,10 @@ impl<'f> Printer<'f> {
         if let Some(binds) = &frame.binds {
             let _ = write!(text, " → {binds}");
         }
-        text.push_str(&chips(&frame.header_calls));
+        text.push_str(&chips(&frame.header_calls, &frame.header_unknown));
         let keys: Vec<&Key> = std::iter::once(&frame.key)
             .chain(body.map(|lane| &lane.key))
-            .chain(chip_keys(&frame.header_calls))
+            .chain(chip_keys(&frame.header_calls, &frame.header_unknown))
             .collect();
         line(out, indent, &text, step.state, &keys);
         self.insets(out, &frame.header_calls, indent + 4);
@@ -446,9 +487,9 @@ impl<'f> Printer<'f> {
                 let text = format!(
                     "WHEN {}{}",
                     named(&[body.name.as_deref(), test.text.as_deref()]),
-                    chips(&test.calls)
+                    chips(&test.calls, &test.unknown)
                 );
-                let keys: Vec<&Key> = chip_keys(&test.calls).collect();
+                let keys = chip_keys(&test.calls, &test.unknown);
                 line(out, indent + 4, &text, body.state, &keys);
                 self.insets(out, &test.calls, indent + 8);
             }
@@ -479,8 +520,8 @@ impl<'f> Printer<'f> {
         if let Some(header) = &frame.header {
             let _ = write!(text, " {header}");
         }
-        text.push_str(&chips(&frame.header_calls));
-        let keys: Vec<&Key> = chip_keys(&frame.header_calls).collect();
+        text.push_str(&chips(&frame.header_calls, &frame.header_unknown));
+        let keys = chip_keys(&frame.header_calls, &frame.header_unknown);
         line(out, indent, &text, step.state, &keys);
         self.insets(out, &frame.header_calls, indent + 4);
     }
@@ -514,9 +555,15 @@ impl<'f> Printer<'f> {
         let mut places: Vec<(RouteKind, String)> = Vec::new();
         for route in self.routes(id) {
             let place = match (route.kind, route.to) {
+                (
+                    RouteKind::Return | RouteKind::Raise | RouteKind::Break | RouteKind::Continue,
+                    RouteEnd::Step(to),
+                ) if lane(self.flow, to).is_some_and(|lane| lane.form == Form::Finally) => "finally",
                 (RouteKind::Return, _) if self.inset => "returns",
                 (RouteKind::Return, _) => "End",
-                (RouteKind::Raise, RouteEnd::Step(_)) => "the handlers",
+                (RouteKind::Raise, RouteEnd::Step(to)) => {
+                    lane(self.flow, to).map_or("the handlers", |lane| &lane.label)
+                }
                 (RouteKind::Raise, _) => "the caller",
                 (RouteKind::Break, _) if route.leaves == Some(Form::Switch) => "after the switch",
                 (RouteKind::Break, _) => "after the loop",
@@ -535,11 +582,14 @@ impl<'f> Printer<'f> {
     fn exit(&self, out: &mut String, step: &Step, exit: &ExitStep, indent: usize) {
         let word = exit.form.as_str().to_uppercase();
         let value = exit.value.as_ref().map(|value| match value {
-            ExitValue::Call(call) if call.to.outcome == Outcome::Project => box_title(call),
+            ExitValue::Call(call) if call.to.outcome == Outcome::Project => {
+                format!("{}{}", box_title(call), plus(&call.calls))
+            }
             ExitValue::Call(call) => format!(
-                "{}{}",
+                "{}{}{}",
                 named(&[call.name.as_deref(), Some(&call.callee)]),
-                question(call.to.outcome)
+                question(call.to.outcome),
+                plus(&call.calls)
             ),
             ExitValue::Text { text } => text.clone(),
         });
@@ -553,7 +603,11 @@ impl<'f> Printer<'f> {
         if !places.is_empty() {
             let _ = write!(text, " → {}", places.join(", "));
         }
-        line(out, indent, &text, step.state, &[&exit.key]);
+        let mut keys = vec![&exit.key];
+        if let Some(ExitValue::Call(call)) = &exit.value {
+            keys.extend(box_keys(call));
+        }
+        line(out, indent, &text, step.state, &keys);
         if let Some(ExitValue::Call(call)) = &exit.value {
             self.below(out, call, indent + 4);
         }
@@ -631,6 +685,10 @@ fn short_label(definition: &Key, key: &Key) -> String {
     key.steps_after(definition).unwrap_or_else(|| key.to_string())
 }
 
+/// How wide the compiled tree's labels are aligned: a longer label is followed by one space, so
+/// a few deep receiver chains don't pad every row.
+const ALIGNED: usize = 40;
+
 /// One line of the compiled tree.
 struct Row {
     line: u32,
@@ -639,18 +697,11 @@ struct Row {
     key: Option<Key>,
 }
 
-/// The compiled tree of definition `definition` in `tree`, with source verified under `root`:
+/// The compiled tree of definition `definition` in `tree`, with its file's text from `sources`:
 /// each block it owns (nested definitions as one line each), with what it calls, binds, or
 /// tests, and the lines of code that aren't blocks (`⋯`).
-pub fn code_text(tree: &FileTree, root: &Path, definition: u32) -> CodeText {
-    let text = verify_file(
-        root,
-        tree.path(),
-        tree.file().hash,
-        LineBreaks::of(tree.language()),
-    )
-    .into_source()
-    .map(|source| FileText::new(source, tree.language()));
+pub fn code_text(tree: &FileTree, sources: &TextSources<'_>, definition: u32) -> CodeText {
+    let (state, text) = file_text(sources, tree);
     let text = text.as_ref();
     let node = tree.node(definition);
     let key = tree.key(definition);
@@ -658,6 +709,9 @@ pub fn code_text(tree: &FileTree, root: &Path, definition: u32) -> CodeText {
         "{key}\n  {} · lines {}–{}",
         node.form, node.lines.start, node.lines.end
     );
+    if let Some(state) = state_text(state) {
+        let _ = write!(out, " · {state}");
+    }
     if let Some(doc) = text
         .zip(node.doc)
         .and_then(|(text, doc)| doc_text(text.slice(doc)?))
@@ -718,10 +772,16 @@ pub fn code_text(tree: &FileTree, root: &Path, definition: u32) -> CodeText {
         .filter(|row| row.key.is_some())
         .map(|row| row.label.chars().count())
         .max()
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .min(ALIGNED);
     let mut labels = Vec::new();
     for row in rows {
-        let padding = label_width.saturating_sub(row.label.chars().count()) + 2;
+        let length = row.label.chars().count();
+        let padding = if length <= label_width {
+            label_width - length + 2
+        } else {
+            1
+        };
         let _ = write!(
             out,
             "L{:<line_width$}  {}{}{}",

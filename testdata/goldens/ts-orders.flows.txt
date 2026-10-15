@@ -22,7 +22,7 @@
   CASE "--help"   key=src/cli.ts#main/switch[0]/case[5]
       ▸ logger.info   key=src/cli.ts#main/switch[0]/case[5]/call:logger.info
   DEFAULT   key=src/cli.ts#main/switch[0]/default
-      THROW Error → the caller   key=src/cli.ts#main/switch[0]/default/throw[0]
+      THROW Error → the caller   key=src/cli.ts#main/switch[0]/default/throw[0] src/cli.ts#main/switch[0]/default/throw[0]/call:Error
 ( End )
 
 === src/cli.ts#/call:main().catch/callback[0]
@@ -63,24 +63,24 @@
 === src/db/repository.ts#OrderRepository.insert
 ( insert )   key=src/db/repository.ts#OrderRepository.insert
   IF this.orders.has(order.id)   key=src/db/repository.ts#OrderRepository.insert/if[0] src/db/repository.ts#OrderRepository.insert/if[0]/then
-      THROW Error → the caller   key=src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0]
+      THROW Error → the caller   key=src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0] src/db/repository.ts#OrderRepository.insert/if[0]/then/throw[0]/call:Error
   ⋯ 1 line
   RETURN order → End   key=src/db/repository.ts#OrderRepository.insert/return[0]
 ( End )
 
 === src/db/repository.ts#OrderRepository.find
 ( find )   key=src/db/repository.ts#OrderRepository.find
-  RETURN this.orders.get → End   key=src/db/repository.ts#OrderRepository.find/return[0]
+  RETURN this.orders.get → End   key=src/db/repository.ts#OrderRepository.find/return[0] src/db/repository.ts#OrderRepository.find/return[0]/call:this.orders.get
 ( End )
 
 === src/db/repository.ts#OrderRepository.list
 ( list )   key=src/db/repository.ts#OrderRepository.list
-  RETURN Array.from → End   key=src/db/repository.ts#OrderRepository.list/return[0]
+  RETURN Array.from → End   key=src/db/repository.ts#OrderRepository.list/return[0] src/db/repository.ts#OrderRepository.list/return[0]/call:Array.from
 ( End )
 
 === src/db/repository.ts#OrderRepository.remove
 ( remove )   key=src/db/repository.ts#OrderRepository.remove
-  RETURN this.orders.delete → End   key=src/db/repository.ts#OrderRepository.remove/return[0]
+  RETURN this.orders.delete → End   key=src/db/repository.ts#OrderRepository.remove/return[0] src/db/repository.ts#OrderRepository.remove/return[0]/call:this.orders.delete
 ( End )
 
 === src/db/repository.ts#OrderRepository.cancel
@@ -122,9 +122,9 @@
 ( importOrders )   key=src/jobs/import-orders.ts#importOrders
   · readFile   key=src/jobs/import-orders.ts#importOrders/call:JSON.parse/call:readFile
   IF !Array.isArray(input)   key=src/jobs/import-orders.ts#importOrders/if[0] src/jobs/import-orders.ts#importOrders/if[0]/then
-      THROW Error → the caller   key=src/jobs/import-orders.ts#importOrders/if[0]/then/throw[0]
+      THROW Error → the caller   key=src/jobs/import-orders.ts#importOrders/if[0]/then/throw[0] src/jobs/import-orders.ts#importOrders/if[0]/then/throw[0]/call:Error
   ⋯ 2 lines
-  LOOP for (const [index, value] of input.entries())   key=src/jobs/import-orders.ts#importOrders/for[0] src/jobs/import-orders.ts#importOrders/for[0]/body
+  LOOP for (const [index, value] of input.entries()) · input.entries ?   key=src/jobs/import-orders.ts#importOrders/for[0] src/jobs/import-orders.ts#importOrders/for[0]/body src/jobs/import-orders.ts#importOrders/for[0]/call:input.entries
       TRY   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0] src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body
           ▸ validateOrder → draft   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body/call:validateOrder
           ▸ orderService.place   key=src/jobs/import-orders.ts#importOrders/for[0]/body/try[0]/body/call:orderService.place
@@ -134,7 +134,7 @@
           ⋯ 1 line
   ▸ logger.info   key=src/jobs/import-orders.ts#importOrders/call:logger.info
   IF failures.length > 0   key=src/jobs/import-orders.ts#importOrders/if[1] src/jobs/import-orders.ts#importOrders/if[1]/then
-      THROW AggregateError → the caller   key=src/jobs/import-orders.ts#importOrders/if[1]/then/throw[0]
+      THROW AggregateError → the caller   key=src/jobs/import-orders.ts#importOrders/if[1]/then/throw[0] src/jobs/import-orders.ts#importOrders/if[1]/then/throw[0]/call:AggregateError
 ( End )
 
 === src/jobs/process-order.ts#
@@ -211,8 +211,8 @@
 
 === src/jobs/send-email.ts#sendEmail
 ( sendEmail )   key=src/jobs/send-email.ts#sendEmail
-  IF !payload.to.includes("@")   key=src/jobs/send-email.ts#sendEmail/if[0] src/jobs/send-email.ts#sendEmail/if[0]/then
-      THROW Error → the caller   key=src/jobs/send-email.ts#sendEmail/if[0]/then/throw[0]
+  IF !payload.to.includes("@") · payload.to.includes ?   key=src/jobs/send-email.ts#sendEmail/if[0] src/jobs/send-email.ts#sendEmail/if[0]/then src/jobs/send-email.ts#sendEmail/if[0]/then/call:payload.to.includes
+      THROW Error → the caller   key=src/jobs/send-email.ts#sendEmail/if[0]/then/throw[0] src/jobs/send-email.ts#sendEmail/if[0]/then/throw[0]/call:Error
   ⋯ 1 line
   □ Promise · AWAIT · new   key=src/jobs/send-email.ts#sendEmail/call:Promise
       ↳ callback (resolve) =>   key=src/jobs/send-email.ts#sendEmail/call:Promise/callback[0]
@@ -310,18 +310,18 @@
 === src/lib/retry.ts#withRetry
 ( withRetry )   key=src/lib/retry.ts#withRetry
   IF !Number.isInteger(attempts) || attempts < 1   key=src/lib/retry.ts#withRetry/if[0] src/lib/retry.ts#withRetry/if[0]/then
-      THROW RangeError → the caller   key=src/lib/retry.ts#withRetry/if[0]/then/throw[0]
+      THROW RangeError → the caller   key=src/lib/retry.ts#withRetry/if[0]/then/throw[0] src/lib/retry.ts#withRetry/if[0]/then/throw[0]/call:RangeError
   ⋯ 1 line
   LOOP while (attempt < attempts)   key=src/lib/retry.ts#withRetry/while[0] src/lib/retry.ts#withRetry/while[0]/body
       TRY   key=src/lib/retry.ts#withRetry/while[0]/body/try[0] src/lib/retry.ts#withRetry/while[0]/body/try[0]/body
-          RETURN fn ? → finally → End   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/body/return[0]
+          RETURN fn ? → finally → End   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/body/return[0] src/lib/retry.ts#withRetry/while[0]/body/try[0]/body/return[0]/call:fn
       ON ERROR → catch (error)   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch
           IF attempt + 1 === attempts   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0] src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0]/then
               THROW error → finally → the caller   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/if[0]/then/throw[0]
           ▸ logger.error   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/catch/call:logger.error
       FINALLY   key=src/lib/retry.ts#withRetry/while[0]/body/try[0]/finally
           ⋯ 1 line
-  THROW Error → the caller   key=src/lib/retry.ts#withRetry/throw[0]
+  THROW Error → the caller   key=src/lib/retry.ts#withRetry/throw[0] src/lib/retry.ts#withRetry/throw[0]/call:Error
 ( End )
 
 === src/lib/slack.ts#
@@ -341,14 +341,14 @@
 === src/lib/validate.ts#validateOrder
 ( validateOrder )   key=src/lib/validate.ts#validateOrder
   IF input === null || typeof input !== "object"   key=src/lib/validate.ts#validateOrder/if[0] src/lib/validate.ts#validateOrder/if[0]/then
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[0]/then/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[0]/then/throw[0] src/lib/validate.ts#validateOrder/if[0]/then/throw[0]/call:Error
   ⋯ 1 line
-  IF typeof customerId !== "string" || customerId.trim() === ""   key=src/lib/validate.ts#validateOrder/if[1] src/lib/validate.ts#validateOrder/if[1]/then
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/then/throw[0]
+  IF typeof customerId !== "string" || customerId.trim() === "" · customerId.trim ?   key=src/lib/validate.ts#validateOrder/if[1] src/lib/validate.ts#validateOrder/if[1]/then src/lib/validate.ts#validateOrder/if[1]/then/call:customerId.trim
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/then/throw[0] src/lib/validate.ts#validateOrder/if[1]/then/throw[0]/call:Error
   ELSE IF typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[0]/throw[0] src/lib/validate.ts#validateOrder/if[1]/elif[0]/throw[0]/call:Error
   ELSE IF !Array.isArray(items) || items.length === 0   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/if[1]/elif[1]/throw[0] src/lib/validate.ts#validateOrder/if[1]/elif[1]/throw[0]/call:Error
   □ items.map ? → validatedItems   key=src/lib/validate.ts#validateOrder/call:items.map
       ↳ callback (item: unknown): OrderItem =>   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]
   · customerId.trim ?, email.trim ?   2 calls, 2 unknown   key=src/lib/validate.ts#validateOrder/return[0]/call:customerId.trim src/lib/validate.ts#validateOrder/return[0]/call:email.trim
@@ -358,14 +358,14 @@
 === src/lib/validate.ts#validateOrder/call:items.map/callback[0]
 ( callback to items.map )   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]
   IF item === null || typeof item !== "object"   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then/throw[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[0]/then/throw[0]/call:Error
   ⋯ 1 line
-  IF typeof sku !== "string" || sku.trim() === ""   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/throw[0]
+  IF typeof sku !== "string" || sku.trim() === "" · sku.trim ?   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/call:sku.trim
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/throw[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/then/throw[0]/call:Error
   ELSE IF typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]/throw[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[0]/throw[0]/call:Error
   ELSE IF typeof price !== "number" || !Number.isFinite(price) || price <= 0   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]
-      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]/throw[0]
+      THROW Error → the caller   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]/throw[0] src/lib/validate.ts#validateOrder/call:items.map/callback[0]/if[1]/elif[1]/throw[0]/call:Error
   · sku.trim ?   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]/call:sku.trim
   RETURN { sku: sku.trim(), quantity, price } → End   key=src/lib/validate.ts#validateOrder/call:items.map/callback[0]/return[0]
 ( End )
@@ -418,7 +418,7 @@
 === src/queues/report-worker.ts#
 ( src/queues/report-worker.ts )   key=src/queues/report-worker.ts#
   imports · bullmq, node:url, ../config.ts, ../lib/logger.ts
-  · Worker → reportWorker + URL   key=src/queues/report-worker.ts#/call:Worker
+  · Worker → reportWorker + URL   key=src/queues/report-worker.ts#/call:Worker src/queues/report-worker.ts#/call:Worker/call:URL
   □ reportWorker.on   key=src/queues/report-worker.ts#/call:reportWorker.on("error")
       ↳ callback (error) =>   key=src/queues/report-worker.ts#/call:reportWorker.on("error")/callback[0]
 ( End )
@@ -461,7 +461,7 @@
 
 === src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]
 ( callback to healthRouter.get )   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]
-  · res.json ? + process.uptime   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]/call:res.json
+  · res.json ? + process.uptime   key=src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]/call:res.json src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]/call:res.json/call:process.uptime
 ( End )
 
 === src/routes/middleware.ts#
@@ -556,7 +556,7 @@
 === src/server.ts#
 ( src/server.ts )   key=src/server.ts#
   imports · express, ./config.ts, ./lib/logger.ts, ./queues/queues.ts, ./routes/admin.ts, ./routes/health.ts, ./routes/orders.ts, ./services/order-service.ts
-  · express → app, app.use + express.json, app.get, app.get, app.use, app.use   6 calls   key=src/server.ts#/call:express src/server.ts#/call:app.use src/server.ts#/call:app.get src/server.ts#/call:app.get[1] src/server.ts#/call:app.use[1] src/server.ts#/call:app.use[2]
+  · express → app, app.use + express.json, app.get, app.get, app.use, app.use   6 calls   key=src/server.ts#/call:express src/server.ts#/call:app.use src/server.ts#/call:app.use/call:express.json src/server.ts#/call:app.get src/server.ts#/call:app.get[1] src/server.ts#/call:app.use[1] src/server.ts#/call:app.use[2]
   ▸ registerAdminRoutes   key=src/server.ts#/call:registerAdminRoutes
   □ app.listen → server   key=src/server.ts#/call:app.listen
       ↳ callback () =>   key=src/server.ts#/call:app.listen/callback[0]
@@ -589,7 +589,7 @@
   IF error   key=src/server.ts#shutdown/call:server.close/callback[0]/if[0] src/server.ts#shutdown/call:server.close/callback[0]/if[0]/then
       ▸ logger.error   key=src/server.ts#shutdown/call:server.close/callback[0]/if[0]/then/call:logger.error
       ⋯ 1 line
-  □ Promise.all().then ? + ordersQueue.close, emailQueue.close · into Promise.all().then().catch(…)   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then
+  □ Promise.all().then ? + ordersQueue.close, emailQueue.close · into Promise.all().then().catch(…)   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/call:Promise.all/call:ordersQueue.close src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/call:Promise.all/call:emailQueue.close
       ↳ callback () =>   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/call:Promise.all().then/callback[0]
   □ Promise.all().then().catch ?   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch
       ↳ callback error =>   key=src/server.ts#shutdown/call:server.close/callback[0]/call:Promise.all().then().catch/callback[0]
@@ -682,22 +682,22 @@
 
 === src/services/order-service.ts#OrderService.list
 ( list )   key=src/services/order-service.ts#OrderService.list
-  RETURN ▸ this.repo.list → End   key=src/services/order-service.ts#OrderService.list/return[0]
+  RETURN ▸ this.repo.list → End   key=src/services/order-service.ts#OrderService.list/return[0] src/services/order-service.ts#OrderService.list/return[0]/call:this.repo.list
 ( End )
 
 === src/services/order-service.ts#OrderService.get
 ( get )   key=src/services/order-service.ts#OrderService.get
-  RETURN ▸ this.repo.find → End   key=src/services/order-service.ts#OrderService.get/return[0]
+  RETURN ▸ this.repo.find → End   key=src/services/order-service.ts#OrderService.get/return[0] src/services/order-service.ts#OrderService.get/return[0]/call:this.repo.find
 ( End )
 
 === src/services/order-service.ts#OrderService.cancel
 ( cancel )   key=src/services/order-service.ts#OrderService.cancel
-  RETURN ▸ this.repo.cancel → End   key=src/services/order-service.ts#OrderService.cancel/return[0]
+  RETURN ▸ this.repo.cancel → End   key=src/services/order-service.ts#OrderService.cancel/return[0] src/services/order-service.ts#OrderService.cancel/return[0]/call:this.repo.cancel
 ( End )
 
 === src/services/order-service.ts#OrderService.remove
 ( remove )   key=src/services/order-service.ts#OrderService.remove
-  RETURN ▸ this.repo.remove → End   key=src/services/order-service.ts#OrderService.remove/return[0]
+  RETURN ▸ this.repo.remove → End   key=src/services/order-service.ts#OrderService.remove/return[0] src/services/order-service.ts#OrderService.remove/return[0]/call:this.repo.remove
 ( End )
 
 === src/services/order-service.ts#OrderService.count
@@ -720,7 +720,7 @@
   □ order.items.reduce ? → total   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce
       ↳ callback (sum, item) =>   key=src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce/callback[0]
   IF !Number.isFinite(total) || total <= 0   key=src/services/payment.ts#PaymentProvider.charge/if[0] src/services/payment.ts#PaymentProvider.charge/if[0]/then
-      THROW Error → the caller   key=src/services/payment.ts#PaymentProvider.charge/if[0]/then/throw[0]
+      THROW Error → the caller   key=src/services/payment.ts#PaymentProvider.charge/if[0]/then/throw[0] src/services/payment.ts#PaymentProvider.charge/if[0]/then/throw[0]/call:Error
   ▸ logger.info   key=src/services/payment.ts#PaymentProvider.charge/call:logger.info
 ( End )
 
@@ -741,7 +741,7 @@
 
 === src/services/payment.ts#createProvider
 ( createProvider )   key=src/services/payment.ts#createProvider
-  RETURN ▸ StripeProvider → End   key=src/services/payment.ts#createProvider/return[0]
+  RETURN ▸ StripeProvider → End   key=src/services/payment.ts#createProvider/return[0] src/services/payment.ts#createProvider/return[0]/call:StripeProvider
 ( End )
 
 === src/types.ts#

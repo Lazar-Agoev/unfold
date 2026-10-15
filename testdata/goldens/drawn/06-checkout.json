@@ -6,6 +6,7 @@
     "label": "checkout",
     "signature": "def checkout(order)",
     "path": "shop/checkout.py",
+    "state": "current",
     "line": 13,
     "async": false,
     "generator": false,

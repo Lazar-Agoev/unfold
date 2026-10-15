@@ -31,13 +31,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use tempfile::TempDir;
+use unfold_core::highlight::Highlighter;
 use unfold_core::testkit::{assert_golden, testdata_dir};
 use unfold_core::{App, EntranceTarget, FileGraph, Graph, canonical};
 use unfold_engine::discovery::DiscoverOptions;
 use unfold_engine::entrances::{FixKind, Fixes};
 use unfold_engine::update::MemoryFactsCache;
 use unfold_engine::{Engine, EngineOptions, UpdateRequest};
-use unfold_reader::drawing::{Card, Overlay, draw, flow_text};
+use unfold_reader::drawing::{Card, Overlay, TextSources, draw, flow_text};
+use unfold_reader::source::SourceCache;
 use unfold_reader::{FileTree, Trees};
 use unfold_workspace::default_languages;
 
@@ -164,6 +166,15 @@ fn flows(compiled: &Compiled) -> String {
         trees.insert(FileTree::new(FileGraph::clone(file)));
     }
     let overlay = Overlay::default();
+    let languages = default_languages();
+    let highlighters: Vec<&dyn Highlighter> =
+        languages.iter().map(|language| language.highlighter()).collect();
+    let kept = SourceCache::new();
+    let sources = TextSources {
+        root: compiled.folder.path(),
+        highlighters: &highlighters,
+        kept: &kept,
+    };
     let mut out = String::new();
     for file in &compiled.graph.files {
         for node in file.nodes.iter().filter(|node| node.kind().is_definition()) {
@@ -172,7 +183,7 @@ fn flows(compiled: &Compiled) -> String {
                 open: Vec::new(),
                 show_all_calls: false,
             };
-            let flow = draw(&trees, compiled.folder.path(), &overlay, &card).expect("a definition draws");
+            let flow = draw(&trees, &sources, &overlay, &card).expect("a definition draws");
             out.push_str("=== ");
             out.push_str(node.key.as_str());
             out.push('\n');

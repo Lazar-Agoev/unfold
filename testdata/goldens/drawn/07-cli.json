@@ -5,6 +5,7 @@
     "form": "module",
     "label": "shop/cli.py",
     "path": "shop/cli.py",
+    "state": "current",
     "line": 1,
     "async": false,
     "generator": false,
@@ -45,6 +46,7 @@
         "key": "shop/cli.py#/if[0]",
         "form": "if",
         "headerCalls": [],
+        "headerUnknown": [],
         "lanes": [
           {
             "id": 2,
@@ -58,7 +60,8 @@
             "state": "reached",
             "test": {
               "text": "__name__ == \"__main__\"",
-              "calls": []
+              "calls": [],
+              "unknown": []
             },
             "types": [],
             "fallsThrough": false,
@@ -90,6 +93,7 @@
                       "label": "main",
                       "signature": "def main()",
                       "path": "shop/cli.py",
+                      "state": "current",
                       "line": 6,
                       "async": false,
                       "generator": false,
@@ -134,6 +138,7 @@
                               "signature": "def place_order(order_id)",
                               "description": "Charge an order and save it.",
                               "path": "shop/service.py",
+                              "state": "current",
                               "line": 9,
                               "async": false,
                               "generator": false,
@@ -193,6 +198,7 @@
                                   "key": "shop/service.py#place_order/if[0]",
                                   "form": "if",
                                   "headerCalls": [],
+                                  "headerUnknown": [],
                                   "lanes": [
                                     {
                                       "id": 3,
@@ -206,7 +212,8 @@
                                       "state": "reached",
                                       "test": {
                                         "text": "order is None",
-                                        "calls": []
+                                        "calls": [],
+                                        "unknown": []
                                       },
                                       "types": [],
                                       "fallsThrough": false,
@@ -271,7 +278,8 @@
                                       "state": "reached",
                                       "test": {
                                         "text": "order[\"paid\"]",
-                                        "calls": []
+                                        "calls": [],
+                                        "unknown": []
                                       },
                                       "types": [],
                                       "fallsThrough": false,
@@ -334,6 +342,7 @@
                                   "key": "shop/service.py#place_order/try[0]",
                                   "form": "try",
                                   "headerCalls": [],
+                                  "headerUnknown": [],
                                   "lanes": [
                                     {
                                       "id": 8,
@@ -398,7 +407,8 @@
                                       "state": "reached",
                                       "test": {
                                         "text": "except PaymentDeclined as error",
-                                        "calls": []
+                                        "calls": [],
+                                        "unknown": []
                                       },
                                       "types": [
                                         {
@@ -542,6 +552,7 @@
                                   "form": "for",
                                   "header": "for item in order[\"items\"]",
                                   "headerCalls": [],
+                                  "headerUnknown": [],
                                   "lanes": [
                                     {
                                       "id": 15,

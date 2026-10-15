@@ -12,9 +12,9 @@
 //! | Health | About |
 //! | --- | --- |
 //! | Missing | a card's, name's, or proposed step's key is not in the graph; a resource card's anchor or type is gone |
-//! | Outdated | the code under a description, name, combined step, resource card, or connection changed since it was signed |
+//! | Outdated | the code under a description, name, combined step, resource card, or connection changed since it was signed; a step written between a combined step's blocks joins it and changes it too |
 //! | Held for review | a guarded reference changed kind or owner, or is position-based and its code changed |
-//! | Broken combined step | a combined step no longer follows the overlay rules ([`check_combined`], [`check_disjoint`]) |
+//! | Broken combined step | a combined step no longer follows the overlay rules: a block is gone, out of its body or order, or shared with another step ([`covered`], [`check_disjoint`]) |
 //! | Broken link | a connection's end card, step, carried type, or anchor is gone |
 //!
 //! The claims (resource cards, connections, and frame descriptions) are checked by [`claims`].
@@ -30,7 +30,7 @@ use super::claims;
 use super::graph::{BoardGraph, Lines, code_signature};
 use super::items::remove_items;
 use super::model::{Anchor, Board, CardRef, Combined, GuardEntry, Page, Signature};
-use crate::overlay::{OverlayError, check_combined, check_disjoint};
+use crate::overlay::{OverlayError, check_disjoint, covered};
 
 /// The guard kind of an app or entrance.
 pub(crate) const ENTRANCE: &str = "entrance";
@@ -497,30 +497,33 @@ pub fn health(page: &Page, graph: &BoardGraph) -> Health {
     report.health
 }
 
-/// The health of the page's combined steps: each follows the overlay rules ([`check_combined`]),
-/// no two overlap or nest ([`check_disjoint`]), their members aren't held, and their span
-/// hasn't changed since they were signed.
+/// The health of the page's combined steps: each still follows the overlay rules, where a step
+/// written between its blocks since it was signed joins it ([`covered`]); no two overlap or nest
+/// ([`check_disjoint`], over the blocks they cover); their members aren't held; and one that
+/// gained a block, or whose span changed since it was signed, goes to review.
 fn combined_health(report: &mut Report<'_>, graph: &BoardGraph) {
     use RepairKind::{Accept, Reconnect, Remove, RemoveDescription, Resign};
     let page = report.page;
-    let mut valid: Vec<&Combined> = Vec::new();
+    let mut valid: Vec<(&Combined, Vec<Key>)> = Vec::new();
     for combined in &page.combined {
         let target = Target::Combined(combined.id.clone());
-        if let Err(error) = check_combined(graph, &combined.members) {
-            let (key, repairs): (Option<&str>, &[RepairKind]) = match &error {
-                OverlayError::Missing(key) => (Some(key.as_str()), &[Reconnect, Remove]),
-                _ => (None, &[Remove]),
-            };
-            report.add(
-                HealthKind::BrokenCombined,
-                target,
-                key,
-                &capitalized(&error),
-                repairs,
-            );
-            continue;
-        }
-        valid.push(combined);
+        let blocks = match covered(graph, &combined.members) {
+            Ok(blocks) => blocks,
+            Err(error) => {
+                let (key, repairs): (Option<&str>, &[RepairKind]) = match &error {
+                    OverlayError::Missing(key) => (Some(key.as_str()), &[Reconnect, Remove]),
+                    _ => (None, &[Remove]),
+                };
+                report.add(
+                    HealthKind::BrokenCombined,
+                    target,
+                    key,
+                    &capitalized(&error),
+                    repairs,
+                );
+                continue;
+            }
+        };
         for key in &combined.members {
             if let Some(problem) = guard_problem(page, graph, key.as_str()) {
                 report.add(
@@ -534,7 +537,8 @@ fn combined_health(report: &mut Report<'_>, graph: &BoardGraph) {
         }
         let current = span_signature(graph, combined);
         let description = combined.description.as_ref();
-        if outdated(combined.signature, current)
+        if blocks != combined.members
+            || outdated(combined.signature, current)
             || description.is_some_and(|description| outdated(description.signature, current))
         {
             let mut repairs = vec![Resign];
@@ -548,10 +552,11 @@ fn combined_health(report: &mut Report<'_>, graph: &BoardGraph) {
                 &repairs,
             );
         }
+        valid.push((combined, blocks));
     }
-    for (index, left) in valid.iter().enumerate() {
-        for right in &valid[index + 1..] {
-            if let Err(error) = check_disjoint(graph, &[&left.members, &right.members]) {
+    for (index, (left, left_blocks)) in valid.iter().enumerate() {
+        for (right, right_blocks) in &valid[index + 1..] {
+            if let Err(error) = check_disjoint(graph, &[left_blocks, right_blocks]) {
                 for (step, other) in [(left, right), (right, left)] {
                     report.add(
                         HealthKind::BrokenCombined,

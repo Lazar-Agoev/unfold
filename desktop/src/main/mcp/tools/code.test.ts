@@ -76,7 +76,7 @@ describe("read_code", () => {
     const tree = recorded<CodeText>(codeTextCreateOrder).text.trimEnd();
     expect(text.split("\n").slice(0, 2)).toEqual(["Unfold · ts-orders · as Claude", `function createOrder at src/routes/orders.ts:25; key ${CREATE_ORDER}.`]);
     expect(text).toContain(`Compiled tree:\n${tree}\n`);
-    expect(text).toContain(`L32  call:orderService.place                            ▸ src/services/order-service.ts#OrderService.place · binds order   key=${CREATE_ORDER}/call:orderService.place`);
+    expect(text).toContain(`L32  call:orderService.place                   ▸ src/services/order-service.ts#OrderService.place · binds order   key=${CREATE_ORDER}/call:orderService.place`);
     expect(text.split("\n").slice(-2)).toEqual(["Called from 1 place.", "Next: read_call with a call's key for what it sends; get_relations for callers; add_cards puts it on a page."]);
     expect(tools.commands()).not.toContain("type_definition");
   });

@@ -1,40 +1,83 @@
-//! A verified file's text as the drawing reads it: slices on one line, line spans, and which
-//! lines are code a gap tick counts.
+//! The text a flow's facts came from, as the drawing reads it: slices on one line, line spans,
+//! and which lines are code a gap tick counts.
 //!
-//! A line is **code** unless it is blank, a comment (in TypeScript, also any line wholly inside
-//! a `/* … */` block comment), only closing punctuation (`});`), a TypeScript `break;` alone
-//! (the end of a `switch` case), or part of an import statement (imports are links, listed in
-//! the module's header).
+//! A line is **code** unless it is blank or only comments, only closing punctuation (`});`), a
+//! TypeScript `break;` alone (the end of a `switch` case), or part of an import statement
+//! (imports are links, listed in the module's header). Comments are the language's highlighter's
+//! comment tokens, so a `#` inside a string is code. Lines are the file's line index's: they end
+//! where the language's lines end.
+
+use std::sync::Arc;
 
 use rustc_hash::FxHashSet;
-use unfold_core::vocab::{Language, NodeKind};
-use unfold_core::{ByteRange, LineSpan, Node};
+use unfold_core::highlight::{Highlighter, TokenClass};
+use unfold_core::vocab::{FileState, Language, NodeKind};
+use unfold_core::{ByteRange, LineBreaks, LineSpan, Node};
 
-use crate::source::Source;
+use super::{FlowState, TextSources};
+use crate::source::{Source, SourceState};
 use crate::tree::FileTree;
 
 /// The most characters a value or code line keeps on one line.
 const MAX_CHARS: usize = 80;
 
-/// A verified file's text, with its code lines found.
+/// `tree`'s file as `sources` give it: whether it is the one its facts came from, and the facts'
+/// text (the file's, or the one kept from when it last verified).
+pub(super) fn file_text(sources: &TextSources<'_>, tree: &FileTree) -> (FlowState, Option<FileText>) {
+    let language = tree.language();
+    let file = tree.file();
+    let checked = sources
+        .kept
+        .check(sources.root, &file.path, file.hash, LineBreaks::of(language));
+    let state = match (file.state, checked.state) {
+        (FileState::LastGood | FileState::Failed, _) => FlowState::DoesNotParse,
+        (FileState::Current, SourceState::Current) => FlowState::Current,
+        (FileState::Current, SourceState::Changed | SourceState::Missing) => FlowState::Changed,
+    };
+    let text = checked
+        .source
+        .map(|source| FileText::new(source, language, sources.highlighter(language)));
+    (state, text)
+}
+
+/// The text a file's facts came from, with its code lines found.
 #[derive(Debug)]
 pub(super) struct FileText {
-    source: Source,
+    source: Arc<Source>,
     /// `code[line - 1]`: whether one-based `line` is code.
     code: Vec<bool>,
 }
 
 impl FileText {
-    pub(super) fn new(source: Source, language: Language) -> Self {
+    /// `source`'s text in `language`, its comments found by `highlighter`.
+    pub(super) fn new(
+        source: Arc<Source>,
+        language: Language,
+        highlighter: Option<&dyn Highlighter>,
+    ) -> Self {
+        let text = source.text();
+        let comments: Vec<ByteRange> = highlighter
+            .map(|highlighter| highlighter.highlight(text))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|span| span.class == TokenClass::Comment)
+            .map(|span| span.range)
+            .collect();
+        let index = source.lines();
         let mut code = Vec::new();
         let mut import_depth: Option<i32> = None;
-        let mut comments = Comments::default();
-        for line in source.text().lines() {
-            let trimmed = line.trim();
-            let has_code = match language {
-                Language::Python => !trimmed.starts_with('#'),
-                Language::TypeScript => comments.has_code(trimmed),
-            };
+        let mut first_comment = 0;
+        for line in 1..=index.line_count() {
+            let start = index.line_start(line).unwrap_or(index.len());
+            let end = index.line_start(line + 1).unwrap_or(index.len());
+            while comments
+                .get(first_comment)
+                .is_some_and(|comment| comment.end <= start)
+            {
+                first_comment += 1;
+            }
+            let written = outside(text, start, end, &comments[first_comment..]);
+            let trimmed = written.trim();
             if let Some(depth) = import_depth.as_mut() {
                 *depth += bracket_balance(trimmed);
                 if *depth <= 0 {
@@ -49,9 +92,7 @@ impl FileText {
                 code.push(false);
                 continue;
             }
-            code.push(
-                !trimmed.is_empty() && has_code && !is_closing(trimmed) && !is_case_end(trimmed, language),
-            );
+            code.push(!trimmed.is_empty() && !is_closing(trimmed) && !is_case_end(trimmed, language));
         }
         Self { source, code }
     }
@@ -188,65 +229,23 @@ fn starts_import(line: &str, language: Language) -> bool {
     }
 }
 
-/// Where a TypeScript file's lines stand against block comments, read line by line.
-#[derive(Debug, Default)]
-struct Comments {
-    /// Inside a `/* … */` comment that an earlier line opened.
-    open: bool,
-}
-
-impl Comments {
-    /// Whether `line` holds code outside comments, and whether a block comment is still open
-    /// after it. A string's quotes hide comment marks inside it.
-    fn has_code(&mut self, line: &str) -> bool {
-        let mut code = false;
-        let mut rest = line;
-        while !rest.is_empty() {
-            if self.open {
-                match rest.find("*/") {
-                    Some(end) => {
-                        self.open = false;
-                        rest = &rest[end + 2..];
-                    }
-                    None => return code,
-                }
-                continue;
-            }
-            if rest.starts_with("//") {
-                return code;
-            }
-            if let Some(after) = rest.strip_prefix("/*") {
-                self.open = true;
-                rest = after;
-                continue;
-            }
-            let mut characters = rest.chars();
-            let Some(first) = characters.next() else {
-                break;
-            };
-            rest = characters.as_str();
-            if matches!(first, '"' | '\'' | '`') {
-                rest = after_string(rest, first);
-            }
-            code |= !first.is_whitespace();
-        }
-        code
+/// The text of the line from byte `start` to `end` outside `comments` (sorted, the first one
+/// ending after `start`), with a space where each comment was.
+fn outside(text: &str, start: u32, end: u32, comments: &[ByteRange]) -> String {
+    let mut written = String::new();
+    let mut at = start;
+    for comment in comments.iter().take_while(|comment| comment.start < end) {
+        written.push_str(
+            text.get(at as usize..comment.start.max(at) as usize)
+                .unwrap_or_default(),
+        );
+        written.push(' ');
+        at = at.max(comment.end);
     }
-}
-
-/// What follows the string `quote` opened, on this line: after its closing quote, or nothing
-/// when it runs on.
-fn after_string(text: &str, quote: char) -> &str {
-    let mut escaped = false;
-    for (index, character) in text.char_indices() {
-        match character {
-            _ if escaped => escaped = false,
-            '\\' => escaped = true,
-            _ if character == quote => return &text[index + character.len_utf8()..],
-            _ => {}
-        }
+    if at < end {
+        written.push_str(text.get(at as usize..end as usize).unwrap_or_default());
     }
-    ""
+    written
 }
 
 /// A TypeScript `break` that ends a `switch` case: the case's structure, not an exit (an exit
@@ -319,27 +318,75 @@ mod tests {
         assert_eq!(one_line(&"x".repeat(90)).chars().count(), MAX_CHARS + 1);
     }
 
-    /// Only the lines of `text` that are code, as TypeScript.
-    fn code_lines(text: &str) -> Vec<&str> {
-        let mut comments = Comments::default();
-        text.lines()
-            .filter(|line| comments.has_code(line.trim()))
+    /// The lines of `text` (in a file of `language`) that are code.
+    fn code_lines(text: &str, language: Language) -> Vec<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = unfold_core::RepoPath::new("f").unwrap();
+        std::fs::write(dir.path().join("f"), text).unwrap();
+        let hash = unfold_core::ContentHash::of(text.as_bytes());
+        let source = crate::source::verify_file(dir.path(), &path, Some(hash), LineBreaks::of(language))
+            .into_source()
+            .unwrap();
+        let highlighter: &dyn Highlighter = match language {
+            Language::Python => &unfold_lang_python::PythonHighlighter,
+            Language::TypeScript => &unfold_lang_typescript::TypeScriptHighlighter,
+        };
+        let file = FileText::new(Arc::new(source), language, Some(highlighter));
+        (1..=file.source.lines().line_count())
+            .filter(|&line| file.is_code(line))
+            .map(|line| file.line(line))
             .collect()
     }
 
     #[test]
-    fn typescript_block_comments_are_not_code() {
+    fn typescript_comments_are_not_code() {
         let text = "/**\n * An order.\n * @param id\n */\nconst total = price\n  * count;\n/* one */ save();\nlog(); /* starts\n  ends */\nconst glob = \"src/*\"; // note\n// done\n";
         assert_eq!(
-            code_lines(text),
+            code_lines(text, Language::TypeScript),
             [
                 "const total = price",
-                "  * count;",
+                "* count;",
                 "/* one */ save();",
                 "log(); /* starts",
                 "const glob = \"src/*\"; // note",
             ]
         );
+    }
+
+    /// Comment marks inside strings are code, and a comment after a case's `break` leaves the
+    /// case's end.
+    #[test]
+    fn strings_hold_no_comments() {
+        let python = "text = \"\"\"\n# looks like a comment\n\"\"\"\n# a comment\nx = 1  # and a note\n";
+        assert_eq!(
+            code_lines(python, Language::Python),
+            [
+                "text = \"\"\"",
+                "# looks like a comment",
+                "\"\"\"",
+                "x = 1  # and a note"
+            ]
+        );
+        let typescript = "const text = `\n// not a comment\n/* nor this */\n`;\nswitch (x) {\n  case \"a\":\n    a();\n    break; // done with a\n}\n";
+        assert_eq!(
+            code_lines(typescript, Language::TypeScript),
+            [
+                "const text = `",
+                "// not a comment",
+                "/* nor this */",
+                "`;",
+                "switch (x) {",
+                "case \"a\":",
+                "a();",
+            ]
+        );
+    }
+
+    /// Lines end where the language's lines end: a lone CR ends a Python line.
+    #[test]
+    fn lines_follow_the_files_line_breaks() {
+        let python = "a = 1\r# note\rb = 2\r";
+        assert_eq!(code_lines(python, Language::Python), ["a = 1", "b = 2"]);
     }
 
     #[test]

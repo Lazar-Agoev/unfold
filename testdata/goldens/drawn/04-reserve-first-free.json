@@ -6,6 +6,7 @@
     "label": "reserve_first_free",
     "signature": "def reserve_first_free(calendar, day)",
     "path": "booking/slots.py",
+    "state": "current",
     "line": 6,
     "async": false,
     "generator": false,
@@ -54,6 +55,7 @@
             }
           }
         ],
+        "headerUnknown": [],
         "lanes": [
           {
             "id": 2,
@@ -80,6 +82,7 @@
                   "key": "booking/slots.py#reserve_first_free/for[0]/body/if[0]",
                   "form": "if",
                   "headerCalls": [],
+                  "headerUnknown": [],
                   "lanes": [
                     {
                       "id": 4,
@@ -93,7 +96,8 @@
                       "state": "reached",
                       "test": {
                         "text": "slot.blocked",
-                        "calls": []
+                        "calls": [],
+                        "unknown": []
                       },
                       "types": [],
                       "fallsThrough": false,
@@ -148,6 +152,7 @@
                   "key": "booking/slots.py#reserve_first_free/for[0]/body/if[1]",
                   "form": "if",
                   "headerCalls": [],
+                  "headerUnknown": [],
                   "lanes": [
                     {
                       "id": 7,
@@ -181,7 +186,8 @@
                               "open": true
                             }
                           }
-                        ]
+                        ],
+                        "unknown": []
                       },
                       "types": [],
                       "fallsThrough": false,

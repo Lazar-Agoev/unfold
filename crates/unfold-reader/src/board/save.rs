@@ -15,9 +15,12 @@
 //! proposed steps and opened calls are never signed, but a proposed step's place is guarded.
 //!
 //! **The overlay checks** run on what is new or changed since the previous version: a combined
-//! step follows the rules and overlaps or nests in no other (through health), a proposed step
-//! goes after a block or at the start of a body ([`check_proposal`]), and a card's opened calls
-//! are project calls or callbacks, at most 3 deep and 64 per card ([`check_open_paths`]).
+//! step being combined holds consecutive steps of one body or one whole control block
+//! ([`check_combined`]), and every combined step overlaps or nests in no other (through health);
+//! a proposed step goes after a block or at the start of a body ([`check_proposal`]); and a
+//! card's opened calls are project calls or callbacks, at most 3 deep and 64 per card
+//! ([`check_open_paths`]). A step written between a signed combined step's blocks later joins it
+//! ([`covered`]): health sends the step to review, and Resign records it among its blocks.
 
 use rustc_hash::FxHashSet;
 use unfold_core::Key;
@@ -31,7 +34,7 @@ use super::graph::BoardGraph;
 use super::items::check_items;
 use super::model::{Board, Card, CardRef, Description, Page, Signature};
 use super::parse::Path;
-use crate::overlay::{check_combined, check_open_paths, check_proposal};
+use crate::overlay::{check_combined, check_open_paths, check_proposal, covered};
 
 fn refuse(page: &Page, target: &Target, message: &str) -> BoardError {
     BoardError::Problem {
@@ -85,7 +88,7 @@ pub(crate) fn current_signature(
             let combined = page
                 .combined_step(id)
                 .ok_or_else(|| refuse(page, target, "unknown combined step"))?;
-            if let Err(error) = check_combined(graph, &combined.members) {
+            if let Err(error) = covered(graph, &combined.members) {
                 return Err(refuse(page, target, &error.to_string()));
             }
             if let Some(problem) = combined
@@ -197,9 +200,16 @@ fn signatures_mut<'a>(page: &'a mut Page, target: &Target) -> Vec<&'a mut Option
 }
 
 /// Signs `target`'s text (and a combined step's, resource card's, or connection's own
-/// signature) against the current source, keeping the text: the Resign repair.
+/// signature) against the current source, keeping the text: the Resign repair. A combined step
+/// takes the blocks it covers now as its own ([`covered`]).
 pub(crate) fn resign(page: &mut Page, graph: &BoardGraph, target: &Target) -> Result<(), BoardError> {
     let signature = current_signature(page, graph, target)?;
+    if let Target::Combined(id) = target
+        && let Some(combined) = page.combined.iter_mut().find(|combined| &combined.id == id)
+        && let Ok(blocks) = covered(graph, &combined.members)
+    {
+        combined.members = blocks;
+    }
     let slots = signatures_mut(page, target);
     if slots.is_empty() {
         return Err(refuse(page, target, "has no description to sign"));
@@ -292,6 +302,23 @@ fn unchanged(old: &Page, new: &Page, target: &Target) -> bool {
     }
 }
 
+/// Refuses a combined step that isn't signed yet, one being combined now, unless its blocks are
+/// consecutive steps of one body or one whole control block ([`check_combined`]). A signed one
+/// takes in the steps written between its blocks later, and health sends it to review.
+fn check_new_combined(page: &Page, graph: &BoardGraph) -> Result<(), BoardError> {
+    for combined in page
+        .combined
+        .iter()
+        .filter(|combined| combined.signature.is_none())
+    {
+        if let Err(error) = check_combined(graph, &combined.members) {
+            let target = Target::Combined(combined.id.clone());
+            return Err(refuse(page, &target, &error.to_string()));
+        }
+    }
+    Ok(())
+}
+
 /// Refuses a proposed step that is new or placed elsewhere since `previous` unless it goes after
 /// a block or at the start of a body ([`check_proposal`]). One placed as before is kept as it
 /// is, even when its place went missing or is held: that is health's to report.
@@ -354,8 +381,9 @@ fn check_cards(page: &Page, previous: Option<&Page>, graph: &BoardGraph) -> Resu
 /// Prepares one page (at `path`) for writing over `previous` (the version being replaced, with
 /// its health): the references between its items must hold (so Rust's own edits, such as
 /// repairs, never write a page the parser would refuse), guards the new version dropped come
-/// back from `previous`, unsigned text is signed, guards are saved, claims signed, the new or
-/// changed cards and proposed steps checked ([`check_cards`], [`place_proposals`]), and the
+/// back from `previous`, new combined steps checked ([`check_new_combined`]), unsigned text is
+/// signed, guards are saved, claims signed, the new or changed cards and proposed steps checked
+/// ([`check_cards`], [`place_proposals`]), and the
 /// result is refused when it introduces a missing reference, a broken combined step, a held
 /// reference, or a broken link that `previous` did not already have (with the same reference),
 /// or has a new or changed claim that isn't grounded ([`claims::ground`]). Problems carried over
@@ -375,6 +403,7 @@ fn prepare_page(
             }
         }
     }
+    check_new_combined(&page, graph)?;
     sign(&mut page, graph)?;
     claims::sign(&mut page, previous.map(|(old, _)| old), graph)?;
     check_cards(&page, previous.map(|(old, _)| old), graph)?;

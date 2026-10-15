@@ -11,12 +11,12 @@
  * gap tick that counts it.
  */
 
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { Fragment, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { CodeButton } from "../code/CodeButton";
-import type { CallBox, Key, RepoPath, ThinRow } from "../ipc/generated";
+import type { CallBox, Key, OtherCall, RepoPath, ThinRow } from "../ipc/generated";
 import { Icon } from "../icons";
 import { callbackText, insetPlace, thinCount, type CallRow, type FlowGeometry, type FlowPiece, type FlowWire, type Point, type Rect } from "./layout";
-import { callMeta, combinedSummary, exitWord, frameWord, gapWords, hasMeta, outcomeWords, sectionWords } from "./words";
+import { callMeta, combinedSummary, exitWord, frameWord, gapWords, hasMeta, listedCalls, outcomeWords, sectionWords } from "./words";
 import "./flow.css";
 
 /** What can be selected in a flow: a block, or a combined or proposed step (by its page id). */
@@ -167,18 +167,61 @@ function CallName({ box, className }: { readonly box: CallBox; readonly classNam
   );
 }
 
-/** A project call written in a test, a header, or an exit's value: a small box that opens in place like a call. */
+/** The library and unknown calls written inside a call drawn on a test, a header, or an exit: `+ x.foo ?, logger.info`. */
+function Listed({ calls }: { readonly calls: readonly OtherCall[] }) {
+  const listed = listedCalls(calls);
+  return listed.length > 0 ? (
+    <span className="flow-listed">
+      {"+ "}
+      {listed.map((call, index) => (
+        <Fragment key={call.key}>
+          {index > 0 ? ", " : null}
+          {call.callee}
+          {call.to.outcome === "unknown" ? <Unknown /> : null}
+        </Fragment>
+      ))}
+    </span>
+  ) : null;
+}
+
+/** A project call written in a test, a header, or an exit's value: a small box that opens in place like a call, with the calls written inside it. */
 function Chip({ box, path, handlers }: { readonly box: CallBox; readonly path: readonly Key[]; readonly handlers: Handlers }) {
   const own = [...path, box.key];
   return (
     <span className={classes("flow-chip", box.sometimes && "sometimes", isBlock(handlers.selected, box.key) && "selected")} data-key={box.key} {...selectable(handlers, { kind: "block", key: box.key })}>
       <CallName box={box} className="flow-chip-name" />
       {box.to.outcome === "unknown" ? <Unknown /> : null}
+      <Listed calls={box.calls} />
       {box.actions.open ? <Chevron open={box.inset !== undefined} name={box.name ?? box.callee} onToggle={() => {
             handlers.toggleOpen(own);
           }} /> : null}
       <ViewCode handlers={handlers} selection={{ kind: "block", key: box.key }} />
     </span>
+  );
+}
+
+/** An unknown call written in a test or a header, listed after it: a chip with its `?`. */
+function UnknownChip({ call, handlers }: { readonly call: OtherCall; readonly handlers: Handlers }) {
+  return (
+    <span className={classes("flow-chip", "other", call.sometimes && "sometimes", isBlock(handlers.selected, call.key) && "selected")} data-key={call.key} {...selectable(handlers, { kind: "block", key: call.key })}>
+      <span className="flow-chip-name">{call.callee}</span>
+      <Unknown />
+      <ViewCode handlers={handlers} selection={{ kind: "block", key: call.key }} />
+    </span>
+  );
+}
+
+/** What a test or a header draws after its words: its boxes as chips, then its unknown calls. */
+function Chips({ boxes, unknown, path, handlers }: { readonly boxes: readonly CallBox[]; readonly unknown: readonly OtherCall[]; readonly path: readonly Key[]; readonly handlers: Handlers }) {
+  return (
+    <>
+      {boxes.map((box) => (
+        <Chip key={box.key} box={box} path={path} handlers={handlers} />
+      ))}
+      {unknown.map((call) => (
+        <UnknownChip key={call.key} call={call} handlers={handlers} />
+      ))}
+    </>
   );
 }
 
@@ -325,10 +368,13 @@ function ExitPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
       {exit.name !== undefined ? <span className="flow-name">{exit.name}</span> : null}
       {value?.kind === "call" && value.to.outcome === "project" ? <Chip box={value} path={piece.path} handlers={handlers} /> : null}
       {value?.kind === "call" && value.to.outcome !== "project" ? (
-        <span className="flow-exit-value" data-key={value.key}>
-          {value.callee}
-          {value.to.outcome === "unknown" ? <Unknown /> : null}
-        </span>
+        <>
+          <span className="flow-exit-value" data-key={value.key}>
+            {value.callee}
+            {value.to.outcome === "unknown" ? <Unknown /> : null}
+          </span>
+          <Listed calls={value.calls} />
+        </>
       ) : null}
       {value?.kind === "text" ? <span className="flow-exit-value">{value.text}</span> : null}
       {piece.destination !== null ? <span className="flow-exit-destination">→ {piece.destination}</span> : null}
@@ -343,11 +389,11 @@ function FramePiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { 
   return (
     <div className={classes("flow-frame", look, piece.dim && "dim", isBlock(handlers.selected, frame.key) && "selected")} style={place(piece.rect)} data-key={frame.key} {...selectable(handlers, { kind: "block", key: frame.key })}>
       {look === "try" ? null : (
-        <div className={classes("flow-frame-title", frame.headerCalls.length > 0 && !cases && "with-chips")}>
+        <div className={classes("flow-frame-title", frame.headerCalls.length + frame.headerUnknown.length > 0 && !cases && "with-chips")}>
           <span className="flow-frame-word">{frameWord(frame.form)}</span>
           {frame.name !== undefined ? <span className="flow-name">{frame.name}</span> : null}
           {!cases && frame.header !== undefined ? <span className="flow-frame-header">{frame.header}</span> : null}
-          {!cases ? frame.headerCalls.map((box) => <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />) : null}
+          {!cases ? <Chips boxes={frame.headerCalls} unknown={frame.headerUnknown} path={piece.path} handlers={handlers} /> : null}
           {frame.binds !== undefined ? <span className="flow-binds">→ {frame.binds}</span> : null}
         </div>
       )}
@@ -357,17 +403,20 @@ function FramePiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { 
 }
 
 function HeadPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "head" }>; readonly handlers: Handlers }) {
-  const { lane } = piece;
+  const { lane, shown } = piece;
   const props = lane ? { "data-key": lane.key, ...selectable(handlers, { kind: "block", key: lane.key }) } : {};
   const words =
-    lane?.name !== undefined ? (
+    shown.name !== null ? (
       <>
-        <span className="flow-name">{lane.name}</span>
-        <span className="flow-code-name">{piece.text}</span>
+        <span className="flow-name">{shown.name}</span>
+        {shown.text ? <span className="flow-code-name">{shown.text}</span> : null}
       </>
     ) : (
-      piece.text
+      shown.text
     );
+  // Words cut short are whole in the tooltip.
+  const whole = lane?.name !== undefined ? `${lane.name}\n${piece.text}` : piece.text;
+  const cut = shown.text !== piece.text || shown.name !== (lane?.name ?? null);
   return (
     <div className={classes("flow-head", piece.look, piece.dim && "dim", lane && isBlock(handlers.selected, lane.key) && "selected")} style={place(piece.rect)} {...props}>
       {piece.look === "test" ? (
@@ -375,12 +424,10 @@ function HeadPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
           ◆
         </span>
       ) : null}
-      <span className="flow-head-text" style={{ width: piece.textWidth }}>
+      <span className="flow-head-text" style={{ width: piece.textWidth }} title={cut ? whole : undefined}>
         {words}
       </span>
-      {piece.chips.map((box) => (
-        <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />
-      ))}
+      <Chips boxes={piece.chips} unknown={piece.unknown} path={piece.path} handlers={handlers} />
       {lane ? <ViewCode handlers={handlers} selection={{ kind: "block", key: lane.key }} /> : null}
     </div>
   );
@@ -390,15 +437,14 @@ function SectionPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, 
   const { lane } = piece;
   const words = sectionWords(lane, piece.loop);
   const chips = lane.test?.calls ?? [];
+  const unknown = lane.test?.unknown ?? [];
   return (
     <section className={classes("flow-section", piece.look, piece.dim && "dim", isBlock(handlers.selected, lane.key) && "selected")} style={place(piece.rect)} data-key={lane.key} {...selectable(handlers, { kind: "block", key: lane.key })}>
-      <div className={classes("flow-section-title", chips.length > 0 && "with-chips")}>
+      <div className={classes("flow-section-title", chips.length + unknown.length > 0 && "with-chips")}>
         <span className="flow-section-word">{words.title}</span>
         {lane.name !== undefined ? <span className="flow-name">{lane.name}</span> : null}
         {words.clause !== null ? <span className="flow-frame-header">{words.clause}</span> : null}
-        {chips.map((box) => (
-          <Chip key={box.key} box={box} path={piece.path} handlers={handlers} />
-        ))}
+        <Chips boxes={chips} unknown={unknown} path={piece.path} handlers={handlers} />
         {words.note !== null ? <span className="flow-section-note">{words.note}</span> : null}
       </div>
       <ViewCode handlers={handlers} selection={{ kind: "block", key: lane.key }} />

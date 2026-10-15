@@ -15,24 +15,16 @@
 //! - **Caught**: for each raise, the first enclosing `except` or `catch` part of the caller
 //!   (inside the caller's own definition, around the `body` of its `try`) that catches it.
 //!
-//! **What a handler catches**, by written facts only: a TypeScript `catch`, or a bare
-//! `except:`, catches everything. A bare `except` is told by its recorded head, which is the
-//! clause through its type and name: a head that covers only the `except` keyword writes no
-//! type expression. Any other `except` writes one, resolved or not (`except ERRORS[0]:` names
-//! no class the graph can follow, so it catches nothing proven). Otherwise a handler catches a
-//! raise when one of its `types` links reaches the raised class, or a class it extends through
-//! project `extends` links, or (for a library or builtin class, such as `ValueError`) names the
-//! same module and the same written name. A raise whose class is
-//! unknown is caught only by a handler that catches everything.
+//! Which handler catches a raise is decided by written facts only ([`super::catching`]).
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use rustc_hash::FxHashSet;
 use unfold_core::text::short_label;
-use unfold_core::vocab::{Flag, Form, LinkKind, NodeKind, Outcome, PairingReason};
-use unfold_core::{Key, Link, LinkTarget, ModuleLabel, Pairing, Parameter};
+use unfold_core::vocab::{Flag, Form, NodeKind, PairingReason};
+use unfold_core::{LinkTarget, Pairing, Parameter};
 
+use super::catching::{Raised, catches, constructed, exit_call, lineage, raised};
 use super::facts::Facts;
 use super::text::{type_text, whole_text};
 use super::{
@@ -42,126 +34,6 @@ use super::{
 use crate::error::Result;
 use crate::notes::{LinkEnd, pairing_text};
 use crate::tree::FileTree;
-
-/// How many `extends` links a catch follows up from a raised class.
-const MAX_BASE_DEPTH: usize = 8;
-
-/// What a raise raises, for matching it against handlers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Raised {
-    /// A project class.
-    Class(Key),
-    /// A library or builtin class: its outcome, module, and written name.
-    Outside(Outcome, ModuleLabel, Box<str>),
-    /// Nothing proven: a raise of a value, a bare `raise`, or an unknown construction.
-    Unknown,
-}
-
-/// The class a construction of `target` (a class, or a constructor or `__init__` method)
-/// builds, located: the target itself when it is a class, else its parent when that is a class.
-fn constructed(file: &FileTree, target: u32) -> Option<u32> {
-    match file.kind(target) {
-        NodeKind::Class => Some(target),
-        NodeKind::Function => file
-            .parent(target)
-            .filter(|&parent| file.kind(parent) == NodeKind::Class),
-        _ => None,
-    }
-}
-
-/// The class `link` (a construction's `calls` link) constructs, as a raise to match.
-fn raised(facts: &mut Facts<'_>, link: &Link) -> Result<Raised> {
-    Ok(match &link.to {
-        LinkTarget::Project(key) => match facts.locate(key.as_str())? {
-            Some((file, target)) => match constructed(&file, target) {
-                Some(class) => Raised::Class(file.key(class).clone()),
-                None => Raised::Unknown,
-            },
-            None => Raised::Unknown,
-        },
-        LinkTarget::Library(module) => Raised::Outside(Outcome::Library, module.clone(), link.text.clone()),
-        LinkTarget::Builtin(module) => Raised::Outside(Outcome::Builtin, module.clone(), link.text.clone()),
-        LinkTarget::Unknown(_) => Raised::Unknown,
-    })
-}
-
-/// Whether a handler's `types` link names `raised` exactly.
-fn names(link: &Link, raised: &Raised) -> bool {
-    match (&link.to, raised) {
-        (LinkTarget::Project(key), Raised::Class(class)) => key == class,
-        (LinkTarget::Library(module), Raised::Outside(Outcome::Library, raised, text))
-        | (LinkTarget::Builtin(module), Raised::Outside(Outcome::Builtin, raised, text)) => {
-            module == raised && link.text == *text
-        }
-        _ => false,
-    }
-}
-
-/// `raised` and what it extends through project `extends` links (each class's own `extends`
-/// links, which name its bases), breadth first, at most [`MAX_BASE_DEPTH`] levels up.
-fn lineage(facts: &mut Facts<'_>, raised: Raised) -> Result<Vec<Raised>> {
-    let mut lineage = vec![raised];
-    let mut seen: FxHashSet<Key> = FxHashSet::default();
-    let mut level = 0..lineage.len();
-    for _ in 0..MAX_BASE_DEPTH {
-        let mut next = Vec::new();
-        for index in level.clone() {
-            let Raised::Class(class) = &lineage[index] else {
-                continue;
-            };
-            if !seen.insert(class.clone()) {
-                continue;
-            }
-            let Some((file, id)) = facts.locate(class.as_str())? else {
-                continue;
-            };
-            for link in file
-                .links(id)
-                .iter()
-                .filter(|link| link.kind == LinkKind::Extends)
-            {
-                next.push(match &link.to {
-                    LinkTarget::Project(base) => Raised::Class(base.clone()),
-                    LinkTarget::Library(module) => {
-                        Raised::Outside(Outcome::Library, module.clone(), link.text.clone())
-                    }
-                    LinkTarget::Builtin(module) => {
-                        Raised::Outside(Outcome::Builtin, module.clone(), link.text.clone())
-                    }
-                    LinkTarget::Unknown(_) => continue,
-                });
-            }
-        }
-        if next.is_empty() {
-            break;
-        }
-        let start = lineage.len();
-        lineage.extend(next);
-        level = start..lineage.len();
-    }
-    Ok(lineage)
-}
-
-/// Whether `except` part `handler` is bare: its head (the clause) covers only its keyword.
-fn is_bare_except(file: &FileTree, handler: u32) -> bool {
-    file.node(handler)
-        .head
-        .is_some_and(|head| head.len() as usize == Form::Except.as_str().len())
-}
-
-/// Whether handler part `handler` of `file` catches a raise whose lineage is `lineage`.
-fn catches(file: &FileTree, handler: u32, lineage: &[Raised]) -> bool {
-    match file.node(handler).form {
-        Form::Catch => true,
-        Form::Except if is_bare_except(file, handler) => true,
-        Form::Except => file
-            .links(handler)
-            .iter()
-            .filter(|link| link.kind == LinkKind::Types)
-            .any(|link| lineage.iter().any(|raised| names(link, raised))),
-        _ => false,
-    }
-}
 
 /// The first `except` or `catch` part that catches a raise of `lineage` at node `id` of
 /// `file`: walking up to `scope` (the definition the code belongs to), around the `body` of
@@ -184,15 +56,6 @@ fn handler_for(file: &FileTree, id: u32, scope: u32, lineage: &[Raised]) -> Opti
         child = parent;
     }
     None
-}
-
-/// The value expression of exit `exit`, when it is exactly a call: its child flagged
-/// `exit_value`.
-fn exit_call(file: &FileTree, exit: u32) -> Option<u32> {
-    file.children(exit)
-        .iter()
-        .copied()
-        .find(|&child| file.kind(child) == NodeKind::Call && file.node(child).flags.contains(Flag::ExitValue))
 }
 
 /// A raise as it reads: what it constructs, and its value as written.

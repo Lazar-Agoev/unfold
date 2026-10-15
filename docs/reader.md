@@ -31,6 +31,12 @@ hashed and compared with the hash its facts came from. Only matching bytes are d
 Otherwise the view says the source changed or is missing, without text: old ranges are never applied to new bytes.
 Stored ranges are UTF-8 bytes; everything rendered uses UTF-16 offsets.
 
+Each project keeps a `SourceCache`: the sources the drawings verified most recently, by path and hash, within 32 MiB
+of text. While a file changes on disk and the compile hasn't caught up, or while it doesn't parse (its last good
+facts keep the hash they came from), a drawing's words come from the text kept for the facts' hash, which is exactly
+the text the facts came from. Nothing is kept across a restart: a file that changed while the app was closed has no
+kept text until the reopen check recompiles it.
+
 ## The drawn flow
 
 [drawing/](../crates/unfold-reader/src/drawing/mod.rs) holds the one drawing function. `draw` turns four inputs into a
@@ -46,14 +52,15 @@ flow. Nothing else decides what is drawn.
 
 | Part | Carries |
 | --- | --- |
-| Header | Key, kind, form, label, the page's name, signature, the doc as a description from code, path and line, `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
+| Header | Key, kind, form, label, the page's name, signature, the doc as a description from code, path and line, its file's `state` (`current`, `changed` since the last compile, or `doesNotParse`), `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
 | Steps | In the order they run: call boxes, thin rows, decision/loop/try/with frames whose parts are lanes, exits, combined steps, proposed steps. Each has an id and a route state |
-| Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks, its inset when opened, its actions |
-| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written and the project calls in it), the classes a handler catches, `fallsThrough`, its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
+| Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks (each with the property it is written as and its signature), its inset when opened, its actions |
+| Frame | Key, form, the page's name, its header as written, the boxes written in the header and its unknown calls outside them (`headerUnknown`), `binds`, its lanes, its actions |
+| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written, the boxes written in it, and its unknown calls outside them), the classes a handler catches, `fallsThrough`, its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
 | Exit | Form, the call that is its value or its value as written (`RETURN mark_failed`, `RETURN order`), a `break`/`continue` target |
 | Combined step | The page's id, title, members, collapsed, the blocks it `holds` while collapsed, its lines, counts of conditions, loops, library and unknown calls, and its project calls with their targets (arrows leave a collapsed step from its box) |
 | Gap tick | On the route into a step, or after a body's last step: how many lines, which lines, and the hidden control blocks that start in it |
-| Routes | `from` an id `to` a step, End, or the caller, `through` any `finally` lanes, and what a `break`/`continue` leaves |
+| Routes | `from` an id `to` a step, End, or the caller, `through` any `finally` lanes, and what a `break`/`continue` leaves (nothing when a `finally` that always exits ends it there) |
 
 ### What is drawn
 
@@ -63,19 +70,26 @@ flow. Nothing else decides what is drawn.
 2. **Thin rows.** Consecutive library and unknown calls of one body fold into one row that lists them and counts its
    unknowns; each unknown keeps its `?`.
 3. **Builtin calls are hidden.** With Show all calls they join the thin rows.
-4. **Callbacks** are rows under the call they are passed to, and open in place like a call.
+4. **Callbacks** are rows under the call they are passed to, labeled by the property they are written as
+   (`onSuccess`) and their signature, and open in place like a call.
 5. **Frames.** A decision draws a diamond per test, its parts as lanes; a loop is a frame titled by its header; a try
    is TRY with EXCEPT (or CATCH) sections titled by their clause, then ELSE and FINALLY; a with is a frame titled by
-   its header. Project calls written in a test, a header, or a handler's clause are drawn on it (a clause's as chips
-   in its section title), not as steps.
-6. **A control block with nothing drawn inside is hidden.** Its code stays in the code panel and in any combined step
-   that spans it, and its gap tick names it (`⋯ 3 lines · for loop`).
+   its header. Project calls written in a test, a header, or a handler's clause are drawn on it as chips (a clause's
+   in its section title), not as steps, each with the library and unknown calls written inside it. The test's or
+   header's other unknown calls are listed after them, each with its `?`; its library and builtin calls stay its
+   written text, with Show all calls too.
+6. **A control block with nothing drawn inside is hidden,** unless the overlay puts something in it (a proposal, a
+   name, or a combined step on a block written in it), which draws it as a frame. A hidden block's code stays in the
+   code panel and in any combined step that spans it, and its gap tick names it (`⋯ 3 lines · for loop`). A proposal
+   after it sits after that tick.
 7. **Gap ticks** count the lines between steps that no drawn step's statement covers, skipping blank and comment
-   lines. A tick sits on a route and takes no layout of its own.
-8. **Exits** are terminals labeled by their value.
+   lines. Comments are the language's highlighter's comment tokens, so a comment mark inside a string is code, and a
+   line is one of the file's lines as its language ends them. A tick sits on a route and takes no layout of its own.
+8. **Exits** are terminals labeled by their value, with the library and unknown calls written inside it.
 
-Without the verified source of a file, its steps have no texts (tests, headers, values, signatures, docs) and no gap
-ticks.
+The words (tests, headers, values, signatures, docs) and gap ticks come from the text the facts came from: the file's
+own, or the text the [source cache](#verified-source) kept while the file changed or doesn't parse, and the header's
+`state` says which. With no such text, its steps have no words and no gap ticks.
 
 ### Routes
 
@@ -87,13 +101,14 @@ ticks.
 | Loop | `each` into the body (through a comprehension's filter); `next` back to the header from the body's end and `continue`; `break` after the loop; `done` to `else`, then after |
 | `try` | Dashed `onError` routes from the body to each handler, a possibility rather than a claim. The body's end goes to `else`, then `finally`, then after |
 | `with` | Header, body, then after |
-| Exits | `return` to End and `raise` to the nearest handlers or the caller, each through every enclosing `finally`; `break`/`continue` to their target |
+| Exits | `return` to End; `raise` to the first handler proven to catch it ([Contracts](#contracts)) of the nearest enclosing `try` that has one, else the caller; `break`/`continue` to their target; each through every `finally` between. A `finally` that never reaches its own end (it always returns, raises, breaks, or continues) replaces the transfer: an exit through it ends in it, and its own exit goes on |
 | Combined step | Wherever its blocks went: a collapsed step takes over the routes that leave it, so combining never makes a dead end |
 
 Every step and lane has a **route state**: `reached`; `unreachable`, drawn dimmed and marked "never runs" (code after
 an early `return`, or after an always-exiting `finally`); or `truncated`, drawn with a dashed "may continue" route
-(nesting past the depth limit, a TypeScript labeled plain block). Both are facts about the code: validation never
-checks routes, so legal code never fails a compile.
+(nesting past the depth limit, a TypeScript labeled plain block). A truncated step, part, or definition keeps its
+other routes and may continue to where its end goes: the route leaves the step, the part, or the definition's start
+(into End). Both are facts about the code: validation never checks routes, so legal code never fails a compile.
 
 ## Overlay rules
 
@@ -103,7 +118,7 @@ each block allows (its `actions`), and saving a board checks them again.
 | Overlay | Rule |
 | --- | --- |
 | Name | Any block. A name replaces the code name, which stays beside it. Naming a library or unknown call lifts it out of its thin row; an unknown call keeps its `?` |
-| Combine | Consecutive steps of one body, or exactly one whole control block. A page's combined steps never overlap or nest. A combined step covers its blocks' statements and the code between them |
+| Combine | Consecutive steps of one body, or exactly one whole control block. A page's combined steps never overlap or nest. A combined step covers its blocks' statements and the code between them: a step written between its blocks later joins it, is drawn inside it, and sends it to review |
 | Propose | After a step of a body, or at the start of a definition's or part's body |
 | Open in place | A project call or a callback; a path of 1 to 3 such blocks, each inside what the previous one opens; at most 64 paths per card |
 
@@ -119,12 +134,16 @@ MCP server never lays out flows itself:
 - `code_text` prints a definition's compiled tree, for `read_code`;
 - `flow_text` prints a drawn flow, for `shape_card` results and `read_page`.
 
-Every line ends with the full keys of its blocks after `key=`. Each result also carries a label → key map, so the
+Every line ends with the full keys of its blocks after `key=`, the calls listed on a box, a chip, an exit's value,
+or in a thin row included, in the order they are printed. Each result also carries a label → key map, so the
 server turns an agent's short label (`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or
-splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `⊞`/`⊟` a
-collapsed or open combined step, `⋯` a gap tick, `↳` a callback, `+ PROPOSED` a proposal, `· never runs` and
-`· truncated` for route states. A handler's line is its clause, then the clause's project calls:
-`ON ERROR → except errors() · ▸ errors`. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
+splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
+collapsed or open combined step, `⋯` a gap tick, `↳` a callback (`↳ callback onSuccess () =>`: the property it is written as, then its
+signature), `+ PROPOSED` a proposal, `· never runs` and
+`· truncated` for route states (a truncated definition's on its first line). A handler's line is its clause, then
+the clause's project calls and unknown calls: `ON ERROR → except errors() · ▸ errors`. An exit says where it goes, after a
+`finally →` for each `finally` it passes: `End`, `the caller`, the handler that catches it (`RAISE ValueError →
+except ValueError`), `after the loop`, `next`, or `finally` when a `finally` that always exits ends it. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
 shortened:
 
 ```text
@@ -138,6 +157,10 @@ shortened:
   · res.status().json ?   key=…#createOrder/call:res.status().json
 ( End )
 ```
+
+A flow whose file isn't the one its facts came from says so on its first line, in the code panel's words:
+`( place_order ) · Changed since the last compile`, or `· Doesn't parse`; `code_text` says the same after the
+definition's lines. `code_text` aligns its labels up to 40 characters, and a longer one is followed by one space.
 
 ## The code panel's model
 
@@ -197,8 +220,12 @@ pairing is what the engine proved, and a missing annotation shows missing.
   fills none; unfilled parameters only when the pairings prove them), what returns (the written return type, or the
   class a construction makes) and where the value lands (`binds`, an exit, an outer call, or nowhere), and what the
   callee raises, with the caller's enclosing handler that catches each. A TypeScript `catch` or a bare `except`
-  catches everything; otherwise a handler catches through its `types` links or project `extends` chains, or a library
-  class of the same module and name.
+  catches everything; otherwise a handler catches a raise whose class derives from a class its `types` links name:
+  through project `extends` chains (at most 8 levels), and through the bases typeshed writes for Python's builtin
+  exception classes, so `except Exception` catches `ValueError` and `except LookupError` a project class deriving from
+  `KeyError`. A library class matches by its module and name; a raise of no proven class is caught only by a handler
+  that catches everything. The table of builtin exceptions is generated with the stubs (`cargo xtask
+  gen-py-stubs`). The drawing routes each `raise` and `throw` by the same rule, reading the drawn file's classes.
 - **A class or type**: its written members, a type alias's aliased type, its use count, and inherited members. These
   follow `extends` only (never `implements`), depth first in written order, each base once, at most 8 levels; a
   library or unknown base is a group without members. Generic members stay as written.
@@ -306,12 +333,13 @@ allows:
 | Health | About |
 | --- | --- |
 | Missing | A card's, name's, or proposal's key, or a resource card's anchor or type, isn't in the graph |
-| Outdated | The code under a description, name, combined step, resource card, or connection changed since it was signed |
+| Outdated | The code under a description, name, combined step, resource card, or connection changed since it was signed, or a step written between a combined step's blocks joined it |
 | Review | A guarded reference changed kind or owner, or a position-based one changed code |
-| Broken combined step | A combined step no longer follows the overlay rules |
+| Broken combined step | A combined step no longer follows the overlay rules: one of its blocks is gone, they are out of written order or in different bodies, or it overlaps another combined step |
 | Broken link | A connection's end, step, carried type, or anchor is gone |
 
-Repairs are explicit: Reconnect, Resign, Accept, Remove, and Remove description. A save refuses a new missing
+Repairs are explicit: Reconnect, Resign, Accept, Remove, and Remove description. Resigning a combined step also records
+the steps that joined it as its blocks. A save refuses a new missing
 reference, broken combined step, held reference, or broken link, and anything that breaks the overlay rules. Health
 is cached per board, keyed by the board file's revision, the graph's compile, and a hash of its apps and entrances,
 and refreshed after the graph or the entrances change (an `[[app]]` edit compiles nothing); it feeds Home's Health

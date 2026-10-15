@@ -530,9 +530,13 @@ export type Callback = {
  */
 key: Key, 
 /**
- * Its label: `callback to <callee>`.
+ * Its label: the property it is written as, else `callback to <callee>`.
  */
 label: string, 
+/**
+ * The property it is written as: `onSuccess` in `useMutation({ onSuccess: … })`.
+ */
+property?: string, 
 /**
  * The overlay's name.
  */
@@ -1630,6 +1634,11 @@ header?: string,
  */
 headerCalls: Array<CallBox>, 
 /**
+ * The unknown calls written in the header outside those boxes, in the order they run:
+ * listed after it, each with its `?`.
+ */
+headerUnknown: Array<OtherCall>, 
+/**
  * What a ternary's or comprehension's value is assigned to.
  */
 binds?: string, 
@@ -1641,6 +1650,13 @@ lanes: Array<Lane>,
  * What the overlay may do to it.
  */
 actions: Actions, };
+
+/**
+ * Whether a flow's file is the one its facts came from: "Changed since the last compile" or
+ * "Doesn't parse", as the code panel says it. The words then come from the text kept from when
+ * the file last verified.
+ */
+export type FlowState = "current" | "changed" | "doesNotParse";
 
 /**
  * The agent text of a drawn flow.
@@ -1853,6 +1869,10 @@ description?: string,
  * The definition's file.
  */
 path: RepoPath, 
+/**
+ * Whether the file is the one the words come from.
+ */
+state: FlowState, 
 /**
  * Its first line.
  */
@@ -2310,7 +2330,7 @@ line?: number, };
 
 /**
  * A library, unknown, or (with Show all calls) builtin call: in a thin row, listed on a box,
- * or run when a definition is defined.
+ * run when a definition is defined, or an unknown call listed after a test or header.
  */
 export type OtherCall = { 
 /**
@@ -3677,7 +3697,12 @@ text?: string,
 /**
  * The project calls (and other boxes) written in it, in the order they run.
  */
-calls: Array<CallBox>, };
+calls: Array<CallBox>, 
+/**
+ * The unknown calls written in it outside those boxes, in the order they run: listed after
+ * it, each with its `?`.
+ */
+unknown: Array<OtherCall>, };
 
 /**
  * Consecutive library and unknown calls of one body, in one row.

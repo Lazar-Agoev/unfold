@@ -8,6 +8,7 @@
       "label": "create_order",
       "signature": "async def create_order(request: Request) -> JSONResponse",
       "path": "src/orders_playground/routes/orders.py",
+      "state": "current",
       "line": 24,
       "async": true,
       "generator": false,
@@ -74,6 +75,7 @@
           "key": "src/orders_playground/routes/orders.py#create_order/if[0]",
           "form": "if",
           "headerCalls": [],
+          "headerUnknown": [],
           "lanes": [
             {
               "id": 3,
@@ -87,7 +89,28 @@
               "state": "reached",
               "test": {
                 "text": "request.headers.get(\"prefer\") == \"respond-async\"",
-                "calls": []
+                "calls": [],
+                "unknown": [
+                  {
+                    "key": "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get",
+                    "callee": "request.headers.get",
+                    "form": "call",
+                    "to": {
+                      "outcome": "unknown",
+                      "reason": "unknown_receiver",
+                      "note": "receiver type unknown"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "role": "test",
+                    "inside": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": false
+                    }
+                  }
+                ]
               },
               "types": [],
               "fallsThrough": false,

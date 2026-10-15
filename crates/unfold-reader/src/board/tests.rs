@@ -1500,34 +1500,114 @@ fn position_based_references_whose_code_changed_are_held_for_review() {
     );
 }
 
+/// A call written between two blocks of a combined step joins the step, which goes to review:
+/// Resign signs it again over the code now, with the call among its blocks.
+#[test]
+fn a_call_written_inside_a_combined_step_joins_it_and_sends_it_to_review() {
+    const RECORD: &str = "main.ts#run/call:record";
+    let (dir, graph) = folder(SOURCE);
+    let board = run_board_with(|page| {
+        let mut pair = combined("pair", &[IF0, LOG]);
+        pair.description = Some(unsigned("Log what was found"));
+        page.combined.push(pair);
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+
+    let text = SOURCE.replace(
+        "  console.log('done');",
+        "  record('placing');\n  console.log('done');",
+    );
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    use RepairKind::{Remove, RemoveDescription, Resign};
+    assert_eq!(
+        items(&health),
+        [(
+            HealthKind::Outdated,
+            Target::Combined("pair".to_owned()),
+            None,
+            &[Resign, RemoveDescription, Remove][..]
+        )]
+    );
+    assert_eq!(
+        health.items[0].message,
+        "Code changed since these steps were combined"
+    );
+    assert_eq!(health.label().as_deref(), Some("1 outdated"));
+    // Review never refuses a save.
+    let (kept, _) = save(saved.clone(), None, &edited).unwrap();
+    assert_eq!(kept.pages[0].combined, saved.pages[0].combined);
+
+    let mut board = saved;
+    repair(
+        &mut board,
+        &edited,
+        &Repair::Resign(Target::Combined("pair".to_owned())),
+    )
+    .unwrap();
+    let pair = &board.pages[0].combined[0];
+    assert_eq!(pair.members, [key(IF0), key(RECORD), key(LOG)]);
+    let span = edited.span_signature(IF0, LOG);
+    assert!(span.is_some());
+    assert_eq!(pair.signature, span);
+    assert_eq!(pair.description.as_ref().unwrap().signature, span);
+    assert!(board_health(&board, &edited).is_healthy());
+    // The call that joined it is guarded like the rest once the board saves.
+    let (resaved, health) = save(board, None, &edited).unwrap();
+    assert!(health.is_healthy(), "{:#?}", health.items);
+    assert_eq!(
+        resaved.pages[0].guard(RECORD),
+        current_guard(&edited, RECORD).as_ref()
+    );
+}
+
+/// A combined step breaks only when its blocks stop following the rules: a block is gone, they
+/// are no longer in written order, or a block written between them is another combined step's.
 #[test]
 fn combined_steps_break_when_their_blocks_stop_following_the_rules() {
     let (dir, graph) = folder(SOURCE);
     let board = run_board_with(|page| {
-        page.combined.push(combined("pair", &[LOAD_CALL, IF0]));
+        page.combined.push(combined("pair", &[IF0, LOG]));
         page.combined.push(combined("tail", &[RETURN0]));
     });
     let (saved, _) = save(board, None, &graph).unwrap();
+    let broken = |health: &Health, id: &str| {
+        health
+            .items
+            .iter()
+            .find(|item| {
+                item.kind == HealthKind::BrokenCombined && item.target == Target::Combined(id.to_owned())
+            })
+            .cloned()
+            .unwrap_or_else(|| panic!("`{id}` is broken: {:#?}", health.items))
+    };
 
-    // A call written between the two members: they are no longer consecutive.
-    let text = SOURCE.replace("  if (first)", "  record(first);\n  if (first)");
+    // Its two blocks, written the other way round.
+    let text = SOURCE.replace(
+        "  if (first) { console.log(first); }\n  console.log('done');\n",
+        "  console.log('done');\n  if (first) { console.log(first); }\n",
+    );
     let edited = recompiled(dir.path(), &text);
     let health = board_health(&saved, &edited);
-    let broken = health
-        .items
-        .iter()
-        .find(|item| item.kind == HealthKind::BrokenCombined)
-        .unwrap();
-    assert_eq!(broken.target, Target::Combined("pair".to_owned()));
+    let item = broken(&health, "pair");
     assert!(
-        broken.message.contains("doesn't come right after"),
+        item.message.contains("doesn't come right after"),
         "{}",
-        broken.message
+        item.message
     );
-    assert_eq!(broken.repairs, [RepairKind::Remove]);
+    assert_eq!(item.repairs, [RepairKind::Remove]);
     assert_eq!(health.label().as_deref(), Some("1 broken combined step"));
-    // Removing it keeps its blocks.
+    // Resign can't sign it; removing it keeps its blocks.
     let mut board = saved.clone();
+    assert!(matches!(
+        repair(
+            &mut board,
+            &edited,
+            &Repair::Resign(Target::Combined("pair".to_owned()))
+        ),
+        Err(BoardError::Problem { .. })
+    ));
+    assert_eq!(board, saved, "a refused repair changes nothing");
     repair(
         &mut board,
         &edited,
@@ -1537,26 +1617,40 @@ fn combined_steps_break_when_their_blocks_stop_following_the_rules() {
     assert_eq!(board.pages[0].combined.len(), 1);
     assert!(board_health(&board, &edited).is_healthy());
 
-    // A member that is gone breaks it too, and Reconnect is offered for that member.
+    // A block that is gone breaks it too, and Reconnect is offered for that block.
     let text = SOURCE.replace(
         "  return first;\n}\nexport function load",
         "  console.log(first);\n}\nexport function load",
     );
     let edited = recompiled(dir.path(), &text);
     let health = board_health(&saved, &edited);
-    let broken = health
-        .items
-        .iter()
-        .find(|item| item.target == Target::Combined("tail".to_owned()))
-        .unwrap();
+    let item = broken(&health, "tail");
     assert_eq!(
-        (broken.kind, broken.key.as_deref(), broken.repairs.as_slice()),
-        (
-            HealthKind::BrokenCombined,
-            Some(RETURN0),
-            &[RepairKind::Reconnect, RepairKind::Remove][..]
-        )
+        (item.key.as_deref(), item.repairs.as_slice()),
+        (Some(RETURN0), &[RepairKind::Reconnect, RepairKind::Remove][..])
     );
+
+    // Another combined step's block moved between two of its blocks: the two overlap.
+    let board = run_board_with(|page| {
+        page.combined.push(combined("head", &[LOAD_CALL, IF0]));
+        page.combined.push(combined("done", &[LOG]));
+    });
+    let (saved, _) = save(board, None, &graph).unwrap();
+    let text = SOURCE.replace(
+        "  if (first) { console.log(first); }\n  console.log('done');\n",
+        "  console.log('done');\n  if (first) { console.log(first); }\n",
+    );
+    let edited = recompiled(dir.path(), &text);
+    let health = board_health(&saved, &edited);
+    for id in ["head", "done"] {
+        let item = broken(&health, id);
+        assert!(
+            item.message.contains("is in two combined steps"),
+            "{}",
+            item.message
+        );
+        assert_eq!(item.repairs, [RepairKind::Remove]);
+    }
 }
 
 #[test]

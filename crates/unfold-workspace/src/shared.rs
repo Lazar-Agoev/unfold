@@ -31,6 +31,7 @@ use unfold_engine::entrances::Fixes;
 use unfold_engine::settings::AppEntry;
 use unfold_engine::{CancelToken, Engine, ProblemKind};
 use unfold_reader::ReaderCache;
+use unfold_reader::source::SourceCache;
 use unfold_store::ReadPool;
 
 use crate::compile::CompileJob;
@@ -185,6 +186,9 @@ pub(crate) struct Shared {
     pub(crate) problems: Mutex<Problems>,
     pub(crate) readers: RwLock<Option<ReadPool>>,
     pub(crate) reader_cache: ReaderCache,
+    /// The sources the drawings verified most recently, whose text a card keeps while its file
+    /// changes or doesn't parse.
+    pub(crate) sources: SourceCache,
     pub(crate) local_state: Mutex<LocalState>,
     /// Held across a settings edit's read, edit, and write, so concurrent edits (the window and
     /// an agent) apply one after the other instead of the later write dropping the earlier edit.
@@ -232,6 +236,7 @@ impl Shared {
             problems: Mutex::new(Problems::default()),
             readers: RwLock::new(None),
             reader_cache: ReaderCache::new(),
+            sources: SourceCache::new(),
             local_state: Mutex::new(local_state),
             settings_edit: Mutex::new(()),
             own_writes: OwnWrites::default(),

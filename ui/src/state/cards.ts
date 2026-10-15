@@ -255,9 +255,11 @@ function sequenceBlocks(sequence: Sequence): DrawnBlock[] {
             ...gap,
             block(step.key, step.form, step.header ?? step.form, step.name, step.actions),
             ...step.headerCalls.flatMap(callBlocks),
+            ...otherCalls(step.headerUnknown),
             ...step.lanes.flatMap((lane) => [
               laneBlock(lane),
               ...(lane.test?.calls ?? []).flatMap(callBlocks),
+              ...otherCalls(lane.test?.unknown ?? []),
               ...sequenceBlocks(lane.steps),
             ]),
           ];
