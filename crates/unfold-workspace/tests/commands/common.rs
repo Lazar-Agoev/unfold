@@ -111,10 +111,7 @@ impl Harness {
         let dir = tempfile::tempdir().expect("temp dir");
         let base = std::fs::canonicalize(dir.path()).expect("canonical");
         let host = Host::with_options(options);
-        let init = json!({
-            "appDataDir": base.join("app"),
-            "logsDir": base.join("logs"),
-        });
+        let init = json!({ "appDataDir": base.join("app") });
         host.init(&init.to_string()).expect("init");
         let sink = Arc::new(Recorder::default());
         let recorder = Arc::clone(&sink);

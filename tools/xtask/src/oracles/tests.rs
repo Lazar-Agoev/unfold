@@ -397,6 +397,10 @@ fn configuration_files_are_checked() {
     );
     let twice = "[[floor]]\ncorpus = \"a\"\nlanguage = \"python\"\nmatched = 1\nresolved = 3\n";
     assert!(Floors::parse(&format!("{twice}{twice}")).is_err());
+    assert!(
+        Floors::parse(&format!("{twice}poc = \"1 of 3\"\n")).is_err(),
+        "a floor holds only its counts"
+    );
     assert!(Justified::parse("[[justified]]\ncorpus = \"a\"\nlanguage = \"python\"\nsite = \"s\"\ntarget = \"t\"\nreason = \" \"\n").is_err());
     assert!(
         OracleCorpora::parse("[[corpus]]\nname = \"a\"\nlanguages = [\"typescript\"]\n").is_err(),

@@ -2,9 +2,9 @@
 
 use unfold_core::testkit::sample::shop;
 use unfold_core::{ContentHash, RepoPath};
-use unfold_store::{FactsStatus, NewFacts, Store, StoreConfig};
+use unfold_store::{FactsStatus, NewFacts, Store};
 
-use crate::common::{ENGINE, Prepared, temp_store};
+use crate::common::{Prepared, temp_store};
 
 fn hash(text: &str) -> ContentHash {
     ContentHash::of(text.as_bytes())
@@ -92,63 +92,6 @@ fn keeps_the_current_and_last_good_entries() {
     // Other paths are untouched.
     assert!(cached(&store, &other, "b1", "s").is_some());
     assert_eq!(store.readers.get().unwrap().stats().unwrap().facts_entries, 2);
-}
-
-#[test]
-fn loads_the_facts_the_stored_graph_was_built_from() {
-    let dir = tempfile::tempdir().unwrap();
-    let db = dir.path().join("graph.sqlite");
-    let mut store = Store::open(&db, &StoreConfig::new(ENGINE)).unwrap();
-    let prepared = Prepared::new(shop().build());
-    store.writer.commit(&prepared.first_compile()).unwrap();
-    let settings = hash("settings");
-    let mut blobs = Vec::new();
-    for file in &prepared.graph.files {
-        blobs.push((
-            file.file.path.clone(),
-            file.file.hash.unwrap(),
-            format!("facts of {}", file.file.path),
-        ));
-    }
-    let entries: Vec<NewFacts<'_>> = blobs
-        .iter()
-        .map(|(path, hash, facts)| NewFacts {
-            path,
-            hash: *hash,
-            settings_hash: settings,
-            status: FactsStatus::Parsed,
-            facts: facts.as_bytes(),
-        })
-        .collect();
-    store.writer.put_facts(&entries).unwrap();
-    // An entry for bytes the graph does not know is not loaded.
-    let stray = RepoPath::new("src/new.ts").unwrap();
-    put(&mut store, &stray, "new", "settings", FactsStatus::Parsed);
-    drop(store);
-
-    let store = Store::open(&db, &StoreConfig::new(ENGINE)).unwrap();
-    let loaded = store.writer.load_facts().unwrap();
-    let paths: Vec<&str> = loaded.iter().map(|entry| entry.path.as_str()).collect();
-    assert_eq!(
-        paths,
-        [
-            "shop/payments.py",
-            "shop/service.py",
-            "shop/store.py",
-            "src/orders.ts"
-        ]
-    );
-    assert_eq!(loaded[3].facts, b"facts of src/orders.ts");
-    assert!(
-        loaded
-            .iter()
-            .all(|entry| entry.status == FactsStatus::Parsed && entry.settings_hash == settings)
-    );
-    drop(store);
-
-    // Another engine sees nothing: the database is rebuilt.
-    let store = Store::open(&db, &StoreConfig::new("engine-2")).unwrap();
-    assert!(store.writer.load_facts().unwrap().is_empty());
 }
 
 #[test]

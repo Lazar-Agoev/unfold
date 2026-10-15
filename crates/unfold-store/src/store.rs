@@ -55,8 +55,6 @@ pub enum RecreateReason {
     },
     /// It is damaged, not a database, or not an Unfold database.
     Corrupt,
-    /// The caller asked for a new database ([`Store::recreate`]).
-    Requested,
 }
 
 /// An open database: its writer, its readers, and what opening found.
@@ -90,12 +88,6 @@ impl Store {
             Err(error) if error.is_corrupt() => Self::create_new(path, config, RecreateReason::Corrupt),
             Err(error) => Err(error),
         }
-    }
-
-    /// Discards whatever is at `path` and creates a new, empty database: for a cache found
-    /// damaged after opening. Every other connection to it must be closed first.
-    pub fn recreate(path: &Path, config: &StoreConfig) -> Result<Self> {
-        Self::create_new(path, config, RecreateReason::Requested)
     }
 
     fn create_new(path: &Path, config: &StoreConfig, reason: RecreateReason) -> Result<Self> {

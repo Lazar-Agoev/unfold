@@ -1,9 +1,10 @@
 //! The writer's in-memory mirror of the `keys` table and of file IDs, so that writes never
 //! query per key or per file.
 //!
-//! IDs are assigned by the mirror (one more than the largest ID ever assigned) and inserted
-//! with the row. Everything added during a transaction is journaled: if the transaction rolls
-//! back, the mirror forgets those entries, so it always equals the committed tables.
+//! IDs are assigned by the mirror (one more than the largest ID it loaded or assigned) and
+//! inserted with the row. Everything added or removed during a transaction is journaled: if the
+//! transaction rolls back, the mirror undoes those changes, so it always equals the committed
+//! tables.
 
 use rusqlite::{CachedStatement, Connection};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -34,6 +35,7 @@ struct Journal {
 #[derive(Debug)]
 enum Op {
     AddKey(Key),
+    RemoveKey(Key, i64),
     AddFile(RepoPath),
     RemoveFile(RepoPath, i64),
 }
@@ -100,6 +102,9 @@ impl Mirror {
                 Op::AddKey(key) => {
                     self.keys.remove(key.as_str());
                 }
+                Op::RemoveKey(key, id) => {
+                    self.keys.insert(key, id);
+                }
                 Op::AddFile(path) => {
                     self.files.remove(path.as_str());
                 }
@@ -113,7 +118,7 @@ impl Mirror {
         self.checkpoint();
     }
 
-    /// The ID of `key`, if it was ever interned.
+    /// The ID of `key`, if it is interned.
     pub(crate) fn key_id(&self, key: &str) -> Option<i64> {
         self.keys.get(key).copied()
     }
@@ -130,6 +135,13 @@ impl Mirror {
         self.keys.insert(key.clone(), id);
         self.journal.ops.push(Op::AddKey(key.clone()));
         Ok(id)
+    }
+
+    /// Forgets `key`, whose row the caller deleted.
+    pub(crate) fn remove_key(&mut self, key: &str) {
+        if let Some((key, id)) = self.keys.remove_entry(key) {
+            self.journal.ops.push(Op::RemoveKey(key, id));
+        }
     }
 
     /// The ID of the file at `path`, if stored.

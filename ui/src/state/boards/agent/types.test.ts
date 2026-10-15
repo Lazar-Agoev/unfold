@@ -39,7 +39,6 @@ function typeModel(key: Key): CardView {
         state: "current",
         line: 1,
         async: false,
-        generator: false,
         definedWith: [],
         imports: [],
         actions: { after: false, start: false, open: false },
@@ -117,7 +116,7 @@ beforeEach(() => {
         }
         return found;
       },
-      relations: ({ key }) => ({ key, callers: [], callersTotal: 0, callersNext: null, outgoing: [], reachedFrom: [] }),
+      relations: ({ key }) => ({ key, callers: [], callersTotal: 0, outgoing: [], reachedFrom: [] }),
       save_board: (args) => boardState(P, ID, boardDocument(structuredClone(args.board.pages) as BoardDocument["pages"]), { revision: "r2" }),
     },
   });

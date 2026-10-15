@@ -1,10 +1,12 @@
-//! Inputs, metadata, and statistics.
+//! Inputs, metadata, and the row counts tests read.
 
 use unfold_core::Input;
 
 use super::Reader;
 use super::graph::collect;
-use super::rows::{IndexStats, StoredMeta};
+#[cfg(any(test, feature = "testkit"))]
+use super::rows::IndexStats;
+use super::rows::StoredMeta;
 use crate::codec;
 use crate::error::Result;
 use crate::schema::meta_key;
@@ -70,8 +72,9 @@ impl Reader {
         })
     }
 
-    /// Row counts and the database size, from one snapshot. Counting scans the tables, so this
-    /// isn't for every frame.
+    /// Row counts and the database size, from one snapshot, for tests: what a commit left in
+    /// every table.
+    #[cfg(any(test, feature = "testkit"))]
     pub fn stats(&self) -> Result<IndexStats> {
         self.snapshot(|reader| {
             let mut statement = reader.conn().prepare_cached(

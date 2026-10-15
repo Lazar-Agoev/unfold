@@ -115,7 +115,7 @@ fn a_folder_unfold_cant_write_into_is_refused() {
 }
 
 #[test]
-fn rows_reorder_expand_and_announce_themselves() {
+fn rows_expand_and_announce_themselves() {
     let harness = Harness::new("ts-orders", false);
     let mark = harness.sink.mark();
     let (python, _) = harness.add("py-orders", "py-orders");
@@ -125,23 +125,6 @@ fn rows_reorder_expand_and_announce_themselves() {
         ids(&changed[0]["workspace"]),
         [harness.project.clone(), python.clone()]
     );
-
-    let view = harness.ok(
-        1,
-        "reorder_projects",
-        json!({ "order": [python, harness.project] }),
-    );
-    assert_eq!(ids(&view), [python.clone(), harness.project.clone()]);
-    for bad in [
-        json!([python]),
-        json!([python, python]),
-        json!([python, harness.project, "p-nonenonen"]),
-    ] {
-        assert_eq!(
-            harness.code(1, "reorder_projects", json!({ "order": bad })),
-            "invalid_args"
-        );
-    }
 
     let mark = harness.sink.mark();
     assert_eq!(
@@ -153,7 +136,7 @@ fn rows_reorder_expand_and_announce_themselves() {
         Value::Null
     );
     let changed = harness.sink.events(mark, "workspace_changed");
-    assert_eq!(changed[0]["workspace"]["projects"][0]["expanded"], false);
+    assert_eq!(changed[0]["workspace"]["projects"][1]["expanded"], false);
     assert_eq!(harness.row(&python)["expanded"], false);
 }
 
@@ -262,14 +245,8 @@ fn the_workspace_comes_back_after_a_restart_resting() {
     assert_eq!(saved["projects"][0]["lastKnown"]["state"]["kind"], "current");
 
     let host = Host::with_options(options(false));
-    host.init(
-        &json!({
-            "appDataDir": harness.base.join("app"),
-            "logsDir": harness.base.join("logs"),
-        })
-        .to_string(),
-    )
-    .expect("init");
+    host.init(&json!({ "appDataDir": harness.base.join("app") }).to_string())
+        .expect("init");
     let after: Value = serde_json::from_str(
         &host
             .dispatch(1, 1, r#"{"command":"workspace","args":{}}"#)

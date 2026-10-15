@@ -168,21 +168,6 @@ fn an_empty_file_becomes_a_new_database() {
 }
 
 #[test]
-fn recreate_discards_everything() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("graph.sqlite");
-    let mut store = open(&path, ENGINE);
-    store
-        .writer
-        .commit(&Prepared::new(shop().build()).first_compile())
-        .unwrap();
-    drop(store);
-    let store = Store::recreate(&path, &StoreConfig::new(ENGINE)).unwrap();
-    assert_eq!(store.opened, Opened::Recreated(RecreateReason::Requested));
-    assert_eq!(file_count(&store), 0);
-}
-
-#[test]
 fn a_missing_directory_is_an_error_not_a_panic() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("absent").join("graph.sqlite");

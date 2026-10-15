@@ -41,7 +41,7 @@ function drawnCard(id: string, steps: number): CardView {
   return {
     type: "definition",
     flow: {
-      header: { key: `key-${id}`, kind: "function", form: "function", label: id, path: "src/app.ts", state: "current", line: 1, async: false, generator: false, definedWith: [], imports: [], actions },
+      header: { key: `key-${id}`, kind: "function", form: "function", label: id, path: "src/app.ts", state: "current", line: 1, async: false, definedWith: [], imports: [], actions },
       combinable: [],
       steps: { steps: Array.from({ length: steps }, (_, index) => row(index)) },
       routes: [],

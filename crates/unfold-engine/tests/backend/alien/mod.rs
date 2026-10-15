@@ -18,11 +18,12 @@ use unfold_core::highlight::{HighlightSpan, Highlighter, TokenClass};
 use unfold_core::validate::Violation;
 use unfold_core::vocab::{FileState, Language as LanguageId, LinkKind};
 use unfold_core::{File, FileGraph, Graph, Link, Node, RepoPath, Snapshot};
-use unfold_engine::links::{self, program_links};
+use unfold_engine::links::program_links;
 use unfold_engine::settings::{Settings, SettingsHash, SettingsHasher};
 use unfold_engine::validate::validate_graph;
 use unfold_engine::{
-    FactsSet, FileFacts, Language, Linked, Producer, ProgramFile, ProjectInputs, Resolver, SourceFailure,
+    BackendError, FactsSet, FileFacts, Language, Linked, Producer, ProgramFile, ProjectInputs, Resolver,
+    SourceFailure,
 };
 
 pub struct Alien;
@@ -202,14 +203,10 @@ impl Project {
         };
         let linked = alien.link(&program, &project_inputs);
         let resolver = Resolver::new(&program, linked.as_ref());
-        let mut resolved: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
-        // Resolving one file on this thread agrees with the parallel whole-program pass.
-        for (file, file_links) in &resolved {
-            assert_eq!(
-                &links::file_links(&resolver, *file).expect("file links"),
-                file_links
-            );
-        }
+        let mut resolved: BTreeMap<_, _> = program_links(&resolver, || Ok::<_, BackendError>(()))
+            .expect("links")
+            .into_iter()
+            .collect();
         let graphs: Vec<FileGraph> = program
             .iter()
             .map(|(id, entry)| {

@@ -10,7 +10,7 @@
 //!
 //! | Event | When |
 //! | --- | --- |
-//! | `workspace_changed` | A project row was added, removed, reordered, expanded or collapsed, or renamed |
+//! | `workspace_changed` | A project row was added, removed, expanded or collapsed, or renamed |
 //! | `project_state` | A project's row state changed (live ↔ resting included; not on every progress tick) |
 //! | `project_reset` | A project was removed: everything cached for it is stale |
 //! | `compile_progress` | A compile or update advanced (throttled) |
@@ -23,7 +23,6 @@
 //! | `config_changed` | `unfold.toml` changed |
 
 use serde::Serialize;
-use ts_rs::TS;
 
 use crate::commands::boards::BoardState;
 use crate::projects::{ProjectId, WorkspaceView};
@@ -45,7 +44,8 @@ pub trait EventSink: Send + Sync {
 pub const MAX_LISTED: usize = 2_000;
 
 /// One event. See the [module documentation](self).
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum WorkspaceEvent {
     /// The workspace's rows changed. The UI replaces its `workspace` query data with this view
@@ -149,7 +149,8 @@ pub enum WorkspaceEvent {
 }
 
 /// What an open board's file holds after an outside change (`board_reloaded`).
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReloadedFile {
     /// A valid board, which the board's session took: the board as the window now shows it.

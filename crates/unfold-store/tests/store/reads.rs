@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use unfold_core::testkit::sample::shop;
-use unfold_core::vocab::{Form, Language, LinkKind, MemberKind, Reason};
-use unfold_core::{Graph, Key, LinkTarget, Pairing};
+use unfold_core::vocab::{Form, Language, LinkKind, Reason};
+use unfold_core::{Graph, Key, LinkTarget};
 use unfold_store::{Cursor, IncomingLink, Reader};
 
 use crate::common::{Prepared, temp_store};
@@ -27,7 +27,8 @@ fn committed() -> (tempfile::TempDir, unfold_store::Store, Prepared) {
     (dir, store, prepared)
 }
 
-/// Every item of a paged query, `limit` at a time, checking that no item repeats.
+/// Every item of a paged query, `limit` at a time, checking that no item repeats. Each cursor
+/// goes through its text, as it crosses IPC.
 fn all_pages(
     mut query: impl FnMut(Option<&Cursor>) -> unfold_store::Page<IncomingLink>,
 ) -> (Vec<IncomingLink>, usize) {
@@ -47,7 +48,11 @@ fn all_pages(
             items.push(item);
         }
         match page.next {
-            Some(next) => after = Some(next),
+            Some(next) => {
+                let text = next.to_string();
+                assert_eq!(Cursor::parse(&text).as_ref(), Some(&next), "{text}");
+                after = Cursor::parse(&text);
+            }
             None => return (items, pages),
         }
     }
@@ -119,44 +124,6 @@ fn nodes_children_and_files() {
 }
 
 #[test]
-fn typed_records_by_node() {
-    let (_dir, store, _) = committed();
-    let reader = store.readers.get().unwrap();
-
-    let charge = reader.typed_records("shop/payments.py#charge_card").unwrap();
-    let names: Vec<_> = charge
-        .parameters
-        .iter()
-        .map(|parameter| parameter.name.as_deref().unwrap())
-        .collect();
-    assert_eq!(names, ["card", "amount"]);
-    assert!(charge.members.is_empty() && charge.arguments.is_empty());
-
-    let call = reader
-        .typed_records("shop/store.py#mark_failed/call:save_order")
-        .unwrap();
-    assert_eq!(call.arguments.len(), 1);
-    assert_eq!(call.arguments[0].pairing, Some(Pairing::Parameter(0)));
-    assert!(call.parameters.is_empty() && call.signatures.is_empty());
-
-    let order = reader.typed_records(ORDER).unwrap();
-    let members: Vec<_> = order
-        .members
-        .iter()
-        .map(|member| (member.name.as_deref().unwrap(), member.kind))
-        .collect();
-    assert_eq!(
-        members,
-        [("id", MemberKind::Property), ("total", MemberKind::Property)]
-    );
-
-    assert_eq!(
-        reader.typed_records("shop/absent.py#x").unwrap(),
-        Default::default()
-    );
-}
-
-#[test]
 fn callers_are_calls_and_passes_links_in_path_order() {
     let (_dir, store, _) = committed();
     let reader = store.readers.get().unwrap();
@@ -203,6 +170,19 @@ fn reverse_indexes_page_without_gaps_or_repeats() {
     assert_eq!((items.len(), pages), (2, 2));
     let (items, pages) = all_pages(|after| reader.callers(SAVE_ORDER, after, 2).unwrap());
     assert_eq!((items.len(), pages), (3, 2));
+}
+
+#[test]
+fn a_cursors_text_reads_back() {
+    for text in ["3:0:shop/store.py", "-1:7:src/a:b.ts", "0:0:"] {
+        assert_eq!(
+            Cursor::parse(text).map(|cursor| cursor.to_string()).as_deref(),
+            Some(text)
+        );
+    }
+    for text in ["", "3", "3:0", "x:0:a.py", "3:y:a.py", "1.5:0:a.py"] {
+        assert_eq!(Cursor::parse(text), None, "{text}");
+    }
 }
 
 #[test]
@@ -379,9 +359,10 @@ fn the_definition_catalog() {
     let (_dir, store, prepared) = committed();
     let reader = store.readers.get().unwrap();
 
-    let definitions = reader.definitions_in("shop/payments.py").unwrap();
+    let definitions = reader.definitions(None, 100).unwrap().items;
     let names: Vec<(&str, &str)> = definitions
         .iter()
+        .filter(|definition| definition.path.as_str() == "shop/payments.py")
         .map(|definition| (&*definition.label, &*definition.qualified_name))
         .collect();
     assert_eq!(

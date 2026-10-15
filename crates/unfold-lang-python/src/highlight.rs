@@ -191,7 +191,7 @@ fn header_ends_with_colon(tokens: &[(TokenKind, TextRange)], code: &[usize], pos
 
 #[cfg(test)]
 mod tests {
-    use unfold_core::highlight::spans_are_well_formed;
+    use unfold_core::testkit::spans_are_well_formed;
 
     use super::*;
 

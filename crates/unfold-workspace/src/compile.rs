@@ -5,13 +5,13 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use serde::Serialize;
-use ts_rs::TS;
 use unfold_engine::CancelToken;
 
 use crate::error::{Result, WorkspaceError};
 
 /// A progress report while compiling: `done` of `total` items of `stage`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CompileProgress {
     /// The pipeline stage (`snapshot`, `extract`, ...).
@@ -26,7 +26,8 @@ pub struct CompileProgress {
 pub type ProgressFn = Box<dyn Fn(&CompileProgress) + Send + Sync>;
 
 /// What a finished compile did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CompileOutcome {
     /// Indexed files.

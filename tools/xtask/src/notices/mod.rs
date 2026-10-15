@@ -1,7 +1,8 @@
 //! `cargo xtask notices`: writes `THIRD_PARTY_NOTICES.md` (desktop/README.md#packaging),
 //! which ships inside the app. It covers:
 //! - the Rust crates linked into the engine addon (`unfold-node` and its normal dependencies, on
-//!   every platform), from `cargo metadata`;
+//!   every platform, with the features the addon's own build turns on), from `cargo tree` and
+//!   `cargo metadata`;
 //! - the npm production dependencies of `desktop` and `ui`, which are bundled into the app, from
 //!   `pnpm licenses list` (type-only `@types/*` packages are left out);
 //! - explicit notices for Electron and Chromium, oxc, Ruff, napi-rs, and the TypeScript `lib` files
@@ -68,12 +69,10 @@ pub(crate) fn run(args: &Args) -> Result<()> {
 #[derive(Deserialize)]
 struct Metadata {
     packages: Vec<MetadataPackage>,
-    resolve: Resolve,
 }
 
 #[derive(Deserialize)]
 struct MetadataPackage {
-    id: String,
     name: String,
     version: String,
     license: Option<String>,
@@ -85,81 +84,61 @@ struct MetadataPackage {
     source: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct Resolve {
-    nodes: Vec<ResolveNode>,
-}
-
-#[derive(Deserialize)]
-struct ResolveNode {
-    id: String,
-    deps: Vec<NodeDep>,
-}
-
-#[derive(Deserialize)]
-struct NodeDep {
-    pkg: String,
-    dep_kinds: Vec<DepKind>,
-}
-
-#[derive(Deserialize)]
-struct DepKind {
-    /// `None` for a normal dependency, `"build"` or `"dev"` otherwise.
-    kind: Option<String>,
-}
-
-fn rust_components(root: &Path) -> Result<Vec<Component>> {
+/// Runs cargo in `root` with `args` and returns its standard output.
+fn cargo(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let output = Command::new(cargo)
-        .args(["metadata", "--format-version", "1", "--locked"])
+        .args(args)
         .current_dir(root)
         .output()
-        .context("running cargo metadata")?;
+        .with_context(|| format!("running cargo {}", args[0]))?;
     if !output.status.success() {
         bail!(
-            "cargo metadata failed: {}",
+            "cargo {} failed: {}",
+            args[0],
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    let metadata: Metadata = serde_json::from_slice(&output.stdout).context("reading cargo metadata")?;
-    let packages: BTreeMap<&str, &MetadataPackage> = metadata
-        .packages
-        .iter()
-        .map(|package| (package.id.as_str(), package))
-        .collect();
-    let nodes: BTreeMap<&str, &ResolveNode> = metadata
-        .resolve
-        .nodes
-        .iter()
-        .map(|node| (node.id.as_str(), node))
-        .collect();
-    let start = metadata
-        .packages
-        .iter()
-        .find(|package| package.name == SHIPPED_CRATE && package.source.is_none())
-        .with_context(|| format!("{SHIPPED_CRATE} is not in the workspace"))?;
+    Ok(output.stdout)
+}
 
-    // Normal dependencies only: build scripts, proc-macro hosts' dev tools, and tests don't ship.
-    let mut shipped = BTreeSet::new();
-    let mut stack = vec![start.id.as_str()];
-    while let Some(id) = stack.pop() {
-        if !shipped.insert(id) {
-            continue;
-        }
-        if let Some(node) = nodes.get(id) {
-            for dep in &node.deps {
-                if dep.dep_kinds.iter().any(|kind| kind.kind.is_none()) {
-                    stack.push(dep.pkg.as_str());
-                }
-            }
-        }
-    }
+fn rust_components(root: &Path) -> Result<Vec<Component>> {
+    // The addon's dependency tree with the features its own build resolves: `cargo metadata`
+    // unifies features across the workspace, so it would count crates only xtask turns on.
+    // Normal dependencies only: build scripts and tests don't ship.
+    let tree = cargo(
+        root,
+        &[
+            "tree",
+            "-p",
+            SHIPPED_CRATE,
+            "-e",
+            "normal",
+            "--target",
+            "all",
+            "--locked",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+        ],
+    )?;
+    let tree = String::from_utf8(tree).context("reading cargo tree")?;
+    let shipped: BTreeSet<(&str, &str)> = tree
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            Some((words.next()?, words.next()?.strip_prefix('v')?))
+        })
+        .collect();
+    let metadata = cargo(root, &["metadata", "--format-version", "1", "--locked"])?;
+    let metadata: Metadata = serde_json::from_slice(&metadata).context("reading cargo metadata")?;
 
     let mut components = Vec::new();
-    for id in shipped {
-        let Some(package) = packages.get(id) else {
+    for package in &metadata.packages {
+        if !shipped.contains(&(package.name.as_str(), package.version.as_str())) {
             continue;
-        };
+        }
         if package.source.is_none() {
             continue; // Unfold's own crates.
         }

@@ -35,8 +35,8 @@
 //!   and cached facts.
 //! - Apps are a small set read from `unfold.toml` and resolved after each compile; they are
 //!   replaced whole when anything in them changes, entrances and target states included.
-//! - Keys are interned as they are written and are never deleted, so a key keeps its ID for
-//!   the life of the database.
+//! - Keys are interned as they are written. A key keeps its ID while some row refers to it;
+//!   the commit that deletes its last use deletes it too.
 //!
 //! [`crate::Writer::replace`] treats an update as the whole graph instead: stored files it
 //! does not name are removed, and absent inputs or apps mean empty sets.

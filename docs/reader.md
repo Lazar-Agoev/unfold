@@ -53,7 +53,7 @@ flow. Nothing else decides what is drawn.
 
 | Part | Carries |
 | --- | --- |
-| Header | Key, kind, form, label, the page's name, signature (the head after the name: `(order_id)`; an inline function's whole head), the doc as a description from code, path and line, its file's `state` (`current`, `changed` since the last compile, or `doesNotParse`), `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
+| Header | Key, kind, form, label, the page's name, signature (the head after the name: `(order_id)`; an inline function's whole head), the doc as a description from code, path and line, its file's `state` (`current`, `changed` since the last compile, or `doesNotParse`), `async`, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
 | Steps | In the order they run: call boxes, thin rows, decision/loop/try/with frames whose parts are lanes, exits, combined steps, proposed steps. Each has an id and a route state |
 | Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks (each with the property it is written as and its signature), its inset when opened, its actions |
 | Frame | Key, form, the page's name, its header as written, the boxes written in the header and its unknown calls outside them (`headerUnknown`), `binds`, its lanes, its actions |

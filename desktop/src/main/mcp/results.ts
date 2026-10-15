@@ -115,7 +115,8 @@ export function pagedLines(lines: readonly string[], cursor: string | undefined,
   return paged(lines, cursor, Math.max(fitting, 1));
 }
 
-function badCursor(cursor: string | undefined): ToolError {
+/** The refusal of a cursor that isn't one of the list's. */
+export function badCursor(cursor: string | undefined): ToolError {
   return new ToolError(`“${cursor ?? ""}” isn't a cursor of this list. Leave cursor out for the first page, or pass the next cursor a result gave.`);
 }
 

@@ -2,8 +2,8 @@
 //! [`crate::ReaderIndex::reached_from`]) which entrances reach it.
 //!
 //! - **Callers** are the `calls` and `passes` links whose project target is the definition,
-//!   read a page at a time from the store's reverse index, each with the call it starts at and
-//!   the definition that call belongs to.
+//!   read a page at a time from the store's reverse index, each with the call it starts at, the
+//!   definition that call belongs to, and the cursor the callers after it start from.
 //! - **Outgoing links** are the `calls` and `passes` links of the call nodes that belong to the
 //!   definition, in source order, whatever they reach. Ownership never crosses files, so this
 //!   needs only the definition's own file.
@@ -33,6 +33,10 @@ pub struct Caller {
     pub line: u32,
     /// `calls`, or `passes` when the call passes the definition as a value.
     pub kind: LinkKind,
+    /// Where the callers after this one start: the `after` of the next page.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub cursor: Cursor,
 }
 
 /// One page of a definition's callers.
@@ -44,14 +48,11 @@ pub struct Callers {
     pub total: u64,
     /// This page, in path order and then source order.
     pub callers: Vec<Caller>,
-    /// Where the next page starts, or `None` after the last page.
-    #[serde(skip)]
-    #[cfg_attr(feature = "ts", ts(skip))]
-    pub next: Option<Cursor>,
 }
 
-/// One page of the callers of the block with `key`, after `after` (the previous page's
-/// `next`), at most `limit`. `index` must be of the same graph version as `reader`'s snapshot.
+/// One page of the callers of the block with `key`, after `after` (a caller's `cursor`, such
+/// as the previous page's last), at most `limit`. `index` must be of the same graph version as
+/// `reader`'s snapshot.
 pub fn callers(
     reader: &Reader,
     index: &ReaderIndex,
@@ -76,13 +77,13 @@ pub fn callers(
                     Some(Caller {
                         owner: index.owner(incoming.from.as_str())?.clone(),
                         line: index.line(incoming.from.as_str())?,
+                        cursor: incoming.cursor(),
                         call: incoming.from,
                         path: incoming.path,
                         kind: incoming.link.kind,
                     })
                 })
                 .collect(),
-            next: page.next,
         })
         .map_err(Into::into)
 }

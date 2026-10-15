@@ -10,7 +10,6 @@
     "state": "current",
     "line": 8,
     "async": false,
-    "generator": false,
     "definedWith": [],
     "imports": [],
     "actions": {

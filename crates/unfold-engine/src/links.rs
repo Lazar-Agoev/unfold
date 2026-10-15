@@ -5,7 +5,6 @@
 //! [`program_links`] resolves every call, import, and type name of one language in parallel
 //! and reassembles the results by input index, so nothing depends on thread scheduling. A
 //! node's links are numbered from 0: its `calls` link first, then the others in written order.
-//! [`text`] holds the shared label grammar that languages use to spell value labels.
 
 use rayon::prelude::*;
 use unfold_core::text::short_label;
@@ -70,15 +69,13 @@ struct ResolvedCall {
     construction: Option<u32>,
 }
 
-/// Every file's [`FileLinks`] for the resolver's language, in file order.
-pub fn program_links(resolver: &Resolver<'_>) -> Result<Vec<(FileId, FileLinks)>, BackendError> {
-    program_links_checked(resolver, || Ok(()))
-}
+/// The label of an expression without a static shape, such as a dynamic import's specifier.
+pub(crate) const OTHER: &str = "(…)";
 
-/// [`program_links`], calling `check` before each unit of work so a caller can stop early
-/// (for example, on cancellation). The first error `check` returns stops resolution and is
-/// returned; backend errors convert into `E`.
-pub fn program_links_checked<E>(
+/// Every file's [`FileLinks`] for the resolver's language, in file order, calling `check` before
+/// each unit of work so a caller can stop early (for example, on cancellation). The first error
+/// `check` returns stops resolution and is returned; backend errors convert into `E`.
+pub fn program_links<E>(
     resolver: &Resolver<'_>,
     check: impl Fn() -> Result<(), E> + Sync,
 ) -> Result<Vec<(FileId, FileLinks)>, E>
@@ -109,18 +106,6 @@ where
         .into_iter()
         .map(|(file, count)| (file, assemble(resolved.by_ref().take(count))))
         .collect())
-}
-
-/// The [`FileLinks`] of one file, resolved on the calling thread.
-pub fn file_links(resolver: &Resolver<'_>, file: FileId) -> Result<FileLinks, BackendError> {
-    let Some(facts) = resolver.program().facts(file) else {
-        return Ok(FileLinks::default());
-    };
-    check_dependencies(resolver, file)?;
-    let resolved = file_work(facts)
-        .map(|unit| resolve_work(resolver, file, facts, unit))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(assemble(resolved.into_iter()))
 }
 
 /// A file's links, numbered, with its arguments and constructions.
@@ -385,7 +370,7 @@ fn import_link(
     }
     let specifier = fact.specifier.as_deref();
     let text = match (target, specifier) {
-        (ModuleTarget::Dynamic, _) | (_, None) => text::OTHER,
+        (ModuleTarget::Dynamic, _) | (_, None) => OTHER,
         (_, Some(specifier)) => specifier,
     };
     let outcome = match target {
@@ -430,84 +415,4 @@ fn import_link(
         implements: false,
         bound: None,
     }))
-}
-
-/// The shared grammar of value labels. Languages spell the parts; these helpers join them and
-/// keep every intermediate label within 120 UTF-16 units, so labels of long chains stay cheap.
-///
-/// | Expression | Label |
-/// | --- | --- |
-/// | Identifier, private name, `this`, `super` | Its text |
-/// | Property access | [`member`]: `receiver.name` |
-/// | Call result | [`call_result`]: `callee()`, never the arguments |
-/// | Literal element access | [`literal_key`]: `receiver["key"]`, keeping the written spelling |
-/// | Computed element access | [`computed_key`]: `receiver[…]` |
-/// | Construction, tagged template | The constructed expression's or tag's label |
-/// | Transparent wrapper | The inner label |
-/// | Anything else | [`OTHER`]: `(…)` |
-pub mod text {
-    use unfold_core::text::{LABEL_MAX_UTF16, short_label};
-
-    /// The label of an expression without a static shape.
-    pub const OTHER: &str = "(…)";
-
-    fn join(parts: &[&str]) -> String {
-        let mut label = String::new();
-        for part in parts {
-            label.push_str(part);
-            // A label of at most 120 bytes is at most 120 UTF-16 units.
-            if label.len() > LABEL_MAX_UTF16 && short_label(&label).len() < label.len() {
-                break;
-            }
-        }
-        let keep = short_label(&label).len();
-        label.truncate(keep);
-        label
-    }
-
-    /// `receiver.name`.
-    pub fn member(receiver: &str, name: &str) -> String {
-        join(&[receiver, ".", name])
-    }
-
-    /// `callee()`.
-    pub fn call_result(callee: &str) -> String {
-        join(&[callee, "()"])
-    }
-
-    /// `receiver[key]`, where `key` is the literal as written (quotes included).
-    pub fn literal_key(receiver: &str, key: &str) -> String {
-        join(&[receiver, "[", key, "]"])
-    }
-
-    /// `receiver[…]`.
-    pub fn computed_key(receiver: &str) -> String {
-        join(&[receiver, "[…]"])
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        use unfold_core::text::utf16_len;
-
-        #[test]
-        fn joins_parts_like_the_proof_of_concept() {
-            assert_eq!(member("orderService", "place"), "orderService.place");
-            assert_eq!(member(&call_result("adults"), "map"), "adults().map");
-            assert_eq!(literal_key("handlers", "\"save\""), "handlers[\"save\"]");
-            assert_eq!(computed_key("handlers"), "handlers[…]");
-        }
-
-        #[test]
-        fn long_chains_stay_within_the_limit() {
-            let mut label = String::from("root");
-            for _ in 0..200 {
-                label = member(&label, "next");
-                assert!(utf16_len(&label) <= LABEL_MAX_UTF16);
-            }
-            assert!(label.starts_with("root.next.next"));
-            let wide = "😀".repeat(70);
-            assert_eq!(utf16_len(&member(&wide, "x")), LABEL_MAX_UTF16);
-        }
-    }
 }

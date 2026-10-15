@@ -8,7 +8,6 @@
     "state": "current",
     "line": 1,
     "async": false,
-    "generator": false,
     "definedWith": [],
     "imports": [
       {
@@ -97,7 +96,6 @@
                       "state": "current",
                       "line": 6,
                       "async": false,
-                      "generator": false,
                       "definedWith": [],
                       "imports": [],
                       "actions": {
@@ -142,7 +140,6 @@
                               "state": "current",
                               "line": 9,
                               "async": false,
-                              "generator": false,
                               "definedWith": [],
                               "imports": [],
                               "actions": {

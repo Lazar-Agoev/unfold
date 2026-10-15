@@ -5,7 +5,6 @@
 //! The window's renderer reports the board it shows to the main process, never to these commands.
 
 use serde::Deserialize;
-use ts_rs::TS;
 
 use super::NoArgs;
 use crate::ipc::context::Ctx;
@@ -19,7 +18,8 @@ pub fn window_state(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<Option<Window
 }
 
 /// The arguments of `save_window_state`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SaveWindowStateArgs {
     /// The window's position and size, the board it shows, and the Show all calls switch.

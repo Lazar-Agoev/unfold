@@ -4,7 +4,7 @@
 use rusqlite::Connection;
 use unfold_core::{App, EntranceTarget, Input};
 
-use super::graph::Apply;
+use super::graph::{Apply, release};
 use crate::codec::position;
 use crate::error::Result;
 use crate::schema::meta_key;
@@ -20,7 +20,13 @@ impl Apply<'_, '_> {
              SELECT id * 4 + ?2 FROM entrances)",
         )?
         .execute((CandidateKind::App.tag(), CandidateKind::Entrance.tag()))?;
-        conn.execute_batch("DELETE FROM apps; DELETE FROM entrances; DELETE FROM entrance_targets;")?;
+        for delete in [
+            "DELETE FROM apps RETURNING id",
+            "DELETE FROM entrances RETURNING id",
+            "DELETE FROM entrance_targets RETURNING code_key_id",
+        ] {
+            release(&mut conn.prepare_cached(delete)?, [], &mut self.released)?;
+        }
         let mut insert_app = conn.prepare_cached(
             "INSERT INTO apps (id, position, name, run, about) VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;

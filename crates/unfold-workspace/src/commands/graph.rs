@@ -7,7 +7,6 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{NodeKind, TargetState};
 use unfold_core::{Key, LinkTarget, RepoPath};
@@ -35,25 +34,27 @@ pub const MAX_PROPOSED: usize = unfold_reader::board::MAX_PROPOSALS;
 pub const MAX_TEXT: usize = 400;
 
 /// The page's overlay: names, combined steps, and proposed steps. It applies page-wide, by key.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OverlayArgs {
     /// Names, which replace a block's code name.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub names: Option<Vec<NameArg>>,
     /// Combined steps.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub combined: Option<Vec<CombineArg>>,
     /// Proposed steps.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub proposed: Option<Vec<ProposalArg>>,
 }
 
 /// One name of the overlay.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NameArg {
     /// The named block.
@@ -63,7 +64,8 @@ pub struct NameArg {
 }
 
 /// One combined step of the overlay.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CombineArg {
     /// Its id on the page.
@@ -77,25 +79,27 @@ pub struct CombineArg {
 }
 
 /// One proposed step of the overlay: after a block, or at the start of a body.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProposalArg {
     /// Its id on the page.
     pub id: String,
     /// The step it goes after.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub after: Option<String>,
     /// The definition or part at the start of whose body it goes.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub start: Option<String>,
     /// What it would do.
     pub title: String,
 }
 
 /// The arguments of `card`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardArgs {
     /// The card's project.
@@ -104,26 +108,27 @@ pub struct CardArgs {
     pub key: String,
     /// The page's overlay (none when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub overlay: Option<OverlayArgs>,
     /// The calls and callbacks the card opens in place: at most 64 paths of 1 to 3 keys,
     /// outermost first.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub open: Option<Vec<Vec<String>>>,
     /// Whether builtin calls are drawn (Show all calls; off when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub show_all_calls: Option<bool>,
     /// Whether a definition's card comes with its agent text, for the MCP server (off when
     /// absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub agent_text: Option<bool>,
 }
 
 /// A card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CardView {
     /// A module's, definition's, or type's card: its drawn flow, whose header names it.
@@ -132,7 +137,7 @@ pub enum CardView {
         flow: Box<DrawnFlow>,
         /// The drawn flow as agent text, when asked.
         #[serde(rename = "agentText", skip_serializing_if = "Option::is_none")]
-        #[ts(optional)]
+        #[cfg_attr(feature = "ts", ts(optional))]
         agent_text: Option<FlowText>,
     },
     /// An app's or entrance's card.
@@ -140,7 +145,8 @@ pub enum CardView {
 }
 
 /// Whether a start is an app or one of its entrances.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum StartKind {
     /// What an app's `run` command starts.
@@ -150,7 +156,8 @@ pub enum StartKind {
 }
 
 /// An app's or entrance's card: declared, so drawn in the authored style.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StartCard {
     /// Its key.
@@ -163,18 +170,19 @@ pub struct StartCard {
     pub name: String,
     /// What starts it, as written: an entrance's `on`, an app's `run`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub on: Option<String>,
     /// Its one sentence.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub about: Option<String>,
     /// The blocks it starts at, in the order they run: the cards it connects to.
     pub code: Vec<StartTarget>,
 }
 
 /// One block an app or entrance starts at.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StartTarget {
     /// The block key, as written.
@@ -183,15 +191,15 @@ pub struct StartTarget {
     pub state: TargetState,
     /// The definition's label, when the key names one.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub label: Option<String>,
     /// Its file, when the key names a block.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub path: Option<RepoPath>,
     /// Its first line, when the key names a block.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub line: Option<u32>,
 }
 
@@ -238,7 +246,8 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
 }
 
 /// A drawn flow as agent text (docs/reader.md#agent-text).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FlowText {
     /// The drawn flow as text, each line ending with its blocks' full keys (`key=…`).

@@ -12,7 +12,7 @@ use crate::error::BackendError;
 use crate::evidence::{Candidate, ImportTarget, Origin, Refusal, Stability, ValueContext};
 use crate::facts::{ValueFact, ValueShape};
 use crate::labels;
-use crate::links::text;
+use crate::links;
 use crate::program::{CallRef, DeclRef, FileId, NodeRef, TypeRef, ValueRef};
 
 /// The expression being resolved: a value of a file (a callee, or a passed argument), or a
@@ -67,9 +67,9 @@ impl Expr {
             return resolver
                 .program()
                 .type_ref(reference)
-                .map_or(text::OTHER, |fact| &fact.text);
+                .map_or(links::OTHER, |fact| &fact.text);
         }
-        self.fact(resolver).map_or(text::OTHER, |fact| &fact.label)
+        self.fact(resolver).map_or(links::OTHER, |fact| &fact.label)
     }
 }
 

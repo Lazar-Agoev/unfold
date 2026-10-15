@@ -24,7 +24,7 @@ toml = { workspace = true }
 unfold-core = { workspace = true }
 unfold-engine = { workspace = true }
 unfold-store = { workspace = true }
-unfold-workspace = { workspace = true }
+unfold-workspace = { workspace = true, features = ["ts"] }
 
 [dev-dependencies]
 unfold-core = { workspace = true, features = ["testkit"] }

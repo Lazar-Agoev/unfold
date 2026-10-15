@@ -7,17 +7,14 @@ import type { JSX } from "react";
 import { IconButton, Monogram } from "../../components";
 import { Icon } from "../../icons";
 import { addProject, openSettings } from "../../state/actions";
-import { useAuthor, authorName } from "../../state/author";
+import { authorName } from "../../code/text";
+import { useAuthor } from "../../state/author";
 import { useWorkspace } from "../../state/workspace";
 import { ProjectsList } from "./ProjectsList";
 import "./sidebar.css";
 
 function workspaceName(author: string | null): string {
-  if (author === null) {
-    return "Workspace";
-  }
-  const name = authorName(author);
-  return `${name.charAt(0).toUpperCase()}${name.slice(1)}'s workspace`;
+  return author === null ? "Workspace" : `${authorName(author)}'s workspace`;
 }
 
 export function HomeSidebar(): JSX.Element {

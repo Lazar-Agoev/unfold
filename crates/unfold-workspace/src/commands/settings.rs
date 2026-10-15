@@ -3,7 +3,6 @@
 //! comments, `unfold_engine::settings::edit`), and what the UI needs to sign its edits.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::vocab::Language;
 use unfold_engine::settings::SettingsFile;
 use unfold_engine::settings::edit::{EntryEdit, SettingsEdit};
@@ -23,7 +22,8 @@ pub fn get_settings(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<AppSettings> 
 }
 
 /// The arguments of `set_settings`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SetSettingsArgs {
     /// Every setting (read them with `get_settings`, change some, send them back).
@@ -50,7 +50,8 @@ pub fn set_settings(ctx: &Ctx<'_>, args: SetSettingsArgs) -> CommandResult<AppSe
 }
 
 /// A settings problem with its position.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsProblem {
     /// What is wrong.
@@ -62,7 +63,8 @@ pub struct SettingsProblem {
 }
 
 /// One `[[python.project]]` table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PythonProjectView {
     /// The Python project's folder (`""` is the project's folder).
@@ -74,7 +76,8 @@ pub struct PythonProjectView {
 }
 
 /// The validated settings and apps, as the settings editor shows them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
     /// The languages to graph; absent means every supported language found.
@@ -120,7 +123,8 @@ impl SettingsView {
 }
 
 /// A project's `unfold.toml`: its text and what it holds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfig {
     /// Whether the file exists (absent means every default).
@@ -179,7 +183,8 @@ pub fn project_config(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<Project
 }
 
 /// The arguments of `update_project_config`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct UpdateProjectConfigArgs {
     /// The project.
@@ -189,7 +194,8 @@ pub struct UpdateProjectConfigArgs {
 }
 
 /// What `update_project_config` did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectConfigUpdate {
     /// The file after the edits.
@@ -240,7 +246,8 @@ pub fn update_project_config(
 }
 
 /// Facts about the app the UI can't get itself (it has no Node APIs).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     /// The person's username, which signs their board edits (`person:<username>`).

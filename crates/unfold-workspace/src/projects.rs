@@ -56,7 +56,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use ts_rs::TS;
 use unfold_store::ReadPool;
 
 use crate::commands::ProjectExtras;
@@ -81,7 +80,8 @@ const FOLDER_GONE: &str = "The folder is gone or can't be read.";
 
 /// A project's id: `p-` and 10 characters of `[a-z2-7]`, random, assigned when the project is
 /// added. It survives restarts.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
 pub struct ProjectId(String);
 
@@ -134,7 +134,8 @@ impl std::fmt::Display for ProjectId {
 }
 
 /// One project row of the sidebar.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectRow {
     /// The project's id.
@@ -152,7 +153,8 @@ pub struct ProjectRow {
 }
 
 /// The whole workspace, as the window shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceView {
     /// The projects, in sidebar order.
@@ -162,7 +164,8 @@ pub struct WorkspaceView {
 }
 
 /// Whether `add_project` added a row or found the folder's row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum AddStatus {
     /// A new row.
@@ -172,7 +175,8 @@ pub enum AddStatus {
 }
 
 /// What `add_project` returns.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AddedProject {
     /// Whether the row is new.
@@ -625,34 +629,6 @@ impl Projects {
         Ok(())
     }
 
-    /// Puts the rows in `order`, which must hold every project id once; `None` when it doesn't.
-    pub fn reorder(&self, order: &[ProjectId]) -> Result<Option<WorkspaceView>> {
-        {
-            let mut inner = lock(&self.inner);
-            let mut wanted = order.to_vec();
-            wanted.sort();
-            let mut have: Vec<ProjectId> = inner
-                .file
-                .projects
-                .iter()
-                .map(|record| record.id.clone())
-                .collect();
-            have.sort();
-            if wanted != have {
-                return Ok(None);
-            }
-            let mut records = std::mem::take(&mut inner.file.projects);
-            for id in order {
-                if let Some(index) = records.iter().position(|record| record.id == *id) {
-                    inner.file.projects.push(records.swap_remove(index));
-                }
-            }
-            self.save(&inner)?;
-        }
-        self.announce();
-        Ok(Some(self.view()))
-    }
-
     /// Expands or collapses project `id`'s sidebar row.
     pub fn set_expanded(&self, id: &ProjectId, expanded: bool) -> Result<()> {
         {
@@ -1091,7 +1067,6 @@ mod tests {
     fn projects(dir: &Path) -> Projects {
         let config = AppConfig {
             app_data_dir: dir.join("app"),
-            logs_dir: dir.join("logs"),
         };
         Projects::new(
             config,
@@ -1136,7 +1111,6 @@ mod tests {
         let projects = Projects::new(
             AppConfig {
                 app_data_dir: dir.path().join("app"),
-                logs_dir: dir.path().join("logs"),
             },
             Arc::new(Silent),
             options,

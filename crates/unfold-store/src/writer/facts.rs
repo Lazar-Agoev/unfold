@@ -189,21 +189,4 @@ impl Writer {
             .optional()?;
         row.transpose()
     }
-
-    /// Every entry the stored graph's files were built from (hash equal to a file's facts
-    /// hash) or last saw on disk (equal to its disk hash), under the running engine, in path
-    /// order. On reopen the engine rebuilds its in-memory program from these without parsing.
-    pub fn load_facts(&self) -> Result<Vec<CachedFacts>> {
-        let mut statement = self.conn.prepare_cached(&format!(
-            "SELECT {COLUMNS} FROM files f JOIN file_facts ff \
-             ON ff.path = f.path AND ff.engine = ?1 AND (ff.hash = f.facts_hash OR ff.hash = f.disk_hash) \
-             ORDER BY ff.path, ff.hash, ff.settings_hash"
-        ))?;
-        let mut rows = statement.query([&*self.engine_version])?;
-        let mut entries = Vec::new();
-        while let Some(row) = rows.next()? {
-            entries.push(decode(row)?);
-        }
-        Ok(entries)
-    }
 }

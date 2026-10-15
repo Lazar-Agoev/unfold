@@ -239,10 +239,7 @@ fn report(
         comparison.references,
         comparison.external,
         comparison.recall,
-        floor.map_or_else(String::new, |floor| match &floor.poc {
-            Some(poc) => format!(", floor {} (proof of concept: {poc})", floor.ratio()),
-            None => format!(", floor {}", floor.ratio()),
-        }),
+        floor.map_or_else(String::new, |floor| format!(", floor {}", floor.ratio())),
         comparison.reference_recall,
     );
     if let Some(floor) = floor

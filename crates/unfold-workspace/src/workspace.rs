@@ -244,6 +244,7 @@ impl Workspace {
 
     /// Reports changed folder-relative paths, as the watcher does: how tests that open folders
     /// with the watcher off ([`WorkspaceOptions::watch`]) drive background updates.
+    #[cfg(any(test, feature = "testkit"))]
     pub fn notify_changes(&self, paths: impl IntoIterator<Item = RepoPath>) {
         self.shared.add_changes(paths);
     }

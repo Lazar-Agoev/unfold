@@ -54,7 +54,7 @@ if (!app.requestSingleInstanceLock()) {
     const engine = new EngineHost({
       modulePath: join(__dirname, "engine-host.js"),
       addonPath: addonPath(app.getAppPath(), process.resourcesPath, app.isPackaged),
-      folders: appFolders({ userData: app.getPath("userData"), home: app.getPath("home") }),
+      folders: appFolders(app.getPath("userData")),
       windows: () => {
         const entry = appWindow.current();
         return [...(entry ? [entry] : []), ...renderer.entries()];

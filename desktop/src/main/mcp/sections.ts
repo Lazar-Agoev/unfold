@@ -26,8 +26,8 @@ export function section<T>(title: string, items: readonly T[], total: number, of
   return { lines: [`${title} (${range}):`, ...shown.map(line)], more: offset + size < end };
 }
 
-/** The line that says how to get the next page, when any list has more. */
-export function moreLine(sections: readonly Section[], tool: string, next: number): string | null {
+/** The line that says how to get the next page (from the cursor `next`), when any list has more. */
+export function moreLine(sections: readonly Section[], tool: string, next: number | string): string | null {
   return sections.some((item) => item.more) ? `More: ${tool} with cursor "${next}" for the next page.` : null;
 }
 

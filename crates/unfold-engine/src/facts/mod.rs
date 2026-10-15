@@ -59,8 +59,8 @@ impl ValueShape {
 pub struct ValueFact {
     /// The shape of the unwrapped expression.
     pub shape: ValueShape,
-    /// The short written label (see [`crate::links::text`]); at most 120 UTF-16 units. It is
-    /// the text of the `calls` or `passes` link written at this value.
+    /// The short written label; at most 120 UTF-16 units. It is the text of the `calls` or
+    /// `passes` link written at this value.
     pub label: Box<str>,
     /// Where the expression is written: the range of the `calls` or `passes` link written at
     /// this value. Token-exact and nonempty.

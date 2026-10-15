@@ -8,7 +8,7 @@ use unfold_core::{FileGraph, Key, LineBreaks};
 
 use crate::catalog;
 use crate::relations::{callers, outgoing};
-use crate::source::{SourceState, verify_file};
+use crate::source::{Verified, verify_file};
 use crate::testing::Playground;
 use crate::tree::{Blocks, FileTree};
 
@@ -193,8 +193,13 @@ fn callers_come_a_page_at_a_time_from_the_reverse_index() {
     let first = callers(&reader, &index, key, None, 2).unwrap();
     assert_eq!(first.total, 4);
     assert_eq!(first.callers.len(), 2);
-    let second = callers(&reader, &index, key, first.next.as_ref(), 2).unwrap();
-    assert!(second.next.is_none());
+    // The next page starts after the last caller shown, and the one after the last is empty.
+    let after = &first.callers[1].cursor;
+    let second = callers(&reader, &index, key, Some(after), 2).unwrap();
+    assert_eq!(second.callers.len(), 2);
+    let past = callers(&reader, &index, key, Some(&second.callers[1].cursor), 2).unwrap();
+    assert!(past.callers.is_empty());
+    assert_eq!(past.total, 4);
     let all: Vec<(&str, &str, u32)> = first
         .callers
         .iter()
@@ -356,12 +361,11 @@ fn source_is_shown_only_while_it_matches_the_facts() {
     let copy = dir.path().join(path);
     std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
     std::fs::write(&copy, source.text()).unwrap();
-    assert_eq!(
-        verify_file(dir.path(), &file.file.path, file.file.hash, LineBreaks::Newlines).state(),
-        SourceState::Current
-    );
+    assert!(matches!(
+        verify_file(dir.path(), &file.file.path, file.file.hash, LineBreaks::Newlines),
+        Verified::Current(_)
+    ));
     std::fs::write(&copy, source.text().replace("nonempty", "non-empty")).unwrap();
     let changed = verify_file(dir.path(), &file.file.path, file.file.hash, LineBreaks::Newlines);
-    assert_eq!(changed.state(), SourceState::Changed);
-    assert!(changed.source().is_none());
+    assert_eq!(changed, Verified::Changed);
 }

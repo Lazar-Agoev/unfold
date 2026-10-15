@@ -212,7 +212,7 @@ fn word_class(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use unfold_core::highlight::spans_are_well_formed;
+    use unfold_core::testkit::spans_are_well_formed;
 
     fn classes(text: &str) -> Vec<(&str, TokenClass)> {
         TypeScriptHighlighter

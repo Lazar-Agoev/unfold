@@ -29,12 +29,14 @@ use unfold_engine::facts::{
     ArgumentFact, CallContext, CallFact, FileFacts, GraphFacts, ImportFact, TypeFacts, TypeRefFact, TypeUse,
     ValueFact, ValueShape,
 };
-use unfold_engine::links::text;
 
 use super::parse::{Syntax, parse};
 use super::payload::{CallSite, Decl, DeclKind, Payload, Scope, ScopeKind, ValueInfo};
 
 const FUNCTIONS: &[&str] = &["fn", "lambda", "method", "ctor", "getter"];
+
+/// The label of a value without a static shape.
+const OTHER: &str = "(…)";
 
 /// Forms that are neither lowered nor looked into.
 const OPAQUE: &[&str] = &["deco", "type", "sig", "param", "use", "import"];
@@ -523,7 +525,7 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
             None => {
                 values.push(ValueFact::new(
                     ValueShape::Other,
-                    text::OTHER,
+                    OTHER,
                     syntax.node(callee_item).range,
                 ));
                 infos.push(ValueInfo::Other);
@@ -780,15 +782,13 @@ fn record_values(
         let items = syntax.items(node);
         let item_value = |index: usize| items.get(index).and_then(|&item| value_of[item]);
         let label_of = |value: Option<u32>| {
-            value.map_or(text::OTHER.to_owned(), |value| {
-                values[value as usize].label.to_string()
-            })
+            value.map_or(OTHER.to_owned(), |value| values[value as usize].label.to_string())
         };
         let range = syntax.node(node).range;
         let scope = outer[node];
         let entry: Option<(ValueFact, ValueInfo)> = if syntax.is_literal(node) {
             Some((
-                ValueFact::new(ValueShape::Other, text::OTHER, range),
+                ValueFact::new(ValueShape::Other, OTHER, range),
                 ValueInfo::Literal(unquote(syntax.node(node).text)),
             ))
         } else if !syntax.node(node).form || node == 0 {
@@ -808,7 +808,7 @@ fn record_values(
                     ))
                 }
                 "get" => item_value(0).map(|receiver| {
-                    let label = text::member(&label_of(Some(receiver)), &name);
+                    let label = format!("{}.{name}", label_of(Some(receiver)));
                     let mut fact = ValueFact::new(ValueShape::Member, &label, range);
                     fact.receiver = Some(receiver);
                     fact.member = Some(name.as_str().into());
@@ -824,7 +824,7 @@ fn record_values(
                 }),
                 "key" => item_value(0).map(|receiver| {
                     let key = items.get(1).map_or("", |&item| syntax.node(item).text);
-                    let label = text::literal_key(&label_of(Some(receiver)), key);
+                    let label = format!("{}[{key}]", label_of(Some(receiver)));
                     let mut fact = ValueFact::new(ValueShape::Member, &label, range);
                     fact.receiver = Some(receiver);
                     (
@@ -836,7 +836,7 @@ fn record_values(
                     )
                 }),
                 "dyn" => item_value(0).map(|receiver| {
-                    let label = text::computed_key(&label_of(Some(receiver)));
+                    let label = format!("{}[…]", label_of(Some(receiver)));
                     let mut fact = ValueFact::new(ValueShape::Other, &label, range);
                     fact.receiver = Some(receiver);
                     (fact, ValueInfo::Dynamic)
@@ -851,7 +851,7 @@ fn record_values(
                 )),
                 "call" | "super" => {
                     let callee = item_value(0);
-                    let label = text::call_result(&label_of(callee));
+                    let label = format!("{}()", label_of(callee));
                     Some((
                         ValueFact::new(ValueShape::Other, &label, range),
                         ValueInfo::Call { callee },
@@ -866,7 +866,7 @@ fn record_values(
                 }
                 "fn" | "lambda" => lowering.node_of[node].map(|id| {
                     (
-                        ValueFact::new(ValueShape::Other, text::OTHER, range),
+                        ValueFact::new(ValueShape::Other, OTHER, range),
                         ValueInfo::Inline { node: id },
                     )
                 }),
@@ -874,10 +874,7 @@ fn record_values(
                     value_of[node] = item_value(0);
                     None
                 }
-                "spread" => Some((
-                    ValueFact::new(ValueShape::Other, text::OTHER, range),
-                    ValueInfo::Other,
-                )),
+                "spread" => Some((ValueFact::new(ValueShape::Other, OTHER, range), ValueInfo::Other)),
                 _ => None,
             }
         };

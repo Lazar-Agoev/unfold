@@ -55,7 +55,7 @@ command updates both the router and its handler.
 
 | Function | Does |
 | --- | --- |
-| `init(options)` | Takes `{appDataDir, logsDir}`, loads `workspace.json` with every project resting |
+| `init(options)` | Takes `{appDataDir}`, loads `workspace.json` with every project resting |
 | `subscribe(sink)` | Receives every event and stream message, one JSON string each |
 | `dispatch(windowId, requestId, command)` | Runs one command; resolves with its JSON result |
 | `cancel(requestId)` | Cancels a request |
@@ -82,11 +82,11 @@ tests. Exact arguments, results, defaults, and caps live in code.
 
 | Area | Commands |
 | --- | --- |
-| Workspace | `workspace` (project rows), `add_project` (main only; compiles at once; refuses a folder Unfold can't write `.unfold/` into), `remove_project`, `reorder_projects`, `set_project_expanded`, `select_project` |
+| Workspace | `workspace` (project rows), `add_project` (main only; compiles at once; refuses a folder Unfold can't write `.unfold/` into), `remove_project`, `set_project_expanded`, `select_project` |
 | Project and Home | `project_summary` (state line and Health), `entrances` (the `[[app]]` tables as written, each `code` with its state and fix; one app by name or key), `problems`, `compile` (streams progress), `cancel_compile` |
 | Settings | `project_config`, `update_project_config` (scope, Python projects, evidence, and `[[app]]` edits; returns the diff; `replace_code` rewrites one `code` key and is refused with `settings_conflict` once the file holds another key there), `get_settings`, `set_settings` (main only), `app_info` (the username that signs edits) |
 | Code and cards | `code_view` ([the code panel's model](reader.md#the-code-panels-model), a `window` of at most 400 lines at a time), `open_in_editor` (the editor command, else the default text editor; creates an empty `unfold.toml` when asked for a missing one), `card` (a definition's [drawn flow](reader.md#the-drawn-flow) with the page's overlay, open paths, and Show all calls, and with `agentText` the same drawing as [agent text](reader.md#agent-text); or an app's or entrance's card), `code_text` (the compiled tree as agent text) |
-| Relations and contracts | `relations` (callers a page at a time, every outgoing call, Reached from), `callers` (Show callers), `board_refs`, `call_contract` (by the call's block key), `type_definition`, `type_uses` |
+| Relations and contracts | `relations` (callers a page at a time, each page after a caller's `cursor`, every outgoing call, Reached from), `callers` (Show callers), `board_refs`, `call_contract` (by the call's block key), `type_definition`, `type_uses` |
 | Search | `search`: definitions, apps and entrances by name and qualified name, and files by name and path, across projects, from the store's name index. Names only: a folder's name finds its files, not every definition in them. An app or entrance hit has its line in `unfold.toml` |
 | Boards | `list_boards`, `read_board` (without opening), `open_board`, `new_board`, `reload_board`, `close_board`, `save_board`, `board_health`, `repair_board`, `delete_board`, `set_board_folder`, `create_folder`, `rename_folder`, `delete_folder` |
 | Window | `window_state`, `save_window_state` (main only) |
@@ -112,7 +112,7 @@ and camelCase fields; every project event names its project.
 
 | Event | When |
 | --- | --- |
-| `workspace_changed` | Project rows were added, removed, reordered, expanded, or collapsed. The UI replaces its `workspace` data |
+| `workspace_changed` | Project rows were added, removed, expanded, or collapsed. The UI replaces its `workspace` data |
 | `project_state` | A project's state changed (live and resting included) |
 | `project_reset` | A project was removed: everything cached for it is stale |
 | `compile_progress` | A compile or update advanced (throttled) |
@@ -233,8 +233,10 @@ lengths before expensive reads, and keep total caps on streams too.
 1. Write the handler and its types in the owning `commands` module. Take `ProjectId` for project work; use
    `ctx.project` for stored data and `ctx.live` when the engine is needed. Confine paths, check cancellation, and
    require trust where needed.
-2. Derive serde and `ts_rs::TS`. Arguments are camelCase with `deny_unknown_fields`; optional arguments use serde
-   defaults and `ts(optional)`. Doc comments become the generated JSDoc. Bound result sizes.
+2. Derive serde, and `ts_rs::TS` behind the `ts` feature (`#[cfg_attr(feature = "ts", derive(ts_rs::TS))]`): only
+   `cargo xtask gen-ipc` turns it on, so the addon doesn't build the bindings. Arguments are camelCase with
+   `deny_unknown_fields`; optional arguments use serde defaults and `ts(optional)`. Doc comments become the generated
+   JSDoc. Bound result sizes.
 3. Add one line to the command table. Add it to `MAIN_PROCESS_ONLY` or `CLOSING_WRITES` in both Rust and the router
    when it is one.
 4. Run `cargo xtask gen-ipc`, then `cargo xtask gen-ipc --check` and `pnpm --filter @unfold/ui typecheck`.

@@ -6,23 +6,13 @@
 import { join, resolve } from "node:path";
 import type { AppFolders } from "../shared/transport";
 
-/** Electron's own paths that the app folders derive from. */
-export interface BasePaths {
-  /** `app.getPath("userData")`: `~/Library/Application Support/Unfold`. */
-  readonly userData: string;
-  readonly home: string;
-}
-
 /**
- * The app folders Rust receives in `addon.init` (docs/architecture.md#storage):
- * - app data (settings, the workspace, the window's state) is Electron's user-data folder;
- * - logs are `~/Library/Logs/Unfold`.
+ * The app folder Rust receives in `addon.init` (docs/architecture.md#storage): app data (settings, the
+ * workspace, the window's state) is Electron's user-data folder, `app.getPath("userData")`
+ * (`~/Library/Application Support/Unfold`).
  */
-export function appFolders(base: BasePaths): AppFolders {
-  return {
-    appDataDir: base.userData,
-    logsDir: join(base.home, "Library", "Logs", "Unfold"),
-  };
+export function appFolders(userData: string): AppFolders {
+  return { appDataDir: userData };
 }
 
 /** The built UI: inside the app archive when packaged, `ui/dist` beside `desktop/` otherwise. */

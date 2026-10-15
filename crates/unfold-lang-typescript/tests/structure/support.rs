@@ -12,7 +12,9 @@ use unfold_core::{ByteRange, File, FileGraph, Graph, Link, LinkTarget, RepoPath,
 use unfold_engine::links::program_links;
 use unfold_engine::settings::Settings;
 use unfold_engine::validate::validate_graph;
-use unfold_engine::{FactsSet, FileFacts, Language, ProgramFile, ProjectInput, ProjectInputs, Resolver};
+use unfold_engine::{
+    BackendError, FactsSet, FileFacts, Language, ProgramFile, ProjectInput, ProjectInputs, Resolver,
+};
 use unfold_lang_typescript::TypeScript;
 
 /// A compiled set of files.
@@ -96,7 +98,10 @@ pub fn compile_with(language: &TypeScript, files: &[(String, Vec<u8>)], inputs: 
     let program = FactsSet::new(program).expect("distinct paths");
     let linked = language.link(&program, inputs);
     let resolver = Resolver::new(&program, linked.as_ref());
-    let mut links: BTreeMap<_, _> = program_links(&resolver).expect("links").into_iter().collect();
+    let mut links: BTreeMap<_, _> = program_links(&resolver, || Ok::<_, BackendError>(()))
+        .expect("links")
+        .into_iter()
+        .collect();
     let files: Vec<FileGraph> = program
         .iter()
         .map(|(id, entry)| {

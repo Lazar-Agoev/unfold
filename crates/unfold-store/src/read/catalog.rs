@@ -99,14 +99,6 @@ impl Reader {
         })
     }
 
-    /// The definitions in the file at `path`, in source (preorder) order.
-    pub fn definitions_in(&self, path: &str) -> Result<Vec<DefinitionRow>> {
-        let mut statement = self.conn().prepare_cached(&format!(
-            "SELECT {DEFINITION_COLUMNS} FROM {DEFINITION_FROM} WHERE f.path = ?1 ORDER BY d.local_id"
-        ))?;
-        collect(&mut statement, [path], decode_definition)
-    }
-
     /// The definition with `key`.
     pub fn definition(&self, key: &str) -> Result<Option<DefinitionRow>> {
         let mut statement = self.conn().prepare_cached(&format!(

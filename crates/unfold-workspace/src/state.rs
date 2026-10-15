@@ -17,7 +17,6 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_reader::board::files::write_atomic;
 use unfold_reader::board::{BoardError, is_folder_name};
 
@@ -25,7 +24,8 @@ use crate::error::{Result, WorkspaceError};
 use crate::projects::ProjectId;
 
 /// A window's position and size, in screen coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowBounds {
     /// Left edge.
@@ -39,7 +39,8 @@ pub struct WindowBounds {
 }
 
 /// The board the window shows, by project id and board id.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShownBoard {
     /// The board's project.
@@ -51,7 +52,8 @@ pub struct ShownBoard {
 /// `window.json` in the app-data folder: the window as it should come back at launch. The main
 /// process saves it; the window's renderer reports the board it shows and the Show all calls
 /// switch to the main process.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowState {
     /// Position and size.
@@ -86,13 +88,14 @@ impl LocalState {
 }
 
 /// `settings.json` in the app-data folder.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppSettings {
     /// The command that opens a file in the person's editor, such as `code -g {path}:{line}`;
     /// without one, files open in the default text editor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub editor_command: Option<String>,
 }
 

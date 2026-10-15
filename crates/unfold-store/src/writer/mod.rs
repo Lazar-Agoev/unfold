@@ -7,15 +7,17 @@
 //! 2. changed files (row, then nodes, links, typed records, and definitions as the change
 //!    says);
 //! 3. apps and inputs, when supplied;
-//! 4. metadata.
+//! 4. metadata;
+//! 5. the keys whose rows it deleted that no row refers to any more, so the key table holds
+//!    only the keys some row uses.
 //!
 //! [`Writer::replace`] applies an update that describes the whole graph the same way, and also
 //! removes every stored file the update does not name: the full rewrite for a database whose
 //! contents the caller no longer knows (after a failed commit, say).
 //!
 //! Any error rolls the transaction back, and the in-memory mirror of keys and file
-//! IDs forgets what the transaction added, so a failed commit leaves the database and the
-//! writer exactly as they were. Readers never observe a partial commit (write-ahead logging).
+//! IDs undoes what the transaction added and removed, so a failed commit leaves the database and
+//! the writer exactly as they were. Readers never observe a partial commit (write-ahead logging).
 //! A transaction a panic left open is rolled back by the writer's next operation.
 //!
 //! The writer also owns the per-file facts cache ([`facts`]).
@@ -26,7 +28,7 @@ mod graph;
 mod mirror;
 mod statements;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
@@ -57,6 +59,8 @@ pub struct CommitStats {
     pub apps_written: u64,
     /// Entrances written.
     pub entrances_written: u64,
+    /// Keys deleted because no row refers to them any more.
+    pub keys_removed: u64,
     /// Wall time of the transaction.
     pub elapsed: Duration,
 }
@@ -142,13 +146,9 @@ impl Writer {
     }
 
     /// The database file.
-    pub fn path(&self) -> &Path {
+    #[cfg(test)]
+    pub(crate) fn path(&self) -> &std::path::Path {
         &self.path
-    }
-
-    /// The engine version the database belongs to.
-    pub fn engine_version(&self) -> &str {
-        &self.engine_version
     }
 
     /// Applies `update` in one transaction. On error nothing is written.
@@ -250,6 +250,7 @@ impl Writer {
             st: Statements::new(conn)?,
             mirror,
             stats: CommitStats::default(),
+            released: Vec::new(),
         };
         for path in &update.removed_files {
             apply.remove_file(path)?;
@@ -275,6 +276,7 @@ impl Writer {
         if let Some(meta) = &update.meta {
             catalog::write_meta(conn, meta)?;
         }
+        apply.delete_unused_keys()?;
         fault!(hook, FaultPoint::BeforeCommit);
         Ok(apply.stats)
     }

@@ -9,7 +9,7 @@
 //!                                  │        │
 //!         engine thread ◄──────────┘        └──► any thread: readers.get()? ─► Reader
 //!   writer.commit / replace(&Update)               files(), file_graph(), node(), callers(),
-//!   writer.put_facts / load_facts                  type_uses(), apps(), definitions_in(), search(), ...
+//!   writer.put_facts / facts                       type_uses(), apps(), definitions(), search(), ...
 //! ```
 //!
 //! - **One writer, many readers.** The folder's engine thread owns the [`Writer`]; every other
@@ -19,10 +19,10 @@
 //!   links, typed records, definitions), removed files, and replaced small sets (inputs, apps).
 //!   A commit writes rows proportional to the change, in one transaction. See [`update`].
 //! - **Stable identity.** Structural keys are interned in the `keys` table and keep their IDs
-//!   for the life of the database; an in-memory mirror avoids per-key queries. App and entrance
-//!   row IDs are their keys' IDs. Links hold their project target's key ID, so links into a file
-//!   survive that file's replacement, and the reverse indexes (callers, type uses) are one
-//!   index lookup.
+//!   while any row refers to them (the commit that leaves a key unused deletes it); an in-memory
+//!   mirror avoids per-key queries. App and entrance row IDs are their keys' IDs. Links hold
+//!   their project target's key ID, so links into a file survive that file's replacement, and
+//!   the reverse indexes (callers, type uses) read one index, a page at a time in path order.
 //! - **A cache.** A database written by another schema or engine version, or a damaged one, is
 //!   discarded and recreated on open ([`Opened`]); there are no migrations.
 //!   The database is private and may change in any release.
@@ -48,8 +48,10 @@ pub mod writer;
 mod tests;
 
 pub use error::{Result, StoreError};
+#[cfg(any(test, feature = "testkit"))]
+pub use read::rows::IndexStats;
 pub use read::rows::{
-    Cursor, DefinitionRow, FileRow, IncomingLink, IndexStats, LocatedNode, Page, SearchCandidate, StoredMeta,
+    Cursor, DefinitionRow, FileRow, IncomingLink, LocatedNode, Page, SearchCandidate, StoredMeta,
 };
 pub use read::{ReadPool, Reader};
 pub use schema::SCHEMA_VERSION;

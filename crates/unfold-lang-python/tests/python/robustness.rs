@@ -5,7 +5,8 @@
 
 use crate::common::{compile_files, testdata};
 use proptest::prelude::*;
-use unfold_core::highlight::{Highlighter, spans_are_well_formed};
+use unfold_core::highlight::Highlighter;
+use unfold_core::testkit::spans_are_well_formed;
 use unfold_core::vocab::Flag;
 use unfold_core::{RepoPath, Snapshot};
 use unfold_engine::settings::{PythonVersion, Settings};

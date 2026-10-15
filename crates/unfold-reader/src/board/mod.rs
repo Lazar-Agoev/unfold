@@ -33,7 +33,7 @@ pub use model::{
     Anchor, Author, AuthorKind, Board, Card, CardRef, Cardinality, Column, ColumnKey, Combined, Connection,
     ConnectionKind, Description, FORMAT, Frame, FrameDirection, FrameIcon, FrameLook, GuardEntry,
     MAX_FRAME_DEPTH, MAX_NOTE_CHARACTERS, MAX_PROPOSAL_REASON, MAX_PROPOSAL_TITLE, MAX_PROPOSALS, NameEntry,
-    Note, Page, Place, Proposal, References, Resource, ResourceKind, SCHEMA, Signature, VERSION, View,
+    Note, Page, Place, Proposal, References, Resource, ResourceKind, Signature, VERSION, View,
     is_folder_name,
 };
 pub use parse::{parse, parse_edit};

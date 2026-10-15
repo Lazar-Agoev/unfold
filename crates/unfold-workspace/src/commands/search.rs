@@ -24,7 +24,6 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::vocab::NodeKind;
 use unfold_core::{Key, LineBreaks, LineIndex, RepoPath};
 use unfold_engine::settings::{AppEntry, SettingsFile};
@@ -46,7 +45,8 @@ pub const MAX_LIMIT: u32 = 500;
 const CANDIDATES: usize = 2_000;
 
 /// A result kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum SearchKind {
     /// Definitions: classes, functions, types, and modules.
@@ -58,32 +58,34 @@ pub enum SearchKind {
 }
 
 /// The arguments of `search`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchArgs {
     /// What was typed. Words are matched separately.
     pub query: String,
     /// The kinds to search (all when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub kinds: Option<Vec<SearchKind>>,
     /// Only definitions of these kinds: `module`, `class`, `function`, `type` (all but `module`
     /// when absent: `files` finds modules by path).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub definition_kinds: Option<Vec<NodeKind>>,
     /// Results per kind across every project (50 when absent, at most 500).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub limit: Option<u32>,
     /// The projects to look in (every project when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub projects: Option<Vec<ProjectId>>,
 }
 
 /// A definition, app, or entrance result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     /// The project it is in.
@@ -108,7 +110,8 @@ pub struct SearchHit {
 }
 
 /// A file result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FileHit {
     /// The project it is in.
@@ -126,7 +129,8 @@ pub struct FileHit {
 }
 
 /// One kind's results.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchGroup<T> {
     /// The best results across the projects, best first.
@@ -148,7 +152,8 @@ impl<T> Default for SearchGroup<T> {
 }
 
 /// Search results by kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResults {
     /// The query searched.

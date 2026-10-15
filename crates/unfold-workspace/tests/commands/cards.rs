@@ -281,7 +281,6 @@ fn relations_and_callers_name_their_project() {
     let relations = harness.ok(1, "relations", json!({ "project": harness.project, "key": key }));
     assert_eq!(relations["key"], key);
     assert_eq!(relations["callersTotal"], 1);
-    assert_eq!(relations["callersNext"], Value::Null);
     let caller = &relations["callers"][0];
     assert_eq!(caller["owner"], "src/generated.ts#step0");
     assert_eq!(caller["ownerName"], "step0");
@@ -297,7 +296,7 @@ fn relations_and_callers_name_their_project() {
     );
     assert_eq!(inner["key"], key);
 
-    // Callers page through an offset.
+    // Callers page after a caller's cursor.
     let first = harness.ok(
         1,
         "relations",
@@ -318,7 +317,7 @@ fn relations_and_callers_name_their_project() {
         let next = harness.ok(
             1,
             "relations",
-            json!({ "project": harness.project, "key": "src/routes/middleware.ts#requireUser", "callersOffset": 1, "callersLimit": 1 }),
+            json!({ "project": harness.project, "key": "src/routes/middleware.ts#requireUser", "callersAfter": first["callers"][0]["cursor"], "callersLimit": 1 }),
         );
         assert_ne!(next["callers"][0], first["callers"][0]);
     }
@@ -348,5 +347,85 @@ fn relations_and_callers_name_their_project() {
             json!({ "project": harness.project, "key": "src/generated.ts#nope" })
         ),
         "not_found"
+    );
+}
+
+/// The callers of `paging/target.ts#target`, `limit` at a time after `after` (a caller's cursor).
+fn target_callers(harness: &Harness, after: Option<&Value>, limit: u32) -> Value {
+    let mut args =
+        json!({ "project": harness.project, "key": "src/paging/target.ts#target", "callersLimit": limit });
+    if let Some(after) = after {
+        args["callersAfter"] = after.clone();
+    }
+    harness.ok(1, "relations", args)
+}
+
+/// Each caller as its owner and call.
+fn calls_of(page: &Value) -> Vec<(String, String)> {
+    page["callers"]
+        .as_array()
+        .expect("callers")
+        .iter()
+        .map(|caller| (caller["owner"].to_string(), caller["call"].to_string()))
+        .collect()
+}
+
+#[test]
+fn callers_page_after_a_callers_cursor() {
+    let harness = Harness::compiled("ts-orders");
+    harness.write("src/paging/target.ts", "export function target(): void {}\n");
+    for (file, calls) in [("b", 3), ("c", 2), ("d", 2)] {
+        let mut text = String::from("import { target } from \"./target.ts\";\n\n");
+        for index in 0..calls {
+            text.push_str(&format!(
+                "export function {file}{index}(): void {{\n  target();\n}}\n\n"
+            ));
+        }
+        harness.write(&format!("src/paging/{file}.ts"), &text);
+    }
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let all = target_callers(&harness, None, 500);
+    assert_eq!(all["callersTotal"], 7);
+    let expected = calls_of(&all);
+
+    // Pages of two, each after the last caller of the page before, list them all in order; past
+    // the last caller there are none.
+    let mut paged = Vec::new();
+    let mut after: Option<Value> = None;
+    let mut sizes = Vec::new();
+    loop {
+        let page = target_callers(&harness, after.as_ref(), 2);
+        assert_eq!(page["callersTotal"], 7);
+        let callers = page["callers"].as_array().expect("callers").clone();
+        sizes.push(callers.len());
+        paged.extend(calls_of(&page));
+        match callers.last() {
+            Some(last) => after = Some(last["cursor"].clone()),
+            None => break,
+        }
+    }
+    assert_eq!(paged, expected);
+    assert_eq!(sizes, [2, 2, 2, 1, 0]);
+
+    // A cursor still holds its place after the callers change: a caller added before it isn't
+    // listed after it, and nothing it passed comes again.
+    let first = target_callers(&harness, None, 3);
+    let cursor = first["callers"][2]["cursor"].clone();
+    harness.write(
+        "src/paging/a.ts",
+        "import { target } from \"./target.ts\";\n\nexport function a0(): void {\n  target();\n}\n",
+    );
+    harness.ok(1, "compile", json!({ "project": harness.project }));
+    let rest = target_callers(&harness, Some(&cursor), 500);
+    assert_eq!(rest["callersTotal"], 8);
+    assert_eq!(calls_of(&rest), expected[3..]);
+
+    assert_eq!(
+        harness.code(
+            1,
+            "relations",
+            json!({ "project": harness.project, "key": "src/paging/target.ts#target", "callersAfter": "soon" })
+        ),
+        "invalid_args"
     );
 }

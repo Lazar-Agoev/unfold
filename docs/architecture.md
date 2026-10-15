@@ -75,7 +75,6 @@ must keep them.
 | `.unfold/boards/<id>.json` | Boards, saved as they are edited | Yes |
 | `.unfold/local/` | `cache/` (the graph database and the folder lock), `state.json` (empty board folders), and a `.gitignore` of `*` | No |
 | App data (`~/Library/Application Support/Unfold`) | `workspace.json` (the projects), `settings.json` (the editor command), `window.json` (bounds, the last board shown, Show all calls) | No |
-| `~/Library/Logs/Unfold` | Logs | No |
 
 `unfold.toml` and the [board file](schemas/unfold-board.schema.json) are the shared contracts. SQLite is a private
 cache: [the executable schema](../crates/unfold-store/src/schema.rs) owns its shapes and version, and a database

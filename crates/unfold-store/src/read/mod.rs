@@ -14,7 +14,7 @@
 //!
 //! Queries are grouped by subject: [`graph`] (files, nodes, links, typed records, callers, and
 //! type uses), [`catalog`] (apps and entrances, definitions), [`search`], and [`info`] (inputs,
-//! metadata, statistics). They return core types or the small row types in [`rows`]; no SQL
+//! metadata, and the row counts tests read). They return core types or the small row types in [`rows`]; no SQL
 //! leaves the crate.
 
 pub mod catalog;

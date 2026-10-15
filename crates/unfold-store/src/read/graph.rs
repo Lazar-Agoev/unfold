@@ -132,17 +132,14 @@ enum Scope {
     All,
     /// One file's, by file ID.
     File(i64),
-    /// One node's, by file ID and local ID.
-    Node(i64, u32),
 }
 
 impl Scope {
-    /// The `WHERE` clause for a typed-record table whose node column is `node`.
-    fn filter(self, node: &str) -> String {
+    /// The `WHERE` clause for a typed-record table.
+    fn filter(self) -> &'static str {
         match self {
-            Self::All => String::new(),
-            Self::File(_) => "WHERE file_id = ?1".to_owned(),
-            Self::Node(..) => format!("WHERE file_id = ?1 AND {node} = ?2"),
+            Self::All => "",
+            Self::File(_) => "WHERE file_id = ?1",
         }
     }
 
@@ -151,7 +148,6 @@ impl Scope {
         match self {
             Self::All => Vec::new(),
             Self::File(file) => vec![file],
-            Self::Node(file, node) => vec![file, i64::from(node)],
         }
     }
 }
@@ -164,7 +160,7 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
     let mut statement = conn.prepare_cached(&format!(
         "SELECT node, returns, returns_start, returns_end, file_id FROM signatures {} \
          ORDER BY file_id, node",
-        scope.filter("node")
+        scope.filter()
     ))?;
     let mut rows = statement.query(params())?;
     while let Some(row) = rows.next()? {
@@ -177,7 +173,7 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
     let mut statement = conn.prepare_cached(&format!(
         "SELECT node, idx, start_byte, end_byte, kind, name, flags, type, type_start, type_end, file_id \
          FROM parameters {} ORDER BY file_id, node, idx",
-        scope.filter("node")
+        scope.filter()
     ))?;
     let mut rows = statement.query(params())?;
     while let Some(row) = rows.next()? {
@@ -196,7 +192,7 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
     let mut statement = conn.prepare_cached(&format!(
         "SELECT node, idx, start_byte, end_byte, kind, name, flags, type, type_start, type_end, value, \
          file_id FROM members {} ORDER BY file_id, node, idx",
-        scope.filter("node")
+        scope.filter()
     ))?;
     let mut rows = statement.query(params())?;
     while let Some(row) = rows.next()? {
@@ -217,7 +213,7 @@ fn read_types(conn: &Connection, scope: Scope) -> Result<FxHashMap<i64, FileType
     let mut statement = conn.prepare_cached(&format!(
         "SELECT call, idx, start_byte, end_byte, expand, keyword, parameter, unpaired, bound, file_id \
          FROM arguments {} ORDER BY file_id, call, idx",
-        scope.filter("call")
+        scope.filter()
     ))?;
     let mut rows = statement.query(params())?;
     while let Some(row) = rows.next()? {
@@ -430,27 +426,6 @@ impl Reader {
         collect(&mut statement, [key], decode_located)
     }
 
-    /// The typed records of the node with `key`: a function's signature and parameters, a type's
-    /// or class's members, a call's arguments. Empty when the node does not exist or has none.
-    pub fn typed_records(&self, key: &str) -> Result<FileTypes> {
-        self.snapshot(|reader| {
-            let conn = reader.conn();
-            let mut statement = conn.prepare_cached(
-                "SELECT n.file_id, n.local_id FROM keys k JOIN nodes n ON n.key_id = k.id WHERE k.key = ?1",
-            )?;
-            let Some((file_id, node)) = collect(&mut statement, [key], |row| {
-                Ok((row.get::<_, i64>(0)?, codec::u32_at(row, 1)?))
-            })?
-            .into_iter()
-            .next() else {
-                return Ok(FileTypes::default());
-            };
-            Ok(read_types(conn, Scope::Node(file_id, node))?
-                .remove(&file_id)
-                .unwrap_or_default())
-        })
-    }
-
     /// The `calls` and `passes` links whose project target is `key`, each with the node it
     /// starts at, one page at a time (pass the previous page's `next` as `after`), in path
     /// order and then source order.
@@ -482,13 +457,17 @@ impl Reader {
         limit: usize,
     ) -> Result<Page<IncomingLink>> {
         let (path, from, seq) = start(after);
+        // Files in path order from the cursor's, each probed for its links to the key in the
+        // reverse index, which holds them in source order: a page reads the files up to its last
+        // link, not every link to the key (`CROSS JOIN` keeps that loop order).
         let mut statement = self.conn().prepare_cached(&format!(
             "SELECT f.path, f.language, sk.key, {LINK_COLUMNS} FROM keys tk \
-             JOIN links l ON l.target_key_id = tk.id \
-             JOIN files f ON f.id = l.file_id \
+             CROSS JOIN files f \
+             CROSS JOIN links l ON l.file_id = f.id AND l.target_key_id = tk.id \
              JOIN nodes n ON n.file_id = l.file_id AND n.local_id = l.from_id \
              JOIN keys sk ON sk.id = n.key_id \
-             WHERE tk.key = ?1 AND l.kind IN (?2, ?3) AND (f.path, l.from_id, l.seq) > (?4, ?5, ?6) \
+             WHERE tk.key = ?1 AND l.kind IN (?2, ?3) AND f.path >= ?4 \
+             AND (f.path, l.from_id, l.seq) > (?4, ?5, ?6) \
              ORDER BY f.path, l.from_id, l.seq LIMIT ?7"
         ))?;
         let params = (
@@ -507,11 +486,7 @@ impl Reader {
                 from: codec::key(row, 2)?,
                 link: decode_link(row, 3)?,
             };
-            let cursor = Cursor {
-                path: incoming.path.as_str().into(),
-                at: [i64::from(incoming.link.from), i64::from(incoming.link.seq)],
-            };
-            Ok((cursor, incoming))
+            Ok((incoming.cursor(), incoming))
         })?;
         Ok(page(items, limit))
     }

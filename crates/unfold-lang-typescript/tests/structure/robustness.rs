@@ -4,8 +4,8 @@
 //! into a valid graph.
 
 use proptest::prelude::*;
-use unfold_core::highlight::{Highlighter, spans_are_well_formed};
-use unfold_core::testkit::testdata_dir;
+use unfold_core::highlight::Highlighter;
+use unfold_core::testkit::{spans_are_well_formed, testdata_dir};
 use unfold_core::vocab::{Flag, Form};
 use unfold_core::{RepoPath, Snapshot};
 use unfold_lang_typescript::{ExtractOptions, TypeScript, TypeScriptHighlighter, extract};

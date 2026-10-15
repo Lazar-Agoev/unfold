@@ -6,13 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# The command table's TypeScript types (`ts_rs::TS` on every type that crosses IPC, and
+# `ipc::typescript`), for `cargo xtask gen-ipc`. The addon leaves it off.
+ts = ["dep:ts-rs", "unfold-core/ts", "unfold-engine/ts", "unfold-reader/ts"]
+# Helpers for this crate's tests: reporting changed paths with the watcher off.
+testkit = []
+
 [dependencies]
-unfold-core = { workspace = true, features = ["ts"] }
-unfold-engine = { workspace = true, features = ["ts"] }
+unfold-core = { workspace = true }
+unfold-engine = { workspace = true }
 unfold-lang-typescript = { workspace = true }
 unfold-lang-python = { workspace = true }
 unfold-store = { workspace = true }
-unfold-reader = { workspace = true, features = ["ts"] }
+unfold-reader = { workspace = true }
 nix = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-full = { workspace = true }
@@ -23,12 +30,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-ts-rs = { workspace = true }
+ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }
-unfold-core = { workspace = true, features = ["testkit", "ts"] }
+unfold-core = { workspace = true, features = ["testkit"] }
+# The tests use the `testkit` helpers, and check the generated TypeScript types.
+unfold-workspace = { workspace = true, features = ["testkit", "ts"] }
 
 [lints]
 workspace = true

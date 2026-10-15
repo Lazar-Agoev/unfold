@@ -11,7 +11,7 @@
 import { z } from "zod";
 import type { CallerView, CardView, LinkEnd, OutgoingView, StartCard, TypeDefinition, TypeMember, TypeUsePlace } from "../engine-types";
 import { count, place, typeText } from "../format";
-import { cursorOffset, nextLine, pagedLines, textResult } from "../results";
+import { badCursor, cursorOffset, nextLine, pagedLines, textResult } from "../results";
 import { fitting, linesLength, moreLine, section, type Section } from "../sections";
 import { codeTarget } from "../target";
 import { defineTool } from "../tool";
@@ -36,6 +36,31 @@ function endText(to: LinkEnd, name?: string): string {
 /** One call or link a definition makes, as `get_relations` lists it. */
 function callLine(call: OutgoingView): string {
   return `- line ${call.line}: ${call.kind} ${call.text} → ${endText(call.to, call.targetName)}; key ${call.call}`;
+}
+
+/**
+ * Where `get_relations` continues: the offset of every list's next stretch and, once callers were
+ * shown, the engine's cursor of the last one, so the engine reads the next callers from there
+ * (`20`, or `20:` and that cursor).
+ */
+interface RelationsCursor {
+  readonly offset: number;
+  readonly callersAfter?: string;
+}
+
+function readRelationsCursor(cursor: string | undefined): RelationsCursor {
+  const split = cursor?.indexOf(":") ?? -1;
+  if (cursor === undefined || split === -1) {
+    return { offset: cursorOffset(cursor) };
+  }
+  if (!/^\d+$/.test(cursor.slice(0, split))) {
+    throw badCursor(cursor);
+  }
+  return { offset: Number(cursor.slice(0, split)), callersAfter: cursor.slice(split + 1) };
+}
+
+function writeRelationsCursor(offset: number, callersAfter: string | undefined): string {
+  return callersAfter === undefined ? String(offset) : `${offset}:${callersAfter}`;
 }
 
 function callerLine(caller: CallerView): string {
@@ -145,14 +170,14 @@ export const getRelations = defineTool({
   annotations: { readOnlyHint: true },
   async run({ key, project, limit, cursor }, context) {
     const code = await codeTarget(context, { key, project });
-    const offset = cursorOffset(cursor);
+    const { offset, callersAfter } = readRelationsCursor(cursor);
     const id = code.project.id;
     const card = await context.engine("card", { project: id, key: code.key });
     const kind = card.type === "definition" ? card.flow.header.kind : null;
     const name = card.type === "definition" ? (card.flow.header.name ?? card.flow.header.label) : card.name;
     const isType = kind === "type" || kind === "class";
     const [relations, uses, boards] = await Promise.all([
-      kind === null || kind === "type" ? null : context.engine("relations", { project: id, key: code.key, callersOffset: offset, callersLimit: limit }),
+      kind === null || kind === "type" ? null : context.engine("relations", { project: id, key: code.key, ...(callersAfter === undefined ? {} : { callersAfter }), callersLimit: limit }),
       isType ? context.engine("type_uses", { project: id, key: code.key, offset, limit }) : null,
       context.engine("board_refs", { project: id, key: code.key }),
     ]);
@@ -174,7 +199,8 @@ export const getRelations = defineTool({
         ? [`On boards${boards.truncated ? " (the first 50)" : ""}:`, ...boards.refs.map((ref) => `- ${ref.title} › ${ref.pageTitle} (board id ${ref.board}, page id ${ref.page})`)].join("\n")
         : "No board shows it yet.",
     ];
-    // Callers and uses come from the engine a page at a time, from the cursor; calls all at once.
+    // Callers come from the engine a page at a time after the cursor's caller, uses from its offset;
+    // calls all at once.
     const page = fitting(limit, linesLength([...head, ...tail]), (size) =>
       [
         relations ? section("Callers", relations.callers, relations.callersTotal, offset, size, callerLine) : null,
@@ -182,11 +208,13 @@ export const getRelations = defineTool({
         uses ? section("Uses", uses.places, uses.total, offset, size, useLine) : null,
       ].filter((item): item is Section => item !== null),
     );
+    const lastCaller = relations?.callers.slice(0, page.limit).at(-1);
+    const next = writeRelationsCursor(offset + page.limit, lastCaller?.cursor ?? callersAfter);
     return textResult(
       ...head,
       ...page.sections.flatMap((item) => item.lines),
       ...tail,
-      moreLine(page.sections, "get_relations", offset + page.limit),
+      moreLine(page.sections, "get_relations", next),
       "Next: read_code with a key; add_cards puts code on a page.",
     );
   },

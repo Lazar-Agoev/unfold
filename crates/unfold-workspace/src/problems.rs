@@ -20,14 +20,14 @@
 use std::path::Path;
 
 use serde::Serialize;
-use ts_rs::TS;
 use unfold_core::vocab::FileState;
 use unfold_core::{Graph, LineBreaks, LineIndex};
 use unfold_engine::settings::{SettingsError, SettingsFile};
 use unfold_engine::{Problem, ProblemKind};
 
 /// What kind of problem a [`ProblemItem`] is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum ProblemCategory {
     /// The settings file can't be read or is invalid.
@@ -49,7 +49,8 @@ pub enum ProblemCategory {
 }
 
 /// One entry in the Problems list.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProblemItem {
     /// What kind of problem.

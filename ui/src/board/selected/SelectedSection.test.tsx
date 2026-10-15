@@ -37,7 +37,6 @@ const cartView: CardView = {
       state: "current",
       line: 12,
       async: false,
-      generator: false,
       definedWith: [],
       imports: [],
       actions: { after: false, start: false, open: false },

@@ -183,8 +183,6 @@ pub struct Header {
     /// An `async` function.
     #[serde(rename = "async")]
     pub is_async: bool,
-    /// A generator.
-    pub generator: bool,
     /// What runs when it is defined, in the enclosing body: decorators, class bases, and
     /// Python defaults.
     pub defined_with: Vec<OtherCall>,

@@ -2542,6 +2542,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "unfold-core",
+ "unfold-store",
 ]
 
 [[package]]
@@ -2567,6 +2568,7 @@ dependencies = [
  "unfold-lang-typescript",
  "unfold-reader",
  "unfold-store",
+ "unfold-workspace",
 ]
 
 [[package]]

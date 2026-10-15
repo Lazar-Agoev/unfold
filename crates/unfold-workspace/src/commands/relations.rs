@@ -1,19 +1,18 @@
 //! `relations` and `callers`: what the Selected section shows for one definition (its callers,
-//! a page at a time; the calls it makes; and the entrances it is reached from), and **Show
-//! callers**: the distinct definitions that call it. Callers come from the store's reverse
-//! index, outgoing calls from the definition's own file, and Reached from from the reader index;
-//! each wakes its project.
+//! a page at a time, each page after a caller's cursor; the calls it makes; and the entrances it
+//! is reached from), and **Show callers**: the distinct definitions that call it. Callers come
+//! from the store's reverse index, outgoing calls from the definition's own file, and Reached
+//! from from the reader index; each wakes its project.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::vocab::LinkKind;
 use unfold_core::{Key, RepoPath};
 use unfold_reader::catalog;
 use unfold_reader::notes::LinkEnd;
 use unfold_reader::relations::{self, Caller};
-use unfold_store::Reader;
+use unfold_store::{Cursor, Reader};
 
 use super::graph::block_tree;
 use super::{count, key_arg};
@@ -33,25 +32,28 @@ pub const MAX_CALLING: u32 = 100;
 pub const MAX_SCANNED: usize = 20_000;
 
 /// The arguments of `relations`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelationsArgs {
     /// The definition's project.
     pub project: ProjectId,
     /// The definition's key, or any block's (its definition's relations).
     pub key: String,
-    /// Where the page of callers starts (`callersNext` of the previous page).
+    /// List the callers after this one: a caller's `cursor`, such as the last of the previous
+    /// page (absent: from the first caller).
     #[serde(default)]
-    #[ts(optional)]
-    pub callers_offset: Option<u32>,
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub callers_after: Option<String>,
     /// How many callers to return (at most 500; 100 when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub callers_limit: Option<u32>,
 }
 
 /// One call of the definition, seen from the caller.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CallerView {
     /// The definition the call belongs to.
@@ -66,10 +68,13 @@ pub struct CallerView {
     pub line: u32,
     /// `calls`, or `passes` when the call passes the definition as a value.
     pub kind: LinkKind,
+    /// Pass it as `callersAfter` for the callers after this one.
+    pub cursor: String,
 }
 
 /// One call the definition makes: its `calls` link, or a `passes` link of it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OutgoingView {
     /// The call.
@@ -84,12 +89,13 @@ pub struct OutgoingView {
     pub to: LinkEnd,
     /// The qualified name of the project definition it reaches.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub target_name: Option<String>,
 }
 
 /// An entrance a definition is reached from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntranceRef {
     /// The entrance's key.
@@ -101,7 +107,8 @@ pub struct EntranceRef {
 }
 
 /// A definition's relations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Relations {
     /// The definition.
@@ -110,8 +117,6 @@ pub struct Relations {
     pub callers: Vec<CallerView>,
     /// How many callers there are in all.
     pub callers_total: u32,
-    /// Where the next page of callers starts, if there is one.
-    pub callers_next: Option<u32>,
     /// The calls it makes, in source order.
     pub outgoing: Vec<OutgoingView>,
     /// The entrances whose code reaches it ("reached at least from"), in file order. An app's
@@ -122,7 +127,14 @@ pub struct Relations {
 /// `relations`: callers (paginated), outgoing calls, and reached-from for a definition.
 pub fn relations(ctx: &Ctx<'_>, args: RelationsArgs) -> CommandResult<Relations> {
     let key = key_arg(&args.key)?;
-    let offset = args.callers_offset.unwrap_or(0) as usize;
+    let after = args
+        .callers_after
+        .as_deref()
+        .map(|text| {
+            Cursor::parse(text)
+                .ok_or_else(|| CommandError::invalid_args(format!("`{text}` isn't a caller's cursor")))
+        })
+        .transpose()?;
     let limit = args
         .callers_limit
         .unwrap_or(DEFAULT_CALLERS)
@@ -153,12 +165,12 @@ pub fn relations(ctx: &Ctx<'_>, args: RelationsArgs) -> CommandResult<Relations>
         });
     }
     ctx.check_cancelled()?;
-    // The store's pages run from the start: read through the requested one.
-    let page = relations::callers(&reader, &index, definition_key.as_str(), None, offset + limit)?;
-    let mut callers = Vec::with_capacity(limit);
-    for caller in page.callers.into_iter().skip(offset) {
-        callers.push(caller_view(&reader, caller)?);
-    }
+    let page = relations::callers(&reader, &index, definition_key.as_str(), after.as_ref(), limit)?;
+    let callers = page
+        .callers
+        .into_iter()
+        .map(|caller| caller_view(&reader, caller))
+        .collect::<unfold_store::Result<_>>()?;
     let apps = reader.apps()?;
     let reached_from = index
         .reached_from(definition_key.as_str())
@@ -171,12 +183,9 @@ pub fn relations(ctx: &Ctx<'_>, args: RelationsArgs) -> CommandResult<Relations>
             app: start.app().name.to_string(),
         })
         .collect();
-    let next = offset + callers.len();
-    let total = usize::try_from(page.total).unwrap_or(usize::MAX);
     Ok(Relations {
         key: definition_key,
-        callers_total: count(total),
-        callers_next: (next < total).then(|| count(next)),
+        callers_total: u32::try_from(page.total).unwrap_or(u32::MAX),
         callers,
         outgoing,
         reached_from,
@@ -200,11 +209,13 @@ fn caller_view(reader: &Reader, caller: Caller) -> unfold_store::Result<CallerVi
         path: caller.path,
         line: caller.line,
         kind: caller.kind,
+        cursor: caller.cursor.to_string(),
     })
 }
 
 /// One definition that calls a block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CallingDefinition {
     /// Its key.
@@ -222,7 +233,8 @@ pub struct CallingDefinition {
 }
 
 /// The arguments of `callers`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallersArgs {
     /// The definition's project.
@@ -231,12 +243,13 @@ pub struct CallersArgs {
     pub key: String,
     /// How many calling definitions to list (20 when absent, at most 100).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub limit: Option<u32>,
 }
 
 /// **Show callers**: the distinct definitions that call a definition.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Callers {
     /// The definition's project.

@@ -25,14 +25,14 @@
 //! | everything else | [`WorkspaceError::code`] (`not_compiled`, `invalid_path`, `board_not_open`, `not_a_folder`, `open_elsewhere`, ...) |
 
 use serde::Serialize;
-use ts_rs::TS;
 use unfold_reader::ReaderError;
 use unfold_reader::board::BoardError;
 
 use crate::error::WorkspaceError;
 
 /// A rejected command. See the [module documentation](self).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CommandError {
     /// The stable snake_case code.
     pub code: String,

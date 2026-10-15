@@ -6,7 +6,7 @@
 //! | Table | One row per |
 //! | --- | --- |
 //! | `files`, `inputs` | file (with its disk stamp), input |
-//! | `keys` | structural key ever written: the intern table every key column points into |
+//! | `keys` | structural key some row refers to: the intern table every key ID points into |
 //! | `nodes` | node, by file and local ID |
 //! | `links` | link, by file, `from`, and `seq` |
 //! | `signatures`, `parameters`, `members`, `arguments` | typed record |
@@ -46,7 +46,7 @@ use crate::error::Result;
 
 /// The version of the schema below. Bump it whenever a table, column, index, or the meaning of
 /// a stored value changes; existing databases are then rebuilt.
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
 
 /// Every table and index, created in one transaction.
 const DDL: &str = r"

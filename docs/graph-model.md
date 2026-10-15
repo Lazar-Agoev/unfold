@@ -368,7 +368,7 @@ card's definition (`try[0]/except[0]` in `a.py#f`), from `Key::steps_after`. The
 key by looking it up in the response, never by joining strings.
 
 Ordinals can shift when code is inserted above a block; [board guards](reader.md) catch that, so an explanation
-never silently attaches to different code. SQL interns keys for the database's lifetime.
+never silently attaches to different code. The store interns each key while some row refers to it.
 
 ## Order and canonical export
 

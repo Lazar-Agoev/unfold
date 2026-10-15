@@ -1,5 +1,7 @@
 //! The small row types reader queries return where no core type fits.
 
+use std::fmt;
+
 use unfold_core::vocab::{FileState, Language, NodeKind};
 use unfold_core::{ContentHash, File, Key, Link, Node, RepoPath};
 
@@ -62,6 +64,16 @@ pub struct IncomingLink {
     pub link: Link,
 }
 
+impl IncomingLink {
+    /// Where the links after this one start: its place in path order and then source order.
+    pub fn cursor(&self) -> Cursor {
+        Cursor {
+            path: self.path.as_str().into(),
+            at: [i64::from(self.link.from), i64::from(self.link.seq)],
+        }
+    }
+}
+
 /// An entry of the definition catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionRow {
@@ -96,13 +108,32 @@ pub struct SearchCandidate {
     pub item_kind: Box<str>,
 }
 
-/// A position in a paginated result. Opaque: pass back the `next` of the previous page.
+/// A position in a paginated result. Opaque: pass back the `next` of the previous page. Its
+/// text (`Display`, read back by [`Cursor::parse`]) carries it across IPC.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Cursor {
     /// The path of the last item returned.
     pub(crate) path: Box<str>,
     /// Its position within that file: a local ID, and a link's sequence number (0 otherwise).
     pub(crate) at: [i64; 2],
+}
+
+impl Cursor {
+    /// The cursor written as `text`, or `None` when `text` isn't one.
+    pub fn parse(text: &str) -> Option<Self> {
+        let mut parts = text.splitn(3, ':');
+        let at = [parts.next()?.parse().ok()?, parts.next()?.parse().ok()?];
+        Some(Self {
+            path: parts.next()?.into(),
+            at,
+        })
+    }
+}
+
+impl fmt::Display for Cursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.at[0], self.at[1], self.path)
+    }
 }
 
 /// One page of a paginated result.
@@ -114,7 +145,8 @@ pub struct Page<T> {
     pub next: Option<Cursor>,
 }
 
-/// Row counts and the database size.
+/// Row counts and the database size, for tests ([`crate::Reader::stats`]).
+#[cfg(any(test, feature = "testkit"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IndexStats {
     /// Files whose facts come from the bytes on disk.
@@ -143,7 +175,7 @@ pub struct IndexStats {
     pub entrances: u64,
     /// Definitions in the catalog.
     pub definitions: u64,
-    /// Interned keys (never deleted, so at least the live count).
+    /// Interned keys: the keys some row refers to.
     pub keys: u64,
     /// Cached facts entries.
     pub facts_entries: u64,

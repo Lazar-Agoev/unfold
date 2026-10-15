@@ -1,7 +1,6 @@
 //! The board commands' argument and result types (docs/ipc.md#boards).
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::RepoPath;
 use unfold_reader::board::files::Revision;
 use unfold_reader::board::{Anchor, Board, Health, Repair, Target};
@@ -11,14 +10,15 @@ use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 
 /// An `unfold-board` document as the window edits it.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardDocument {
     /// Always `unfold-board`.
-    #[ts(type = "\"unfold-board\"")]
+    #[cfg_attr(feature = "ts", ts(type = "\"unfold-board\""))]
     pub format: &'static str,
     /// Always 1.
-    #[ts(type = "1")]
+    #[cfg_attr(feature = "ts", ts(type = "1"))]
     pub version: u32,
     /// The board's fields.
     #[serde(flatten)]
@@ -38,15 +38,20 @@ impl BoardDocument {
 /// What a window saves: the title and the pages. The folder and the file framing are Rust's.
 /// A page's names, combined steps, guards, connections, frames, resources, notes, and proposed
 /// steps are optional on input, as in the file; signatures may be `""` (signed on save).
-#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(transparent)]
-#[ts(
-    type = "{ title: string; pages: Array<Pick<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\"> & Partial<Omit<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\">>> }"
+#[cfg_attr(
+    feature = "ts",
+    ts(
+        type = "{ title: string; pages: Array<Pick<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\"> & Partial<Omit<Page, \"id\" | \"title\" | \"defaultView\" | \"cards\">>> }"
+    )
 )]
 pub struct BoardEdit(pub(super) serde_json::Value);
 
 /// An open board, as the window shows it.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardState {
     /// The board's project.
@@ -66,7 +71,8 @@ pub struct BoardState {
 }
 
 /// A board as its file holds it, read without opening it (`read_board`).
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReadBoardResult {
     /// The board's project.
@@ -82,7 +88,8 @@ pub struct ReadBoardResult {
 }
 
 /// A board's health.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardHealthView {
     /// The health.
@@ -92,7 +99,8 @@ pub struct BoardHealthView {
 }
 
 /// One board in the sidebar or Home's Boards.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardSummary {
     /// The board's project.
@@ -121,7 +129,8 @@ pub struct BoardSummary {
 }
 
 /// A project's boards and empty folders.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardList {
     /// The project.
@@ -133,7 +142,8 @@ pub struct BoardList {
 }
 
 /// One page of a board where a key is a card.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardRefHit {
     /// The board's project.
@@ -149,7 +159,8 @@ pub struct BoardRefHit {
 }
 
 /// Where a key is on boards ("Already on …").
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardRefs {
     /// The pages, by board id, then page order (at most 50).
@@ -159,7 +170,8 @@ pub struct BoardRefs {
 }
 
 /// How many boards a folder rename moved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RenamedFolder {
     /// The boards whose folder changed.
@@ -167,7 +179,8 @@ pub struct RenamedFolder {
 }
 
 /// The arguments of a command about one board.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct BoardIdArgs {
     /// The board's project.
@@ -177,27 +190,29 @@ pub struct BoardIdArgs {
 }
 
 /// The arguments of `new_board`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewBoardArgs {
     /// The project.
     pub project: ProjectId,
     /// The title ("Untitled board" when absent or blank).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub title: Option<String>,
     /// The folder, one name (the project's top level when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub folder: Option<String>,
     /// The first page's title ("Page 1" when absent or blank).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub page_title: Option<String>,
 }
 
 /// The arguments of `save_board`.
-#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SaveBoardArgs {
     /// The board's project.
@@ -211,14 +226,15 @@ pub struct SaveBoardArgs {
     /// Writes the edited board over the file whatever it holds now: the person chose their
     /// version (Save my version, Keep my edits).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub overwrite: Option<bool>,
     /// The edited board.
     pub board: BoardEdit,
 }
 
 /// The arguments of `set_board_folder`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SetBoardFolderArgs {
     /// The board's project.
@@ -230,7 +246,8 @@ pub struct SetBoardFolderArgs {
 }
 
 /// The arguments of `rename_folder`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct RenameFolderArgs {
     /// The project.
@@ -243,7 +260,8 @@ pub struct RenameFolderArgs {
 
 /// What a repair is about (a card, combined step, name, connection, resource card, frame, or
 /// proposed step) on its page.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum TargetSpec {
     /// A card, by id.
@@ -264,7 +282,8 @@ pub enum TargetSpec {
 
 /// An anchor a repair points a resource card or connection at: a block or entrance key, or
 /// lines of an evidence file.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(untagged, deny_unknown_fields)]
 pub enum AnchorSpec {
     /// A block key or an app's or entrance's key.
@@ -282,7 +301,8 @@ pub enum AnchorSpec {
 }
 
 /// One repair a health item offers (its `repairs`), with what it needs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(
     tag = "kind",
     rename_all = "snake_case",
@@ -331,13 +351,14 @@ pub enum RepairKindSpec {
 }
 
 /// A repair on one page.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RepairSpec {
     /// The page.
     pub page: String,
     /// The repair.
     #[serde(flatten)]
-    #[ts(flatten)]
+    #[cfg_attr(feature = "ts", ts(flatten))]
     pub repair: RepairKindSpec,
 }
 
@@ -402,7 +423,8 @@ impl RepairKindSpec {
 }
 
 /// The arguments of `repair_board`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct RepairBoardArgs {
     /// The board's project.

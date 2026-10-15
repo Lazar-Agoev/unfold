@@ -4,7 +4,8 @@
 //!   `dispatch` parses.
 //! - [`context`]: what a handler gets ([`context::Ctx`]).
 //! - [`error`]: the `{code, message}` error every command rejects with.
-//! - [`typescript`]: the generated TypeScript module (`cargo xtask gen-ipc`).
+//! - `typescript`: the generated TypeScript module (`cargo xtask gen-ipc`), with the `ts`
+//!   feature.
 //!
 //! The handlers live in [`crate::commands`]; [`crate::host::Host`] is the facade the addon
 //! wraps. `docs/ipc.md` catalogues the commands and events.
@@ -12,6 +13,7 @@
 pub mod context;
 pub mod error;
 pub mod table;
+#[cfg(feature = "ts")]
 pub mod typescript;
 
 pub use context::Ctx;

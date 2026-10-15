@@ -5,7 +5,6 @@
 //! module computes the payloads.
 
 use serde::Deserialize;
-use ts_rs::TS;
 use unfold_reader::contracts::{self, CallContract, Facts, TypeDefinition, TypeUses};
 use unfold_store::Reader;
 
@@ -21,7 +20,8 @@ pub const MAX_USES: u32 = 200;
 const DEFAULT_USES: u32 = 50;
 
 /// The arguments of `type_uses`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TypeUsesArgs {
     /// The project.
@@ -30,11 +30,11 @@ pub struct TypeUsesArgs {
     pub key: String,
     /// How many places to skip (0 when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub offset: Option<u32>,
     /// How many places to list (at most 200; 50 when absent).
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub limit: Option<u32>,
 }
 

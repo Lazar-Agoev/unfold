@@ -22,9 +22,6 @@ pub const FORMAT: &str = "unfold-board";
 /// The only `version`.
 pub const VERSION: u32 = 1;
 
-/// The JSON Schema of the format.
-pub const SCHEMA: &str = include_str!("../../schema/unfold-board.schema.json");
-
 /// The id of the page a new board starts with.
 const FIRST_PAGE: &str = "page-1";
 

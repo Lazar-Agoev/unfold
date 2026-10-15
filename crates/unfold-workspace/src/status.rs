@@ -15,11 +15,11 @@
 //! ignoring progress counts (those travel in `compile_progress`).
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::vocab::Language;
 
 /// The status-bar state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum GraphState {
     /// The folder has never been compiled on this machine.
@@ -65,7 +65,8 @@ pub enum GraphState {
 /// A live project's state is derived from its [`GraphStatus`] and its problem count (the Problems
 /// list less board health), first match wins: `failed` > `compiling` > `updating` >
 /// `not_compiled` > `problems` (a nonzero count) > `current`. A resting project shows the last state it had while live.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ProjectState {
     /// The graph matches the folder and nothing is wrong.
@@ -122,7 +123,8 @@ impl ProjectState {
 }
 
 /// How the folder is watched for changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum WatchMode {
     /// File-system events.
@@ -134,7 +136,8 @@ pub enum WatchMode {
 }
 
 /// The status of one folder's graph.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct GraphStatus {
     /// The status-bar state.

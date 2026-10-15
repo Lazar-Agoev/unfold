@@ -1,5 +1,6 @@
 //! Test helpers for this and downstream crates (the `testkit` feature): the repository's
-//! `testdata/` directory, golden-file comparison, and a builder for hand-written graphs.
+//! `testdata/` directory, golden-file comparison, a check of highlighters' spans, and a builder
+//! for hand-written graphs.
 //!
 //! These helpers panic on misuse; they are for tests only.
 
@@ -8,6 +9,7 @@ pub mod sample;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::highlight::HighlightSpan;
 use crate::key::{Callee, Child, Key, KeyBuilder};
 use crate::model::{
     App, Entrance, EntranceTarget, File, FileGraph, Graph, Input, Link, LinkTarget, ModuleLabel, Node,
@@ -82,6 +84,22 @@ pub fn target(code: &str, state: TargetState) -> EntranceTarget {
         code: Key::from_text(code),
         state,
     }
+}
+
+/// Whether `spans` is a valid highlighting of `text`: every span is nonempty, lies inside the
+/// text on character boundaries, and starts at or after the previous span's end.
+pub fn spans_are_well_formed(text: &str, spans: &[HighlightSpan]) -> bool {
+    let mut previous_end = 0u32;
+    spans.iter().all(|span| {
+        let ByteRange { start, end } = span.range;
+        let fits = start >= previous_end
+            && start < end
+            && (end as usize) <= text.len()
+            && text.is_char_boundary(start as usize)
+            && text.is_char_boundary(end as usize);
+        previous_end = end;
+        fits
+    })
 }
 
 /// A node added to a [`GraphBuilder`].
@@ -449,6 +467,33 @@ impl GraphBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::highlight::TokenClass;
+
+    #[test]
+    fn well_formed_spans() {
+        let span = |start, end, class| HighlightSpan {
+            range: ByteRange::new(start, end).unwrap(),
+            class,
+        };
+        let text = "let é = 1;";
+        assert!(spans_are_well_formed(text, &[]));
+        assert!(spans_are_well_formed(
+            text,
+            &[
+                span(0, 3, TokenClass::Keyword),
+                span(4, 6, TokenClass::Variable),
+                span(9, 10, TokenClass::Number)
+            ]
+        ));
+        // Overlapping, empty, out of range, and inside a UTF-8 sequence.
+        assert!(!spans_are_well_formed(
+            text,
+            &[span(0, 3, TokenClass::Keyword), span(2, 4, TokenClass::Variable)]
+        ));
+        assert!(!spans_are_well_formed(text, &[span(3, 3, TokenClass::Keyword)]));
+        assert!(!spans_are_well_formed(text, &[span(9, 12, TokenClass::Number)]));
+        assert!(!spans_are_well_formed(text, &[span(4, 5, TokenClass::Variable)]));
+    }
 
     #[test]
     fn testdata_is_at_the_repository_root() {

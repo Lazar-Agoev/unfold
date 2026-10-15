@@ -7,7 +7,8 @@
 //! or is unavailable, without text: old ranges are never applied to new bytes.
 //!
 //! Stored ranges are UTF-8 byte ranges (the engine's unit); what is rendered uses UTF-16
-//! offsets (the UI's unit). [`Source`] converts between them for one verified file.
+//! offsets (the UI's unit). A [`Source`] keeps the UTF-16 index that converts them for one
+//! verified file.
 //!
 //! A [`SourceCache`] keeps the sources verified most recently, by path and hash, so a drawing
 //! keeps its words while a file changes on disk and the compile hasn't caught up, or while the
@@ -20,12 +21,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use rustc_hash::FxHashMap;
-use serde::Serialize;
 use unfold_core::highlight::{HighlightSpan, Highlighter};
-use unfold_core::text::OffsetError;
-use unfold_core::{
-    ByteRange, ContentHash, LineBreaks, LineIndex, RepoPath, Snapshot, Utf16Index, text::Utf16Range,
-};
+use unfold_core::{ByteRange, ContentHash, LineBreaks, LineIndex, RepoPath, Snapshot, Utf16Index};
 
 use crate::error::{ReaderError, Result};
 
@@ -100,25 +97,11 @@ impl Source {
     pub fn slice(&self, range: ByteRange) -> Result<&str> {
         self.text()
             .get(range.as_usize())
-            .ok_or_else(|| self.invalid(range))
-    }
-
-    /// Stored range `range` in UTF-16 code units, for rendering.
-    pub fn to_utf16(&self, range: ByteRange) -> Result<Utf16Range> {
-        self.utf16.range_to_utf16(range).map_err(|_| self.invalid(range))
-    }
-
-    /// A rendered UTF-16 range as a byte range of the text.
-    pub fn to_utf8(&self, range: Utf16Range) -> Result<ByteRange, OffsetError> {
-        self.utf16.range_to_utf8(range)
-    }
-
-    fn invalid(&self, range: ByteRange) -> ReaderError {
-        ReaderError::InvalidRange {
-            path: self.path().as_str().into(),
-            start: range.start,
-            end: range.end,
-        }
+            .ok_or_else(|| ReaderError::InvalidRange {
+                path: self.path().as_str().into(),
+                start: range.start,
+                end: range.end,
+            })
     }
 }
 
@@ -134,15 +117,6 @@ pub enum Verified {
 }
 
 impl Verified {
-    /// The state without the text.
-    pub fn state(&self) -> SourceState {
-        match self {
-            Self::Current(_) => SourceState::Current,
-            Self::Changed => SourceState::Changed,
-            Self::Missing => SourceState::Missing,
-        }
-    }
-
     /// The verified source, when current.
     pub fn source(&self) -> Option<&Source> {
         match self {
@@ -160,10 +134,8 @@ impl Verified {
     }
 }
 
-/// The freshness of a file's source, as the UI shows it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
+/// The freshness of a file's source, as [`SourceCache::check`] finds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceState {
     /// The source matches the facts.
     Current,
@@ -488,12 +460,11 @@ mod tests {
             verify_file(dir.path(), &path, None, LineBreaks::EcmaScript),
             Verified::Missing
         );
-        assert_eq!(Verified::Missing.state(), SourceState::Missing);
         assert!(Verified::Changed.source().is_none());
     }
 
     #[test]
-    fn ranges_convert_between_bytes_and_utf16() {
+    fn stored_ranges_slice_the_verified_text() {
         let dir = tempfile::tempdir().unwrap();
         let text = "a = \"é😀\"\nb = 1\n";
         std::fs::write(dir.path().join("m.py"), text).unwrap();
@@ -506,18 +477,13 @@ mod tests {
         ) else {
             panic!("expected current source");
         };
-        // `b` starts after `a = "é😀"\n`: 13 bytes, but 10 UTF-16 units (é is 1, 😀 is 2).
-        let b = ByteRange { start: 13, end: 14 };
-        assert_eq!(source.slice(b).unwrap(), "b");
-        assert_eq!(source.to_utf16(b).unwrap(), Utf16Range { start: 10, end: 11 });
-        assert_eq!(source.to_utf8(Utf16Range { start: 10, end: 11 }).unwrap(), b);
+        // `b` starts after `a = "é😀"\n`: 13 bytes.
+        assert_eq!(source.slice(ByteRange { start: 13, end: 14 }).unwrap(), "b");
         // A range inside 😀, or past the end, never fits.
-        let inside = ByteRange { start: 7, end: 8 };
         assert!(matches!(
-            source.slice(inside),
+            source.slice(ByteRange { start: 7, end: 8 }),
             Err(ReaderError::InvalidRange { .. })
         ));
-        assert!(source.to_utf16(inside).is_err());
         assert!(source.slice(ByteRange { start: 0, end: 99 }).is_err());
     }
 }

@@ -41,13 +41,13 @@ Run `source "$HOME/.cargo/env"` first if `cargo` isn't on `PATH`. Format and lin
 
 | Package | Tests |
 | --- | --- |
-| `unfold-core` | Unit tests beside the code; `testkit` (the `testkit` feature) holds `GraphBuilder`, the sample `shop` graph, and `assert_golden` |
+| `unfold-core` | Unit tests beside the code; `testkit` (the `testkit` feature) holds `GraphBuilder`, the sample `shop` graph, `assert_golden`, and `spans_are_well_formed` for highlighters |
 | `unfold-engine` | `tests/backend/` (the shared pipeline through an in-memory test language, determinism, validation, updates), `tests/entrances/` (`[[app]]` tables with the real front ends: states, fixes, settings-only edits), `tests/discovery.rs` |
 | `unfold-lang-python` | One binary, `tests/python/`: lowering, binder, typed records, census, failures, robustness, goldens |
 | `unfold-lang-typescript` | One binary, `tests/structure/`: lowering, evidence, resolution, typed records, census, configuration, goldens |
-| `unfold-store` | `tests/store/`; fault injection and concurrency in `src/tests/` |
+| `unfold-store` | `tests/store/`; fault injection and concurrency in `src/tests/`; the `testkit` feature adds `Reader::stats`, the row counts the tests compare |
 | `unfold-reader` | Unit tests beside each module (drawing, overlay, contracts, code panel, boards) on golden graphs loaded through the canonical reader, so nothing compiles; `tests/` for the two sample boards |
-| `unfold-workspace` | `tests/commands/` (every command through `Host`, as the addon calls it), `tests/workspace/`, `tests/incremental.rs` (random edit sequences must equal a full compile), `tests/goldens.rs` |
+| `unfold-workspace` | `tests/commands/` (every command through `Host`, as the addon calls it), `tests/workspace/`, `tests/incremental.rs` (random edit sequences must equal a full compile), `tests/goldens.rs`; the `testkit` feature adds `Workspace::notify_changes`, how tests with the watcher off report changed paths |
 | `unfold-node` | `test/addon.test.mjs`, through the built addon (`just addon-test`) |
 | `ui`, `desktop` | Vitest files beside the code. UI component tests answer engine commands from the command goldens (`ui/src/test/engine.ts`); desktop tests use a fake Electron (`desktop/src/main/fake-electron.ts`) |
 | `e2e` | Five Playwright journeys ([below](#end-to-end-journeys)) |

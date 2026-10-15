@@ -11,7 +11,6 @@
 //! it (`names_app`). The same views, without states, describe the apps of `project_config`.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_core::vocab::{InputRole, TargetState};
 use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineBreaks, LineIndex, RepoPath};
 use unfold_engine::entrances::{FixKind, Fixes};
@@ -24,19 +23,21 @@ use crate::projects::ProjectId;
 use crate::workspace::settings_text;
 
 /// The arguments of `entrances`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct EntrancesArgs {
     /// The project.
     pub project: ProjectId,
     /// An app's name or key: only that app is listed. Absent lists them all.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub app: Option<String>,
 }
 
 /// The apps and entrances of a project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntrancesView {
     /// Whether the project's engine has read `unfold.toml`: `false` just after the project
@@ -48,77 +49,80 @@ pub struct EntrancesView {
 }
 
 /// One `[[app]]` table as written.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AppView {
     /// Its key, `entrance:<slug>`; absent when its name makes none.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub key: Option<Key>,
     /// Its name; absent when the table has none.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub name: Option<String>,
     /// The command that starts it, as written.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub run: Option<String>,
     /// Where that command starts.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub code: Option<EntranceCode>,
     /// One sentence for its card.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub about: Option<String>,
     /// What it handles, in file order.
     pub entrances: Vec<EntranceView>,
     /// The table's first and last line in `unfold.toml`; absent when the file changed since it
     /// was read.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub lines: Option<[u32; 2]>,
     /// Why it stays out of the graph, with its entrances.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub problem: Option<EntryProblemView>,
 }
 
 /// One entrance of an app as written.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntranceView {
     /// Its key, `entrance:<app slug>/<entrance slug>`; absent when the names make none.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub key: Option<Key>,
     /// Its name; absent when the entry has none.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub name: Option<String>,
     /// What starts it, as written.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub on: Option<String>,
     /// The blocks it starts at, in the order they run.
     pub code: Vec<EntranceCode>,
     /// One sentence for its card.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub about: Option<String>,
     /// The entry's first and last line in `unfold.toml`; absent when the file changed since it
     /// was read.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub lines: Option<[u32; 2]>,
     /// Why it stays out of the graph.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub problem: Option<EntryProblemView>,
 }
 
 /// One `code` key as written, with what it names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntranceCode {
     /// The block key.
@@ -126,16 +130,17 @@ pub struct EntranceCode {
     /// What it names after the last compile; absent for an entry with a problem (it stays out
     /// of the graph) and in `project_config`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub state: Option<TargetState>,
     /// The key to write instead, when the key is missing and exactly one candidate fits.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub fix: Option<CodeFix>,
 }
 
 /// A one-candidate fix for a missing `code` key, offered and never applied.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeFix {
     /// Why it fits.
@@ -147,7 +152,8 @@ pub struct CodeFix {
 }
 
 /// Why a [`CodeFix`] fits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum FixReason {
     /// The definition moved to another file.
@@ -169,7 +175,8 @@ impl From<FixKind> for FixReason {
 }
 
 /// What is wrong with one app or entrance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EntryProblemView {
     /// What kind of problem.
@@ -179,12 +186,13 @@ pub struct EntryProblemView {
     /// The line of the field at fault (or of the entry); absent when the file changed since
     /// it was read.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub line: Option<u32>,
 }
 
 /// The kinds of [`EntryProblemView`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum EntryProblemReason {
     /// A field an app or entrance doesn't have.

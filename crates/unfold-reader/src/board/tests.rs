@@ -2295,3 +2295,39 @@ fn a_definition_is_signed_from_its_first_decorator() {
     );
     assert_ne!(signed(BEFORE), signed(AFTER));
 }
+
+#[test]
+fn the_schema_states_the_readers_limits() {
+    let text = include_str!("../../schema/unfold-board.schema.json");
+    assert_eq!(
+        text,
+        include_str!("../../../../docs/schemas/unfold-board.schema.json"),
+        "docs/schemas/ holds a copy of the schema"
+    );
+    let schema: serde_json::Value = serde_json::from_str(text).unwrap();
+    let at = |pointer: &str| {
+        schema
+            .pointer(pointer)
+            .unwrap_or_else(|| panic!("the schema has no {pointer}"))
+            .clone()
+    };
+    assert_eq!(at("/properties/format/const"), FORMAT);
+    assert_eq!(at("/properties/version/const"), VERSION);
+    let limits = [
+        ("/$defs/note/properties/text/maxLength", MAX_NOTE_CHARACTERS),
+        ("/$defs/proposal/properties/title/maxLength", MAX_PROPOSAL_TITLE),
+        ("/$defs/proposal/properties/reason/maxLength", MAX_PROPOSAL_REASON),
+        ("/$defs/page/properties/proposals/maxItems", MAX_PROPOSALS),
+        (
+            "/$defs/card/properties/open/maxItems",
+            crate::overlay::MAX_OPEN_PATHS,
+        ),
+        (
+            "/$defs/card/properties/open/items/maxItems",
+            crate::overlay::MAX_OPEN_DEPTH,
+        ),
+    ];
+    for (pointer, limit) in limits {
+        assert_eq!(at(pointer), limit, "{pointer}");
+    }
+}

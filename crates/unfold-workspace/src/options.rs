@@ -7,15 +7,13 @@ use std::time::Duration;
 use serde::Deserialize;
 use unfold_engine::{EngineOptions, Language};
 
-/// The app folders the desktop shell passes to the addon's `init` (docs/architecture.md#storage).
+/// The app folder the desktop shell passes to the addon's `init` (docs/architecture.md#storage).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppConfig {
     /// The settings (`settings.json`), the workspace (`workspace.json`), and the remembered window
     /// (`window.json`).
     pub app_data_dir: PathBuf,
-    /// Logs.
-    pub logs_dir: PathBuf,
 }
 
 /// Timings and engine settings for projects and their workspaces.
@@ -89,8 +87,11 @@ mod tests {
 
     #[test]
     fn app_config_reads_the_init_json() {
-        let config: AppConfig = serde_json::from_str(r#"{"appDataDir":"/a","logsDir":"/l"}"#).expect("parse");
+        let config: AppConfig = serde_json::from_str(r#"{"appDataDir":"/a"}"#).expect("parse");
         assert_eq!(config.app_data_dir, PathBuf::from("/a"));
-        assert_eq!(config.logs_dir, PathBuf::from("/l"));
+        assert!(
+            serde_json::from_str::<AppConfig>(r#"{"appDataDir":"/a","logsDir":"/l"}"#).is_err(),
+            "no folder is taken that nothing uses"
+        );
     }
 }

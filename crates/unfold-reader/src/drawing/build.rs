@@ -427,7 +427,6 @@ impl<'a> Builder<'_, 'a> {
             state: self.state,
             line: node.lines.start,
             is_async: node.flags.contains(Flag::Async),
-            generator: node.flags.contains(Flag::Generator),
             defined_with,
             imports,
             actions: self.actions(id),

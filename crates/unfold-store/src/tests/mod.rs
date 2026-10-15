@@ -1,5 +1,5 @@
 //! Unit tests that need the writer's test hooks: faults injected mid-commit, readers during a
-//! commit, and key-ID stability.
+//! commit, and the key table (IDs that last, and only live keys).
 
 use std::sync::{Arc, mpsc};
 
@@ -7,11 +7,11 @@ use tempfile::TempDir;
 use unfold_core::key::Callee;
 use unfold_core::testkit::GraphBuilder;
 use unfold_core::testkit::sample::shop;
-use unfold_core::vocab::{Language, Reason};
+use unfold_core::vocab::{Form, Language, LinkKind, Reason};
 use unfold_core::{FileGraph, Graph, LinkTarget};
 
 use crate::writer::FaultPoint;
-use crate::{DiskStamp, FileChange, Reader, Store, StoreConfig, StoreError, Update, Writer};
+use crate::{Definition, DiskStamp, FileChange, Reader, Store, StoreConfig, StoreError, Update, Writer};
 
 fn temp_store() -> (TempDir, Store) {
     let dir = tempfile::tempdir().expect("create a temporary directory");
@@ -105,8 +105,9 @@ fn state(reader: &Reader) -> String {
     )
 }
 
-/// The mirror agrees with the committed tables.
+/// The mirror agrees with the committed tables, which hold only live keys.
 fn assert_mirror_matches(writer: &Writer) {
+    assert_keys_live(writer);
     let keys: i64 = writer
         .conn()
         .query_row("SELECT count(*) FROM keys", [], |row| row.get(0))
@@ -136,6 +137,138 @@ fn key_id(writer: &Writer, key: &str) -> Option<i64> {
         .conn()
         .query_row("SELECT id FROM keys WHERE key = ?1", [key], |row| row.get(0))
         .ok()
+}
+
+fn key_count(writer: &Writer) -> i64 {
+    writer
+        .conn()
+        .query_row("SELECT count(*) FROM keys", [], |row| row.get(0))
+        .expect("count keys")
+}
+
+/// Every key ID a row holds: each key column, and the search rows' (`crate::search::rowid`).
+const KEY_USES: &str = "SELECT key_id AS id FROM nodes UNION SELECT target_key_id FROM links \
+     WHERE target_key_id IS NOT NULL UNION SELECT key_id FROM definitions UNION SELECT id FROM apps \
+     UNION SELECT id FROM entrances UNION SELECT code_key_id FROM entrance_targets \
+     UNION SELECT rowid / 4 FROM search";
+
+/// The key table holds exactly the keys some row refers to.
+fn assert_keys_live(writer: &Writer) {
+    let mut statement = writer
+        .conn()
+        .prepare(&format!("SELECT key FROM keys WHERE id NOT IN ({KEY_USES})"))
+        .expect("prepare");
+    let unused: Vec<String> = statement
+        .query_map([], |row| row.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert!(unused.is_empty(), "keys no row uses: {unused:?}");
+    let dangling: i64 = writer
+        .conn()
+        .query_row(
+            &format!("SELECT count(*) FROM ({KEY_USES}) WHERE id NOT IN (SELECT id FROM keys)"),
+            [],
+            |row| row.get(0),
+        )
+        .expect("count dangling key IDs");
+    assert_eq!(dangling, 0, "rows hold key IDs the key table lacks");
+}
+
+/// The sample, plus `src/renamed.ts`, whose function `f{n}` calls `helper`, and `src/caller.ts`,
+/// which calls `f{n}`: the graph after renaming `f0` `n` times.
+fn renamed(n: usize) -> Graph {
+    let mut builder = shop();
+    let name = format!("f{n}");
+    let function_text = format!("export function {name}() {{\n  helper();\n}}");
+    let module = builder.file(
+        "src/renamed.ts",
+        Language::TypeScript,
+        &format!("{function_text}\nfunction helper() {{}}\n"),
+    );
+    let function = builder.def(
+        module,
+        Form::Function,
+        &name,
+        builder.find(module, &function_text),
+    );
+    let call = builder.call(
+        function,
+        &Callee::name("helper"),
+        builder.find(module, "helper()"),
+    );
+    let helper = builder.def(
+        module,
+        Form::Function,
+        "helper",
+        builder.find(module, "function helper() {}"),
+    );
+    let helper = LinkTarget::Project(builder.key(helper));
+    builder.link(
+        call,
+        LinkKind::Calls,
+        builder.find(module, "helper"),
+        "helper",
+        helper,
+    );
+    let function = LinkTarget::Project(builder.key(function));
+    let caller = builder.file("src/caller.ts", Language::TypeScript, &format!("{name}();\n"));
+    let call = builder.call(
+        caller,
+        &Callee::name(&name),
+        builder.find(caller, &format!("{name}()")),
+    );
+    builder.link(
+        call,
+        LinkKind::Calls,
+        builder.find(caller, &name),
+        &name,
+        function,
+    );
+    builder.build()
+}
+
+/// The definition catalog of each file of `graph`, every definition named by its name (the
+/// module by its path).
+fn catalogs(graph: &Graph) -> Vec<Vec<Definition>> {
+    graph
+        .files
+        .iter()
+        .map(|file| {
+            file.nodes
+                .iter()
+                .zip(0..)
+                .filter(|(node, _)| node.kind().is_definition())
+                .map(|(node, id)| {
+                    let name: Box<str> = node
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| file.file.path.as_str().into());
+                    Definition {
+                        key: node.key.clone(),
+                        node: id,
+                        kind: node.kind(),
+                        qualified_name: name.clone(),
+                        label: name,
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// `update`, a change to `graph`, with the definitions of each file it writes from `catalogs`
+/// (one per file of `graph`).
+fn with_catalogs<'a>(mut update: Update<'a>, graph: &Graph, catalogs: &'a [Vec<Definition>]) -> Update<'a> {
+    for change in &mut update.files {
+        let index = graph
+            .files
+            .iter()
+            .position(|file| file.file.path == change.file.path)
+            .expect("a file of the graph");
+        change.definitions = Some(&catalogs[index]);
+    }
+    update
 }
 
 #[test]
@@ -266,7 +399,7 @@ fn readers_see_the_old_graph_until_the_commit_ends() {
 }
 
 #[test]
-fn key_ids_survive_updates() {
+fn key_ids_last_while_rows_use_them() {
     let before = shop().build();
     let after = changed_sample();
     let (_dir, mut store) = temp_store();
@@ -274,20 +407,27 @@ fn key_ids_survive_updates() {
         .writer
         .commit(&first_compile(&before))
         .expect("first compile");
-    let watched = [
-        "shop/store.py#save_order",
-        "shop/payments.py#charge_card",
-        "src/orders.ts#loadOrder",
-        "src/orders.ts#",
-    ];
-    let ids: Vec<Option<i64>> = watched.iter().map(|key| key_id(&store.writer, key)).collect();
+    let kept = ["shop/store.py#save_order", "shop/payments.py#charge_card"];
+    let removed = ["src/orders.ts#loadOrder", "src/orders.ts#"];
+    let ids: Vec<Option<i64>> = kept.iter().map(|key| key_id(&store.writer, key)).collect();
     assert!(ids.iter().all(Option::is_some));
+    let removed_ids: Vec<Option<i64>> = removed.iter().map(|key| key_id(&store.writer, key)).collect();
+    assert!(removed_ids.iter().all(Option::is_some));
 
+    // Removing orders.ts, and the entrance into it, deletes the keys only it used.
     store.writer.commit(&delta(&before, &after)).expect("update");
-    // Removing orders.ts and adding it back reuses its keys' IDs.
+    assert_keys_live(&store.writer);
+    for key in removed {
+        assert_eq!(key_id(&store.writer, key), None, "{key}");
+    }
+    // Adding it back interns them again under new IDs; the keys rows kept using keep theirs.
     store.writer.commit(&delta(&after, &before)).expect("restore");
-    let again: Vec<Option<i64>> = watched.iter().map(|key| key_id(&store.writer, key)).collect();
+    assert_keys_live(&store.writer);
+    let again: Vec<Option<i64>> = kept.iter().map(|key| key_id(&store.writer, key)).collect();
     assert_eq!(ids, again);
+    for (key, old) in removed.iter().zip(removed_ids) {
+        assert!(key_id(&store.writer, key) > old, "{key}");
+    }
 
     // Links into a definition point at the same key ID throughout.
     let target: i64 = store
@@ -309,7 +449,7 @@ fn key_ids_survive_updates() {
         .writer
         .commit(&delta(&before, &after))
         .expect("update after reopen");
-    assert_eq!(key_id(&store.writer, watched[0]), ids[0]);
+    assert_eq!(key_id(&store.writer, kept[0]), ids[0]);
     assert_mirror_matches(&store.writer);
 }
 
@@ -386,4 +526,112 @@ fn a_fault_during_replace_leaves_the_previous_graph() {
     assert_mirror_matches(&store.writer);
     assert!(reader.file("src/orders.ts").expect("file").is_none());
     assert!(reader.file("src/extra.ts").expect("file").is_some());
+}
+
+#[test]
+fn renames_leave_only_the_live_keys() {
+    let graphs: Vec<Graph> = (0..=20).map(renamed).collect();
+    let catalogs: Vec<Vec<Vec<Definition>>> = graphs.iter().map(catalogs).collect();
+    let (_dir, mut store) = temp_store();
+    store
+        .writer
+        .commit(&with_catalogs(
+            first_compile(&graphs[0]),
+            &graphs[0],
+            &catalogs[0],
+        ))
+        .expect("first compile");
+    assert_keys_live(&store.writer);
+    let keys = key_count(&store.writer);
+    for n in 1..graphs.len() {
+        let update = with_catalogs(delta(&graphs[n - 1], &graphs[n]), &graphs[n], &catalogs[n]);
+        let stats = store.writer.commit(&update).expect("rename");
+        // The function's key, its call's, and its caller's call's.
+        assert_eq!(stats.keys_removed, 3, "rename {n}");
+        assert_mirror_matches(&store.writer);
+    }
+    assert_eq!(key_count(&store.writer), keys);
+    assert_eq!(key_id(&store.writer, "src/renamed.ts#f0"), None);
+    assert!(key_id(&store.writer, "src/renamed.ts#f20").is_some());
+
+    // A fresh store of the last graph holds as many keys.
+    let (_fresh_dir, mut fresh) = temp_store();
+    let last = graphs.len() - 1;
+    fresh
+        .writer
+        .commit(&with_catalogs(
+            first_compile(&graphs[last]),
+            &graphs[last],
+            &catalogs[last],
+        ))
+        .expect("fresh compile");
+    assert_eq!(key_count(&fresh.writer), keys);
+}
+
+#[test]
+fn a_key_any_row_uses_is_kept() {
+    let first = renamed(0);
+    let (_dir, mut store) = temp_store();
+    store
+        .writer
+        .commit(&first_compile(&first))
+        .expect("first compile");
+    assert_keys_live(&store.writer);
+
+    // An entrance target: no code has `refund_order`, and rewriting the apps keeps its key.
+    const REFUND: &str = "shop/service.py#refund_order";
+    let refund = key_id(&store.writer, REFUND).expect("its entrance interned it");
+    let mut apps = first.clone();
+    apps.apps[0].entrances[0].name = "Place one order".into();
+    store.writer.commit(&delta(&first, &apps)).expect("apps");
+    assert_eq!(key_id(&store.writer, REFUND), Some(refund));
+    assert_keys_live(&store.writer);
+    let mut no_refund = apps.clone();
+    no_refund.apps[0]
+        .entrances
+        .retain(|entrance| &*entrance.name != "Refund an order");
+    store.writer.commit(&delta(&apps, &no_refund)).expect("entrance");
+    assert_eq!(key_id(&store.writer, REFUND), None);
+    assert_keys_live(&store.writer);
+
+    // A link: `caller.ts` still calls `f0` after `f0` is renamed, until it follows.
+    let caller = |graph: &Graph| {
+        graph
+            .files
+            .iter()
+            .position(|file| file.file.path.as_str() == "src/caller.ts")
+            .expect("the graph has caller.ts")
+    };
+    let mut stale = renamed(1);
+    stale.apps.clone_from(&no_refund.apps);
+    let index = caller(&stale);
+    stale.files[index] = Arc::clone(&first.files[caller(&first)]);
+    store.writer.commit(&delta(&no_refund, &stale)).expect("rename");
+    assert!(key_id(&store.writer, "src/renamed.ts#f0").is_some());
+    assert_eq!(key_id(&store.writer, "src/renamed.ts#f0/call:helper"), None);
+    assert_keys_live(&store.writer);
+    let mut followed = renamed(1);
+    followed.apps.clone_from(&no_refund.apps);
+    store.writer.commit(&delta(&stale, &followed)).expect("follow");
+    assert_eq!(key_id(&store.writer, "src/renamed.ts#f0"), None);
+    assert_keys_live(&store.writer);
+
+    // A file's search row: `caller.ts` without nodes keeps its module key until it goes.
+    let mut empty = followed.clone();
+    let index = caller(&empty);
+    let file = Arc::make_mut(&mut empty.files[index]);
+    file.nodes.clear();
+    file.links.clear();
+    store
+        .writer
+        .commit(&delta(&followed, &empty))
+        .expect("empty file");
+    assert!(key_id(&store.writer, "src/caller.ts#").is_some());
+    assert_keys_live(&store.writer);
+    let mut gone = empty.clone();
+    gone.files.remove(index);
+    store.writer.commit(&delta(&empty, &gone)).expect("remove");
+    assert_eq!(key_id(&store.writer, "src/caller.ts#"), None);
+    assert_keys_live(&store.writer);
+    assert_mirror_matches(&store.writer);
 }

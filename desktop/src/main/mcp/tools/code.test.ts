@@ -190,7 +190,7 @@ describe("get_relations", () => {
     expect(lines).toContain(`- line 32: calls orderService.place → OrderService.place (key src/services/order-service.ts#OrderService.place); key ${CREATE_ORDER}/call:orderService.place`);
     expect(lines).toContain(`- line 28: calls ordersQueue.add → the library bullmq; key ${CREATE_ORDER}/if[0]/then/call:ordersQueue.add`);
     expect(lines).toContain(`- Order placement › Placing an order (board id ${BOARD.id}, page id page-1)`);
-    expect(tools.engineCalls.find(([command]) => command === "relations")?.[1]).toEqual({ project: PROJECT, key: CREATE_ORDER, callersOffset: 0, callersLimit: 5 });
+    expect(tools.engineCalls.find(([command]) => command === "relations")?.[1]).toEqual({ project: PROJECT, key: CREATE_ORDER, callersLimit: 5 });
   });
 
   it("lists a type's uses, heritage marked, and pages them", async () => {
@@ -235,17 +235,16 @@ describe("get_relations", () => {
       path: file,
       line: index + 400,
       kind: "calls" as const,
+      cursor: `${index}:0:${file}`,
     }));
     const tools = app({
       engine: {
-        relations: ({ callersOffset, callersLimit }): Relations => {
-          const offset = Number(callersOffset);
-          const page = callers.slice(offset, offset + Number(callersLimit));
+        relations: ({ callersAfter, callersLimit }): Relations => {
+          const start = callersAfter === undefined ? 0 : callers.findIndex((caller) => caller.cursor === callersAfter) + 1;
           return {
             ...recorded<Relations>(relationsCreateOrder),
-            callers: page,
+            callers: callers.slice(start, start + Number(callersLimit)),
             callersTotal: callers.length,
-            callersNext: offset + page.length < callers.length ? offset + page.length : null,
             outgoing,
             reachedFrom: [{ key: "entrance:pipelines/train", name: "Train the models", app: "Pipelines" }],
           };
@@ -253,7 +252,7 @@ describe("get_relations", () => {
       },
     });
     const calls = new Set<string>();
-    const callersSeen = new Set<string>();
+    const callersSeen: string[] = [];
     let cursor: string | undefined;
     let pages = 0;
     do {
@@ -269,12 +268,26 @@ describe("get_relations", () => {
         calls.add(key ?? "");
       }
       for (const [, key] of text.matchAll(/\(key (\S+); call /g)) {
-        callersSeen.add(key ?? "");
+        callersSeen.push(key ?? "");
       }
-      cursor = /More: get_relations with cursor "(\d+)"/.exec(text)?.[1];
+      cursor = /More: get_relations with cursor "([^"]+)"/.exec(text)?.[1];
     } while (cursor !== undefined && pages < 20);
     expect(cursor).toBeUndefined();
     expect(calls.size).toBe(290);
-    expect(callersSeen.size).toBe(130);
+    // Each page of callers starts after the last one the page before showed: none twice, none missed.
+    expect(callersSeen).toEqual(callers.map((caller) => caller.owner));
+    const afters = tools.engineCalls.filter(([command]) => command === "relations").map(([, args]) => (args as { callersAfter?: string }).callersAfter);
+    expect(afters[0]).toBeUndefined();
+    expect(afters.slice(1).every((after) => after !== undefined && callers.some((caller) => caller.cursor === after))).toBe(true);
+  });
+
+  it("refuses a cursor whose offset isn't one", async () => {
+    const tools = app();
+    for (const cursor of ["x:1:0:a.ts", ":1:0:a.ts", "-1:1:0:a.ts"]) {
+      expect((await tools.call(getRelations, { key: CREATE_ORDER, cursor })).text).toBe(
+        `“${cursor}” isn't a cursor of this list. Leave cursor out for the first page, or pass the next cursor a result gave.`,
+      );
+    }
+    expect(tools.commands()).not.toContain("relations");
   });
 });

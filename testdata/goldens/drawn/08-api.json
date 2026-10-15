@@ -8,7 +8,6 @@
     "state": "current",
     "line": 1,
     "async": false,
-    "generator": false,
     "definedWith": [],
     "imports": [
       {

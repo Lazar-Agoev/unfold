@@ -54,8 +54,8 @@ pub enum StoreError {
 }
 
 impl StoreError {
-    /// Whether the error means the database file is damaged or is not a database at all. The
-    /// caller recovers by recreating the cache ([`crate::Store::recreate`]).
+    /// Whether the error means the database file is damaged or is not a database at all.
+    /// [`crate::Store::open`] discards such a file and creates a new one.
     pub fn is_corrupt(&self) -> bool {
         match self {
             Self::Sqlite(error) => is_corruption(error),

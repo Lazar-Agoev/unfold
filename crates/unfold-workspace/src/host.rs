@@ -3,7 +3,7 @@
 //!
 //! | Addon function | Host |
 //! | --- | --- |
-//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir","logsDir"}`: loads `workspace.json` (every project resting) and starts the liveness reaper |
+//! | `init(options)` | [`Host::init`] with the JSON `{"appDataDir"}`: loads `workspace.json` (every project resting) and starts the liveness reaper |
 //! | `subscribe(sink)` | [`Host::subscribe`]: every event and stream message, as one JSON string each |
 //! | `dispatch(windowId, requestId, command)` | [`Host::dispatch_async`] (or [`Host::dispatch`]) |
 //! | `cancel(requestId)` | [`Host::cancel`] |
@@ -47,7 +47,6 @@ use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use unfold_engine::CancelToken;
 
 use crate::commands::board_hooks;
@@ -81,7 +80,8 @@ const CLOSING_WRITES: &[&str] = &[
 ];
 
 /// One message to the engine host's sink.
-#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum SinkMessage {
     /// An event for some windows only (`board_reloaded`, for the window that opened the board).
@@ -265,7 +265,7 @@ impl Host {
         }
     }
 
-    /// Sets the app folders from the JSON the main process chose, loads the workspace (every
+    /// Sets the app folder from the JSON the main process chose, loads the workspace (every
     /// project resting), and starts the liveness reaper. Call once, before anything else.
     pub fn init(&self, options_json: &str) -> CommandResult<()> {
         let config: AppConfig = serde_json::from_str(options_json)

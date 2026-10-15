@@ -55,7 +55,7 @@ let saves: number;
 let refuseSave: { code: string; message: string } | null;
 
 function noCalls(key: string): Relations {
-  return { key, callers: [], callersTotal: 0, callersNext: null, outgoing: [], reachedFrom: [] };
+  return { key, callers: [], callersTotal: 0, outgoing: [], reachedFrom: [] };
 }
 
 function open(overrides: Partial<Page> = {}): void {

@@ -7,7 +7,6 @@
 //! highlighters and the sources verified before. Wakes the project.
 
 use serde::Deserialize;
-use ts_rs::TS;
 use unfold_core::RepoPath;
 use unfold_reader::code_view::{self, CodeRequest, CodeSources, CodeView, MAX_WINDOW, Target};
 
@@ -22,7 +21,8 @@ use crate::workspace::Workspace;
 pub const MAX_TITLE: usize = 400;
 
 /// What the code panel opens.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -44,11 +44,11 @@ pub enum CodeTarget {
         lines: [u32; 2],
         /// The lines to mark, for a citation.
         #[serde(default)]
-        #[ts(optional)]
+        #[cfg_attr(feature = "ts", ts(optional))]
         mark: Option<[u32; 2]>,
         /// A combined step's title, which labels it in the path.
         #[serde(default)]
-        #[ts(optional)]
+        #[cfg_attr(feature = "ts", ts(optional))]
         title: Option<String>,
     },
     /// A written member of a class or type card, shown as its line.
@@ -71,7 +71,8 @@ pub enum CodeTarget {
 }
 
 /// The arguments of `code_view`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CodeViewArgs {
     /// The project.
@@ -81,13 +82,13 @@ pub struct CodeViewArgs {
     /// What to show instead of the selection's own lines, when the path widened the view: a
     /// block on the selection's path, the file, or the app of a selected entrance.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub show: Option<CodeTarget>,
     /// The view's lines to answer with, first and last, one-based: at most 400 (a page as the
     /// panel scrolls, or what `read_file` reads). Absent: a page of 200 from a little above the
     /// first line the selection marks.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub window: Option<[u32; 2]>,
 }
 

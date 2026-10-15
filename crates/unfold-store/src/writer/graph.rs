@@ -1,22 +1,25 @@
-//! Writing files: rows, nodes, links, typed records, definitions, and their search rows.
+//! Writing files: rows, nodes, links, typed records, definitions, and their search rows; and
+//! deleting the keys a commit leaves unused.
 
-use rusqlite::params;
+use rusqlite::{CachedStatement, Params, params};
 use rustc_hash::FxHashSet;
 use unfold_core::{FileTypes, Key, Link, LinkTarget, Node, Pairing, RepoPath, WrittenType};
 
 use super::mirror::Mirror;
 use super::statements::Statements;
-use crate::codec::{flag_bits, position, range_columns, to_i64};
+use crate::codec::{self, flag_bits, position, range_columns, to_i64};
 use crate::error::Result;
 use crate::search::{CandidateKind, rowid};
 use crate::update::{Definition, FileChange};
 use crate::writer::CommitStats;
 
-/// One commit in progress: its statements, the key mirror, and what it has written so far.
+/// One commit in progress: its statements, the key mirror, what it has written so far, and the
+/// key IDs of the rows it deleted.
 pub(crate) struct Apply<'c, 'm> {
     pub st: Statements<'c>,
     pub mirror: &'m mut Mirror,
     pub stats: CommitStats,
+    pub released: Vec<i64>,
 }
 
 impl Apply<'_, '_> {
@@ -29,16 +32,33 @@ impl Apply<'_, '_> {
         };
         self.delete_definitions(file_id)?;
         self.delete_types(file_id)?;
-        self.st.delete_links.execute([file_id])?;
-        self.st.delete_nodes.execute([file_id])?;
+        release(&mut self.st.delete_links, [file_id], &mut self.released)?;
+        release(&mut self.st.delete_nodes, [file_id], &mut self.released)?;
         self.st.delete_file.execute([file_id])?;
         self.st.delete_facts.execute([path.as_str()])?;
         if let Some(module) = self.mirror.key_id(Key::module(path).as_str()) {
             self.st
                 .delete_search
                 .execute([rowid(CandidateKind::File, module)])?;
+            self.released.push(module);
         }
         self.stats.files_removed += 1;
+        Ok(())
+    }
+
+    /// Deletes each key whose rows this commit deleted when no row refers to it any more, so
+    /// the key table holds only live keys, and forgets it in the mirror. Runs once the commit
+    /// has written everything else.
+    pub(crate) fn delete_unused_keys(&mut self) -> Result<()> {
+        self.released.sort_unstable();
+        self.released.dedup();
+        for &id in &self.released {
+            let mut rows = self.st.delete_unused_key.query([id])?;
+            if let Some(row) = rows.next()? {
+                self.mirror.remove_key(codec::text(row, 0)?);
+                self.stats.keys_removed += 1;
+            }
+        }
         Ok(())
     }
 
@@ -122,7 +142,7 @@ impl Apply<'_, '_> {
     }
 
     fn replace_nodes(&mut self, file_id: i64, nodes: &[Node]) -> Result<()> {
-        self.st.delete_nodes.execute([file_id])?;
+        release(&mut self.st.delete_nodes, [file_id], &mut self.released)?;
         for (local_id, node) in nodes.iter().enumerate() {
             let key_id = self.mirror.intern(&node.key, &mut self.st.insert_key)?;
             let (head_start, head_end) = range_columns(node.head);
@@ -163,7 +183,7 @@ impl Apply<'_, '_> {
     }
 
     fn replace_links(&mut self, file_id: i64, links: &[Link]) -> Result<()> {
-        self.st.delete_links.execute([file_id])?;
+        release(&mut self.st.delete_links, [file_id], &mut self.released)?;
         for link in links {
             let (target, module, reason) = match &link.to {
                 LinkTarget::Project(key) => (
@@ -310,9 +330,23 @@ impl Apply<'_, '_> {
     /// Deletes a file's definitions and their search rows.
     fn delete_definitions(&mut self, file_id: i64) -> Result<()> {
         self.st.delete_definition_search.execute([file_id])?;
-        self.st.delete_definitions.execute([file_id])?;
+        release(&mut self.st.delete_definitions, [file_id], &mut self.released)?;
         Ok(())
     }
+}
+
+/// Runs `delete`, a `DELETE … RETURNING` of one key ID column, adding each ID it returns to
+/// `released`.
+pub(crate) fn release(
+    delete: &mut CachedStatement<'_>,
+    params: impl Params,
+    released: &mut Vec<i64>,
+) -> Result<()> {
+    let mut rows = delete.query(params)?;
+    while let Some(row) = rows.next()? {
+        released.extend(row.get::<_, Option<i64>>(0)?);
+    }
+    Ok(())
 }
 
 /// A written type's text column.

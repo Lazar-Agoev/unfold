@@ -8,7 +8,7 @@ function started() {
   const host = new EngineHost({
     modulePath: "/app/out/main/engine-host.js",
     addonPath: "/app/unfold-node",
-    folders: { appDataDir: "/data", logsDir: "/logs" },
+    folders: { appDataDir: "/data" },
     windows: () => [],
   });
   host.start();

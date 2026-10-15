@@ -2,11 +2,13 @@
 //! and handler, in one list (docs/ipc.md#how-a-command-travels, generated command types).
 //!
 //! [`Request`] is the serde-tagged request (`{"command": "<name>", "args": {…}}`) the addon's
-//! `dispatch` receives; [`Request::run`] calls the handler and serializes its result. The same
-//! list feeds [`specs`], from which `cargo xtask gen-ipc` writes the UI's `Commands` map.
+//! `dispatch` receives; [`Request::run`] calls the handler and serializes its result. With the
+//! `ts` feature, the same list feeds `specs`, from which `cargo xtask gen-ipc` writes the UI's
+//! `Commands` map.
 //!
-//! **Adding a command** (see `docs/ipc.md`): write the handler and its `ts_rs::TS` argument and
-//! result types in a `commands` module, add one line here, and run `cargo xtask gen-ipc`.
+//! **Adding a command** (see `docs/ipc.md`): write the handler and its argument and result types
+//! (with `ts_rs::TS` behind the `ts` feature) in a `commands` module, add one line here, and run
+//! `cargo xtask gen-ipc`.
 
 use serde::Deserialize;
 
@@ -14,14 +16,18 @@ use crate::commands::{
     NoArgs, ProjectArgs, ProjectKeyArgs, ProjectPathArgs, boards, code, compiling, entrances, files, graph,
     projects, relations, search, settings, types, windows, workspace,
 };
-use crate::compile::{CompileOutcome, CompileProgress};
+use crate::compile::CompileOutcome;
+#[cfg(feature = "ts")]
+use crate::compile::CompileProgress;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
+#[cfg(feature = "ts")]
 use crate::ipc::typescript::{Collector, CommandSpec, ts_name};
 use crate::problems::ProblemItem;
 use crate::projects::{AddedProject, WorkspaceView};
 use crate::state::{AppSettings, WindowState};
 
+#[cfg(feature = "ts")]
 macro_rules! stream_name {
     () => {
         None
@@ -59,15 +65,16 @@ macro_rules! command_table {
                 }
             }
 
-            /// Runs the command's handler and serializes its result.
+            /// Runs the command's handler and serializes its result, of the table's result type.
             pub(crate) fn run(self, ctx: &Ctx<'_>) -> CommandResult<String> {
                 match self {
-                    $(Self::$variant(args) => crate::host::encode(&$handler(ctx, args)?),)+
+                    $(Self::$variant(args) => crate::host::encode::<$result>(&$handler(ctx, args)?),)+
                 }
             }
         }
 
         /// The command table for TypeScript generation, in table order.
+        #[cfg(feature = "ts")]
         pub fn specs() -> Vec<CommandSpec> {
             vec![$(
                 CommandSpec {
@@ -95,8 +102,6 @@ command_table! {
     "add_project" => AddProject(workspace::AddProjectArgs) -> AddedProject = workspace::add_project;
     /// Removes a project from the workspace (its `.unfold/` stays).
     "remove_project" => RemoveProject(ProjectArgs) -> () = workspace::remove_project;
-    /// Puts the project rows in a new order.
-    "reorder_projects" => ReorderProjects(workspace::ReorderProjectsArgs) -> WorkspaceView = workspace::reorder_projects;
     /// Expands or collapses a project's sidebar row.
     "set_project_expanded" => SetProjectExpanded(workspace::SetProjectExpandedArgs) -> () = workspace::set_project_expanded;
     /// The calling window's Home selection (keeps the project live).
@@ -202,7 +207,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_are_unique_snake_case_and_match_the_specs() {
+    fn names_are_unique_and_snake_case() {
         let mut names = Request::NAMES.to_vec();
         assert!(
             names
@@ -212,6 +217,11 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), Request::NAMES.len());
+    }
+
+    #[cfg(feature = "ts")]
+    #[test]
+    fn the_specs_follow_the_table() {
         let specs: Vec<&str> = specs().iter().map(|spec| spec.name).collect();
         assert_eq!(specs, Request::NAMES);
     }

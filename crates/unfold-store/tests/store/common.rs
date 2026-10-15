@@ -176,12 +176,12 @@ pub fn dump(reader: &Reader) -> String {
             "{:?}",
             reader.file_graph(file.path.as_str()).expect("file graph")
         );
-        let _ = writeln!(
-            out,
-            "{:?}",
-            reader.definitions_in(file.path.as_str()).expect("definitions")
-        );
     }
+    let _ = writeln!(
+        out,
+        "{:?}",
+        reader.definitions(None, 10_000).expect("definitions")
+    );
     for key in every_key(reader) {
         let callers = reader.callers(&key, None, 100).expect("callers");
         let uses = reader.type_uses(&key, None, 100).expect("type uses");
@@ -192,8 +192,7 @@ pub fn dump(reader: &Reader) -> String {
     let _ = writeln!(out, "{:?}", reader.inputs().expect("inputs"));
     let _ = writeln!(out, "{:?}", reader.apps().expect("apps"));
     let mut stats = reader.stats().expect("stats");
-    // Interned keys are never deleted and the file size depends on history.
-    stats.keys = 0;
+    // The file size depends on history.
     stats.database_bytes = 0;
     let _ = writeln!(out, "{stats:?}");
     for kind in [

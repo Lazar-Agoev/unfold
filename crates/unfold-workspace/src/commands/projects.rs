@@ -3,7 +3,6 @@
 //! look").
 
 use serde::Serialize;
-use ts_rs::TS;
 use unfold_core::vocab::{Language, TargetState};
 
 use super::entrances::{AppView, EntranceCode, States, app_views};
@@ -15,7 +14,8 @@ use crate::projects::ProjectId;
 use crate::status::{GraphStatus, ProjectState};
 
 /// A board whose health has items (Home's Health line).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BoardHealthCount {
     /// The board's id.
@@ -30,7 +30,8 @@ pub struct BoardHealthCount {
 pub const MAX_HEALTH_BOARDS: usize = 20;
 
 /// Home's Health line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectHealth {
     /// Files that don't parse or can't be read.
@@ -46,7 +47,8 @@ pub struct ProjectHealth {
 }
 
 /// Home's header, state line, and Health line for one project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     /// The project.

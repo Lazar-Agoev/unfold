@@ -4,7 +4,6 @@
 use std::path::Path;
 
 use serde::Deserialize;
-use ts_rs::TS;
 
 use super::{NoArgs, ProjectArgs};
 use crate::ipc::context::Ctx;
@@ -17,7 +16,8 @@ pub fn workspace(ctx: &Ctx<'_>, _args: NoArgs) -> CommandResult<WorkspaceView> {
 }
 
 /// The arguments of `add_project`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct AddProjectArgs {
     /// The folder's absolute path, from the Add Project dialog.
@@ -43,23 +43,9 @@ pub fn remove_project(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<()> {
     Ok(ctx.projects().remove(&args.project)?)
 }
 
-/// The arguments of `reorder_projects`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-pub struct ReorderProjectsArgs {
-    /// Every project id, once, in the new sidebar order.
-    pub order: Vec<ProjectId>,
-}
-
-/// `reorder_projects`: puts the rows in the given order.
-pub fn reorder_projects(ctx: &Ctx<'_>, args: ReorderProjectsArgs) -> CommandResult<WorkspaceView> {
-    ctx.projects()
-        .reorder(&args.order)?
-        .ok_or_else(|| CommandError::invalid_args("the order must list every project once"))
-}
-
 /// The arguments of `set_project_expanded`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SetProjectExpandedArgs {
     /// The project.
@@ -74,7 +60,8 @@ pub fn set_project_expanded(ctx: &Ctx<'_>, args: SetProjectExpandedArgs) -> Comm
 }
 
 /// The arguments of `select_project`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct SelectProjectArgs {
     /// The project the calling window's Home shows, or `None` for none.

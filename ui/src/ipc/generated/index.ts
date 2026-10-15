@@ -582,7 +582,11 @@ line: number,
 /**
  * `calls`, or `passes` when the call passes the definition as a value.
  */
-kind: LinkKind, };
+kind: LinkKind, 
+/**
+ * Pass it as `callersAfter` for the callers after this one.
+ */
+cursor: string, };
 
 /**
  * **Show callers**: the distinct definitions that call a definition.
@@ -1907,10 +1911,6 @@ line: number,
  */
 async: boolean, 
 /**
- * A generator.
- */
-generator: boolean, 
-/**
  * What runs when it is defined, in the enclosing body: decorators, class bases, and
  * Python defaults.
  */
@@ -2942,10 +2942,6 @@ callers: Array<CallerView>,
  */
 callersTotal: number, 
 /**
- * Where the next page of callers starts, if there is one.
- */
-callersNext: number | null, 
-/**
  * The calls it makes, in source order.
  */
 outgoing: Array<OutgoingView>, 
@@ -2968,9 +2964,10 @@ project: ProjectId,
  */
 key: string, 
 /**
- * Where the page of callers starts (`callersNext` of the previous page).
+ * List the callers after this one: a caller's `cursor`, such as the last of the previous
+ * page (absent: from the first caller).
  */
-callersOffset?: number, 
+callersAfter?: string, 
 /**
  * How many callers to return (at most 500; 100 when absent).
  */
@@ -3014,15 +3011,6 @@ export type RenamedFolder = {
  * The boards whose folder changed.
  */
 boards: number, };
-
-/**
- * The arguments of `reorder_projects`.
- */
-export type ReorderProjectsArgs = { 
-/**
- * Every project id, once, in the new sidebar order.
- */
-order: Array<ProjectId>, };
 
 /**
  * The arguments of `repair_board`.
@@ -4174,10 +4162,6 @@ export interface Commands {
    */
   remove_project: { args: ProjectArgs; result: null };
   /**
-   * Puts the project rows in a new order.
-   */
-  reorder_projects: { args: ReorderProjectsArgs; result: WorkspaceView };
-  /**
    * Expands or collapses a project's sidebar row.
    */
   set_project_expanded: { args: SetProjectExpandedArgs; result: null };
@@ -4371,7 +4355,6 @@ export const COMMAND_NAMES = [
   "workspace",
   "add_project",
   "remove_project",
-  "reorder_projects",
   "set_project_expanded",
   "select_project",
   "project_summary",

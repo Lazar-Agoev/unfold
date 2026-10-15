@@ -70,7 +70,8 @@ The cache is an accelerator: a read error, an entry that doesn't decode, or one 
 The store is a cache too ([schema.rs](../crates/unfold-store/src/schema.rs)): a database with another schema or
 engine version, or a damaged one, is discarded and rebuilt on open. There are no migrations. Deltas commit in one
 transaction; one writer per folder, on the engine thread; readers see committed snapshots through write-ahead
-logging.
+logging. Keys are stored once each and referred to by ID; the commit that deletes a key's last use (a renamed or
+deleted block, a link or entrance that moved on) deletes the key too, so the key table holds only live keys.
 
 ## Shared config
 

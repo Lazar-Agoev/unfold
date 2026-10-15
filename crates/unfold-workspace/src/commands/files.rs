@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Deserialize;
-use ts_rs::TS;
 
 use crate::error::WorkspaceError;
 use crate::ipc::context::Ctx;
@@ -18,7 +17,8 @@ use crate::state::AppSettings;
 use crate::workspace::Workspace;
 
 /// The arguments of `open_in_editor`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OpenInEditorArgs {
     /// The project.
@@ -27,7 +27,7 @@ pub struct OpenInEditorArgs {
     pub path: String,
     /// The one-based line to open at.
     #[serde(default)]
-    #[ts(optional)]
+    #[cfg_attr(feature = "ts", ts(optional))]
     pub line: Option<u32>,
 }
 

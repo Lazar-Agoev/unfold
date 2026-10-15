@@ -101,8 +101,8 @@ pub struct HighlightSpan {
 /// Classifies one language's source text for display.
 ///
 /// Highlighting is presentation only: it must tolerate text that does not parse (classifying
-/// what it can and leaving the rest plain), must never panic, and must return spans that pass
-/// [`spans_are_well_formed`].
+/// what it can and leaving the rest plain), must never panic, and must return well-formed spans
+/// ([`Highlighter::highlight`]).
 pub trait Highlighter: Send + Sync {
     /// The language this highlighter reads.
     fn language(&self) -> Language;
@@ -110,22 +110,6 @@ pub trait Highlighter: Send + Sync {
     /// The classified spans of `text`: nonempty, inside the text, on character boundaries,
     /// sorted by start, and non-overlapping.
     fn highlight(&self, text: &str) -> Vec<HighlightSpan>;
-}
-
-/// Whether `spans` is a valid highlighting of `text`: every span is nonempty, lies inside the
-/// text on character boundaries, and starts at or after the previous span's end.
-pub fn spans_are_well_formed(text: &str, spans: &[HighlightSpan]) -> bool {
-    let mut previous_end = 0u32;
-    spans.iter().all(|span| {
-        let ByteRange { start, end } = span.range;
-        let fits = start >= previous_end
-            && start < end
-            && (end as usize) <= text.len()
-            && text.is_char_boundary(start as usize)
-            && text.is_char_boundary(end as usize);
-        previous_end = end;
-        fits
-    })
 }
 
 #[cfg(test)]
@@ -147,28 +131,6 @@ mod tests {
             assert_eq!(serde_json::from_str::<TokenClass>(&json).unwrap(), class);
         }
         assert_eq!(TokenClass::Keyword.to_string(), "keyword");
-    }
-
-    #[test]
-    fn well_formed_spans() {
-        let text = "let é = 1;";
-        assert!(spans_are_well_formed(text, &[]));
-        assert!(spans_are_well_formed(
-            text,
-            &[
-                span(0, 3, TokenClass::Keyword),
-                span(4, 6, TokenClass::Variable),
-                span(9, 10, TokenClass::Number)
-            ]
-        ));
-        // Overlapping, empty, out of range, and inside a UTF-8 sequence.
-        assert!(!spans_are_well_formed(
-            text,
-            &[span(0, 3, TokenClass::Keyword), span(2, 4, TokenClass::Variable)]
-        ));
-        assert!(!spans_are_well_formed(text, &[span(3, 3, TokenClass::Keyword)]));
-        assert!(!spans_are_well_formed(text, &[span(9, 12, TokenClass::Number)]));
-        assert!(!spans_are_well_formed(text, &[span(4, 5, TokenClass::Variable)]));
     }
 
     struct Words;
@@ -199,6 +161,6 @@ mod tests {
         let spans = highlighter.highlight(text);
         assert_eq!(highlighter.language(), Language::Python);
         assert_eq!(spans.len(), 2);
-        assert!(spans_are_well_formed(text, &spans));
+        assert!(crate::testkit::spans_are_well_formed(text, &spans));
     }
 }

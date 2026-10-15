@@ -24,8 +24,9 @@ and only the owner changes it.
 ## Contracts
 
 - The [board JSON Schema](schemas/unfold-board.schema.json) is the shared board-file contract. It is a copy of
-  `crates/unfold-reader/schema/unfold-board.schema.json`, which the reader embeds;
-  `tools/oracles/check-board-schema.mjs` checks the two are identical.
+  `crates/unfold-reader/schema/unfold-board.schema.json`. A reader test checks that the two are identical and that
+  the schema states the reader's limits; `tools/oracles/check-board-schema.mjs` validates the sample boards against
+  it.
 - `unfold.toml` is the shared settings contract ([Engine](engine.md)).
 - The SQLite cache is private and rebuildable.
 

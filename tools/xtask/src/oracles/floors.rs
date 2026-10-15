@@ -33,8 +33,6 @@ pub(crate) struct Floor {
     pub matched: usize,
     /// Sites the oracle resolved when the floor was set.
     pub resolved: usize,
-    /// The proof of concept's recorded recall on this corpus, for the record.
-    pub poc: Option<String>,
 }
 
 impl Floor {

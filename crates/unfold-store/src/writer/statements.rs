@@ -1,5 +1,8 @@
 //! The prepared statements one commit uses, taken from the connection's statement cache once
 //! per commit and reused for every row.
+//!
+//! Each statement that deletes rows holding key IDs returns those IDs, so the commit can delete
+//! the keys no row refers to any more ([`Statements::delete_unused_key`]).
 
 use rusqlite::{CachedStatement, Connection};
 
@@ -29,6 +32,7 @@ pub(crate) struct Statements<'c> {
     pub insert_search: CachedStatement<'c>,
     pub delete_search: CachedStatement<'c>,
     pub delete_facts: CachedStatement<'c>,
+    pub delete_unused_key: CachedStatement<'c>,
 }
 
 impl<'c> Statements<'c> {
@@ -44,7 +48,7 @@ impl<'c> Statements<'c> {
                  disk_mtime = ?6, disk_size = ?7, failure = ?8 WHERE id = ?1",
             )?,
             delete_file: conn.prepare_cached("DELETE FROM files WHERE id = ?1")?,
-            delete_nodes: conn.prepare_cached("DELETE FROM nodes WHERE file_id = ?1")?,
+            delete_nodes: conn.prepare_cached("DELETE FROM nodes WHERE file_id = ?1 RETURNING key_id")?,
             insert_node: conn.prepare_cached(
                 "INSERT INTO nodes (file_id, local_id, key_id, parent, form, name, start_byte, end_byte, \
                  start_line, end_line, head_start, head_end, body_start, body_end, doc_start, doc_end, \
@@ -52,7 +56,8 @@ impl<'c> Statements<'c> {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
                  ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             )?,
-            delete_links: conn.prepare_cached("DELETE FROM links WHERE file_id = ?1")?,
+            delete_links: conn
+                .prepare_cached("DELETE FROM links WHERE file_id = ?1 RETURNING target_key_id")?,
             insert_link: conn.prepare_cached(
                 "INSERT INTO links (file_id, from_id, seq, kind, start_byte, end_byte, text, outcome, \
                  target_key_id, module, reason, implements, bound) \
@@ -82,7 +87,8 @@ impl<'c> Statements<'c> {
             delete_definition_search: conn.prepare_cached(
                 "DELETE FROM search WHERE rowid IN (SELECT key_id * 4 FROM definitions WHERE file_id = ?1)",
             )?,
-            delete_definitions: conn.prepare_cached("DELETE FROM definitions WHERE file_id = ?1")?,
+            delete_definitions: conn
+                .prepare_cached("DELETE FROM definitions WHERE file_id = ?1 RETURNING key_id")?,
             insert_definition: conn.prepare_cached(
                 "INSERT INTO definitions (key_id, file_id, local_id, kind, qualified_name, label) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -93,6 +99,19 @@ impl<'c> Statements<'c> {
             )?,
             delete_search: conn.prepare_cached("DELETE FROM search WHERE rowid = ?1")?,
             delete_facts: conn.prepare_cached("DELETE FROM file_facts WHERE path = ?1")?,
+            // Every column that holds a key ID, and the search rows whose row ID is one
+            // (`crate::search::rowid`).
+            delete_unused_key: conn.prepare_cached(
+                "DELETE FROM keys WHERE id = ?1 \
+                 AND NOT EXISTS (SELECT 1 FROM nodes WHERE key_id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM links WHERE target_key_id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM definitions WHERE key_id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM apps WHERE id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM entrances WHERE id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM entrance_targets WHERE code_key_id = ?1) \
+                 AND NOT EXISTS (SELECT 1 FROM search WHERE rowid BETWEEN ?1 * 4 AND ?1 * 4 + 3) \
+                 RETURNING key",
+            )?,
         })
     }
 }

@@ -32,20 +32,21 @@ pub mod workspace;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Deserialize;
-use ts_rs::TS;
 use unfold_core::Key;
 
 use crate::ipc::error::{CommandError, CommandResult};
 use crate::projects::ProjectId;
 
 /// The arguments of a command that takes none: `{}`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
-#[ts(type = "Record<string, never>")]
+#[cfg_attr(feature = "ts", ts(type = "Record<string, never>"))]
 pub struct NoArgs {}
 
 /// The arguments of a command about one project.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct ProjectArgs {
     /// The project.
@@ -53,7 +54,8 @@ pub struct ProjectArgs {
 }
 
 /// The arguments of a command about one path of a project.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct ProjectPathArgs {
     /// The project.
@@ -63,7 +65,8 @@ pub struct ProjectPathArgs {
 }
 
 /// The arguments of a command about one block or entrance of a project.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(deny_unknown_fields)]
 pub struct ProjectKeyArgs {
     /// The project.

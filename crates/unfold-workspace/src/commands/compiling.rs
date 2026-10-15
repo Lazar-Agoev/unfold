@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use ts_rs::TS;
 
 use super::ProjectArgs;
 use crate::compile::{CompileOutcome, CompileProgress};
@@ -55,7 +54,8 @@ pub fn compile(ctx: &Ctx<'_>, args: ProjectArgs) -> CommandResult<CompileOutcome
 }
 
 /// What `cancel_compile` did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CancelCompileResult {
     /// Whether a Compile was running or queued.

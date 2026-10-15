@@ -70,12 +70,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
     scratch = mkdtempSync(join(tmpdir(), "unfold-node-test-"));
     folder = join(scratch, "ts-orders");
     cpSync(playground, folder, { recursive: true });
-    addon.init(
-      JSON.stringify({
-        appDataDir: join(scratch, "app-data"),
-        logsDir: join(scratch, "logs"),
-      }),
-    );
+    addon.init(JSON.stringify({ appDataDir: join(scratch, "app-data") }));
     addon.subscribe((text) => {
       const message = JSON.parse(text);
       messages.push(message);
@@ -99,7 +94,7 @@ describe("unfold-node addon", { skip: built ? false : "the addon is not built: r
   });
 
   it("throws the error JSON when initialized twice", () => {
-    const options = JSON.stringify({ appDataDir: scratch, logsDir: scratch });
+    const options = JSON.stringify({ appDataDir: scratch });
     assert.throws(() => addon.init(options), (error) => JSON.parse(error.message).code === "already_initialized");
   });
 

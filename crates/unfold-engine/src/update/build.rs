@@ -16,7 +16,7 @@ use super::state::State;
 use super::{Engine, Stage, UpdateError, UpdateStats};
 use crate::cancel::CancelToken;
 use crate::language::{Language, LanguageProblem, Linked, ProjectInputs};
-use crate::links::{FileLinks, program_links_checked};
+use crate::links::{FileLinks, program_links};
 use crate::program::{FactsSet, ProgramFile};
 use crate::resolve::Resolver;
 use crate::settings::SETTINGS_PATH;
@@ -82,7 +82,7 @@ pub(crate) fn build(input: &BuildInput<'_>, stats: &mut UpdateStats) -> Result<B
     let mut links: Vec<FileLinks> = vec![FileLinks::default(); program.files().len()];
     for linked in &linked {
         let resolver = Resolver::new(&program, linked.as_ref());
-        let resolved = program_links_checked(&resolver, || cancel.check().map_err(UpdateError::from))?;
+        let resolved = program_links(&resolver, || cancel.check().map_err(UpdateError::from))?;
         for (file, file_links) in resolved {
             links[file.index()] = file_links;
         }
