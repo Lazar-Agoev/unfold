@@ -130,7 +130,7 @@ function checkFrameMove(page: Page, resource: Resource, frameId: string): void {
 }
 
 /** Creates or updates one resource card; returns its result. */
-function applyResourceSpec(ctx: OpContext, page: Page, spec: AgentResourceSpec, replacePeopleText: boolean | undefined): AgentResourceResult {
+function applyResourceSpec(ctx: OpContext, page: Page, spec: AgentResourceSpec, replacePeopleText: boolean | undefined, placedNow: Set<string>): AgentResourceResult {
   const name = spec.name.trim();
   if (name.length === 0) {
     throw invalid(`A ${RESOURCE_WORDS[spec.kind]} card needs a name: the technical name the code uses, such as “orders”.`);
@@ -158,14 +158,15 @@ function applyResourceSpec(ctx: OpContext, page: Page, spec: AgentResourceSpec, 
     setResourceClaim(page, existing.id, claim, author);
     id = existing.id;
     if (spec.near !== undefined) {
-      at = resourceSpot(ctx, page, itemSize(ctx, page, id), spec.near, spec.frame);
+      at = resourceSpot(ctx, page, itemSize(ctx, page, id), spec.near, spec.frame, placedNow);
       moveItems(page, { [id]: at });
     }
   } else {
     const { columns, ...said } = claim;
     const draft: Resource = { ...said, anchors: [...claim.anchors], ...(columns ? { columns: [...columns] } : {}), id: "", at: [0, 0], author };
-    at = resourceSpot(ctx, page, estimatedResourceSize(draft, resourceColumns(ctx, draft)), spec.near, spec.frame);
+    at = resourceSpot(ctx, page, estimatedResourceSize(draft, resourceColumns(ctx, draft)), spec.near, spec.frame, placedNow);
     id = addResource(page, { ...claim, at, author, ...(spec.id !== undefined ? { id: spec.id } : {}) });
+    placedNow.add(id);
   }
   if (text !== undefined && text.length > 0) {
     setResourceDescription(page, id, text, author);
@@ -193,5 +194,9 @@ export async function prepareAddResources(op: AddResourcesOp, ctx: OpContext): P
       );
     }
   }
-  return (page, applyCtx) => op.resources.map((spec): AgentItemResult => applyResourceSpec(applyCtx, page, spec, op.replacePeopleText));
+  return (page, applyCtx) => {
+    // What this edit placed, in order: a resource card placed later goes after them.
+    const placedNow = new Set<string>();
+    return op.resources.map((spec): AgentItemResult => applyResourceSpec(applyCtx, page, spec, op.replacePeopleText, placedNow));
+  };
 }

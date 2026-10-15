@@ -60,38 +60,141 @@ export function clampCardWidth(width: number, min = CARD_MIN_WIDTH, max = CARD_M
 }
 
 /**
- * Display positions: saved positions plus the room grown cards above need. A card is pushed down
- * below any card above it whose horizontal range overlaps; it never sits above its saved
- * position, and moves back up when room returns. `pinned` (a card being dragged) is not moved.
+ * A line from one card into another (a call, a start's, a connection): reflow keeps what it reaches,
+ * when it lies to the right, level with it: with its call's row on an expanded card (`port`, below the
+ * card's top), else moving down as far as the card it leaves moved.
  */
-export function reflow(
-  cards: readonly PlacedCard[],
-  sizeOf: (id: string) => Size,
-  pinned?: string,
-): Map<string, Point> {
-  const placed: Rect[] = [];
+export interface CallRow {
+  readonly source: string;
+  readonly target: string;
+  readonly port?: number;
+}
+
+/** Cards whose saved left edges are this close share a column; one this far right of another's left edge (no card is narrower) is in a column to its right. */
+const COLUMN_SNAP = 24;
+const RIGHT_OF = 240;
+
+/**
+ * Display positions: saved positions plus the room grown cards need (docs/analysis/arranging-and-lines.md,
+ * 4.7). Nothing is saved, so everything moves back when the room comes back. Only what is in the way
+ * moves, down its column or right with its column, never across into another or out of order:
+ *
+ * - Right: cards whose saved left edges line up (within `COLUMN_SNAP`) are a column. A card that has
+ *   grown into a card to its right (`RIGHT_OF`; rows overlapping, closer than `STACK_GAP`) pushes that
+ *   card's column right, all of it, to `FOLLOW_GAP` past it; the columns after it move as far, so the
+ *   columns keep their order.
+ * - Down: a card lines reach from its left (`rows`) shows no higher than they put it, as Arrange does
+ *   (each card's first: an expanded card's call row as shown, else as far down as that card moved; the
+ *   middle of several cards'); a card is pushed below any card
+ *   it overlaps whose top is above it, and below any card above it in its column (overlapping across)
+ *   that moved down past it. A card never sits above its saved place.
+ *
+ * `pinned` (a card being dragged) doesn't move.
+ */
+export function reflow(cards: readonly PlacedCard[], sizeOf: (id: string) => Size, pinned?: string, rows: readonly CallRow[] = []): Map<string, Point> {
+  const byId = (a: PlacedCard, b: PlacedCard) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  // Columns, left to right.
+  const byX = [...cards].sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1] || byId(a, b));
+  const column = new Map<string, number>();
+  let columns = 0;
+  let start = -Infinity;
+  for (const card of byX) {
+    if (card.at[0] - start > COLUMN_SNAP) {
+      columns += 1;
+      start = card.at[0];
+    }
+    column.set(card.id, columns - 1);
+  }
+  // Right: each column as far as the cards to its left that have grown into it need, and never less than the one before it.
+  const shift = Array.from({ length: columns }, () => 0);
+  const shifted = (card: PlacedCard) => card.at[0] + (shift[column.get(card.id) ?? 0] ?? 0);
+  for (let index = 0; index < columns; index += 1) {
+    let needed = index > 0 ? (shift[index - 1] ?? 0) : 0;
+    for (const b of byX) {
+      if (column.get(b.id) !== index || b.id === pinned) {
+        continue;
+      }
+      const bs = sizeOf(b.id);
+      for (const a of byX) {
+        if (b.at[0] - a.at[0] < RIGHT_OF) {
+          continue;
+        }
+        const as = sizeOf(a.id);
+        const level = a.at[1] < b.at[1] + bs.height && b.at[1] < a.at[1] + as.height;
+        if (level && shifted(a) + as.width + STACK_GAP > b.at[0] + needed) {
+          needed = Math.max(needed, shifted(a) + as.width + FOLLOW_GAP - b.at[0]);
+        }
+      }
+    }
+    shift[index] = needed;
+  }
+  // Down, in saved order: a card is level with the lines that reach it as shown, and below whatever covers
+  // it or was above it (overlapping across) and moved down past it.
+  const saved = new Map(cards.map((card) => [card.id, card]));
+  const placed: (Rect & { readonly saved: number })[] = [];
   const result = new Map<string, Point>();
-  const ordered = [...cards].sort((a, b) => a.at[1] - b.at[1] || a.at[0] - b.at[0] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const ordered = [...cards].sort((a, b) => a.at[1] - b.at[1] || a.at[0] - b.at[0] || byId(a, b));
   for (const card of ordered) {
     const size = sizeOf(card.id);
-    const x = card.at[0];
+    const x = card.id === pinned ? card.at[0] : shifted(card);
     let y = card.at[1];
     if (card.id !== pinned) {
+      // Level with the lines that reach it as Arrange puts it: each card's first row, the middle of several cards'.
+      const levels = new Map<string, number>();
+      for (const row of rows) {
+        const source = result.get(row.source);
+        const from = saved.get(row.source);
+        if (row.target === card.id && source && from && x > source.x) {
+          const level = row.port !== undefined ? source.y + row.port - HEADER_PORT : card.at[1] + source.y - from.at[1];
+          levels.set(row.source, Math.min(levels.get(row.source) ?? Infinity, level));
+        }
+      }
+      y = Math.max(y, median([...levels.values()]) ?? y);
       for (let moved = true; moved; ) {
         moved = false;
         for (const other of placed) {
           const overlapX = x < other.x + other.width && other.x < x + size.width;
-          if (overlapX && y < other.y + other.height + STACK_GAP && y + size.height > other.y) {
+          const covers = y + size.height > other.y || other.saved < card.at[1];
+          if (overlapX && covers && y < other.y + other.height + STACK_GAP) {
             y = other.y + other.height + STACK_GAP;
             moved = true;
           }
         }
       }
     }
-    placed.push({ x, y, width: size.width, height: size.height });
+    placed.push({ x, y, width: size.width, height: size.height, saved: card.at[1] });
     result.set(card.id, { x, y });
   }
   return result;
+}
+
+/**
+ * The moves that make room for a new item at `rect` (docs/analysis/arranging-and-lines.md, 4.7): each
+ * of `items` it would cover moves down its column, under it, and the items under those move as far as
+ * they need (as `reflow` pushes them, the new item first). Items not in its way stay.
+ */
+export function makeRoom(rect: Rect, items: ReadonlyMap<string, Rect>): Map<string, Point> {
+  const placed: Rect[] = [rect];
+  const moves = new Map<string, Point>();
+  const ordered = [...items].sort(([a, ra], [b, rb]) => ra.y - rb.y || ra.x - rb.x || (a < b ? -1 : a > b ? 1 : 0));
+  for (const [id, item] of ordered) {
+    let { y } = item;
+    for (let moved = true; moved; ) {
+      moved = false;
+      for (const other of placed) {
+        const overlapX = item.x < other.x + other.width && other.x < item.x + item.width;
+        if (overlapX && y < other.y + other.height + STACK_GAP && y + item.height > other.y) {
+          y = other.y + other.height + STACK_GAP;
+          moved = true;
+        }
+      }
+    }
+    placed.push({ ...item, y });
+    if (y !== item.y) {
+      moves.set(id, { x: item.x, y });
+    }
+  }
+  return moves;
 }
 
 /**
@@ -140,7 +243,8 @@ export function newCardPlacement(existing: readonly Rect[]): [number, number] {
 
 /**
  * `at`, moved down (or up) until a card of `size` there keeps `STACK_GAP` from every rect of
- * `occupied`: where a card placed for an agent goes, so it never covers another.
+ * `occupied`: where a note goes so it covers nothing, and how a new item slides past what comes before
+ * it (`placeAndMakeRoom`).
  */
 export function clearSpot(at: Point, size: Size, occupied: readonly Rect[], direction: "down" | "up" = "down"): [number, number] {
   const x = Math.round(at.x);
@@ -192,6 +296,8 @@ export interface ArrangeCall {
   readonly order: number;
   /** The card it really leaves, when `source` is a block holding it (a frame): a card's several lines count once. */
   readonly from?: string;
+  /** A connection, not a call: when a card reaches another more than once, its calls count first. */
+  readonly link?: boolean;
 }
 
 /** The median of `values` (the middle two's mean when there are two middles); undefined for none. */
@@ -225,6 +331,8 @@ interface LayerEdge {
   /** The card the line really leaves (inside a block, the card), and the card its call starts at. */
   readonly from: string;
   readonly origin: string;
+  /** A connection's line (a card's calls count before its connections). */
+  readonly link: boolean;
 }
 
 /** Where `edge` sits along its end in `side`'s node, as a rank in its column: the node's place, plus the line's place among the node's lines. */
@@ -266,7 +374,7 @@ function crossingsBetween(edges: readonly LayerEdge[], slot: Slots): number {
  *    columns, by the places of the lines that reach each node (a card's lines in the order they leave
  *    it), keeping the order with the fewest crossings.
  * 5. Rows: column by column, in that order, each node sits level with the median of the lines that
- *    reach it (a card's first, when it calls it more than once), never above its topmost caller, and
+ *    reach it (a card's first call, when it reaches it more than once), never above its topmost caller, and
  *    below the node before it: a lane `LANE_GAP` from a card, a frame (`spaced`) `BAND_GAP` from what
  *    is stacked by it, else `STACK_GAP`. Then a root with a call tree of its own, none of whose lines
  *    runs straight, moves level with its first line, where there is room.
@@ -378,12 +486,12 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     for (let column = start + 1; column < end; column += 1) {
       const id = `\u0000lane:${index}:${column}`;
       nodes.set(id, { id, card: undefined, column, rank: [preorder.get(call.source) ?? 0, order + 1] });
-      edges.push({ source: previous, target: id, port, entry: 0, order, from, origin: call.source });
+      edges.push({ source: previous, target: id, port, entry: 0, order, from, origin: call.source, link: call.link === true });
       previous = id;
       port = 0;
     }
     const entry = isExit.has(call.target) ? 0 : (call.entry ?? HEADER_PORT);
-    edges.push({ source: previous, target: call.target, port, entry, order, from, origin: call.source });
+    edges.push({ source: previous, target: call.target, port, entry, order, from, origin: call.source, link: call.link === true });
   });
 
   // 4. Order: the initial order is the depth-first one; then sweeps sort each column but the roots' by where its lines come from (down) or go (up).
@@ -470,7 +578,7 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
       const placed = (ins.get(id) ?? []).filter((edge) => tops.has(edge.source));
       // A card's several lines count once: its first.
       const first = new Map<string, LayerEdge>();
-      for (const edge of [...placed].sort((a, b) => a.order - b.order || a.port - b.port)) {
+      for (const edge of [...placed].sort((a, b) => Number(a.link) - Number(b.link) || a.order - b.order || a.port - b.port)) {
         if (!first.has(edge.from)) {
           first.set(edge.from, edge);
         }

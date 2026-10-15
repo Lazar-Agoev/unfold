@@ -9,7 +9,7 @@
  */
 
 import type { Card, Connection, Frame, Note, Resource, View } from "../../ipc/generated";
-import { boundsOf, fallbackSize, reflow, type Point, type Rect, type Size } from "../layout";
+import { boundsOf, fallbackSize, reflow, type CallRow, type Point, type Rect, type Size } from "../layout";
 import { measureText } from "../measure";
 import { tableColumns } from "../resources/columns";
 import { frameNodeSize, noteSize, resourceCardSize } from "../sizing";
@@ -203,14 +203,15 @@ function overlaps(a: Rect, b: Rect): boolean {
 
 /**
  * The page's geometry: cards, resource cards, and free notes at their saved positions reflowed by
- * `sizeOf` (as `reflow` does without frames), each collapsed frame as a node in that reflow, each
+ * `sizeOf` (as `reflow` does without frames, the callees of expanded cards level with their `rows`),
+ * each collapsed frame as a node in that reflow, each
  * expanded frame's box around what it shows and the notes attached to those items, and each attached
  * note at its offset from its item (under the item, where the offset would put it over it). A note on
  * an item that isn't drawn isn't drawn either. `sizeOf`
  * sizes cards, resource cards, notes, and collapsed frames' nodes. While `drag` moves an item, it
  * follows the pointer; a dragged frame takes what it holds along.
  */
-export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, drag?: Drag | null): PageGeometry {
+export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, drag?: Drag | null, rows: readonly CallRow[] = []): PageGeometry {
   const tree = new FrameTree(page.frames ?? []);
   const attached = (page.notes ?? []).filter((note) => note.attach !== undefined);
   const leaves: readonly (Card | Resource | Note)[] = [...page.cards, ...(page.resources ?? []), ...(page.notes ?? []).filter((note) => note.attach === undefined)];
@@ -245,7 +246,7 @@ export function pageGeometry(page: FramedPage, sizeOf: (id: string) => Size, dra
       return rect ? [{ id: frame.id, at: [rect.x, rect.y] as const }] : [];
     }),
   ];
-  const positions = reflow(nodes, sizeOf, drag?.id);
+  const positions = reflow(nodes, sizeOf, drag?.id, rows);
 
   // An attached note at its offset from what it is attached to (drawn), or at the pointer while dragged.
   // Where the offset would put it over its own item (which has grown since), it sits under the item.

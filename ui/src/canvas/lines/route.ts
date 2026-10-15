@@ -334,6 +334,16 @@ function lengthOf(points: readonly Point[]): number {
   return total;
 }
 
+/** A line with no way around what is in its way: out of its start, across the middle between the stubs, into its end, still orthogonal. */
+function across(from: PlacedEnd, to: PlacedEnd): Point[] {
+  if (from.side === "left" || from.side === "right") {
+    const middle = half((from.stub.x + to.stub.x) / 2);
+    return simplify([from.point, from.stub, { x: middle, y: from.stub.y }, { x: middle, y: to.stub.y }, to.stub, to.point]);
+  }
+  const middle = half((from.stub.y + to.stub.y) / 2);
+  return simplify([from.point, from.stub, { x: from.stub.x, y: middle }, { x: to.stub.x, y: middle }, to.stub, to.point]);
+}
+
 /**
  * The cheapest path on `grid` from `from`'s stub to `to`'s, around `layers`: its points from end to end,
  * and its cost (Infinity where there is none: then it runs straight between the stubs). Running along
@@ -406,7 +416,7 @@ function search(grid: Grid, from: PlacedEnd, to: PlacedEnd, layers: readonly num
     }
   }
   if (found < 0) {
-    return { points: simplify([from.point, from.stub, to.stub, to.point]), cost: Infinity };
+    return { points: across(from, to), cost: Infinity };
   }
   const nodes: Point[] = [];
   for (let at: number | undefined = found; at !== undefined; at = came.get(at)) {
@@ -593,10 +603,12 @@ export function routeLines(input: RouteInput): Map<string, RoutedLine> {
   };
 
   // What lines go around: every box but expanded frames, CLEAR out; each frame is a layer of its own.
+  // A line whose end sits closer to a box than that is routed again with the boxes only MARGIN out.
   const solidRects = [...boxes].filter(([id]) => !inside.has(id)).map(([, rect]) => rect);
   const solid = solidRects.map((rect) => grown(rect, CLEAR));
   const frameRects = frameIds.map((id) => grown(rectOf(id), CLEAR / 2));
   const layers = [solid, ...frameRects.map((rect) => [rect])];
+  const tightLayers = [solidRects.map((rect) => grown(rect, MARGIN)), ...frameIds.map((id) => [grown(rectOf(id), MARGIN)])];
   /** The layers a line goes around: the boxes, and each frame that holds neither end. */
   const layersOf = (line: LineRequest): number[] => [
     0,
@@ -610,9 +622,9 @@ export function routeLines(input: RouteInput): Map<string, RoutedLine> {
     const [dx, dy] = OUT[side];
     return { side, point, stub: { x: point.x + dx * STUB, y: point.y + dy * STUB } };
   };
-  const coordinates = (ends: readonly PlacedEnd[]) => {
-    const xs = [...solid, ...frameRects].flatMap((rect) => [rect.x, rect.x + rect.width]);
-    const ys = [...solid, ...frameRects].flatMap((rect) => [rect.y, rect.y + rect.height]);
+  const coordinates = (ends: readonly PlacedEnd[], rects: readonly Rect[] = [...solid, ...frameRects]) => {
+    const xs = rects.flatMap((rect) => [rect.x, rect.x + rect.width]);
+    const ys = rects.flatMap((rect) => [rect.y, rect.y + rect.height]);
     return { xs: [...xs, ...ends.map((end) => end.stub.x)], ys: [...ys, ...ends.map((end) => end.stub.y)] };
   };
   // Short lines first.
@@ -716,8 +728,10 @@ export function routeLines(input: RouteInput): Map<string, RoutedLine> {
   }
 
   // 3. Routes: short lines first, each paying to cross the ones before it, and drawn to share its bundles' runs.
-  const { xs, ys } = coordinates([...ends.values()].flatMap(({ from, to }) => [from, to]));
+  const placed = [...ends.values()].flatMap(({ from, to }) => [from, to]);
+  const { xs, ys } = coordinates(placed);
   const grid = new Grid(xs, ys, layers);
+  let tight: Grid | undefined;
   const routed = new Map<string, Point[]>();
   for (const line of order) {
     const end = ends.get(line.id);
@@ -725,7 +739,15 @@ export function routeLines(input: RouteInput): Map<string, RoutedLine> {
     if (!end) {
       continue;
     }
-    const { points } = search(grid, end.from, end.to, layersOf(line), own);
+    const first = search(grid, end.from, end.to, layersOf(line), own);
+    let { points } = first;
+    if (first.cost === Infinity) {
+      if (!tight) {
+        const close = coordinates(placed, tightLayers.flat());
+        tight = new Grid(close.xs, close.ys, tightLayers);
+      }
+      ({ points } = search(tight, end.from, end.to, layersOf(line), own));
+    }
     routed.set(line.id, points);
     for (const bundle of own) {
       grid.mark(points, bundle);

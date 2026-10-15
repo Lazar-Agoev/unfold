@@ -10,6 +10,7 @@
 import { pageArrows, type ArrowPort, type DrawnCard } from "@unfold/desktop/drawing";
 import type { CardView, ConnectionKind, Key, ProjectId, TypeDefinition, View } from "../ipc/generated";
 import { cardRefKey } from "../state/boards/keys";
+import type { CallRow } from "./layout";
 
 export interface ArrowCard {
   readonly id: string;
@@ -116,6 +117,23 @@ export interface CardPort {
   readonly dashed: boolean;
   /** Whether the line is selected. */
   readonly selected: boolean;
+}
+
+/**
+ * The lines `reflow` keeps what they reach level with (`CallRow`): each call's and start's arrow, at its
+ * call's row on an expanded card where its port is known, and each connection (`links`, by their ends).
+ */
+export function callRows(arrows: readonly Arrow[], portOffset: (card: string, port: string) => number | undefined, links: readonly { readonly from: string; readonly to: string }[] = []): CallRow[] {
+  return [
+    ...arrows.flatMap((arrow): CallRow[] => {
+      if (arrow.kind === "type") {
+        return [];
+      }
+      const port = arrow.kind === "call" && arrow.sourceHandle !== NODE_PORT ? portOffset(arrow.source, arrow.sourceHandle) : undefined;
+      return [{ source: arrow.source, target: arrow.target, ...(port !== undefined ? { port } : {}) }];
+    }),
+    ...links.map((link) => ({ source: link.from, target: link.to })),
+  ];
 }
 
 /** Each card's ports (handle ids with an arrow, and the arrow's look), sorted by id, for the cards to draw. `selected` is the selected arrow's id. */

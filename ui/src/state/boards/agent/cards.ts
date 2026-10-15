@@ -9,7 +9,8 @@
 
 import type { AddCardsOp, AgentCardResult, AgentCardSpec, AgentFollowStop, AgentItemResult } from "@unfold/desktop/agent-api";
 import { cardShape, fieldRows, projectCalls } from "@unfold/desktop/drawing";
-import { FOLLOW_GAP, HEADER_PORT, clearSpot, followPlacement, newCardPlacement, type Rect, type Size } from "../../../canvas/layout";
+import { callPort } from "../../../canvas/arrows";
+import { FOLLOW_GAP, HEADER_PORT, followPlacement, newCardPlacement, type Rect, type Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { descriptionHeight, estimatedFieldOffset } from "../../../canvas/sizing";
 import { reasonText } from "../../../code/text";
@@ -19,9 +20,9 @@ import { framePadding } from "../../../canvas/frames/geometry";
 import { cardName as drawnName } from "../../cards";
 import { addCard, cardKey, cardView, findCard, findCardByKey, setCardView } from "../document";
 import { addToFrame, findFrame } from "../frames";
-import { cardName, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
+import { cardName, cardPorts, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
-import { nearRect, occupiedFor } from "./place";
+import { nearRect, occupiedFor, placeAndMakeRoom } from "./place";
 
 /** How deep following goes at most: what a card calls, what calls it, and the types its fields name. */
 const MAX_CALLEES = 3;
@@ -240,7 +241,17 @@ function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | 
   if (field) {
     return fieldOffset(ctx, page, card, field.row) ?? HEADER_PORT;
   }
-  return callsTo(model, key) ? HEADER_PORT : undefined;
+  return callsTo(model, key) ? callRow(ctx, page, card, key) : undefined;
+}
+
+/** The row of `card`'s first call to `key`, below its top: the call's row when the card is expanded (as the canvas lays its flow out), else its header. */
+function callRow(ctx: OpContext, page: Page, card: Card, key: Key): number {
+  const model = ctx.data.model(ctx.board.project, cardKey(card));
+  if (model?.type !== "definition" || cardShape(model, cardView(card, page.defaultView)) !== "expanded") {
+    return HEADER_PORT;
+  }
+  const call = projectCalls(model.flow, true).find((item) => item.to === key);
+  return (call ? cardPorts(ctx, page)(card.id, callPort(call.call)) : undefined) ?? HEADER_PORT;
 }
 
 /** Whether a card's drawn flow calls `key` (an arrow from it reaches `key`'s card). */
@@ -265,10 +276,11 @@ function nearCard(page: Page, id: string): Card | undefined {
 }
 
 /**
- * Where a new card for `key` goes: beside `near`, else beside a related card, else right of everything
- * (inside `frame`, right of what it holds); never covering a card, or a frame it doesn't go into.
+ * Where a new card for `key` goes: beside `near`, else beside a related card (at its call's row), else
+ * right of everything (inside `frame`, right of what it holds); never covering a frame it doesn't go
+ * into, and making room there (`placeAndMakeRoom`, after what this edit placed `before` it).
  */
-function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | undefined, size: Size, frame: string | undefined): [number, number] {
+function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | undefined, size: Size, frame: string | undefined, before: ReadonlySet<string>): [number, number] {
   const rects = pageRects(ctx, page);
   const occupied = occupiedFor(page, rects, frame);
   const key = cardKey({ ref });
@@ -306,19 +318,20 @@ function newCardSpot(ctx: OpContext, page: Page, ref: CardRef, near: string | un
     const [x, y] = newCardPlacement(occupied);
     at = { x, y };
   }
-  return clearSpot(at, size, occupied);
+  return placeAndMakeRoom(ctx, page, at, size, frame, before);
 }
 
 /**
- * Where a card following reached goes: right of its caller at the calling line, or of the type whose
- * field names it at that field's row; or left of its callee.
+ * Where a card following reached goes: right of its caller at the calling line (its call's row on an
+ * expanded caller), or of the type whose field names it at that field's row; or left of its callee.
+ * It makes room there (`placeAndMakeRoom`, after what this edit placed `before` it).
  */
-function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size, frame: string | undefined): [number, number] {
+function followedSpot(ctx: OpContext, page: Page, from: Card, step: FollowStep, size: Size, frame: string | undefined, before: ReadonlySet<string>): [number, number] {
   const rects = pageRects(ctx, page);
   const rect = rects.get(from.id) ?? { x: from.at[0], y: from.at[1], ...cardSize(ctx, page, from) };
   const field = step.row !== undefined ? fieldOffset(ctx, page, from, step.row) : undefined;
-  const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, field ?? HEADER_PORT);
-  return clearSpot(at, size, occupiedFor(page, rects, frame));
+  const at = step.direction === "callers" ? leftOf(rect, size) : rightOf(rect, field ?? (step.direction === "callees" ? callRow(ctx, page, from, step.to) : HEADER_PORT));
+  return placeAndMakeRoom(ctx, page, at, size, frame, before);
 }
 
 function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardSpec, FollowPlan>, ctx: OpContext): AgentItemResult[] {
@@ -328,9 +341,12 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       results.set(card.id, entry);
     }
   };
+  // What this edit placed, in order: a card placed later goes after them.
+  const placedNow = new Set<string>();
   // A plain copy of what was added: the page is a draft that doesn't outlive the edit.
   const place = (ref: CardRef, at: [number, number], view: AgentCardSpec["view"]) => {
     const id = addCard(page, { ref, name: cardName(ctx, { ref }), at, ...(view !== undefined ? { view } : {}) });
+    placedNow.add(id);
     return { id, ref, at: [Math.round(at[0]), Math.round(at[1])] as const };
   };
   const sized = (ref: CardRef, view: AgentCardSpec["view"]) => cardSize(ctx, page, { id: "", ref, ...(view !== undefined ? { view } : {}) });
@@ -349,7 +365,7 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       }
       note(existing, cardResult(ctx, existing, changed ? "updated" : "kept"));
     } else {
-      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, sized(ref, view), frame), view);
+      const card = place(ref, newCardSpot(ctx, page, ref, spec.near, sized(ref, view), frame, placedNow), view);
       note(card, cardResult(ctx, card, "created", { at: card.at, ...into }));
       created.push(card.id);
     }
@@ -369,7 +385,7 @@ function applyAddCards(page: Page, op: AddCardsOp, plans: ReadonlyMap<AgentCardS
       // A type reached from a type's fields shows as the type it was followed from was asked to.
       const toRef = { block: step.to };
       const toView = step.direction === "types" ? view : undefined;
-      const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView), frame), toView);
+      const card = place(toRef, followedSpot(ctx, page, from, step, sized(toRef, toView), frame, placedNow), toView);
       note(card, cardResult(ctx, card, "created", { at: card.at, via, ...into }));
       created.push(card.id);
     }

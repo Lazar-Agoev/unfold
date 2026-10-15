@@ -1,19 +1,52 @@
 /**
- * Where an agent's new resource cards and notes go: beside the item they are `near` (or attached to),
- * else right of what a frame holds, else right of everything; never covering a card, a resource card, a
- * note, or a frame they aren't in.
+ * Where an agent's new cards, resource cards, and notes go: beside the item they are `near` (or
+ * attached to), else right of what a frame holds, else right of everything; never covering a card, a
+ * resource card, a note, or a frame they aren't in. A new card or resource card takes its spot, and
+ * only what is in its way moves, down its column (`placeAndMakeRoom`).
  */
 
-import { FOLLOW_GAP, STACK_GAP, clearSpot, newCardPlacement, type Point, type Rect, type Size } from "../../../canvas/layout";
+import { FOLLOW_GAP, STACK_GAP, clearSpot, makeRoom, newCardPlacement, type Point, type Rect, type Size } from "../../../canvas/layout";
 import { NOTE_GAP, framePadding } from "../../../canvas/frames/geometry";
 import { lineMiddle } from "../../../canvas/lines/paths";
 import { lineNoteSpot } from "../../../canvas/notes/spots";
 import type { Page } from "../../../ipc/generated";
+import { moveItems } from "../document";
 import { findFrame, frameChain } from "../frames";
 import { invalid, pageRects, pageRoutes, type OpContext } from "./context";
 
 function meets(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width + STACK_GAP && b.x < a.x + a.width + STACK_GAP && a.y < b.y + b.height + STACK_GAP && b.y < a.y + a.height + STACK_GAP;
+}
+
+/**
+ * Where a new item of `size` goes from its spot `at` (beside what it connects to), going into `frame`
+ * (if any), making room for it (docs/analysis/arranging-and-lines.md, 4.7): it slides down past what
+ * comes before it (what this edit placed earlier, `before`; anything whose top is at or above the
+ * spot, as a call before it), the notes on items, and the frames it doesn't go into; then whatever else
+ * is in its way moves down its column, under it, and what is under that as far as it needs. Those
+ * moves are made on `page`; returns the item's spot.
+ */
+export function placeAndMakeRoom(ctx: OpContext, page: Page, at: Point, size: Size, frame: string | undefined, before: ReadonlySet<string>): [number, number] {
+  const rects = pageRects(ctx, page);
+  const within = new Set(frame !== undefined ? [frame, ...frameChain(page, frame).map((item) => item.id)] : []);
+  const frames = new Set((page.frames ?? []).map((item) => item.id));
+  const attached = new Set((page.notes ?? []).flatMap((note) => (note.attach !== undefined ? [note.id] : [])));
+  const blocking: Rect[] = [];
+  const movable = new Map<string, Rect>();
+  for (const [id, rect] of rects) {
+    if (within.has(id)) {
+      continue;
+    }
+    if (frames.has(id) || attached.has(id) || before.has(id) || rect.y <= at.y + 0.5) {
+      blocking.push(rect);
+    } else {
+      movable.set(id, rect);
+    }
+  }
+  const [x, y] = clearSpot(at, size, blocking);
+  const moves = makeRoom({ x, y, ...size }, movable);
+  moveItems(page, Object.fromEntries([...moves].map(([id, point]) => [id, [point.x, point.y] as const])));
+  return [x, y];
 }
 
 /** What an item going into `frame` (if any) keeps clear of: every drawn item but the frames it goes into. */
@@ -38,9 +71,10 @@ export function nearRect(ctx: OpContext, page: Page, rects: ReadonlyMap<string, 
 
 /**
  * Where a new resource card of `size` goes: right of the item it is `near` (level with its top), else
- * right of what `frame` holds, else right of everything; then down until it covers nothing.
+ * right of what `frame` holds, else right of everything; then it makes room there (`placeAndMakeRoom`,
+ * after what this edit placed `before` it).
  */
-export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: string | undefined, frame: string | undefined): [number, number] {
+export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: string | undefined, frame: string | undefined, before: ReadonlySet<string> = new Set()): [number, number] {
   const rects = pageRects(ctx, page);
   const occupied = occupiedFor(page, rects, frame);
   let at: Point | undefined;
@@ -58,7 +92,7 @@ export function resourceSpot(ctx: OpContext, page: Page, size: Size, near: strin
     const [x, y] = newCardPlacement(occupied);
     at = { x, y };
   }
-  return clearSpot(at, size, occupied);
+  return placeAndMakeRoom(ctx, page, at, size, frame, before);
 }
 
 /**

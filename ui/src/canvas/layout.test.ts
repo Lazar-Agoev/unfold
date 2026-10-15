@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, reflow, startCodePlacement, type Point } from "./layout";
+import { FOLLOW_GAP, HEADER_PORT, STACK_GAP, arrange, callerPlacement, clearSpot, fallbackSize, followPlacement, makeRoom, reflow, startCodePlacement, type Point } from "./layout";
 
 describe("reflow", () => {
   it("pushes a card below a grown card in its column, and never above its saved place", () => {
@@ -15,6 +15,54 @@ describe("reflow", () => {
     expect(placed.get("c")).toEqual({ x: 900, y: 0 });
     sizes["a"] = { width: 500, height: 100 };
     expect(reflow(cards, sizeOf).get("b")).toEqual({ x: 100, y: 200 });
+  });
+});
+
+describe("reflow when cards grow", () => {
+  const sizes: Record<string, { width: number; height: number }> = {};
+  const sizeOf = (id: string) => sizes[id] ?? { width: 280, height: 44 };
+  const cards = [
+    { id: "open", at: [0, 0] as const },
+    { id: "callee", at: [376, 0] as const },
+    { id: "next", at: [376, 76] as const },
+    { id: "far", at: [800, 0] as const },
+    { id: "under", at: [0, 300] as const },
+  ];
+
+  it("pushes the columns to the right of a card that widens into them right, all of them, and back when it narrows", () => {
+    sizes["open"] = { width: 1000, height: 500 };
+    const placed = reflow(cards, sizeOf);
+    // callee's column moves to FOLLOW_GAP past the card, next with it; far's column keeps its place after it.
+    expect(placed.get("callee")).toEqual({ x: 1000 + FOLLOW_GAP, y: 0 });
+    expect(placed.get("next")).toEqual({ x: 1000 + FOLLOW_GAP, y: 76 });
+    expect(placed.get("far")?.x).toBeGreaterThanOrEqual(1000 + FOLLOW_GAP + 800 - 376);
+    // Under the card, in its own column: pushed down, not across.
+    expect(placed.get("under")).toEqual({ x: 0, y: 500 + STACK_GAP });
+    delete sizes["open"];
+    expect(reflow(cards, sizeOf).get("callee")).toEqual({ x: 376, y: 0 });
+  });
+
+  it("shows an expanded card's callee level with its call's row, and moves what is under it down", () => {
+    sizes["open"] = { width: 300, height: 500 };
+    const placed = reflow(cards, sizeOf, undefined, [{ source: "open", target: "callee", port: 300 }]);
+    expect(placed.get("callee")).toEqual({ x: 376, y: 300 - HEADER_PORT });
+    expect(placed.get("next")?.y).toBeGreaterThanOrEqual(300 - HEADER_PORT + 44 + STACK_GAP);
+    delete sizes["open"];
+  });
+});
+
+describe("making room for a new item", () => {
+  it("moves what it would cover down its column, under it, and what is under that as far as it needs; nothing else", () => {
+    const items = new Map([
+      ["covered", { x: 0, y: 20, width: 200, height: 50 }],
+      ["below", { x: 0, y: 100, width: 200, height: 50 }],
+      ["beside", { x: 400, y: 0, width: 200, height: 50 }],
+      ["far", { x: 0, y: 900, width: 200, height: 50 }],
+    ]);
+    const moves = makeRoom({ x: 0, y: 0, width: 200, height: 100 }, items);
+    expect(moves.get("covered")).toEqual({ x: 0, y: 100 + STACK_GAP });
+    expect(moves.get("below")).toEqual({ x: 0, y: 100 + STACK_GAP + 50 + STACK_GAP });
+    expect([...moves.keys()].sort()).toEqual(["below", "covered"]);
   });
 });
 

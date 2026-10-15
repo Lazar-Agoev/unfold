@@ -54,6 +54,8 @@ interface Edge {
   /** Its own port below its card's top (an arrow's, or a connection's step), when it leaves a card drawn as itself. */
   readonly port: number | undefined;
   readonly order: number;
+  /** A connection's (else an arrow's). */
+  readonly link?: true;
 }
 
 /** Where a block's members go inside it: its padding, and the direction they run in. */
@@ -236,7 +238,7 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       const [source, target] = linkOrder(link, (id) => resources.get(id));
       // A connection leaves from its step's row where its card draws the step.
       const port = link.step !== undefined && source === link.from ? portOffset(link.from, stepPort(link.step)) : undefined;
-      return { source, target, port, order: 0 };
+      return { source, target, port, order: 0, link: true };
     }),
   ];
 
@@ -277,7 +279,17 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
         return [];
       }
       const entering = anchor(target, edge.target);
-      return [{ source: source.id, target: target.id, port: leavingPort(source, edge, index), order: edge.order, from: edge.source, ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}) }];
+      return [
+        {
+          source: source.id,
+          target: target.id,
+          port: leavingPort(source, edge, index),
+          order: edge.order,
+          from: edge.source,
+          ...(edge.link ? { link: true } : {}),
+          ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}),
+        },
+      ];
     });
 
   // Arrange runs twice: the first time places every block at its level (`levels`), so the second
@@ -355,7 +367,7 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
             const from = childOf(edge.source, id);
             const source = from !== undefined ? children.get(from) : undefined;
             return source && childOf(edge.target, id) === undefined && leavesEast(id, edge)
-              ? [{ index, call: { source: source.id, target: `${EXIT_ID}${index}`, port: leavingPort(source, edge, index), order: edge.order, from: edge.source } }]
+              ? [{ index, call: { source: source.id, target: `${EXIT_ID}${index}`, port: leavingPort(source, edge, index), order: edge.order, from: edge.source, ...(edge.link ? { link: true } : {}) } }]
               : [];
           })
         : [];

@@ -6,7 +6,7 @@
 
 import type { AgentBoardInfo, AgentCardResult, AgentCombinedResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
 import { cardShape } from "@unfold/desktop/drawing";
-import { computeArrows, type Arrow } from "../../../canvas/arrows";
+import { callRows, computeArrows, type Arrow } from "../../../canvas/arrows";
 import type { BoardState, Card, Combined, Connection, Description, Note, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
 import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
@@ -259,5 +259,5 @@ export function itemSize(ctx: OpContext, page: Page, id: string): Size {
 
 /** Every drawn item's rectangle on the page as it would be drawn: cards, frames' boxes, collapsed frames' nodes. */
 export function pageRects(ctx: OpContext, page: Page): ReadonlyMap<string, Rect> {
-  return pageGeometry(page, (id) => itemSize(ctx, page, id)).rects;
+  return pageGeometry(page, (id) => itemSize(ctx, page, id), null, callRows(pageArrows(ctx, page), cardPorts(ctx, page), page.links)).rects;
 }

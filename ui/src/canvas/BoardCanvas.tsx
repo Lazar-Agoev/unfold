@@ -59,7 +59,7 @@ import {
 } from "../state/boards";
 import { findBlock } from "../state/cards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
-import { portsByCard, type Arrow, type CardPort } from "./arrows";
+import { callRows, portsByCard, type Arrow, type CardPort } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
@@ -264,14 +264,6 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const [resourceAnchor, setResourceAnchor] = useState<HTMLElement | null>(null);
   const linking = usePageView(target, (view) => view.linking !== null);
 
-  // Positions: saved positions reflowed by measured sizes, frames around what they hold; a dragged
-  // card or frame follows the pointer.
-  const [drag, setDrag] = useState<Drag | null>(null);
-  const sizeOf = useCallback((id: string) => sizes[id] ?? fallbackItemSize(framed, id), [sizes, framed]);
-  const resting = useMemo(() => pageGeometry(framed, sizeOf), [framed, sizeOf]);
-  const geometry = useMemo(() => (drag ? pageGeometry(framed, sizeOf, drag) : resting), [framed, sizeOf, drag, resting]);
-  const display = geometry.rects;
-
   // Lines: the router draws every one from the page (`routePageLines`), not from the edges React Flow
   // renders (a large page renders only what is in view). Ports are where the canvas measured them
   // (kept per page, like sizes), else estimated from what the cards drew.
@@ -299,6 +291,16 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     [cards, views, shapes, measure],
   );
   const portOffset = useCallback((item: string, port: string) => recordedPorts[item]?.[port] ?? estimate(item, port), [recordedPorts, estimate]);
+
+  // Positions: saved positions reflowed by measured sizes (an expanded card's callees level with its
+  // call rows), frames around what they hold; a dragged card or frame follows the pointer.
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const sizeOf = useCallback((id: string) => sizes[id] ?? fallbackItemSize(framed, id), [sizes, framed]);
+  const rows = useMemo(() => callRows(arrows, portOffset, routedLinks), [arrows, portOffset, routedLinks]);
+  const resting = useMemo(() => pageGeometry(framed, sizeOf, null, rows), [framed, sizeOf, rows]);
+  const geometry = useMemo(() => (drag ? pageGeometry(framed, sizeOf, drag, rows) : resting), [framed, sizeOf, drag, rows, resting]);
+  const display = geometry.rects;
+
   // While something is dragged, only its lines (and those of what a dragged frame holds) follow it; the
   // rest are routed again when it is dropped.
   const restingRoutes = useMemo(
@@ -580,7 +582,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     (_event: unknown, node: CanvasNode) => {
       if (node.type === "frame") {
         // A frame moves everything in it by how far its box moved.
-        const from = pageGeometry(framed, sizeOf).rects.get(node.id);
+        const from = pageGeometry(framed, sizeOf, null, rows).rects.get(node.id);
         const dx = from ? Math.round(node.position.x - from.x) : 0;
         const dy = from ? Math.round(node.position.y - from.y) : 0;
         if (dx !== 0 || dy !== 0) {
@@ -591,7 +593,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       } else if (node.type === "note" && findNote(framed, node.id)?.attach !== undefined) {
         // An attached note keeps its attachment, at its new offset from what it is attached to as drawn.
         const attach = findNote(framed, node.id)?.attach;
-        const from = attach !== undefined ? attachPoint(framed, pageGeometry(framed, sizeOf).rects, attach) : undefined;
+        const from = attach !== undefined ? attachPoint(framed, pageGeometry(framed, sizeOf, null, rows).rects, attach) : undefined;
         if (attach !== undefined && from) {
           editPage(target, (page) => {
             placeNote(page, node.id, [node.position.x - from.x, node.position.y - from.y], attach);
@@ -604,7 +606,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
       setDrag(null);
     },
-    [target, framed, sizeOf],
+    [target, framed, sizeOf, rows],
   );
 
   const onMoveEnd: OnMove = useCallback(

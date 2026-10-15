@@ -15,7 +15,7 @@
 
 import type { Connection, Key } from "../../ipc/generated";
 import { frameChain } from "../../state/boards/frames";
-import { NODE_PORT, stepPort, type Arrow } from "../arrows";
+import { NODE_PORT, callRows, stepPort, type Arrow } from "../arrows";
 import { pageGeometry, type FramedPage } from "../frames/geometry";
 import { routeArrows, routeLinks, type RoutedLink } from "../frames/routes";
 import type { Rect, Size } from "../layout";
@@ -122,7 +122,7 @@ export function routePageLines(input: PageLines): Map<string, RoutedLine> {
  * (`sizeOf`) and ports: its geometry, and its arrows and connections between what is drawn.
  */
 export function routePage(page: FramedPage & { readonly links: readonly Connection[] }, sizeOf: (id: string) => Size, arrows: readonly Arrow[], portOffset: (item: string, port: string) => number | undefined): Map<string, RoutedLine> {
-  const geometry = pageGeometry(page, sizeOf);
+  const geometry = pageGeometry(page, sizeOf, null, callRows(arrows, portOffset, page.links));
   return routePageLines({
     page,
     geometry,

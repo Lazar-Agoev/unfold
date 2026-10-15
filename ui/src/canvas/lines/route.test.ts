@@ -90,6 +90,21 @@ describe("routing lines", () => {
     expect(route?.points).toHaveLength(3);
   });
 
+  it("still routes a line orthogonally when a box sits right by its end", () => {
+    const boxes = new Map([
+      ["a", box(0, 0)],
+      ["note", box(150, -50, 200, 66)],
+      ["b", box(400, 100)],
+    ]);
+    const points = routeLines({ boxes, frames: new Map(), lines: [arrow("l", "a", "b")] }).get("l")?.points ?? [];
+    expect(points.at(-1)).toEqual({ x: 400, y: 122 });
+    for (let index = 1; index < points.length; index += 1) {
+      const [p, q] = [points[index - 1], points[index]];
+      expect(p?.x === q?.x || p?.y === q?.y).toBe(true);
+    }
+    expect(under(points, box(150, -50, 200, 66))).toBe(false);
+  });
+
   it("gives lines that share a run their own tracks", () => {
     const boxes = new Map([
       ["a", box(0, 0)],

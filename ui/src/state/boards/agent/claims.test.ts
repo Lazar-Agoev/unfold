@@ -192,6 +192,27 @@ describe("add_resources", () => {
     expect([...working.current]).toEqual(["orders"]);
   });
 
+  it("puts a new resource card beside what it's near, after the ones placed there before it, and moves only what is in its way", async () => {
+    open({ defaultView: "compact" });
+    const resource = (name: string) => ({ kind: "table" as const, name, anchors: [{ key: "src/db/repository.ts#OrderRepository" }], description: `The ${name}.`, near: "create-order" });
+    await edit([{ op: "add_resources", resources: [resource("orders"), resource("jobs")] }]);
+    const at = (id: string) => current().resources?.find((item) => item.id === id)?.at ?? [Number.NaN, Number.NaN];
+    // Order holds: jobs, placed after orders beside the same card, goes under it.
+    expect(at("jobs")[0]).toBe(at("orders")[0]);
+    expect(at("jobs")[1]).toBeGreaterThan(at("orders")[1]);
+    const [ordersAt, jobsAt] = [at("orders"), at("jobs")];
+    // audit goes after orders, where jobs is: jobs moves down its column to make room; nothing else moves.
+    await edit([{ op: "add_resources", resources: [resource("audit")] }]);
+    expect(at("orders")).toEqual(ordersAt);
+    expect(at("audit")).toEqual(jobsAt);
+    expect(at("jobs")[0]).toBe(jobsAt[0]);
+    expect(at("jobs")[1]).toBeGreaterThan(jobsAt[1]);
+    expect(current().cards.map((card) => card.at)).toEqual([
+      [0, 0],
+      [800, 0],
+    ]);
+  });
+
   it("updates the card of the same kind and name, keeps one asked as it is, and puts it in a frame", async () => {
     open({ resources: [table("orders", ORDER)], frames: [{ id: "data", title: "data", members: ["create-order"], look: "box", author: "agent:claude" } satisfies Frame] });
     const kept = await edit([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: ORDER, anchors: [{ key: "src/db/repository.ts#OrderRepository" }] }] }]);
