@@ -15,6 +15,7 @@ import { cardShape, fieldRows, type CardShape } from "@unfold/desktop/drawing";
 import type { CardView, Description, Frame, Header, ResourceKind, StartCard, TypeDefinition, View } from "../ipc/generated";
 import { layoutFlow, type FlowGeometry, type Measure } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
+import { callPort, stepPort } from "./arrows";
 import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
 import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import {
@@ -197,13 +198,43 @@ export function expandedCardWidth(header: Header, geometry: FlowGeometry, measur
   return Math.max(head, signature, Math.ceil(geometry.width + BORDER));
 }
 
+/** Where an expanded card `width` wide draws its flow, below its top: under its header, its description, and what it says from its code. */
+function expandedBodyTop(header: Header, width: number, description: Description | undefined, measure: Measure): number {
+  return BLOCK_HEADER + descriptionHeight(description, width, measure) + codeSectionHeight(header, width, measure);
+}
+
 /** An expanded card's size: its header, its description, what it says from its code, and its drawn flow. */
 export function expandedCardSize(header: Header, geometry: FlowGeometry, description: Description | undefined, measure: Measure): Size {
   const width = expandedCardWidth(header, geometry, measure);
-  return {
-    width,
-    height: BLOCK_HEADER + descriptionHeight(description, width, measure) + codeSectionHeight(header, width, measure) + Math.ceil(geometry.height) + RULE,
-  };
+  return { width, height: expandedBodyTop(header, width, description, measure) + Math.ceil(geometry.height) + RULE };
+}
+
+/**
+ * Where an expanded card's drawn flow places its ports, below the flow's top: a call's (`callPort`)
+ * and a connection's from that call (`stepPort`) level with the call's box, and a connection's from a
+ * step that isn't a call level with the block's first line.
+ */
+export function flowPortSpots(geometry: FlowGeometry): Map<string, number> {
+  const spots = new Map<string, number>();
+  for (const anchor of geometry.anchors) {
+    for (const port of [callPort(anchor.call), stepPort(anchor.call)]) {
+      if (!spots.has(port)) {
+        spots.set(port, anchor.at.y);
+      }
+    }
+  }
+  for (const [key, rect] of geometry.blocks) {
+    if (!spots.has(stepPort(key))) {
+      spots.set(stepPort(key), rect.y + Math.min(rect.height / 2, 13));
+    }
+  }
+  return spots;
+}
+
+/** Each port of an expanded card below its top, before it is drawn: its spot in the flow (`flowPortSpots`), under the flow's top. */
+export function estimatedPortOffsets(header: Header, geometry: FlowGeometry, description: Description | undefined, measure: Measure): Map<string, number> {
+  const top = expandedBodyTop(header, expandedCardWidth(header, geometry, measure), description, measure);
+  return new Map([...flowPortSpots(geometry)].map(([port, y]) => [port, top + y]));
 }
 
 // ---------------------------------------------------------------------------------------------

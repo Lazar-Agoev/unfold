@@ -54,8 +54,9 @@ function PageStage({ target }: { readonly target: PageTarget }) {
   const onZoomOut = useCallback(() => void flow.zoomOut({ duration: 160 }), [flow]);
   const onArrange = useCallback(() => {
     const lookup = store.getState().nodeLookup;
-    const moved = arrangeBoard(target, arrows, (arrow) => {
-      const bounds = lookup.get(arrow.source)?.internals.handleBounds?.source?.find((item) => item.id === arrow.sourceHandle);
+    // Every port a line leaves from: an arrow's, and a connection's step.
+    const moved = arrangeBoard(target, arrows, (card, port) => {
+      const bounds = lookup.get(card)?.internals.handleBounds?.source?.find((item) => item.id === port);
       return bounds ? bounds.y + bounds.height / 2 : undefined;
     });
     requestCardFocus(target, [], "fit");

@@ -145,9 +145,11 @@ already show what calls what.
 
 ## Layout
 arrange_page lays out from the inside out: each frame's members in its direction, then
-the page with each frame as one block. Type cards follow the types that link to them;
-tables sit between the code that writes and the code that reads them. Pass frame to
-arrange one frame's inside. arrange_page once, then arrange_page with only moves to
+the page with each frame as one block. Type cards follow the types that link to them.
+A resource card sits in the column after the step that touches it, level with it; one
+several apps use sits outside their boxes, past the deepest step that uses it. Free
+notes go to the top right of their frame, else of the page. Pass frame to arrange one
+frame's inside. arrange_page once, then arrange_page with only moves to
 nudge (at [x, y], rightOf, or below): a call with only moves moves those items and
 arranges nothing, so nudges stick. Any other call arranges first, which resets earlier
 moves. Never hand-place every card.

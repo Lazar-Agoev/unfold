@@ -4,21 +4,26 @@
  * the size that fits them plus room for its title. The level above treats each frame as one node: the
  * arrows that cross its border join it at the card they reach inside. A collapsed frame is one node of
  * its own size, and what it holds is laid out inside it too, ready for when it opens. Type cards rank
- * by their type arrows, as calls. A connection orders its ends as data flows: a `reads` connection's
- * resource card goes before the code that reads it, any other after the side that acts. A note
- * attached to a card, resource card, or frame goes under it (several in id order), and the item takes
- * room for them; once the items are placed, a note on a connection goes beside its line's middle,
- * clear of them (`lineNoteSpots`); free notes aren't placed. App and entrance cards come first.
+ * by their type arrows, as calls. A connection runs from the code to what it touches, so a resource
+ * card is a leaf in the column after the step that touches it, level with that step's row (the
+ * middle of its steps' rows when several touch it); a queue goes before the code it delivers to, and an
+ * actor after the table it acts on. Arrange never changes what a frame holds: a resource card no
+ * frame holds goes at the page's level, past the deepest step that uses it. Tables joined by
+ * relationships are one block, stacked. A note attached to a card, resource card, or frame goes under
+ * it (several in id order), and the item takes room for them; a free note goes to the top right of the
+ * frame it is in, else of the page; once the items are placed, a note on a connection goes beside its
+ * line's middle, clear of them (`lineNoteSpots`). Items with no lines go in a grid at the end, a
+ * file's cards together. App and entrance cards come first.
  *
  * It is deterministic: the order of the items depends only on what they are and where they are now,
  * so arranging again changes nothing.
  */
 
-import type { Connection, Frame, FrameDirection, Note } from "../ipc/generated";
+import type { Connection, Frame, FrameDirection, Note, Resource } from "../ipc/generated";
 import { frameChain } from "../state/boards/frames";
-import type { Arrow } from "./arrows";
+import { stepPort, type Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
-import { HEADER_PORT, arrange, boundsOf, type ArrangeCall, type Point, type Rect, type Size } from "./layout";
+import { HEADER_PORT, STACK_GAP, arrange, boundsOf, type ArrangeCall, type Point, type Rect, type Size } from "./layout";
 import { lineMiddle, lineNoteSpot } from "./notes/spots";
 
 export interface ArrangeInput {
@@ -29,8 +34,8 @@ export interface ArrangeInput {
   readonly sizeOf: (id: string) => Size;
   /** The page's arrows between cards (`computeArrows`): calls, starts, and type arrows. */
   readonly arrows: readonly Arrow[];
-  /** An arrow's port offset below its card's top, when known (else the header's). */
-  readonly portOffset: (arrow: Arrow) => number | undefined;
+  /** A card's port (an arrow's, or a connection's `stepPort`) below its top, when known (else the header's). */
+  readonly portOffset: (card: string, port: string) => number | undefined;
   /** How the page's top level is laid out (default: to the right). */
   readonly direction?: FrameDirection;
   /** Arrange only what this frame holds; its box keeps its top-left. */
@@ -41,9 +46,32 @@ export interface ArrangeInput {
 interface Edge {
   readonly source: string;
   readonly target: string;
-  /** The arrow's own port below its card's top, when it leaves a card drawn as itself. */
+  /** Its own port below its card's top (an arrow's, or a connection's step), when it leaves a card drawn as itself. */
   readonly port: number | undefined;
   readonly order: number;
+}
+
+/** Where a block's members go inside it: its padding, and the direction they run in. */
+interface Inside {
+  readonly padding: { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number };
+  readonly direction: FrameDirection;
+}
+
+/** A group of related tables: stacked, nothing around them. */
+const TABLES: Inside = { padding: { top: 0, right: 0, bottom: 0, left: 0 }, direction: "down" };
+/** The prefix of a group of related tables' id, which no page item has. */
+const TABLES_ID = "\u0000tables:";
+
+/**
+ * Which way a connection orders its ends: from the code to what it touches, so a resource card is
+ * never a root; from a queue to the code it delivers to; from a table to the actor that acts on it.
+ * Otherwise from `from` to `to`.
+ */
+function linkOrder(link: Connection, resource: (id: string) => Resource | undefined): [string, string] {
+  const from = resource(link.from)?.kind;
+  const to = resource(link.to)?.kind;
+  const flipped = (from !== undefined && to === undefined && from !== "queue") || (from === "actor" && to !== undefined && to !== "actor");
+  return flipped ? [link.to, link.from] : [link.from, link.to];
 }
 
 /** Where something inside a laid-out frame is drawn, from the frame's top: by itself, or by a collapsed frame's node. */
@@ -57,6 +85,8 @@ interface Block {
   readonly id: string;
   readonly size: Size;
   readonly entrance: boolean;
+  /** Its file, for a card: items with no lines are grouped by it. */
+  readonly group?: string | undefined;
   /** Where each card, resource card, and note inside goes, from the block's top-left. */
   readonly offsets: ReadonlyMap<string, Point>;
   /** Where each item inside is drawn, from the block's top (a frame's own nodes only). */
@@ -74,7 +104,7 @@ function byPriority(corner: (id: string) => Point): (a: Block, b: Block) => numb
 
 /** Lays out one level's blocks from `origin`, to the right or (transposed) downward. */
 function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], direction: FrameDirection, origin: Point): Map<string, Point> {
-  const cards = blocks.map(({ id, size }) => ({ id, ...size }));
+  const cards = blocks.map(({ id, size, group }) => ({ id, ...size, ...(group !== undefined ? { group } : {}) }));
   if (direction === "right") {
     return arrange(cards, calls, origin);
   }
@@ -87,10 +117,11 @@ function layoutLevel(blocks: readonly Block[], calls: readonly ArrangeCall[], di
   return new Map([...flipped].map(([id, point]) => [id, { x: point.y, y: point.x }]));
 }
 
-/** Where Arrange puts the page's cards, resource cards, and the notes attached to them (the ones it moves). */
+/** Where Arrange puts the page's cards, resource cards, and notes (all but those on connections). */
 export function arrangePage(input: ArrangeInput): Map<string, Point> {
   const { page, rects, sizeOf } = input;
   const frames = new Map((page.frames ?? []).map((frame) => [frame.id, frame]));
+  const resources = new Map((page.resources ?? []).map((resource) => [resource.id, resource]));
   const leaves = new Map([...page.cards, ...(page.resources ?? [])].map((leaf) => [leaf.id, leaf]));
   const holder = new Map<string, string>();
   for (const frame of frames.values()) {
@@ -101,11 +132,18 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     }
   }
   const entrances = new Set(page.cards.flatMap((card) => ("entrance" in card.ref ? [card.id] : [])));
-  // The notes that go under each card, resource card, and frame.
+  // What a card is grouped with when it has no lines: its file.
+  const files = new Map(page.cards.flatMap((card) => ("block" in card.ref ? [[card.id, card.ref.block.split("#")[0] ?? ""] as const] : [])));
+  const byId = (a: Note, b: Note) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  // The notes that go under each card, resource card, and frame; the free notes of each frame (and of the page, at "").
   const notesOf = new Map<string, Note[]>();
-  for (const note of [...(page.notes ?? [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  const freeNotes = new Map<string, Note[]>();
+  for (const note of [...(page.notes ?? [])].sort(byId)) {
     if (note.attach !== undefined && (leaves.has(note.attach) || frames.has(note.attach))) {
       notesOf.set(note.attach, [...(notesOf.get(note.attach) ?? []), note]);
+    } else if (note.attach === undefined) {
+      const frame = holder.get(note.id) ?? "";
+      freeNotes.set(frame, [...(freeNotes.get(frame) ?? []), note]);
     }
   }
   /** An item of `size` with its notes under it: the room both take, and where each note goes. */
@@ -122,6 +160,35 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     return { size: { width, height }, notes };
   };
 
+  // Tables joined by relationships, where they sit (the same frame, or the page): each group is one block.
+  const tablesOf = new Map<string, string>();
+  for (const link of page.links) {
+    const [from, to] = [resources.get(link.from), resources.get(link.to)];
+    if (link.kind !== "relates" || !from || !to || from === to || holder.get(from.id) !== holder.get(to.id)) {
+      continue;
+    }
+    const a = tablesOf.get(from.id) ?? from.id;
+    const b = tablesOf.get(to.id) ?? to.id;
+    const [kept, joined] = a < b ? [a, b] : [b, a];
+    for (const [table, group] of [...tablesOf, [from.id, a], [to.id, b]] as const) {
+      tablesOf.set(table, group === joined ? kept : group);
+    }
+  }
+  const tables = new Map<string, string[]>();
+  for (const [table, group] of [...tablesOf].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    tables.set(`${TABLES_ID}${group}`, [...(tables.get(`${TABLES_ID}${group}`) ?? []), table]);
+  }
+  /** The item a level lays out for `id`: its group of related tables, else itself. */
+  const levelItem = (id: string): string => {
+    const group = tablesOf.get(id);
+    return group !== undefined ? `${TABLES_ID}${group}` : id;
+  };
+  /** What holds `id`: a table's group, a group's tables' frame, or a frame (undefined: the page). */
+  const parentOf = (id: string): string | undefined => {
+    const item = levelItem(id);
+    return item !== id ? item : holder.get(tables.get(id)?.[0] ?? id);
+  };
+
   // Where an item is now: as drawn, else its saved position, else (a hidden frame) where its box's
   // top-left would be: the top-left of what it holds, less its padding.
   const corners = new Map<string, Point>();
@@ -129,6 +196,12 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
     const known = corners.get(id);
     if (known) {
       return known;
+    }
+    const group = tables.get(id);
+    if (group) {
+      const point = boundsOf(group.map((table) => ({ ...corner(table, seen), width: 0, height: 0 }))) ?? { x: 0, y: 0 };
+      corners.set(id, { x: point.x, y: point.y });
+      return { x: point.x, y: point.y };
     }
     const rect = rects.get(id);
     const leaf = leaves.get(id);
@@ -143,20 +216,21 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
   };
 
   const edges: Edge[] = [
-    ...input.arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: input.portOffset(arrow), order: arrow.order })),
+    ...input.arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: input.portOffset(arrow.source, arrow.sourceHandle), order: arrow.order })),
     ...page.links.map((link): Edge => {
-      // A resource card goes before the code that reads it, after the code that writes it.
-      const [source, target] = link.kind === "reads" ? [link.to, link.from] : [link.from, link.to];
-      return { source, target, port: undefined, order: 0 };
+      const [source, target] = linkOrder(link, (id) => resources.get(id));
+      // A connection leaves from its step's row where its card draws the step.
+      const port = link.step !== undefined && source === link.from ? input.portOffset(link.from, stepPort(link.step)) : undefined;
+      return { source, target, port, order: 0 };
     }),
   ];
 
   /** The item at the level of `container` (null: the page) that is or holds `id`. */
   const childOf = (id: string, container: string | null): string | undefined => {
     const seen = new Set<string>();
-    for (let at: string | undefined = id; at !== undefined && !seen.has(at); at = holder.get(at)) {
+    for (let at: string | undefined = id; at !== undefined && !seen.has(at); at = parentOf(at)) {
       seen.add(at);
-      if ((holder.get(at) ?? null) === container) {
+      if ((parentOf(at) ?? null) === container) {
         return at;
       }
     }
@@ -180,47 +254,81 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       const leaving = anchor(source, edge.source);
       const entering = anchor(target, edge.target);
       const port = leaving.top + ((leaving.own ? edge.port : undefined) ?? HEADER_PORT);
-      return [{ source: source.id, target: target.id, port, order: edge.order, ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}) }];
+      return [{ source: source.id, target: target.id, port, order: edge.order, from: edge.source, ...(entering.top !== 0 ? { entry: entering.top + HEADER_PORT } : {}) }];
     });
 
+  /**
+   * The free notes of a level at its top right: in a row ending at the right edge of what it laid out
+   * (`laid`, else from `origin`), above it, `STACK_GAP` apart; what it laid out moves down under them.
+   */
+  const topRight = (notes: readonly Note[], laid: Rect | null, origin: Point): { readonly notes: [string, Point][]; readonly down: number } => {
+    if (notes.length === 0) {
+      return { notes: [], down: 0 };
+    }
+    const sizes = notes.map((note) => sizeOf(note.id));
+    let x = laid ? laid.x + laid.width : origin.x + sizes.reduce((sum, size) => sum + size.width + STACK_GAP, -STACK_GAP);
+    const top = laid?.y ?? origin.y;
+    const placed = notes.map((note, index): [string, Point] => {
+      x -= sizes[index]?.width ?? 0;
+      const at = { x, y: top };
+      x -= STACK_GAP;
+      return [note.id, at];
+    });
+    return { notes: placed, down: laid ? Math.max(...sizes.map((size) => size.height)) + STACK_GAP : 0 };
+  };
+
   const blocks = new Map<string, Block>();
-  /** A frame laid out inside: its members by call depth in its direction, then its size and what goes where. */
-  const frameBlock = (frame: Frame, seen: ReadonlySet<string>): Block => {
-    const inner = new Set([...seen, frame.id]);
+  /**
+   * `members` laid out as one block: by call depth in its direction inside its padding, with the free
+   * notes at its top right; its content's size, and what goes where.
+   */
+  const layoutInside = (id: string, members: readonly string[], inside: Inside, free: readonly Note[], seen: ReadonlySet<string>) => {
+    const inner = new Set([...seen, id]);
     const children = new Map(
-      frame.members.flatMap((member) => {
-        const block = seen.has(member) || member === frame.id ? undefined : blockOf(member, inner);
-        return block ? [[member, block] as const] : [];
+      members.flatMap((member) => {
+        const item = parentOf(member) === id ? member : levelItem(member);
+        const block = seen.has(item) || item === id ? undefined : blockOf(item, inner);
+        return block ? [[item, block] as const] : [];
       }),
     );
-    const ordered = [...children.values()].sort(byPriority((id) => corner(id)));
-    const positions = layoutLevel(ordered, callsAmong(children, frame.id), frame.direction ?? "right", { x: 0, y: 0 });
-    const content = boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? { x: 0, y: 0 }), ...block.size })));
-    const padding = framePadding(frame);
+    const ordered = [...children.values()].sort(byPriority((item) => corner(item)));
+    const positions = layoutLevel(ordered, callsAmong(children, id), inside.direction, { x: 0, y: 0 });
+    const laid = boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? { x: 0, y: 0 }), ...block.size })));
+    const band = topRight(free, laid, { x: 0, y: 0 });
+    const content = boundsOf([
+      ...ordered.map((block) => ({ ...(positions.get(block.id) ?? { x: 0, y: 0 }), ...block.size, y: (positions.get(block.id)?.y ?? 0) + band.down })),
+      ...band.notes.map(([note, at]) => ({ ...at, ...sizeOf(note) })),
+    ]);
+    const { padding } = inside;
     const shift = { x: padding.left - (content?.x ?? 0), y: padding.top - (content?.y ?? 0) };
     const offsets = new Map<string, Point>();
     const drawn = new Map<string, Drawn>();
     for (const block of ordered) {
       const at = positions.get(block.id) ?? { x: 0, y: 0 };
       const x = at.x + shift.x;
-      const y = at.y + shift.y;
+      const y = at.y + band.down + shift.y;
       if (leaves.has(block.id)) {
         offsets.set(block.id, { x, y });
       }
       drawn.set(block.id, { top: y, own: leaves.has(block.id) });
-      for (const [id, point] of block.offsets) {
-        offsets.set(id, { x: x + point.x, y: y + point.y });
+      for (const [item, point] of block.offsets) {
+        offsets.set(item, { x: x + point.x, y: y + point.y });
       }
       const collapsed = frames.get(block.id)?.collapsed === true;
-      for (const [id, place] of block.drawn) {
-        drawn.set(id, collapsed ? { top: y, own: false } : { top: y + place.top, own: place.own });
+      for (const [item, place] of block.drawn) {
+        drawn.set(item, collapsed ? { top: y, own: false } : { top: y + place.top, own: place.own });
       }
     }
-    const own =
-      frame.collapsed === true
-        ? sizeOf(frame.id)
-        : { width: (content?.width ?? 0) + padding.left + padding.right, height: (content?.height ?? 0) + padding.top + padding.bottom };
-    const { size, notes } = withNotes(frame.id, own);
+    for (const [note, at] of band.notes) {
+      offsets.set(note, { x: at.x + shift.x, y: at.y + shift.y });
+    }
+    const size = { width: (content?.width ?? 0) + padding.left + padding.right, height: (content?.height ?? 0) + padding.top + padding.bottom };
+    return { offsets, drawn, size };
+  };
+  /** A frame laid out inside (`layoutInside`), then its size (a collapsed frame's node's) with its notes under it. */
+  const frameBlock = (frame: Frame, seen: ReadonlySet<string>): Block => {
+    const { offsets, drawn, size: box } = layoutInside(frame.id, frame.members, { padding: framePadding(frame), direction: frame.direction ?? "right" }, freeNotes.get(frame.id) ?? [], seen);
+    const { size, notes } = withNotes(frame.id, frame.collapsed === true ? sizeOf(frame.id) : box);
     for (const [id, point] of notes) {
       offsets.set(id, point);
     }
@@ -232,12 +340,17 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
       return known;
     }
     const frame = frames.get(id);
+    const group = tables.get(id);
     const leaf = leaves.has(id) ? withNotes(id, sizeOf(id)) : undefined;
-    const block: Block | undefined = frame
-      ? frameBlock(frame, seen)
-      : leaf
-        ? { id, size: leaf.size, entrance: entrances.has(id), offsets: new Map(leaf.notes), drawn: new Map() }
-        : undefined;
+    let block: Block | undefined;
+    if (frame) {
+      block = frameBlock(frame, seen);
+    } else if (group) {
+      const { offsets, drawn, size } = layoutInside(id, group, TABLES, [], seen);
+      block = { id, size, entrance: false, offsets, drawn };
+    } else if (leaf) {
+      block = { id, size: leaf.size, entrance: entrances.has(id), group: files.get(id), offsets: new Map(leaf.notes), drawn: new Map() };
+    }
     if (block) {
       blocks.set(id, block);
     }
@@ -260,16 +373,26 @@ export function arrangePage(input: ArrangeInput): Map<string, Point> {
   }
   const top = new Map(
     [...leaves.keys(), ...frames.keys()].flatMap((id) => {
-      const block = holder.has(id) ? undefined : blockOf(id, new Set());
-      return block ? [[id, block] as const] : [];
+      const item = levelItem(id);
+      const block = holder.has(id) ? undefined : blockOf(item, new Set());
+      return block ? [[item, block] as const] : [];
     }),
   );
   const ordered = [...top.values()].sort(byPriority((id) => corner(id)));
   const all = ordered.map((block) => corner(block.id));
   const origin = { x: Math.min(...all.map((point) => point.x)), y: Math.min(...all.map((point) => point.y)) };
   const positions = layoutLevel(ordered, callsAmong(top, null), input.direction ?? "right", origin);
+  const band = topRight(
+    freeNotes.get("") ?? [],
+    boundsOf(ordered.map((block) => ({ ...(positions.get(block.id) ?? origin), ...block.size }))),
+    origin,
+  );
   for (const block of ordered) {
-    place(block, positions.get(block.id) ?? origin);
+    const at = positions.get(block.id) ?? origin;
+    place(block, { x: at.x, y: at.y + band.down });
+  }
+  for (const [note, at] of band.notes) {
+    result.set(note, { x: Math.round(at.x), y: Math.round(at.y) });
   }
   return result;
 }

@@ -9,11 +9,13 @@
  */
 
 import type { AgentCardResult, AgentItemResult, AgentMove, AgentViewSpec, ArrangeOp, SetViewOp } from "@unfold/desktop/agent-api";
+import { cardShape } from "@unfold/desktop/drawing";
 import { arrangePage, lineNoteSpots } from "../../../canvas/arrangePage";
-import type { Arrow } from "../../../canvas/arrows";
+import { fieldPort } from "../../../canvas/arrows";
 import { FOLLOW_GAP, STACK_GAP, clearSpot } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
-import { descriptionHeight, estimatedFieldOffset } from "../../../canvas/sizing";
+import { descriptionHeight, estimatedFieldOffset, estimatedPortOffsets } from "../../../canvas/sizing";
+import { layoutFlow } from "../../../flow/layout";
 import type { Card, Page } from "../../../ipc/generated";
 import { cardKey, cardView, findCard, findCombined, moveItems, openPaths, setCardView, updateCombined } from "../document";
 import { findFrame, frameChain, frameItems, moveFrame, updateFrame } from "../frames";
@@ -22,6 +24,9 @@ import { findResource } from "../resources";
 import { cardName, cardResult, combinedResult, invalid, itemSize, pageArrows, pageRects, type OpContext } from "./context";
 import { frameResult } from "./frames";
 import { resourceResult } from "./resources";
+
+/** The start of a type card's field ports (`fieldPort`). */
+const FIELD_PORT = fieldPort("");
 
 /** Applies a card's part of `set_view`: compact or expanded. */
 function setCardShow(ctx: OpContext, page: Page, card: Card, item: AgentViewSpec): AgentCardResult {
@@ -161,15 +166,29 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
     updateFrame(page, frame.id, { direction: op.direction });
   }
   if (page.cards.length > 0 || (page.resources ?? []).length > 0) {
-    // A field's row in a type card; else the header.
-    const port = (arrow: Arrow) => {
-      const card = findCard(page, arrow.source);
-      if (!card || arrow.kind !== "type") {
+    // A field's row in a type card; a call's or a step's row in an expanded card, from its drawn flow
+    // laid out as the card lays it out; else the header.
+    const flows = new Map<string, ReadonlyMap<string, number>>();
+    const port = (cardId: string, handle: string) => {
+      const card = findCard(page, cardId);
+      if (!card) {
         return undefined;
       }
-      const definition = ctx.data.definition(ctx.board.project, cardKey(card));
-      const row = arrow.sourceHandle.slice("field:".length);
-      return definition ? estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText)) : undefined;
+      const key = cardKey(card);
+      if (handle.startsWith(FIELD_PORT)) {
+        const definition = ctx.data.definition(ctx.board.project, key);
+        return definition ? estimatedFieldOffset(definition, handle.slice(FIELD_PORT.length), descriptionHeight(card.description, null, measureText)) : undefined;
+      }
+      const model = ctx.data.model(ctx.board.project, key);
+      if (model?.type !== "definition" || cardShape(model, cardView(card, page.defaultView)) !== "expanded") {
+        return undefined;
+      }
+      let offsets = flows.get(card.id);
+      if (!offsets) {
+        offsets = estimatedPortOffsets(model.flow.header, layoutFlow(model.flow, { measure: measureText }), card.description, measureText);
+        flows.set(card.id, offsets);
+      }
+      return offsets.get(handle);
     };
     const positions = arrangePage({
       page,

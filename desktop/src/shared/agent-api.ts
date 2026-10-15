@@ -106,10 +106,11 @@ export type AgentDirection = "right" | "down";
 
 /**
  * Arranges the page from the inside out (each frame, deepest first, by call depth and connections in
- * its direction; then the page, each frame one node), or only the frame `frame`, whose box keeps its
- * top-left; then applies the moves in order. `direction` lays out the page's top level for this call,
- * or, with `frame`, becomes that frame's direction. With moves and neither `frame` nor `direction`, it
- * only applies the moves: nothing is arranged, so earlier moves stay.
+ * its direction, a resource card beside the step that touches it; then the page, each frame one
+ * node), or only the frame `frame`, whose box keeps its top-left; then applies the moves in order.
+ * `direction` lays out the page's top level for this call, or, with `frame`, becomes that frame's
+ * direction. With moves and neither `frame` nor `direction`, it only applies the moves: nothing is
+ * arranged, so earlier moves stay.
  */
 export interface ArrangeOp {
   readonly op: "arrange";
@@ -216,7 +217,7 @@ export interface AgentResourceSpec {
   readonly anchors?: readonly AgentAnchor[];
   /** The id of a frame of the page to put it in. */
   readonly frame?: string;
-  /** The id of an item of the page to place it beside; absent: right of what its frame holds, else right of everything (Arrange then places it by data flow). */
+  /** The id of an item of the page to place it beside; absent: right of what its frame holds, else right of everything (Arrange then places it beside the step that touches it). */
   readonly near?: string;
 }
 

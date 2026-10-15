@@ -165,6 +165,8 @@ export function boundsOf(rects: readonly Rect[]): Rect | null {
 
 export interface ArrangeCard extends Size {
   readonly id: string;
+  /** What it is grouped with when it has no lines: its file. */
+  readonly group?: string;
 }
 
 /** A call between two cards; `port` is the calling line's offset from the source card's top. */
@@ -176,14 +178,28 @@ export interface ArrangeCall {
   readonly entry?: number;
   /** Source order inside the calling card, for ties. */
   readonly order: number;
+  /** The card it really leaves, when `source` is a block holding it (a frame): a card's several lines count once. */
+  readonly from?: string;
+}
+
+/** The median of `values` (the middle two's mean when there are two middles); undefined for none. */
+function median(values: readonly number[]): number | undefined {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length === 0) {
+    return undefined;
+  }
+  return sorted.length % 2 === 1 ? sorted[middle] : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
 /**
  * Lays cards out left to right by call depth from the cards nothing calls (entrances first).
  * `cards` comes in priority order; every root starts a band, and bands stack downward. A callee
- * sits in the column after its deepest caller, its entry (its header) level with the first calling
- * line when there is room. Cards without calls go in one row underneath. The result depends only on the cards, their
- * sizes, and the calls, never on where cards are now, so arranging twice changes nothing.
+ * sits in the column after its deepest caller, its entry (its header) level with the median of the
+ * lines that reach it when there is room (a card's first, when it calls it more than once; ties in
+ * source order). Cards without calls go in a compact grid underneath, grouped by file. The result
+ * depends only on the cards, their sizes, and the calls, never on where cards are now, so arranging
+ * twice changes nothing.
  */
 export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCall[], origin: Point = { x: 0, y: 0 }): Map<string, Point> {
   const byId = new Map(cards.map((card) => [card.id, card]));
@@ -298,15 +314,22 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
         .map((card) => {
           const callers = (incoming.get(card.id) ?? []).filter((call) => positions.has(call.source));
           const order = preorder.get(card.id) ?? 0;
-          if (callers.length === 0) {
+          // Level with the middle of the lines that reach it (a card's first line, when it has several),
+          // never above its topmost caller.
+          const first = new Map<string, ArrangeCall>();
+          for (const call of [...callers].sort((a, b) => a.order - b.order || a.port - b.port)) {
+            const from = call.from ?? call.source;
+            if (!first.has(from)) {
+              first.set(from, call);
+            }
+          }
+          const lines = [...first.values()].map((call) => (positions.get(call.source)?.y ?? bandTop) + call.port - (call.entry ?? HEADER_PORT));
+          const middle = median(lines);
+          if (middle === undefined) {
             return { card, want: bandTop, order };
           }
-          const first = [...callers].sort(
-            (a, b) => (preorder.get(a.source) ?? 0) - (preorder.get(b.source) ?? 0) || a.port - b.port,
-          )[0];
-          const firstY = first ? (positions.get(first.source)?.y ?? bandTop) + first.port - (first.entry ?? HEADER_PORT) : bandTop;
           const lowestCaller = Math.min(...callers.map((call) => positions.get(call.source)?.y ?? bandTop));
-          return { card, want: Math.max(bandTop, lowestCaller, firstY), order };
+          return { card, want: Math.max(bandTop, lowestCaller, middle), order };
         })
         .sort((a, b) => a.want - b.want || a.order - b.order);
       const columnLeft = columnX[column] ?? origin.x;
@@ -319,24 +342,35 @@ export function arrange(cards: readonly ArrangeCard[], calls: readonly ArrangeCa
     }
   }
 
-  // Cards with no calls: one row under everything else.
+  // Cards with no calls: a compact grid under everything else, a file's cards together.
   const loose = cards.filter((card) => !connected.has(card.id));
-  if (loose.length > 0) {
-    const lastColumn = columns - 1;
-    const right = Math.max(origin.x + 1600, columns > 0 ? (columnX[lastColumn] ?? 0) + (columnWidth[lastColumn] ?? 0) : 0);
-    let rowX = origin.x;
-    let rowY = bottom + BAND_GAP;
-    let rowHeight = 0;
-    for (const card of loose) {
-      if (rowX > origin.x && rowX + card.width > right) {
-        rowX = origin.x;
-        rowY += rowHeight + STACK_GAP;
-        rowHeight = 0;
-      }
-      positions.set(card.id, { x: Math.round(rowX), y: Math.round(rowY) });
-      rowX += card.width + COLUMN_GAP;
-      rowHeight = Math.max(rowHeight, card.height);
-    }
+  const top = connected.size > 0 ? bottom + BAND_GAP : origin.y;
+  for (const [id, at] of looseGrid(loose, { x: origin.x, y: top })) {
+    positions.set(id, at);
   }
+  return positions;
+}
+
+/**
+ * Items with no lines in a compact grid from `origin`: about as many columns as rows, filled row by row
+ * in file order (then priority), each column as wide as its widest item and each row as tall as its
+ * tallest, `STACK_GAP` apart.
+ */
+function looseGrid(items: readonly ArrangeCard[], origin: Point): Map<string, Point> {
+  const ordered = items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => ((a.item.group ?? "") < (b.item.group ?? "") ? -1 : (a.item.group ?? "") > (b.item.group ?? "") ? 1 : a.index - b.index))
+    .map(({ item }) => item);
+  const across = Math.max(1, Math.ceil(Math.sqrt(ordered.length)));
+  const widths = Array.from({ length: across }, (_, column) => Math.max(0, ...ordered.filter((_, index) => index % across === column).map((item) => item.width)));
+  const heights = Array.from({ length: Math.ceil(ordered.length / across) }, (_, row) => Math.max(0, ...ordered.slice(row * across, (row + 1) * across).map((item) => item.height)));
+  const positions = new Map<string, Point>();
+  ordered.forEach((item, index) => {
+    const column = index % across;
+    const row = Math.floor(index / across);
+    const x = origin.x + widths.slice(0, column).reduce((sum, width) => sum + width + STACK_GAP, 0);
+    const y = origin.y + heights.slice(0, row).reduce((sum, height) => sum + height + STACK_GAP, 0);
+    positions.set(item.id, { x: Math.round(x), y: Math.round(y) });
+  });
   return positions;
 }

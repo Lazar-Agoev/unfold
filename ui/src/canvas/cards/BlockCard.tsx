@@ -40,9 +40,8 @@ import type { UnfoldError } from "../../ipc/unfold";
 import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { heldBlocks, isMissing } from "../../state/cards";
 import { openGap, useCodeHover, useCodePanel } from "../../state/codePanel";
-import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";
-import { compactCardWidth, expandedCardWidth, headerText, nameFit } from "../sizing";
+import { compactCardWidth, expandedCardWidth, flowPortSpots, headerText, nameFit } from "../sizing";
 import { useItemWriting } from "../writing";
 import { blockMenuEntries, type CombineRequest, type ProposeRequest } from "./blockMenu";
 import { useCardMenu } from "./cardMenu";
@@ -120,23 +119,11 @@ function FromCode({ header }: { readonly header: Header }) {
 
 /**
  * Where an expanded card's body places each of `ports` (its calls', and connections' steps): level
- * with the call's box, else (a connection's step that isn't a call) the block's. Ports it can't place
- * stay at the header.
+ * with the call's box, else (a connection's step that isn't a call) the block's (`flowPortSpots`).
+ * Ports it can't place stay at the header.
  */
 function placePorts(geometry: FlowGeometry, ports: readonly string[]): { readonly placed: Map<string, number>; readonly header: string[] } {
-  const spots = new Map<string, number>();
-  for (const anchor of geometry.anchors) {
-    for (const port of [callPort(anchor.call), stepPort(anchor.call)]) {
-      if (!spots.has(port)) {
-        spots.set(port, anchor.at.y);
-      }
-    }
-  }
-  for (const [key, rect] of geometry.blocks) {
-    if (!spots.has(stepPort(key))) {
-      spots.set(stepPort(key), rect.y + Math.min(rect.height / 2, 13));
-    }
-  }
+  const spots = flowPortSpots(geometry);
   const placed = new Map<string, number>();
   const header: string[] = [];
   for (const port of ports) {

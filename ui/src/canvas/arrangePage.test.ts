@@ -21,9 +21,9 @@ const SIZES: Readonly<Record<string, { width: number; height: number }>> = {
   loose: { width: 300, height: 100 },
 };
 const sizeOf = (id: string) => SIZES[id] ?? { width: 280, height: 90 };
-/** Calling lines' ports, below the calling card's top. */
-const PORTS: Readonly<Record<string, number>> = { "create|c1|place": 120, "create|c2|notify": 300, "place|c3|insert": 80, "route|r0|create": 102 };
-const portOffset = (arrow: Arrow) => PORTS[arrow.id];
+/** Calling lines' ports (and connections' steps), below the calling card's top. */
+const PORTS: Readonly<Record<string, number>> = { "create|c1": 120, "create|c2": 300, "place|c3": 80, "route|r0": 102, "create|step:src/a.ts#create/call:save": 250 };
+const portOffset = (cardId: string, port: string) => PORTS[`${cardId}|${port}`];
 
 interface Setup {
   readonly cards: readonly Card[];
@@ -51,7 +51,7 @@ function todaysArrange(cards: readonly Card[], rects: ReadonlyMap<string, Rect>,
   const origin = { x: Math.min(...all.map((rect) => rect.x)), y: Math.min(...all.map((rect) => rect.y)) };
   return arrange(
     ordered.map((item) => ({ id: item.id, width: rects.get(item.id)?.width ?? 520, height: rects.get(item.id)?.height ?? 320 })),
-    arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: portOffset(arrow) ?? HEADER_PORT, order: arrow.order })),
+    arrows.map((arrow) => ({ source: arrow.source, target: arrow.target, port: portOffset(arrow.source, arrow.sourceHandle) ?? HEADER_PORT, order: arrow.order })),
     origin,
   );
 }
@@ -165,18 +165,62 @@ describe("Arrange with frames", () => {
     expect(arrangePage(input({ ...setup, cards: moved }, { frame: "inner" }))).toEqual(first);
   });
 
-  it("orders connections as data flows: after the code that writes, before the code that reads", () => {
+  it("puts a resource card in the column after the steps that touch it, read or written", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
     const links: Connection[] = [
       { id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" },
       { id: "r", from: "loose", to: "orders", kind: "reads", author: "agent:claude" },
     ];
     const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS }));
+    // Read or written, a table is a leaf: never a root in the first column.
     expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "insert").x);
-    expect(placed(positions, "loose").x).toBeGreaterThan(placed(positions, "orders").x);
+    expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "loose").x);
+    expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "route").x);
   });
 
-  it("puts the notes attached to a card, resource card, or frame under it, the item taking room for them; others stay", () => {
+  it("puts a resource card level with the row of the step that touches it", () => {
+    const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
+    const links: Connection[] = [{ id: "r", from: "create", to: "orders", kind: "reads", step: "src/a.ts#create/call:save", author: "agent:claude" }];
+    const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS.slice(0, 1) }));
+    expect(placed(positions, "orders").x).toBeGreaterThan(placed(positions, "create").x + 520);
+    expect(placed(positions, "orders").y).toBe(placed(positions, "create").y + 250 - HEADER_PORT);
+  });
+
+  it("puts a queue before the code it delivers to, and an actor after the table it acts on", () => {
+    const resource = (id: string, kind: Resource["kind"]): Resource => ({ id, kind, name: id, anchors: [], at: [0, 0], author: "agent:claude" });
+    const resources = [resource("jobs", "queue"), resource("orders", "table"), resource("reviewer", "actor")];
+    const links: Connection[] = [
+      { id: "q1", from: "place", to: "jobs", kind: "queue", author: "agent:claude" },
+      { id: "q2", from: "jobs", to: "loose", kind: "queue", author: "agent:claude" },
+      { id: "a", from: "reviewer", to: "orders", kind: "writes", author: "agent:claude" },
+      { id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" },
+    ];
+    const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS }));
+    expect(placed(positions, "jobs").x).toBeGreaterThan(placed(positions, "place").x);
+    expect(placed(positions, "loose").x).toBeGreaterThan(placed(positions, "jobs").x);
+    expect(placed(positions, "reviewer").x).toBeGreaterThan(placed(positions, "orders").x);
+  });
+
+  it("stacks tables joined by relationships as one block, placed like one resource card", () => {
+    const table = (id: string): Resource => ({ id, kind: "table", name: id, anchors: [], at: [0, 0], author: "agent:claude" });
+    const resources = [table("orders"), table("customers"), table("audit")];
+    const links: Connection[] = [
+      { id: "rel", from: "orders", to: "customers", kind: "relates", author: "agent:claude" },
+      { id: "w", from: "insert", to: "orders", kind: "writes", author: "agent:claude" },
+      { id: "w2", from: "insert", to: "audit", kind: "writes", author: "agent:claude" },
+    ];
+    const positions = arrangePage(input({ cards: CARDS, resources, links, arrows: ARROWS }));
+    const orders = placed(positions, "orders");
+    const customers = placed(positions, "customers");
+    expect(customers.x).toBe(orders.x);
+    expect(customers.y).toBeGreaterThan(orders.y + orders.height);
+    expect(orders.x).toBeGreaterThan(placed(positions, "insert").x);
+    for (const id of ["orders", "customers"]) {
+      expect(overlaps(placed(positions, "audit"), placed(positions, id))).toBe(false);
+    }
+  });
+
+  it("puts the notes attached to a card, resource card, or frame under it, the item taking room for them; free notes top right", () => {
     const resources: Resource[] = [{ id: "orders", kind: "table", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" }];
     const note = (id: string, attach?: string): Note => ({ id, text: id, at: [5, 5], author: "agent:claude", ...(attach !== undefined ? { attach } : {}) });
     const notes = [note("b-on-create", "create"), note("a-on-create", "create"), note("on-orders", "orders"), note("on-server", "server"), note("on-link", "w"), note("free")];
@@ -194,7 +238,11 @@ describe("Arrange with frames", () => {
     const padding = framePadding(frame("server", []));
     expect(placed(positions, "on-server")).toMatchObject({ x: route.x - padding.left, y: route.y - padding.top + padding.top + 160 + padding.bottom + 12 });
     expect(positions.has("on-link")).toBe(false);
-    expect(positions.has("free")).toBe(false);
+    // A free note goes to the page's top right, and everything else under it.
+    const free = placed(positions, "free");
+    const others = [...positions].filter(([id]) => id !== "free").map(([id]) => placed(positions, id));
+    expect(free.x + free.width).toBe(Math.max(...others.map((rect) => rect.x + rect.width)));
+    expect(Math.min(...others.map((rect) => rect.y))).toBeGreaterThanOrEqual(free.y + free.height);
     // Nothing the column holds under createOrder overlaps its notes.
     const below = [...positions].filter(([id, at]) => SIZES[id] !== undefined && id !== "create" && at.x === create.x && at.y > create.y);
     for (const [, at] of below) {

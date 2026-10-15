@@ -3,9 +3,11 @@ import type { AgentEditRequest, AgentEditSuccess, AgentFailure, AgentOp } from "
 import { pageRevision } from "@unfold/desktop/revision";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STACK_GAP, type Rect } from "../../../canvas/layout";
+import { callPort } from "../../../canvas/arrows";
+import { HEADER_PORT, STACK_GAP, type Rect } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
-import { estimatedCardSize } from "../../../canvas/sizing";
+import { estimatedCardSize, estimatedPortOffsets } from "../../../canvas/sizing";
+import { layoutFlow } from "../../../flow/layout";
 import { queryClient } from "../../../ipc/client";
 import type { BoardDocument, Card, CardView, Combined, Connection, Page, Relations, SaveBoardArgs } from "../../../ipc/generated";
 import { engineKey } from "../../../ipc/queries";
@@ -402,6 +404,22 @@ describe("arrange", () => {
     expect(cards.get("insert-order")).toEqual([create[0], create[1] + estimatedCardSize({ model: model(CREATE), view: "compact" }, measureText).height + STACK_GAP]);
     expect(result.items.map((item) => (item.kind === "card" ? item.id : "")).sort()).toEqual(["create-order", "insert-order", "slack-post"]);
     expect((await refusal([{ op: "arrange", moves: [{ id: "nope", at: [0, 0] }] }])).code).toBe("invalid_op");
+  });
+
+  it("lines a callee up with its call's row in an open card, as the card lays its flow out", async () => {
+    open({}, [
+      { id: "slack-post", ref: { block: SLACK }, at: [0, 0] },
+      { id: "create-order", ref: { block: CREATE }, at: [2000, 2000], view: "expanded" },
+    ]);
+    await edit([{ op: "arrange" }]);
+    const card = model(CREATE);
+    const flow = card.type === "definition" ? card.flow : undefined;
+    const geometry = flow ? layoutFlow(flow, { measure: measureText }) : undefined;
+    const call = geometry?.anchors.find((anchor) => anchor.to === SLACK)?.call;
+    const row = flow && geometry && call !== undefined ? estimatedPortOffsets(flow.header, geometry, undefined, measureText).get(callPort(call)) : undefined;
+    const cards = new Map(onPage().cards.map((item) => [item.id, item.at]));
+    expect(row).toBeGreaterThan(HEADER_PORT * 2);
+    expect(cards.get("slack-post")?.[1]).toBe(Math.round((cards.get("create-order")?.[1] ?? 0) + (row ?? 0) - HEADER_PORT));
   });
 
   it("with moves alone only moves: everything else stays, earlier moves stay, and the notes on the lines it moves follow them", async () => {

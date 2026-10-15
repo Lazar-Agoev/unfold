@@ -123,7 +123,7 @@ edits; never start the page over. If you can't see images, check is your review.
   cards that work as one unit; a zone holds several app boxes. None around a single
   card, or a card and its note.
 - Lines: every connection has a kind and cites code. Few crossings. Requests read left
-  to right, data top to bottom.
+  to right; each resource card sits beside the step that touches it.
 - Truth: nothing authored looks compiled, and nothing authored stands in for an
   entrance or an arrow. Unknown calls stay `?`. Proposed steps only where the person
   asked.

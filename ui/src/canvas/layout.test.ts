@@ -84,14 +84,29 @@ describe("Arrange by call depth", () => {
     { source: "callee", target: "shared", port: 40, order: 0 },
   ];
 
-  it("puts each card in the column after its deepest caller, level with the calling line when there is room", () => {
+  it("puts each card in the column after its deepest caller, level with the middle of its calling lines when there is room", () => {
     const positions = arrange(cards, calls);
     const x = (id: string) => positions.get(id)?.x ?? Number.NaN;
+    const y = (id: string) => positions.get(id)?.y ?? Number.NaN;
     expect(x("entrance")).toBeLessThan(x("handler"));
     expect(x("handler")).toBeLessThan(x("callee"));
     expect(x("callee")).toBeLessThan(x("shared"));
-    expect(positions.get("handler")?.y).toBe(120 - HEADER_PORT);
-    expect(positions.get("loose")?.y).toBeGreaterThan(400);
+    expect(y("handler")).toBe(120 - HEADER_PORT);
+    // shared: halfway between handler's line (200) and callee's (40).
+    expect(y("shared")).toBe(Math.round((y("handler") + 200 + y("callee") + 40) / 2 - HEADER_PORT));
+    expect(y("loose")).toBeGreaterThan(400);
+  });
+
+  it("puts cards without calls in a compact grid underneath, a file's cards together", () => {
+    const loose = ["a1", "b1", "a2", "b2"].map((id) => ({ id, width: 200, height: 50, group: `src/${id[0] ?? ""}.ts` }));
+    const positions = arrange(loose, []);
+    const at = (id: string) => positions.get(id);
+    expect([at("a1"), at("a2"), at("b1"), at("b2")]).toEqual([
+      { x: 0, y: 0 },
+      { x: 200 + STACK_GAP, y: 0 },
+      { x: 0, y: 50 + STACK_GAP },
+      { x: 200 + STACK_GAP, y: 50 + STACK_GAP },
+    ]);
   });
 
   it("is deterministic and depends only on cards, sizes, and calls", () => {
