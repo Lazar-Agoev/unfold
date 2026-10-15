@@ -27,7 +27,7 @@ export const readFile = defineTool({
   title: "Read file",
   description:
     "A file's verified text with line numbers, and the definitions it holds (each with its first line and key). path is relative to the project's folder. lines [from, to] picks the range (default the first 200 lines, at most 400 at a time, fewer when lines are long) and narrows the definitions to it; pass the next range for more. An evidence file (a migration, schema, or config listed in the project's evidence files) reads as plain text with line numbers, so resource cards and connections can cite it as {file, lines}. Unfold shows text only when it is the file it compiled or recorded: a file that changed needs compile_project first, and a file outside the graph needs adding as an evidence file (update_project_settings, add_evidence_pattern) before boards can cite it. Reading changes nothing.",
-  input: z.object({
+  input: z.strictObject({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
     path: z.string().min(1).describe("The file, relative to the project's folder"),
     lines: z

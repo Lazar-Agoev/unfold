@@ -281,6 +281,36 @@ describe("connect", () => {
     expect(queued.items).toMatchObject([{ kind: "link", status: "created", connection: "queue" }]);
   });
 
+  it("refuses a connection that repeats a call a collapsed combined step holds, whose arrow leaves from the step", async () => {
+    const PLACE = "src/services/order-service.ts#OrderService.place";
+    const PLACE_CALL = `${CREATE}/call:orderService.place`;
+    const drawn = fixture("card", "card_create_order");
+    if (drawn.type !== "definition") {
+      throw new Error("createOrder's card draws a flow");
+    }
+    const steps = drawn.flow.steps.steps.map((step) =>
+      step.kind === "call" && step.key === PLACE_CALL
+        ? { id: step.id, state: step.state, kind: "combined" as const, item: "place-it", title: "Place it", members: [PLACE_CALL], collapsed: true, holds: [PLACE_CALL], lines: [32, 32] as [number, number], conditions: 0, loops: 0, calls: [{ key: PLACE_CALL, callee: "orderService.place", to: PLACE }], library: 0, unknown: 0 }
+        : step,
+    );
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: ({ key }): CardView => {
+          if (key !== CREATE) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw { code: "not_found", message: "No such key." };
+          }
+          return { ...drawn, flow: { ...drawn.flow, steps: { ...drawn.flow.steps, steps } } };
+        },
+        relations: ({ key }) => noCalls(key),
+      },
+    });
+    const place: Card = { id: "place", ref: { block: PLACE }, at: [400, 0] };
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [...cards, place])])));
+    expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "create-order", to: "place" }] }])).message).toContain("createOrder calls src/services/order-service.ts#OrderService.place (orderService.place)");
+  });
+
   it("leaves a person's connection as it is unless the person asked, then makes it the agent's", async () => {
     const drawn: Connection = { id: "talks", from: "create-order", to: "worker", kind: "other", label: { text: "sends jobs", author: "person:maya", signature: "" }, author: "person:maya" };
     open({ links: [drawn] });

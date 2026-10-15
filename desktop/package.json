@@ -15,6 +15,14 @@
     },
     "./render-api": {
       "types": "./src/shared/render-api.ts"
+    },
+    "./drawing": {
+      "types": "./src/shared/drawing.ts",
+      "default": "./src/shared/drawing.ts"
+    },
+    "./revision": {
+      "types": "./src/shared/revision.ts",
+      "default": "./src/shared/revision.ts"
     }
   },
   "scripts": {

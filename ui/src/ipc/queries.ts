@@ -9,8 +9,9 @@
  */
 
 import { useQuery, type Query, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { visitFlow } from "@unfold/desktop/drawing";
 import { call, onEngineEvent } from "./commands";
-import type { CardView, CodeView, CommandArgs, CommandName, CommandResult, DrawnFlow, EventType, ProjectId, Sequence, WorkspaceEvent, WorkspaceView } from "./generated";
+import type { CardView, CodeView, CommandArgs, CommandName, CommandResult, EventType, ProjectId, WorkspaceEvent, WorkspaceView } from "./generated";
 import type { UnfoldError } from "./unfold";
 
 /** The query key of one command call. */
@@ -77,35 +78,21 @@ function invalidate(client: QueryClient, test: (command: string, args: Args, que
   });
 }
 
-/** The files the flows of a sequence open in place draw. */
-function sequenceFiles(sequence: Sequence): string[] {
-  return sequence.steps.flatMap((step) => {
-    switch (step.kind) {
-      case "call":
-        return [...(step.inset ? flowFiles(step.inset) : []), ...step.callbacks.flatMap((callback) => (callback.inset ? flowFiles(callback.inset) : []))];
-      case "decision":
-      case "loop":
-      case "try":
-      case "with":
-        return step.lanes.flatMap((lane) => sequenceFiles(lane.steps));
-      case "combined":
-        return step.steps ? sequenceFiles(step.steps) : [];
-      case "thin":
-      case "exit":
-      case "proposed":
-        return [];
-    }
-  });
-}
-
-/** The files a drawn flow draws: its definition's, and those of the calls it opens in place. */
-function flowFiles(flow: DrawnFlow): string[] {
-  return [flow.header.path, ...sequenceFiles(flow.steps)];
-}
-
-/** The files a card draws, as its own data says (a start card: the files of the blocks it starts at). */
+/**
+ * The files a card draws, as its own data says: its definition's, and those of the calls it opens in
+ * place, wherever it opens them (a start card: the files of the blocks it starts at).
+ */
 function cardFiles(view: CardView): string[] {
-  return view.type === "definition" ? flowFiles(view.flow) : view.code.flatMap((code) => (code.path !== undefined ? [code.path] : []));
+  if (view.type === "start") {
+    return view.code.flatMap((code) => (code.path !== undefined ? [code.path] : []));
+  }
+  const files: string[] = [];
+  visitFlow(view.flow, {
+    flow: (at) => {
+      files.push(at.flow.header.path);
+    },
+  });
+  return files;
 }
 
 /**

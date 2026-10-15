@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { AgentEditRequest, AgentEditSuccess, AgentFailure, AgentOp } from "@unfold/desktop/agent-api";
+import { pageRevision } from "@unfold/desktop/revision";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STACK_GAP, type Rect } from "../../../canvas/layout";
@@ -213,6 +214,29 @@ describe("an agent's edit", () => {
     ]);
     expect(saved.map((args) => args.board.pages[0]?.notes?.map((note) => note.id))).toEqual([["note"], ["note", "note-2"]]);
     expect(readWorking().items).toEqual(["note-2"]);
+  });
+
+  it("is refused when the page changed since the revision the agent read, a person's edit landing as it loads included", async () => {
+    open();
+    const read = pageRevision(onPage());
+    const ops: AgentOp[] = [{ op: "shape_card", card: "create-order", description: "Takes an order." }];
+    // The person's edit lands after the agent read the page, while its edit loads the page's cards.
+    const pending = applyAgentEdit({ ...request(ops), expectRevision: read });
+    store.editPage(TARGET, (draft) => {
+      draft.title = "Mine";
+    });
+    const now = pageRevision(onPage());
+    expect(await pending).toEqual({
+      ok: false,
+      code: "revision_mismatch",
+      message: `The page changed since you read it (rev ${read}, now rev ${now}). Read it again, then make the change.`,
+    });
+    expect(onPage()).toMatchObject({ title: "Mine", cards: [createCard] });
+    // Only the person's edit is saved (the board's unsaved edits are saved before an agent's).
+    expect(saved.map((args) => args.board.pages[0])).toEqual([{ ...onPage(), title: "Mine" }]);
+    expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).not.toContain("Claude · Add cards");
+    // At the revision it now has, the edit applies.
+    expect(await applyAgentEdit({ ...request(ops), expectRevision: now })).toMatchObject({ ok: true, items: [{ id: "create-order", status: "updated" }] });
   });
 
   it("refuses a board the window doesn't hold, a page it doesn't have, and a person's identity", async () => {

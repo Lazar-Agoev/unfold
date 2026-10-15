@@ -45,10 +45,10 @@ fn finds_definitions_apps_entrances_and_files_by_substring() {
         keys(&reader, "loadorder", CandidateKind::Definition),
         ["src/orders.ts#loadOrder"]
     );
-    // Several terms must all match, in any searched column.
-    let mut both = keys(&reader, "order store.py", CandidateKind::Definition);
+    // Several terms must all match, each in the name or the qualified name.
+    let mut both = keys(&reader, "load order", CandidateKind::Definition);
     both.sort();
-    assert_eq!(both, ["shop/store.py#load_order", "shop/store.py#save_order"]);
+    assert_eq!(both, ["shop/store.py#load_order", "src/orders.ts#loadOrder"]);
     assert_eq!(
         keys(&reader, "payments", CandidateKind::File),
         ["shop/payments.py#"]
@@ -85,14 +85,29 @@ fn finds_definitions_apps_entrances_and_files_by_substring() {
 }
 
 #[test]
-fn a_name_match_ranks_above_a_path_match() {
+fn definitions_match_by_name_and_files_by_path() {
     let (_dir, store, _) = committed();
     let reader = store.readers.get().unwrap();
     // `store` is in the path of every definition of store.py, but in the name of its module
-    // only (whose label is its file name): the module ranks first.
-    let found = keys(&reader, "store", CandidateKind::Definition);
-    assert_eq!(found[0], "shop/store.py#", "{found:?}");
-    assert!(found.len() > 1);
+    // only (whose label is its path): a file's or folder's name finds no definition in it.
+    assert_eq!(
+        keys(&reader, "store", CandidateKind::Definition),
+        ["shop/store.py#"]
+    );
+    assert_eq!(
+        keys_of(&reader, "shop/", CandidateKind::Definition, &["function"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        keys_of(&reader, "sh", CandidateKind::Definition, &["function"]),
+        Vec::<String>::new(),
+        "short terms too"
+    );
+    // Files match by path.
+    let mut files = keys(&reader, "shop/", CandidateKind::File);
+    files.sort();
+    assert_eq!(files, ["shop/payments.py#", "shop/service.py#", "shop/store.py#"]);
+    assert_eq!(keys(&reader, "sh", CandidateKind::File).len(), 3);
     // A shorter name that matches outranks a longer one.
     let found = keys(&reader, "order", CandidateKind::Definition);
     assert!(
@@ -145,7 +160,7 @@ fn short_terms_odd_characters_and_item_kinds() {
             &["class", "module"]
         ),
         ["shop/payments.py#", "shop/payments.py#PaymentDeclined"],
-        "the module matches in its name and its path"
+        "the module matches by its name, which is its path"
     );
     assert!(keys_of(&reader, "order", CandidateKind::Definition, &["class"]).is_empty());
 }

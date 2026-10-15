@@ -6,7 +6,7 @@
 
 import type { AgentBoardInfo, AgentCardResult, AgentCombinedResult, AgentFailure, AgentIdentity, AgentItemResult, AgentItemStatus } from "@unfold/desktop/agent-api";
 import { computeArrows, type Arrow } from "../../../canvas/arrows";
-import type { BoardState, Card, CardView, Combined, Connection, Description, Note, Page, Resource, View } from "../../../ipc/generated";
+import type { BoardState, Card, Combined, Connection, Description, Note, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize, fallbackItemSize, pageGeometry } from "../../../canvas/frames/geometry";
 import { tableColumns, type TableColumn } from "../../../canvas/resources/columns";
 import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
@@ -165,15 +165,6 @@ export function cardName(ctx: OpContext, card: Pick<Card, "ref">): string {
 /** A combined step's result entry. */
 export function combinedResult(combined: Combined, status: AgentItemStatus): AgentCombinedResult {
   return { kind: "combined", id: combined.id, status, name: combined.title, members: [...combined.members], collapsed: combined.collapsed };
-}
-
-/**
- * Whether a card shows its type's fields in `view`: a type's card always, a class's when compact (its
- * class-level code shows expanded).
- */
-export function showsFields(model: CardView | undefined, view: View): boolean {
-  const kind = model?.type === "definition" ? model.flow.header.kind : undefined;
-  return kind === "type" || (kind === "class" && view === "compact");
 }
 
 /** A card's result entry. */

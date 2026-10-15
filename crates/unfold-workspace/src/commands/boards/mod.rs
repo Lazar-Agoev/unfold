@@ -5,9 +5,10 @@
 //! shared through git. `open_board` and `new_board` open it (the project's
 //! [`crate::open_boards::OpenBoards`]), and `close_board`, `delete_board`, and a closing window
 //! close it. Every other command about one board needs it open (`board_not_open`), except
-//! `read_board`, which reads a board's file without opening it, and the folder commands: a
-//! board's folder is metadata Rust owns (board folder metadata), never part of what a window
-//! saves, so they work on any board.
+//! `read_board`, which reads a board's file without opening it, `board_health`, which judges the
+//! file of a board no window has open (opening nothing), and the folder commands: a board's
+//! folder is metadata Rust owns (board folder metadata), never part of what a window saves, so
+//! they work on any board.
 //!
 //! The project keeps a **session** per open board ([`session`]): the version last loaded or
 //! saved. A window autosaves its edits (`save_board`, a [`BoardEdit`]): Rust checks them against
@@ -356,8 +357,13 @@ pub fn save_board(ctx: &Ctx<'_>, args: SaveBoardArgs) -> CommandResult<BoardStat
     Ok(state)
 }
 
-/// `board_health`: the board's health against the graph now.
+/// `board_health`: the board's health against the graph now: its session's while a window has
+/// it open, else its file's, which opens nothing (an agent's `check` of a board no window holds).
 pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHealthView> {
+    let handle = ctx.project(&args.project)?;
+    if handle.open_boards().check(&args.id).is_err() {
+        return file_health(&handle, &args.id);
+    }
     let opened = opened(ctx, &args.project, &args.id)?;
     let source = opened.source()?;
     let view = {
@@ -379,6 +385,24 @@ pub fn board_health(ctx: &Ctx<'_>, args: BoardIdArgs) -> CommandResult<BoardHeal
     };
     publish_problems(&opened.workspace, opened.boards());
     Ok(view)
+}
+
+/// The health of board `id` as its file holds it, cached as an open board's is.
+fn file_health(handle: &ProjectHandle<'_>, id: &str) -> CommandResult<BoardHealthView> {
+    let file = parse_id(id)?;
+    let workspace = handle.wake()?;
+    let extras = handle.extras();
+    let source = Source::live(&workspace)?;
+    let loaded = Files::live(&workspace).load(&file)?;
+    let health = unfold_reader::board::board_health(&loaded.board, &source.board(&loaded.board)?);
+    extras
+        .boards
+        .cache(&source, id, &loaded.board, loaded.revision, &health);
+    publish_problems(&workspace, &extras.boards);
+    Ok(BoardHealthView {
+        label: health.label(),
+        health,
+    })
 }
 
 /// `repair_board`: applies one repair a health item offers, on its page, and saves the board.

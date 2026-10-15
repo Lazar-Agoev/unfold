@@ -8,7 +8,7 @@
  */
 
 import type { AddCardsOp, AgentCardResult, AgentCardSpec, AgentFollowStop, AgentItemResult } from "@unfold/desktop/agent-api";
-import { fieldRows } from "../../../canvas/arrows";
+import { cardShape, fieldRows, projectCalls } from "@unfold/desktop/drawing";
 import { FOLLOW_GAP, HEADER_PORT, clearSpot, followPlacement, newCardPlacement, type Rect, type Size } from "../../../canvas/layout";
 import { measureText } from "../../../canvas/measure";
 import { descriptionHeight, estimatedFieldOffset } from "../../../canvas/sizing";
@@ -16,10 +16,10 @@ import { reasonText } from "../../../code/text";
 import { memberName } from "../../../code/typeKinds";
 import type { Card, CardRef, CardView, Key, Page, ProjectId, TypeDefinition } from "../../../ipc/generated";
 import { framePadding } from "../../../canvas/frames/geometry";
-import { cardName as drawnName, flowBlocks } from "../../cards";
+import { cardName as drawnName } from "../../cards";
 import { addCard, cardKey, cardView, findCard, findCardByKey, setCardView } from "../document";
 import { addToFrame, findFrame } from "../frames";
-import { cardName, cardResult, cardSize, invalid, pageRects, showsFields, type ApplyOp, type OpContext } from "./context";
+import { cardName, cardResult, cardSize, invalid, pageRects, type ApplyOp, type OpContext } from "./context";
 import type { AgentData } from "./data";
 import { nearRect, occupiedFor } from "./place";
 
@@ -216,7 +216,7 @@ export async function prepareAddCards(op: AddCardsOp, ctx: OpContext): Promise<A
 /** The offset below a type card's top of its field's row `row`, when it shows its fields on `page`. */
 function fieldOffset(ctx: OpContext, page: Page, card: Card, row: string): number | undefined {
   const definition = ctx.data.definition(ctx.board.project, cardKey(card));
-  if (!definition || !showsFields(ctx.data.model(ctx.board.project, cardKey(card)), cardView(card, page.defaultView))) {
+  if (!definition || cardShape(ctx.data.model(ctx.board.project, cardKey(card)), cardView(card, page.defaultView)) !== "fields") {
     return undefined;
   }
   return estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText));
@@ -243,9 +243,9 @@ function portToward(ctx: OpContext, page: Page, card: Card, key: Key): number | 
   return callsTo(model, key) ? HEADER_PORT : undefined;
 }
 
-/** Whether a card's drawn flow calls `key`. */
+/** Whether a card's drawn flow calls `key` (an arrow from it reaches `key`'s card). */
 function callsTo(model: CardView | undefined, key: Key): boolean {
-  return model?.type === "definition" && flowBlocks(model.flow).some((block) => block.to?.outcome === "project" && block.to.key === key);
+  return model?.type === "definition" && projectCalls(model.flow, true).some((call) => call.to === key);
 }
 
 /** The point right of `rect`, with a card's header level with the port at `offset`. */

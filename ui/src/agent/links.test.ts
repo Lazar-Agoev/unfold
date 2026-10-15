@@ -53,6 +53,19 @@ describe("copyLink", () => {
     expect(toast.showToast).toHaveBeenCalledWith({ title: "Copied the link", body: "Paste it into an agent's chat to point at this." });
   });
 
+  it("names the project by its id when another project's folder has the same name", async () => {
+    const feature = "p-feature000";
+    queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "ts-orders"), projectRow(feature, "ts-orders"), projectRow("p-payments00", "payments")]));
+    await copyLink(TARGET);
+    await copyLink({ ...TARGET, board: { ...TARGET.board, project: feature } });
+    await copyBoardLink({ project: "p-payments00", id: ".unfold/boards/refunds.json" });
+    expect(engine.windowCalls.map((call) => call.args)).toEqual([
+      { text: "unfold://p-orders0000/.unfold/boards/order-placement.json?page=page-1" },
+      { text: "unfold://p-feature000/.unfold/boards/order-placement.json?page=page-1" },
+      { text: "unfold://payments/.unfold/boards/refunds.json" },
+    ]);
+  });
+
   it("says why when the board's project isn't in the workspace", async () => {
     await copyLink(TARGET);
     expect(engine.windowCalls).toEqual([]);

@@ -9,7 +9,8 @@
 import { z } from "zod";
 import type { AppView, EntranceCode, EntranceView, NodeKind, ProjectRow, SearchHit } from "../engine-types";
 import { count, place } from "../format";
-import { cursorOffset, MAX_RESULT_CHARS, RESULT_ROOM, textResult } from "../results";
+import { cursorOffset, textResult } from "../results";
+import { fitting, moreLine, section, type Section } from "../sections";
 import { projectOrView } from "../target";
 import { defineTool } from "../tool";
 
@@ -21,57 +22,21 @@ const MAX_ENGINE_LIMIT = 500;
 const KINDS = ["entrances", "functions", "types", "files"] as const;
 type Kind = (typeof KINDS)[number];
 
-/** One page of one list: its heading with what is shown of the total, its lines, and whether there's more. */
-interface Section {
-  readonly lines: readonly string[];
-  readonly more: boolean;
-}
-
-/** The page of `hits` from `offset` (at most `limit` of them), under `title`; nothing when the list is empty. */
-function section<T>(title: string, hits: readonly T[], total: number, offset: number, limit: number, line: (hit: T) => string): Section {
-  if (total === 0) {
-    return { lines: [], more: false };
-  }
-  const shown = hits.slice(offset, offset + limit);
-  const range = shown.length === 0 ? `none past ${offset} of ${total}` : shown.length < total ? `${offset + 1}–${offset + shown.length} of ${total}` : `${total}`;
-  return { lines: [`${title} (${range}):`, ...shown.map(line)], more: offset + limit < Math.min(total, MAX_ENGINE_LIMIT) };
-}
-
-/** The line that says how to get the next page, when any list has more. */
-function moreLine(sections: readonly Section[], tool: string, next: number): string | null {
-  return sections.some((item) => item.more) ? `More: ${tool} with cursor "${next}" for the next page.` : null;
-}
-
-/**
- * The sections of the largest page, at most `limit` per list (at least 1), whose lines fit in a
- * result beside `room` characters of other lines, so the size guard never cuts the line that says
- * where the next page starts. One cursor pages every list, so every list shows the same number.
- */
-function fitting(limit: number, room: number, build: (limit: number) => readonly Section[]): { readonly sections: readonly Section[]; readonly limit: number } {
-  const budget = MAX_RESULT_CHARS - RESULT_ROOM - room;
-  for (let size = limit; size > 1; size -= 1) {
-    const sections = build(size);
-    if (sections.reduce((chars, item) => item.lines.reduce((sum, line) => sum + line.length + 1, chars), 0) <= budget) {
-      return { sections, limit: size };
-    }
-  }
-  return { sections: build(1), limit: 1 };
-}
-
 function hitLine(hit: SearchHit, tag: string): string {
   return `- ${hit.qualifiedName || hit.name} (${hit.kind}) at ${place(hit.path, hit.line)}${tag}: key ${hit.key}`;
 }
 
+/** An app or entrance, at the line of `unfold.toml` that declares it. */
 function entranceHitLine(hit: SearchHit, tag: string): string {
-  return `- ${hit.name} (${hit.kind}${hit.app !== null ? ` of ${hit.app}` : ""})${tag}: key ${hit.key}`;
+  return `- ${hit.name} (${hit.kind}${hit.app !== null ? ` of ${hit.app}` : ""}) at ${place("unfold.toml", hit.line)}${tag}: key ${hit.key}`;
 }
 
 export const search = defineTool({
   name: "search",
   title: "Search",
   description:
-    "Finds code by name, in one project or all of them. kinds (default: all): entrances (the apps and entrances unfold.toml declares, by name), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), and files (by path). Names match fuzzily: every word of query must appear in a name, qualified name, or path. Each hit has Unfold's name, file:line, and its key: pass the key to read_code, get_relations, or add_cards. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
-  input: z.object({
+    "Finds code by name, in one project or all of them. kinds (default: all): entrances (the apps and entrances unfold.toml declares, by name), functions (functions, methods, constructors, accessors), types (interfaces, type aliases, enums, classes), and files (by path). Every word of query must appear in a name or qualified name (a file's: in its path); a folder's name finds its files, not the code in them. Each hit has Unfold's name, file:line (an entrance's: its line in unfold.toml), and its key: pass the key to read_code, get_relations, or add_cards. limit is per kind (default 10, at most 50); pass the next cursor for more (a page of long lines shows fewer). projects narrows the search (names or ids). Searching never wakes a resting project; reading a hit does.",
+  input: z.strictObject({
     query: z.string().min(1).describe("Words of a name"),
     kinds: z.array(z.enum(KINDS)).min(1).optional().describe("What to find (default: entrances, functions, types, files)"),
     projects: z.array(z.string().min(1)).min(1).optional().describe("Projects to look in, by name or id (default: all)"),
@@ -94,15 +59,17 @@ export const search = defineTool({
     ]);
     const namesById = new Map(rows.map((row) => [row.id, row.name]));
     const tag = (project: string) => (rows.length > 1 ? ` in ${namesById.get(project) ?? project}` : "");
+    const listed = <T>(title: string, hits: readonly T[], total: number, size: number, line: (hit: T) => string) =>
+      section(title, hits.slice(offset), total, offset, size, line, Math.min(total, MAX_ENGINE_LIMIT));
     const hits = (title: string, group: { readonly hits: readonly SearchHit[]; readonly total: number } | undefined, size: number, line = hitLine) =>
-      group ? section(title, group.hits, group.total, offset, size, (hit) => line(hit, tag(hit.project))) : null;
+      group ? listed(title, group.hits, group.total, size, (hit) => line(hit, tag(hit.project))) : null;
     const page = fitting(limit, 0, (size) =>
       [
         wanted.has("entrances") ? hits("Entrances", rest?.entrances, size, entranceHitLine) : null,
         hits("Functions", functions?.definitions, size),
         hits("Types", types?.definitions, size),
         wanted.has("files") && rest
-          ? section("Files", rest.files.hits, rest.files.total, offset, size, (hit) => `- ${hit.path}${tag(hit.project)}${hit.definitions === null ? " (not compiled)" : `: ${count(hit.definitions, "definition")}`}`)
+          ? listed("Files", rest.files.hits, rest.files.total, size, (hit) => `- ${hit.path}${tag(hit.project)}${hit.definitions === null ? " (not compiled)" : `: ${count(hit.definitions, "definition")}`}`)
           : null,
       ].filter((item): item is Section => item !== null),
     );
@@ -166,7 +133,7 @@ export const listEntrances = defineTool({
   title: "List entrances",
   description:
     "How a project starts, as its unfold.toml declares it: its apps in file order, each with its key, run command, and code, and each app's entrances with their key, what starts them (on), and their code, each code key with its state (found, missing, not analyzed, not a start, stale) and its fix when one exists. An entry with a problem in unfold.toml says so and stays out of the graph. app narrows it to one (its name or key); filter keeps entrances whose name, on, code, or about contains it, ignoring case. limit is per app (default 25, at most 100); pass the next cursor for more. Pass a key to read_code, add_cards, or create_board's trace.",
-  input: z.object({
+  input: z.strictObject({
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
     app: z.string().min(1).optional().describe("An app's name or key"),
     filter: z.string().min(1).optional().describe("Text an entrance's name, on, code, or about contains"),
@@ -183,7 +150,7 @@ export const listEntrances = defineTool({
     const page = fitting(limit, 0, (size) =>
       apps.map((item) => {
         const entrances = item.entrances.filter((entrance) => matches(entrance, filter));
-        const shown = section(`${appHeading(item)}, entrances${matching}`, entrances, entrances.length, offset, size, entranceLine);
+        const shown = section(`${appHeading(item)}, entrances${matching}`, entrances.slice(offset), entrances.length, offset, size, entranceLine);
         return shown.lines.length > 0 ? shown : { lines: [`${appHeading(item)}: no entrances${matching}.`], more: false };
       }),
     );

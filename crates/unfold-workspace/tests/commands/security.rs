@@ -91,10 +91,15 @@ fn a_project_id_never_reaches_another_projects_files() {
 }
 
 #[test]
-fn absolute_paths_and_the_window_state_need_the_main_process() {
+fn absolute_paths_the_editor_program_and_the_window_state_need_the_main_process() {
     let harness = Harness::new("ts-orders", false);
     for (command, args) in [
         ("add_project", json!({ "path": harness.root })),
+        // The editor command is a program `open_in_editor` runs.
+        (
+            "set_settings",
+            json!({ "settings": { "editorCommand": "/usr/bin/true {path}" } }),
+        ),
         ("window_state", json!({})),
         (
             "save_window_state",

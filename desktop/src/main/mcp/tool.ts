@@ -1,18 +1,26 @@
 /**
  * How a tool is written: its name, title, description (where it teaches,
- * at most 2,048 characters, which Claude Code keeps), its arguments as a zod schema (the SDK checks
- * them before the tool runs), its annotations, whether Claude Code loads it with the session's first
- * tools, and what it does with a {@link ToolContext}. `defineTool` turns that into a {@link Tool} the
- * server registers; the server supplies the call wrapper (who is calling, errors, the size guard).
+ * at most 2,048 characters, which Claude Code keeps), its arguments as a zod schema, its annotations,
+ * whether Claude Code loads it with the session's first tools, and what it does with a
+ * {@link ToolContext}. `defineTool` turns that into a {@link Tool} the server registers; the server
+ * supplies the call wrapper (who is calling, errors, the size guard).
+ *
+ * Every object in a tool's arguments is strict (`z.strictObject`): an argument a tool doesn't take,
+ * such as `name` for `names`, is refused, never dropped. The call checks the arguments itself, inside
+ * the wrapper, so a refusal of them reads, and stays under the size limit, like any other.
  */
 
-import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
-import type { z } from "zod";
+import type { McpServer, ServerContext, StandardSchemaWithJSON } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import type { ToolContext } from "./context";
-import type { ToolResult } from "./results";
+import { clip } from "./format";
+import { cant, type ToolResult } from "./results";
 
 /** Claude Code loads a tool marked with this at once, instead of finding it with tool search. */
 const ALWAYS_LOAD = "anthropic/alwaysLoad";
+
+/** The most problems an argument refusal lists, and the most unknown names one problem quotes. */
+const MAX_LISTED = 5;
 
 /** Tool annotations: read tools are read-only; creating by id is idempotent. */
 interface ToolHints {
@@ -21,8 +29,11 @@ interface ToolHints {
   readonly idempotentHint?: boolean;
 }
 
+/** A tool's arguments: a strict object, as every object in them is. */
+type ToolInput = z.ZodObject<z.core.$ZodShape, z.core.$strict>;
+
 /** One tool, as written. */
-export interface ToolSpec<S extends z.ZodObject> {
+export interface ToolSpec<S extends ToolInput> {
   readonly name: string;
   readonly title: string;
   /** When to use it, what it expects, and the rules it enforces; what matters first. */
@@ -49,8 +60,50 @@ export interface Tool {
   register(server: McpServer, call: ToolCall): void;
 }
 
+/**
+ * The schema the SDK lists for a tool: its arguments' JSON Schema, which agents read, and no check of
+ * its own, since the call checks them ({@link parsedArgs}).
+ */
+function listedSchema(input: ToolInput): StandardSchemaWithJSON {
+  return { "~standard": { version: 1, vendor: "unfold", validate: (value) => ({ value }), jsonSchema: input["~standard"].jsonSchema } };
+}
+
+/** `“name”`, `“name”, “other”`, and how many more past {@link MAX_LISTED}. */
+function quotedNames(names: readonly string[]): string {
+  const quoted = names.slice(0, MAX_LISTED).map((name) => `“${clip(name, 60)}”`);
+  return names.length > MAX_LISTED ? `${quoted.join(", ")} and ${names.length - MAX_LISTED} more` : quoted.join(", ");
+}
+
+/** Words for arguments an object doesn't take: which ones, and the ones it does. */
+const unknownArguments: z.core.$ZodErrorMap = (issue) => {
+  if (issue.code !== "unrecognized_keys") {
+    return undefined;
+  }
+  const taken = issue.inst instanceof z.ZodObject ? Object.keys(issue.inst.shape) : [];
+  const unknown = `unknown argument${issue.keys.length === 1 ? "" : "s"} ${quotedNames(issue.keys)}`;
+  return `${unknown}; ${taken.length > 0 ? `the arguments are ${taken.join(", ")}` : "it takes none"}`;
+};
+
+/** One problem with the arguments: where it is (`combine.0`), and what it is. */
+function problemText(issue: z.core.$ZodIssue): string {
+  const at = issue.path.map((part) => clip(String(part), 60)).join(".");
+  return at === "" ? issue.message : `${at}: ${issue.message}`;
+}
+
+/** `args` as `spec.input` takes them, or a refusal that says what is wrong with them. */
+function parsedArgs<S extends ToolInput>(spec: ToolSpec<S>, args: unknown): z.output<S> {
+  const parsed = spec.input.safeParse(args, { error: unknownArguments });
+  if (parsed.success) {
+    return parsed.data;
+  }
+  const { issues } = parsed.error;
+  const problems = issues.slice(0, MAX_LISTED).map(problemText);
+  const more = issues.length > MAX_LISTED ? `; and ${issues.length - MAX_LISTED} more` : "";
+  throw cant(`call ${spec.name}`, `${problems.join("; ")}${more}`, "Fix the arguments and call it again.");
+}
+
 /** Makes a tool from its spec. */
-export function defineTool<S extends z.ZodObject>(spec: ToolSpec<S>): Tool {
+export function defineTool<S extends ToolInput>(spec: ToolSpec<S>): Tool {
   const tool: Tool = {
     name: spec.name,
     title: spec.title,
@@ -58,18 +111,16 @@ export function defineTool<S extends z.ZodObject>(spec: ToolSpec<S>): Tool {
     annotations: spec.annotations,
     alwaysLoad: spec.alwaysLoad ?? false,
     register(server, call) {
-      const input: z.ZodObject = spec.input;
       server.registerTool(
         spec.name,
         {
           title: spec.title,
           description: spec.description,
-          inputSchema: input,
+          inputSchema: listedSchema(spec.input),
           annotations: spec.annotations,
           ...(spec.alwaysLoad === true ? { _meta: { [ALWAYS_LOAD]: true } } : {}),
         },
-        // The SDK has checked `args` against `spec.input`, so they are its output.
-        (args, request) => call(tool, (context) => spec.run(args as z.output<S>, context), request),
+        (args, request) => call(tool, (context) => spec.run(parsedArgs(spec, args), context), request),
       );
     },
   };

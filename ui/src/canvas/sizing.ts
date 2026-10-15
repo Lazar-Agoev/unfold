@@ -11,11 +11,11 @@
  * in that step. The constants follow cards.css and flow.css.
  */
 
+import { cardShape, fieldRows, type CardShape } from "@unfold/desktop/drawing";
 import type { CardView, Description, Frame, Header, StartCard, TypeDefinition, View } from "../ipc/generated";
 import { layoutFlow, type FlowGeometry, type Measure } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
-import { fieldRows } from "./arrows";
-import { cardShape, headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type CardShape, type HeaderMark } from "./cardText";
+import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
 import { CARD_MAX_WIDTH, clampCardWidth, fallbackSize, type Size } from "./layout";
 import {
   CODE_FONT,

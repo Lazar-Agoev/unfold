@@ -160,7 +160,7 @@ fn every_open_board_keeps_its_project_live_until_its_window_closes() {
     );
     // Closing the window closes its boards, so the project rests.
     harness.host.detach_window(1).expect("detach");
-    assert_eq!(harness.code(1, "board_health", health), "board_not_open");
+    assert_eq!(harness.code(1, "close_board", health), "board_not_open");
     eventually("the project rests once its window closed", || {
         !live(&harness, &harness.project)
     });

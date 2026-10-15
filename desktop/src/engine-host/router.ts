@@ -43,10 +43,11 @@ export type MainResult =
 
 /**
  * Commands Rust accepts only with `"trusted": true`, which only the main process may send: they take
- * an absolute path from a dialog, or read and save the window's state. Mirrors the trusted commands of
- * `crates/unfold-workspace/src/host.rs`.
+ * an absolute path from a dialog, set the program `open_in_editor` runs (the Settings dialog saves it
+ * through the main process), or read and save the window's state. Mirrors the handlers that call
+ * `require_trusted` in `crates/unfold-workspace/src/commands/`.
  */
-export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set(["add_project", "window_state", "save_window_state"]);
+export const MAIN_PROCESS_ONLY: ReadonlySet<string> = new Set(["add_project", "set_settings", "window_state", "save_window_state"]);
 
 /**
  * Commands a closing window must not lose: board and folder writes, and the window's state (its

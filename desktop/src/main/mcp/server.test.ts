@@ -4,18 +4,18 @@ import cardCreateOrder from "../../../../testdata/workspace/commands/card_create
 import codeTextCreateOrder from "../../../../testdata/workspace/commands/code_text_create_order.json";
 import codeViewCreateOrder from "../../../../testdata/workspace/commands/code_view_create_order.json";
 import entrances from "../../../../testdata/workspace/commands/entrances.json";
-import flowTextCreateOrder from "../../../../testdata/workspace/commands/flow_text_create_order.json";
 import relationsCreateOrder from "../../../../testdata/workspace/commands/relations_create_order.json";
 import searchPlace from "../../../../testdata/workspace/commands/search_place.json";
 import type { AgentPage, AgentShellEvent, ViewReport } from "../../shared/agent-api";
 import { AgentBridge, type AgentWindow } from "../agents/bridge";
-import { pageRevision } from "../agents/revision";
+import { pageRevision } from "../../shared/revision";
 import { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
 import type { WindowEntry } from "../windows";
 import type { McpServices, PageImages } from "./context";
 import type { BoardHealthView, BoardList, Page, ProjectSummary, ReadBoardResult, WorkspaceView } from "./engine-types";
 import { INSTRUCTIONS } from "./instructions";
+import { MAX_RESULT_CHARS } from "./results";
 import { McpService } from "./service";
 import { TOOLS } from "./tools";
 
@@ -174,7 +174,6 @@ const ANSWERS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>)
   code_view: () => codeViewCreateOrder,
   card: () => cardCreateOrder,
   code_text: () => codeTextCreateOrder,
-  flow_text: () => flowTextCreateOrder,
   relations: () => relationsCreateOrder,
   board_refs: () => ({ refs: [], truncated: false }),
   read_board: () => FILE,
@@ -514,6 +513,67 @@ describe("the server's framework", () => {
     const result = await client.callTool({ name: "get_project", arguments: { project: PROJECT } });
     expect(result.isError).toBe(true);
     expect(text(result)).toBe("The Unfold engine could not be loaded. Unfold's engine isn't running. Ask the person to check Unfold, then try again.");
+  });
+
+  it("refuses an argument a tool doesn't take, at any depth, naming the ones it takes", async () => {
+    const { url, calls } = await start();
+    const client = await connect(url, "current");
+    const at = { board: BOARD.id, project: "ts-orders", page: "page-1", card: "create-order" };
+    const misspelled = await client.callTool({ name: "shape_card", arguments: { ...at, title: "Place an order", name: { "call:orderService.place": "Place it" } } });
+    expect(misspelled.isError).toBe(true);
+    expect(text(misspelled)).toBe(
+      "Can't call shape_card: unknown argument “name”; the arguments are board, page, project, card, title, description, names, combine, open, replacePeopleText, expectRevision. Fix the arguments and call it again.",
+    );
+    const nested = await client.callTool({ name: "shape_card", arguments: { ...at, combine: [{ steps: ["if[0]"], title: "Check", collapse: true }] } });
+    expect(text(nested)).toBe("Can't call shape_card: combine.0: unknown argument “collapse”; the arguments are steps, title, collapsed. Fix the arguments and call it again.");
+    // Nothing was asked of the engine for the card.
+    expect(calls.map(([command]) => command)).not.toContain("card");
+
+    const guide = await client.callTool({ name: "get_guide", arguments: { topic: "start", verbose: true } });
+    expect(guide.isError).toBe(true);
+    expect(text(guide)).toBe("Can't call get_guide: unknown argument “verbose”; the arguments are topic. Fix the arguments and call it again.");
+    expect(text(await client.callTool({ name: "list_projects", arguments: { project: "ts-orders" } }))).toBe(
+      "Can't call list_projects: unknown argument “project”; it takes none. Fix the arguments and call it again.",
+    );
+  });
+
+  it("lists every tool's arguments as closed objects, at every depth", async () => {
+    const { url } = await start();
+    const client = await connect(url, "current");
+    const open: string[] = [];
+    const visit = (schema: unknown, at: string): void => {
+      if (Array.isArray(schema)) {
+        schema.forEach((item, index) => {
+          visit(item, `${at}[${index}]`);
+        });
+        return;
+      }
+      if (typeof schema !== "object" || schema === null) {
+        return;
+      }
+      const node = schema as Record<string, unknown>;
+      if (node["type"] === "object" && node["additionalProperties"] === undefined) {
+        open.push(at);
+      }
+      for (const [key, value] of Object.entries(node)) {
+        visit(value, `${at}.${key}`);
+      }
+    };
+    for (const tool of (await client.listTools()).tools) {
+      visit(tool.inputSchema, tool.name);
+    }
+    expect(open).toEqual([]);
+  });
+
+  it("keeps a refusal under the size limit too, however long the argument it quotes", async () => {
+    const { url } = await start();
+    const client = await connect(url, "current");
+    const result = await client.callTool({ name: "get_project", arguments: { project: "x".repeat(40_000) } });
+    expect(result.isError).toBe(true);
+    expect(text(result).length).toBeLessThanOrEqual(MAX_RESULT_CHARS + 100);
+    const issues = await client.callTool({ name: "remove_items", arguments: { board: BOARD.id, ids: Array.from({ length: 50_000 }, () => 1) } });
+    expect(issues.isError).toBe(true);
+    expect(text(issues).length).toBeLessThanOrEqual(MAX_RESULT_CHARS + 100);
   });
 
   it("answers a tool that fails inside Unfold with an internal error, and keeps serving", async () => {

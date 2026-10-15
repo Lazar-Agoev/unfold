@@ -1,6 +1,7 @@
 //! Cards and what the Selected section shows, each naming its project: `card` (a definition's
 //! drawn flow with the page's overlay, open paths, and Show all calls; an app's or entrance's
-//! card), the agent text (`code_text`, `flow_text`), `relations`, and `callers`.
+//! card, with a drawn flow's agent text when asked), the compiled tree (`code_text`), `relations`,
+//! and `callers`.
 
 use serde_json::{Value, json};
 
@@ -216,13 +217,19 @@ fn code_text_prints_the_compiled_tree_with_its_keys() {
 }
 
 #[test]
-fn flow_text_prints_the_shaped_flow_with_its_labels() {
+fn a_card_prints_its_shaped_flow_with_its_labels_when_asked() {
     let harness = Harness::compiled("ts-orders");
-    let text = harness.ok(
+    let card = harness.ok(
         1,
-        "flow_text",
-        json!({ "project": harness.project, "key": CREATE_ORDER, "overlay": overlay(), "open": [[PLACE]] }),
+        "card",
+        json!({ "project": harness.project, "key": CREATE_ORDER, "overlay": overlay(), "open": [[PLACE]], "agentText": true }),
     );
+    assert_eq!(card["type"], "definition");
+    assert_eq!(
+        card["flow"]["header"]["key"], CREATE_ORDER,
+        "the model comes with its text"
+    );
+    let text = &card["agentText"];
     let printed = text["text"].as_str().expect("text");
     for expected in [
         "Place the order",
@@ -236,16 +243,33 @@ fn flow_text_prints_the_shaped_flow_with_its_labels() {
         printed.contains("src/services/order-service.ts#OrderService.place"),
         "the inset is printed: {printed}"
     );
-    let labels = text["labels"].as_array().expect("labels");
-    assert!(labels.contains(&json!({ "label": "if[0]", "key": QUEUE_IT })));
-    assert_eq!(
-        harness.code(
-            1,
-            "flow_text",
-            json!({ "project": harness.project, "key": "src/nope.ts#x" })
-        ),
-        "not_found"
+    // The label map is the compiled tree's, read from the tree alone.
+    let tree = harness.ok(
+        1,
+        "code_text",
+        json!({ "project": harness.project, "key": CREATE_ORDER }),
     );
+    assert_eq!(text["labels"], tree["labels"]);
+    assert!(
+        text["labels"]
+            .as_array()
+            .expect("labels")
+            .contains(&json!({ "label": "if[0]", "key": QUEUE_IT }))
+    );
+
+    // Without asking, a card has no agent text; nor has an app's or entrance's card.
+    let plain = harness.ok(
+        1,
+        "card",
+        json!({ "project": harness.project, "key": CREATE_ORDER }),
+    );
+    assert_eq!(plain.get("agentText"), None);
+    let start = harness.ok(
+        1,
+        "card",
+        json!({ "project": harness.project, "key": "entrance:server/place-an-order", "agentText": true }),
+    );
+    assert_eq!(start.get("agentText"), None);
 }
 
 #[test]

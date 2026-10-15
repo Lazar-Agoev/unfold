@@ -45,7 +45,7 @@ use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{CallRole, Form, Language, NodeKind};
 use unfold_core::{Key, LineSpan, RepoPath};
 
-pub use text::{CodeLabel, CodeText, code_text, flow_text};
+pub use text::{CodeLabel, CodeText, code_text, flow_text, labels};
 
 use crate::notes::LinkEnd;
 use crate::overlay::ProposalSpot;

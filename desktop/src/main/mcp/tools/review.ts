@@ -3,7 +3,7 @@
  * window, as the board view draws it (unsaved edits included), and never move the person's view.
  * `check` adds the board's health (`board_health`, which needs the board's session, so a board the
  * window doesn't hold is loaded there first) to the page checks, each with the call that fixes
- * it; `get_screenshot` returns a PNG as MCP image content.
+ * it, and pages a whole board's check by page; `get_screenshot` returns a PNG as MCP image content.
  */
 
 import { z } from "zod";
@@ -14,7 +14,8 @@ import type { PageCheckKind } from "../../../shared/render-api";
 import type { HealthItem, HealthKind, Page } from "../engine-types";
 import { authorText, count } from "../format";
 import { acceptedBlocks, personWords, repairNames, targetId, targetText, type RepairName } from "../health";
-import { textResult, ToolError, type ToolResult } from "../results";
+import { cant, cursorOffset, paged, textResult, ToolError, type ToolResult } from "../results";
+import { fitting, linesLength } from "../sections";
 import { isLink, readPage, resolveBoard } from "../target";
 import { defineTool } from "../tool";
 
@@ -109,34 +110,48 @@ export const check = defineTool({
   name: "check",
   title: "Check",
   description:
-    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken combined steps, broken connections), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), missing words (frames, combined steps, and resource cards without a description), evidence (connections and resource cards without anchors), and strays (items with no line, connection, or frame), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
-  input: z.object({
+    'Reviews a page, or every page of a board, as data any agent can act on: health problems (missing, outdated, held for review, broken combined steps, broken connections), each with the repair calls it allows; and the page checks: overlap, crossings, density (over 30 visible items on a page, 12 in a frame, 12 steps in an expanded card), missing words (frames, combined steps, and resource cards without a description), evidence (connections and resource cards without anchors), and strays (items with no line, connection, or frame), each with the tool that fixes it. page is an id or a link (default: the page in view); a board without a page checks every page of it, as many pages as fit in one result: pass the next cursor for the rest. Unfold draws the page as the person sees it, unsaved edits included, and loads a board the window doesn\'t hold without moving the person\'s view. Call it after each section you build, then get_screenshot, and fix what it finds with targeted edits; don\'t start the page over. Re-signing or accepting what a person wrote is theirs to do: the result says so. Reading changes nothing.',
+  input: z.strictObject({
     board: z.string().min(1).optional().describe("A board's id or a link; alone, every page of it is checked"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),
+    cursor: z.string().optional().describe("The next cursor a whole board's check gave"),
   }),
   annotations: { readOnlyHint: true },
-  async run({ board, page, project }, context) {
+  async run({ board, page, project, cursor }, context) {
     const target = await resolveBoard(context, { board, page, project });
     if (await wholeBoard(context, board, page)) {
       const checked = await context.renderer.checkBoard({ board: target.board });
       if (!checked.ok) {
         throw renderRefusal(checked);
       }
-      const reads = await Promise.all(checked.pages.map((checks) => readPage(context, target.board, checks.page)));
-      const blocks = await Promise.all(checked.pages.map((checks, index) => vouched(context, target.board, reads[index]?.page, checks.health)));
-      const sections = checked.pages.map((checks, index) => {
+      // The pages from the cursor on, as many as fit in one result (at least one).
+      const start = cursorOffset(cursor);
+      const { items: rest } = paged(checked.pages, cursor, checked.pages.length);
+      const reads = await Promise.all(rest.map((checks) => readPage(context, target.board, checks.page)));
+      const blocks = await Promise.all(rest.map((checks, index) => vouched(context, target.board, reads[index]?.page, checks.health)));
+      const sections = rest.map((checks, index) => {
         const read = reads[index];
         const lines = clean(checks) || !read ? ["Nothing to fix."] : checkLines(read.page, target.board, checks, context.agent, blocks[index] ?? new Map<HealthItem, ReadonlySet<string>>());
-        return [`Page “${checks.pageTitle}” (page id ${checks.page}${read ? `, rev ${read.revision}` : ""}):`, ...lines];
+        return { lines: [`Page “${checks.pageTitle}” (page id ${checks.page}${read ? `, rev ${read.revision}` : ""}):`, ...lines] };
       });
       const problems = checked.pages.filter((checks) => !clean(checks)).length;
-      return textResult(
+      const head = [
         context.header({ project: target.project.name, board: checked.title }),
         `Board id ${target.board.id}: ${count(checked.pages.length, "page")}, ${problems === 0 ? "nothing to fix" : `${count(problems, "page")} with something to fix`}.`,
-        ...sections.flat(),
-        problems === 0 ? "Next: get_screenshot of each page, to look at it the way the person will." : "Next: fix with the calls above, then check again and get_screenshot.",
+      ];
+      const next = problems === 0 ? "Next: get_screenshot of each page, to look at it the way the person will." : "Next: fix with the calls above, then check again and get_screenshot.";
+      const shown = fitting(sections.length, linesLength([...head, next]), (size) => sections.slice(0, size));
+      const end = start + shown.limit;
+      return textResult(
+        ...head,
+        ...shown.sections.flatMap((item) => item.lines),
+        end < checked.pages.length ? `More: check with board and cursor "${end}" for the next pages (${end + 1}–${checked.pages.length} of ${checked.pages.length}).` : null,
+        next,
       );
+    }
+    if (cursor !== undefined) {
+      throw cant("page this check", "cursor pages a whole board's check", "Pass board alone, or leave cursor out.");
     }
     const pageId = target.page ?? (await readPage(context, target.board, undefined)).page.id;
     const checked = await context.renderer.check({ board: target.board, page: pageId });
@@ -159,7 +174,7 @@ export const getScreenshot = defineTool({
   title: "Get screenshot",
   description:
     "A PNG of a page, or of one card, frame, resource card, or note on it, drawn the way Unfold draws it for the person (unsaved edits included): at full size when it fits, else smaller, and the result says so; then take a frame's or a card's image to read it closer. page is an id or a link (default: the page in view); item is an item's id or a link to it; scale 2 draws a sharper image. It draws offscreen and never moves the person's view. Look at it as the person will: judge each frame, expanded card, proposed step, and connection, give a one-line verdict in the chat, and fix problems with targeted edits.",
-  input: z.object({
+  input: z.strictObject({
     board: z.string().min(1).optional().describe("A board's id or a link (default: the board in view)"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),

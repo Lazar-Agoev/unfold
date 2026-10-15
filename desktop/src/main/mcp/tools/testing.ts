@@ -7,7 +7,6 @@
  */
 
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
-import type { z } from "zod";
 import type { AgentIdentity, AgentShellEvent, ViewReport } from "../../../shared/agent-api";
 import type { AddedProject } from "../../../shared/unfold-api";
 import { AgentBridge, type AgentWindow } from "../../agents/bridge";
@@ -156,11 +155,9 @@ export function harness(options: HarnessOptions = {}) {
   }
 
   async function call(tool: Tool, args: Readonly<Record<string, unknown>> = {}): Promise<Called> {
-    let input: z.ZodType | undefined;
     let handler: ((args: unknown, request: ServerContext) => Promise<ToolResult>) | undefined;
     const server = {
-      registerTool: (_name: string, config: { inputSchema: z.ZodType }, registered: typeof handler) => {
-        input = config.inputSchema;
+      registerTool: (_name: string, _config: unknown, registered: typeof handler) => {
         handler = registered;
       },
     } as unknown as McpServer;
@@ -174,14 +171,10 @@ export function harness(options: HarnessOptions = {}) {
         throw error;
       }
     });
-    const parsed = input?.safeParse(args);
-    if (!handler || !parsed) {
+    if (!handler) {
       throw new Error(`${tool.name} registered nothing`);
     }
-    if (!parsed.success) {
-      return { text: parsed.error.issues.map((issue) => issue.message).join("\n"), isError: true, result: { content: [], isError: true } };
-    }
-    const result = await handler(parsed.data, {} as ServerContext);
+    const result = await handler(args, {} as ServerContext);
     const text = result.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
     return { text, isError: result.isError === true, result };
   }

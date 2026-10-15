@@ -1,0 +1,694 @@
+{
+  "type": "definition",
+  "flow": {
+    "header": {
+      "key": "py-orders/src/orders_playground/routes/orders.py#create_order",
+      "kind": "function",
+      "form": "function",
+      "label": "create_order",
+      "signature": "async def create_order(request: Request) -> JSONResponse",
+      "path": "py-orders/src/orders_playground/routes/orders.py",
+      "state": "current",
+      "line": 24,
+      "async": true,
+      "generator": false,
+      "definedWith": [],
+      "imports": [],
+      "actions": {
+        "combine": {
+          "with": "steps",
+          "body": "py-orders/src/orders_playground/routes/orders.py#"
+        },
+        "after": true,
+        "start": true,
+        "open": false
+      }
+    },
+    "combinable": [
+      "py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json",
+      "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]",
+      "py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place",
+      "py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post",
+      "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]"
+    ],
+    "steps": {
+      "steps": [
+        {
+          "id": 1,
+          "state": "reached",
+          "kind": "thin",
+          "calls": [
+            {
+              "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json",
+              "callee": "request.json",
+              "form": "call",
+              "to": {
+                "outcome": "unknown",
+                "reason": "unknown_receiver",
+                "note": "receiver type unknown"
+              },
+              "binds": "draft",
+              "awaited": true,
+              "sometimes": false,
+              "inside": [],
+              "actions": {
+                "combine": {
+                  "with": "steps",
+                  "body": "py-orders/src/orders_playground/routes/orders.py#create_order"
+                },
+                "after": true,
+                "start": false,
+                "open": false
+              }
+            }
+          ],
+          "lines": [
+            25,
+            25
+          ],
+          "unknown": 1
+        },
+        {
+          "id": 2,
+          "state": "reached",
+          "kind": "decision",
+          "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]",
+          "form": "if",
+          "headerCalls": [],
+          "headerUnknown": [],
+          "lanes": [
+            {
+              "id": 3,
+              "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then",
+              "form": "then",
+              "label": "request.headers.get(\"prefer\") == \"respond-async\"",
+              "lines": [
+                26,
+                28
+              ],
+              "state": "reached",
+              "test": {
+                "text": "request.headers.get(\"prefer\") == \"respond-async\"",
+                "calls": [],
+                "unknown": [
+                  {
+                    "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get",
+                    "callee": "request.headers.get",
+                    "form": "call",
+                    "to": {
+                      "outcome": "unknown",
+                      "reason": "unknown_receiver",
+                      "note": "receiver type unknown"
+                    },
+                    "awaited": false,
+                    "sometimes": false,
+                    "role": "test",
+                    "inside": [],
+                    "actions": {
+                      "after": false,
+                      "start": false,
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              "types": [],
+              "fallsThrough": false,
+              "combinable": [
+                "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay",
+                "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]"
+              ],
+              "steps": {
+                "steps": [
+                  {
+                    "id": 4,
+                    "state": "reached",
+                    "kind": "thin",
+                    "calls": [
+                      {
+                        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay",
+                        "callee": "celery_app.signature().delay",
+                        "form": "call",
+                        "to": {
+                          "outcome": "unknown",
+                          "reason": "unknown_receiver",
+                          "note": "receiver type unknown"
+                        },
+                        "binds": "job",
+                        "awaited": false,
+                        "sometimes": false,
+                        "inside": [],
+                        "actions": {
+                          "combine": {
+                            "with": "steps",
+                            "body": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then"
+                          },
+                          "after": true,
+                          "start": false,
+                          "open": false
+                        }
+                      }
+                    ],
+                    "lines": [
+                      27,
+                      27
+                    ],
+                    "unknown": 1
+                  },
+                  {
+                    "id": 5,
+                    "state": "reached",
+                    "kind": "exit",
+                    "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]",
+                    "form": "return",
+                    "value": {
+                      "kind": "call",
+                      "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]/call:JSONResponse",
+                      "callee": "JSONResponse",
+                      "form": "call",
+                      "to": {
+                        "outcome": "library",
+                        "module": "fastapi",
+                        "note": "fastapi"
+                      },
+                      "awaited": false,
+                      "sometimes": false,
+                      "calls": [],
+                      "callbacks": [],
+                      "actions": {
+                        "after": false,
+                        "start": false,
+                        "open": false
+                      }
+                    },
+                    "actions": {
+                      "combine": {
+                        "with": "steps",
+                        "body": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then"
+                      },
+                      "after": true,
+                      "start": false,
+                      "open": false
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "after": false,
+                "start": true,
+                "open": false
+              }
+            }
+          ],
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "py-orders/src/orders_playground/routes/orders.py#create_order"
+            },
+            "after": true,
+            "start": false,
+            "open": false
+          }
+        },
+        {
+          "id": 6,
+          "state": "reached",
+          "kind": "call",
+          "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place",
+          "callee": "order_service.place",
+          "form": "call",
+          "to": {
+            "outcome": "project",
+            "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+          },
+          "binds": "order",
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "inset": {
+            "header": {
+              "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place",
+              "kind": "function",
+              "form": "method",
+              "label": "place",
+              "signature": "def place(self, value: object) -> Order",
+              "path": "py-orders/src/orders_playground/services/order_service.py",
+              "state": "current",
+              "line": 20,
+              "async": false,
+              "generator": false,
+              "definedWith": [],
+              "imports": [],
+              "actions": {
+                "combine": {
+                  "with": "steps",
+                  "body": "py-orders/src/orders_playground/services/order_service.py#OrderService"
+                },
+                "after": true,
+                "start": true,
+                "open": false
+              }
+            },
+            "combinable": [
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:validate_order",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:str",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:events.emit",
+              "py-orders/src/orders_playground/services/order_service.py#OrderService.place/return[0]"
+            ],
+            "steps": {
+              "steps": [
+                {
+                  "id": 1,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:validate_order",
+                  "callee": "validate_order",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "py-orders/src/orders_playground/lib/validate.py#validate_order"
+                  },
+                  "binds": "draft",
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                },
+                {
+                  "id": 2,
+                  "state": "reached",
+                  "kind": "thin",
+                  "calls": [
+                    {
+                      "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge",
+                      "callee": "self.payments.charge",
+                      "form": "call",
+                      "to": {
+                        "outcome": "unknown",
+                        "reason": "overridden",
+                        "note": "overridden by a subclass"
+                      },
+                      "awaited": false,
+                      "sometimes": false,
+                      "inside": [],
+                      "actions": {
+                        "combine": {
+                          "with": "steps",
+                          "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                        },
+                        "after": true,
+                        "start": false,
+                        "open": false
+                      }
+                    },
+                    {
+                      "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4",
+                      "callee": "uuid4",
+                      "form": "call",
+                      "to": {
+                        "outcome": "library",
+                        "module": "python:uuid",
+                        "note": "python:uuid"
+                      },
+                      "awaited": false,
+                      "sometimes": false,
+                      "feeds": {
+                        "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:str",
+                        "callee": "str"
+                      },
+                      "inside": [],
+                      "actions": {
+                        "after": false,
+                        "start": false,
+                        "open": false
+                      }
+                    },
+                    {
+                      "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat",
+                      "callee": "datetime.now().isoformat",
+                      "form": "call",
+                      "to": {
+                        "outcome": "library",
+                        "module": "python:datetime",
+                        "note": "python:datetime"
+                      },
+                      "awaited": false,
+                      "sometimes": false,
+                      "inside": [],
+                      "actions": {
+                        "combine": {
+                          "with": "steps",
+                          "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                        },
+                        "after": true,
+                        "start": false,
+                        "open": false
+                      }
+                    }
+                  ],
+                  "lines": [
+                    22,
+                    29
+                  ],
+                  "unknown": 1
+                },
+                {
+                  "id": 5,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert",
+                  "callee": "self.repo.insert",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "py-orders/src/orders_playground/db/repository.py#OrderRepository.insert"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                },
+                {
+                  "id": 6,
+                  "state": "reached",
+                  "kind": "call",
+                  "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:events.emit",
+                  "callee": "events.emit",
+                  "form": "call",
+                  "to": {
+                    "outcome": "project",
+                    "key": "py-orders/src/orders_playground/services/events.py#Events.emit"
+                  },
+                  "awaited": false,
+                  "sometimes": false,
+                  "calls": [],
+                  "callbacks": [],
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": true
+                  }
+                },
+                {
+                  "id": 7,
+                  "state": "reached",
+                  "kind": "exit",
+                  "key": "py-orders/src/orders_playground/services/order_service.py#OrderService.place/return[0]",
+                  "form": "return",
+                  "value": {
+                    "kind": "text",
+                    "text": "order"
+                  },
+                  "actions": {
+                    "combine": {
+                      "with": "steps",
+                      "body": "py-orders/src/orders_playground/services/order_service.py#OrderService.place"
+                    },
+                    "after": true,
+                    "start": false,
+                    "open": false
+                  }
+                }
+              ]
+            },
+            "routes": [
+              {
+                "from": 0,
+                "kind": "on",
+                "to": {
+                  "step": 1
+                },
+                "through": []
+              },
+              {
+                "from": 1,
+                "kind": "on",
+                "to": {
+                  "step": 2
+                },
+                "through": []
+              },
+              {
+                "from": 2,
+                "kind": "on",
+                "to": {
+                  "step": 5
+                },
+                "through": []
+              },
+              {
+                "from": 5,
+                "kind": "on",
+                "to": {
+                  "step": 6
+                },
+                "through": []
+              },
+              {
+                "from": 6,
+                "kind": "on",
+                "to": {
+                  "step": 7
+                },
+                "through": []
+              },
+              {
+                "from": 7,
+                "kind": "return",
+                "to": "end",
+                "through": []
+              }
+            ]
+          },
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "py-orders/src/orders_playground/routes/orders.py#create_order"
+            },
+            "after": true,
+            "start": false,
+            "open": true
+          }
+        },
+        {
+          "id": 7,
+          "state": "reached",
+          "kind": "call",
+          "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post",
+          "callee": "slack.post",
+          "form": "call",
+          "to": {
+            "outcome": "project",
+            "key": "py-orders/src/orders_playground/lib/slack.py#Slack.post"
+          },
+          "awaited": false,
+          "sometimes": false,
+          "calls": [],
+          "callbacks": [],
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "py-orders/src/orders_playground/routes/orders.py#create_order"
+            },
+            "after": true,
+            "start": false,
+            "open": true
+          }
+        },
+        {
+          "id": 8,
+          "state": "reached",
+          "kind": "exit",
+          "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]",
+          "form": "return",
+          "value": {
+            "kind": "call",
+            "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]/call:JSONResponse",
+            "callee": "JSONResponse",
+            "form": "call",
+            "to": {
+              "outcome": "library",
+              "module": "fastapi",
+              "note": "fastapi"
+            },
+            "awaited": false,
+            "sometimes": false,
+            "calls": [],
+            "callbacks": [],
+            "actions": {
+              "after": false,
+              "start": false,
+              "open": false
+            }
+          },
+          "actions": {
+            "combine": {
+              "with": "steps",
+              "body": "py-orders/src/orders_playground/routes/orders.py#create_order"
+            },
+            "after": true,
+            "start": false,
+            "open": false
+          }
+        }
+      ]
+    },
+    "routes": [
+      {
+        "from": 0,
+        "kind": "on",
+        "to": {
+          "step": 1
+        },
+        "through": []
+      },
+      {
+        "from": 1,
+        "kind": "on",
+        "to": {
+          "step": 2
+        },
+        "through": []
+      },
+      {
+        "from": 2,
+        "kind": "on",
+        "to": {
+          "step": 3
+        },
+        "through": []
+      },
+      {
+        "from": 3,
+        "kind": "yes",
+        "to": {
+          "step": 4
+        },
+        "through": []
+      },
+      {
+        "from": 3,
+        "kind": "no",
+        "to": {
+          "step": 6
+        },
+        "through": []
+      },
+      {
+        "from": 4,
+        "kind": "on",
+        "to": {
+          "step": 5
+        },
+        "through": []
+      },
+      {
+        "from": 5,
+        "kind": "return",
+        "to": "end",
+        "through": []
+      },
+      {
+        "from": 6,
+        "kind": "on",
+        "to": {
+          "step": 7
+        },
+        "through": []
+      },
+      {
+        "from": 7,
+        "kind": "on",
+        "to": {
+          "step": 8
+        },
+        "through": []
+      },
+      {
+        "from": 8,
+        "kind": "return",
+        "to": "end",
+        "through": []
+      }
+    ]
+  },
+  "agentText": {
+    "text": "( create_order )   key=py-orders/src/orders_playground/routes/orders.py#create_order\n  · request.json ? → draft   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json\n  IF request.headers.get(\"prefer\") == \"respond-async\" · request.headers.get ?   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0] py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get\n      · celery_app.signature().delay ? → job   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay\n      RETURN JSONResponse → End   key=py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0] py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]/call:JSONResponse\n  ▸ order_service.place → order   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place\n      ( place )   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place\n        ▸ validate_order → draft   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:validate_order\n        · self.payments.charge ?, uuid4, datetime.now().isoformat   3 calls, 1 unknown   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.payments.charge py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:str/call:uuid4 py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:datetime.now().isoformat\n        ▸ self.repo.insert   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:self.repo.insert\n        ▸ events.emit   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/call:events.emit\n        RETURN order → returns   key=py-orders/src/orders_playground/services/order_service.py#OrderService.place/return[0]\n      ( returns )\n  ▸ slack.post   key=py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post\n  RETURN JSONResponse → End   key=py-orders/src/orders_playground/routes/orders.py#create_order/return[0] py-orders/src/orders_playground/routes/orders.py#create_order/return[0]/call:JSONResponse\n( End )\n",
+    "labels": [
+      {
+        "label": "call:request.json",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:request.json"
+      },
+      {
+        "label": "if[0]",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]"
+      },
+      {
+        "label": "if[0]/then",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then"
+      },
+      {
+        "label": "if[0]/then/call:request.headers.get",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:request.headers.get"
+      },
+      {
+        "label": "if[0]/then/call:celery_app.signature().delay",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay"
+      },
+      {
+        "label": "if[0]/then/call:celery_app.signature().delay/call:celery_app.signature",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay/call:celery_app.signature"
+      },
+      {
+        "label": "if[0]/then/return[0]",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]"
+      },
+      {
+        "label": "if[0]/then/return[0]/call:JSONResponse",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]/call:JSONResponse"
+      },
+      {
+        "label": "call:order_service.place",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:order_service.place"
+      },
+      {
+        "label": "call:slack.post",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/call:slack.post"
+      },
+      {
+        "label": "return[0]",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]"
+      },
+      {
+        "label": "return[0]/call:JSONResponse",
+        "key": "py-orders/src/orders_playground/routes/orders.py#create_order/return[0]/call:JSONResponse"
+      }
+    ]
+  }
+}

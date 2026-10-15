@@ -291,7 +291,7 @@ describe("EngineRouter: sink fan-out", () => {
 describe("EngineRouter: trusted commands", () => {
   it("lists exactly the main-process-only commands and closing writes", () => {
     expect([...MAIN_PROCESS_ONLY].sort()).toEqual(
-      ["add_project", "save_window_state", "window_state"].sort(),
+      ["add_project", "save_window_state", "set_settings", "window_state"].sort(),
     );
     expect([...CLOSING_WRITES].sort()).toEqual(
       [

@@ -74,12 +74,13 @@ fn representative_commands_match_their_goldens() {
     );
     golden(
         &harness,
-        "flow_text_create_order",
-        "flow_text",
+        "card_text_create_order",
+        "card",
         json!({
             "key": "src/routes/orders.ts#createOrder",
             "overlay": { "names": [{ "key": "src/routes/orders.ts#createOrder/if[0]/then", "text": "Asked to queue it?" }] },
             "open": [["src/routes/orders.ts#createOrder/call:orderService.place"]],
+            "agentText": true,
         }),
     );
     golden(&harness, "relations_create_order", "relations", create_order);
@@ -153,11 +154,12 @@ fn python_commands_match_their_goldens() {
     );
     golden(
         &harness,
-        "py-orders/flow_text_create_order",
-        "flow_text",
+        "py-orders/card_text_create_order",
+        "card",
         json!({
             "key": create_order,
             "open": [[format!("{create_order}/call:order_service.place")]],
+            "agentText": true,
         }),
     );
 }
@@ -188,11 +190,12 @@ fn mixed_playground_commands_match_their_goldens() {
     let python_create_order = "py-orders/src/orders_playground/routes/orders.py#create_order";
     golden(
         &harness,
-        "mixed-playground/flow_text_create_order_python",
-        "flow_text",
+        "mixed-playground/card_text_create_order_python",
+        "card",
         json!({
             "key": python_create_order,
             "open": [[format!("{python_create_order}/call:order_service.place")]],
+            "agentText": true,
         }),
     );
 }

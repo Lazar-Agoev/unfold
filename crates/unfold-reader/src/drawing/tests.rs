@@ -1860,6 +1860,25 @@ fn the_compiled_tree_prints_every_block_with_its_key() {
         .expect("the handler is labeled");
     assert_eq!(label.key.as_str(), "shop/service.py#place_order/try[0]/except[0]");
     assert_eq!(code.labels.len(), 20);
+    // The label map is the tree's, in the printed order; it reads no file.
+    let printed: Vec<&str> = lines[3..]
+        .iter()
+        .filter(|line| !line.contains('⋯'))
+        .map(|line| line.split_whitespace().nth(1).expect("a label"))
+        .collect();
+    let mapped = labels(&tree, id);
+    assert_eq!(mapped, code.labels);
+    assert_eq!(
+        mapped
+            .iter()
+            .map(|label| label.label.as_str())
+            .collect::<Vec<_>>(),
+        printed
+    );
+    assert_eq!(
+        code_text(&tree, &sources(Path::new("/nowhere"), &SourceCache::new()), id).labels,
+        mapped
+    );
 
     let module = Playground::built(&examples::orders_route());
     let (tree, id) = module.block("src/routes/orders.ts#");

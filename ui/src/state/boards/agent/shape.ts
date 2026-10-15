@@ -1,8 +1,9 @@
 /**
  * `shape_card`: a card's whole shaping as one operation — its
  * title (the page's name for its definition), its description, names on blocks, combined steps, and
- * the calls it opens in place; an app's or entrance's card, or a type card, which draw no flow, take only
- * a description. Names and combined steps apply page-wide, by key. It uses the edits
+ * the calls it opens in place; an app's or entrance's card, or a type card, which draw no flow
+ * (`flowless`, which the MCP server reads too), take only a description, and anything else on them is
+ * refused here. Names and combined steps apply page-wide, by key. It uses the edits
  * people's block menu uses, and the save checks every key and the overlay rules (combined steps are
  * consecutive steps of one body or one whole control block, never overlapping or nesting; open paths
  * are project calls or callbacks, at most 3 deep and 64 per card), so nothing here repeats a rule. New
@@ -11,6 +12,7 @@
  */
 
 import type { AgentCombineSpec, AgentItemResult, ShapeCardOp } from "@unfold/desktop/agent-api";
+import { flowless } from "@unfold/desktop/drawing";
 import type { Card, Combined, Page } from "../../../ipc/generated";
 import { addCombined, cardKey, cardView, findCard, findCombined, openPaths, setCardDescription, setName, updateCombined } from "../document";
 import { cardName, cardResult, combinedResult, guardPeopleText, invalid, type OpContext } from "./context";
@@ -66,15 +68,16 @@ function snapshot(page: Page, card: Card): string {
   return JSON.stringify([card, page.names]);
 }
 
-/** Why a card takes only a description: it draws no flow (an app's or entrance's card, a type card); undefined for a card that draws one. */
-function flowless(ctx: OpContext, card: Card, name: string): string | undefined {
-  if (!("block" in card.ref)) {
-    return `${name} is an app's or entrance's card: it draws no flow of its own, so shape_card writes only its description. Shape the cards of its code for the rest.`;
+/** Why a card takes only a description (`flowless`: an app's or entrance's card, a type card), as a refusal says it; undefined for a card that draws a flow. */
+function onlyDescribed(ctx: OpContext, card: Card, name: string): string | undefined {
+  switch (flowless(card.ref, ctx.data.model(ctx.board.project, cardKey(card)))) {
+    case "start":
+      return `${name} is an app's or entrance's card: it draws no flow of its own, so shape_card writes only its description. Shape the cards of its code for the rest.`;
+    case "type":
+      return `${name} is a type card: it shows fields, not a flow, so shape_card writes only its description. Shape a function's, a class's, or a module's card for the rest.`;
+    case undefined:
+      return undefined;
   }
-  const model = ctx.data.model(ctx.board.project, cardKey(card));
-  return model?.type === "definition" && model.flow.header.kind === "type"
-    ? `${name} is a type card: it shows fields, not a flow, so shape_card writes only its description. Shape a function's, a class's, or a module's card for the rest.`
-    : undefined;
 }
 
 export function applyShapeCard(page: Page, op: ShapeCardOp, ctx: OpContext): AgentItemResult[] {
@@ -83,9 +86,9 @@ export function applyShapeCard(page: Page, op: ShapeCardOp, ctx: OpContext): Age
     throw invalid(`There is no card with id “${op.card}” on this page. read_page lists the page's cards with their ids.`);
   }
   const name = cardName(ctx, card);
-  const onlyDescribed = flowless(ctx, card, name);
-  if (onlyDescribed !== undefined && (op.title !== undefined || op.names !== undefined || op.combine !== undefined || op.open !== undefined)) {
-    throw invalid(onlyDescribed);
+  const refusal = onlyDescribed(ctx, card, name);
+  if (refusal !== undefined && (op.title !== undefined || op.names !== undefined || op.combine !== undefined || op.open !== undefined)) {
+    throw invalid(refusal);
   }
   const before = snapshot(page, card);
   if (op.description !== undefined) {
@@ -95,7 +98,7 @@ export function applyShapeCard(page: Page, op: ShapeCardOp, ctx: OpContext): Age
     }
     setCardDescription(page, card.id, text, ctx.agent.author);
   }
-  if (onlyDescribed !== undefined) {
+  if (refusal !== undefined) {
     return [cardResult(ctx, card, snapshot(page, card) === before ? "kept" : "updated")];
   }
   if (op.title !== undefined) {

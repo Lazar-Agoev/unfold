@@ -268,7 +268,7 @@ test("an agent traces, shapes, composes, and finishes a page while the person wa
   await test.step("asked to, the agent declares an entrance, and unfold.toml gains exactly that line", async () => {
     const config = join(folder, "unfold.toml");
     const before = readFile(config).split("\n");
-    const main = found(await agent.ok("search", { project: "ts-orders", query: "main" }), /^- main \(function\) at src\/cli\.ts:6: key (\S+)$/m);
+    const main = found(await agent.ok("search", { projects: ["ts-orders"], query: "main" }), /^- main \(function\) at src\/cli\.ts:6: key (\S+)$/m);
     const declared = await agent.ok("set_entrance", { project: "ts-orders", app: "Orders CLI", name: "Show help", on: "orders --help", code: main });
     expect(declared).toContain("Added the entrance Show help to Orders CLI. Changed unfold.toml of ts-orders:");
 

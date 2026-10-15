@@ -6,13 +6,15 @@
  * and applies no rules of its own. Engine events refresh a card when a file it draws changes
  * (ipc/queries).
  *
- * The blocks of a drawn flow (`flowBlocks`) are read from its parts, never from keys.
+ * A drawn flow is read through the one walk the window and the MCP server share
+ * (`@unfold/desktop/drawing`), never from keys.
  */
 
 import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { flowBlocks, visitFlow, type DrawnBlock } from "@unfold/desktop/drawing";
 import { useCallback, useMemo } from "react";
 import { queryClient } from "../ipc/client";
-import type { Actions, CallBox, Callback, Card, CardArgs, CardView, DrawnFlow, Form, Key, Lane, LinkEnd, OtherCall, OverlayArgs, Page, ProjectId, RepoPath, Sequence } from "../ipc/generated";
+import type { Card, CardArgs, CardView, DrawnFlow, Key, OverlayArgs, Page, ProjectId, RepoPath, Sequence } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { UnfoldError } from "../ipc/unfold";
 import { cardKey, findCard, findPage } from "./boards/document";
@@ -161,29 +163,22 @@ export function isMissing(error: unknown): boolean {
   return error instanceof UnfoldError && error.code === "not_found";
 }
 
-/** The ids of the combined and proposed steps a card draws, in the calls it opens in place too. */
+/**
+ * The ids of the combined and proposed steps a card draws, wherever it draws them: in the calls it
+ * opens in place too, from a step, a frame's header, a test, or an exit.
+ */
 export function overlayIds(view: CardView): string[] {
-  const inSequence = (sequence: Sequence): string[] =>
-    sequence.steps.flatMap((step): string[] => {
-      switch (step.kind) {
-        case "combined":
-          return [step.item, ...(step.steps ? inSequence(step.steps) : [])];
-        case "proposed":
-          return [step.item];
-        case "call":
-          return [...(step.inset ? inFlow(step.inset) : []), ...step.callbacks.flatMap((callback) => (callback.inset ? inFlow(callback.inset) : []))];
-        case "decision":
-        case "loop":
-        case "try":
-        case "with":
-          return step.lanes.flatMap((lane) => inSequence(lane.steps));
-        case "thin":
-        case "exit":
-          return [];
-      }
+  const ids: string[] = [];
+  if (view.type === "definition") {
+    visitFlow(view.flow, {
+      step: (step) => {
+        if (step.kind === "combined" || step.kind === "proposed") {
+          ids.push(step.item);
+        }
+      },
     });
-  const inFlow = (flow: DrawnFlow): string[] => inSequence(flow.steps);
-  return view.type === "definition" ? inFlow(view.flow) : [];
+  }
+  return ids;
 }
 
 /** The cards of an open page that draw the combined or proposed step `itemId`, as the cache holds them now. */
@@ -197,162 +192,9 @@ export function cardsDrawing(target: PageTarget, itemId: string): string[] {
   });
 }
 
-/**
- * A block drawn in a card: its key, its form, its words from the code (a part's: the text that opens
- * it), the page's name for it, what the overlay may do to it, for a call, where it goes, and for a
- * part, the lines it marks in the code panel (first and last).
- */
-export interface DrawnBlock {
-  readonly key: Key;
-  readonly form: Form;
-  readonly label: string;
-  readonly name?: string;
-  readonly actions?: Actions;
-  readonly to?: LinkEnd;
-  readonly lines?: readonly [number, number];
-}
-
-function block(key: Key, form: Form, label: string, name: string | undefined, actions: Actions | undefined, to?: LinkEnd): DrawnBlock {
-  return { key, form, label, ...(name !== undefined ? { name } : {}), ...(actions ? { actions } : {}), ...(to ? { to } : {}) };
-}
-
-function laneBlock(lane: Lane): DrawnBlock {
-  return { ...block(lane.key, lane.form, lane.label, lane.name, lane.actions), lines: lane.lines };
-}
-
-function otherCalls(calls: readonly OtherCall[]): DrawnBlock[] {
-  return calls.flatMap((other) => [block(other.key, other.form, other.callee, undefined, other.actions, other.to), ...otherCalls(other.inside)]);
-}
-
-function callBlocks(box: CallBox): DrawnBlock[] {
-  return [
-    block(box.key, box.form, box.callee, box.name, box.actions, box.to),
-    ...otherCalls(box.calls),
-    ...(box.inset ? flowBlocks(box.inset) : []),
-    ...box.callbacks.flatMap((callback) => [
-      block(callback.key, "lambda", callback.label, callback.name, callback.actions),
-      ...(callback.inset ? flowBlocks(callback.inset) : []),
-    ]),
-  ];
-}
-
-function sequenceBlocks(sequence: Sequence): DrawnBlock[] {
-  const hidden = (gap: { readonly hidden: readonly { readonly key: Key; readonly form: Form; readonly label: string }[] } | undefined) =>
-    (gap?.hidden ?? []).map((item) => block(item.key, item.form, item.label, undefined, undefined));
-  return [
-    ...sequence.steps.flatMap((step): DrawnBlock[] => {
-      const gap = hidden(step.gap);
-      switch (step.kind) {
-        case "call":
-          return [...gap, ...callBlocks(step)];
-        case "thin":
-          return [...gap, ...otherCalls(step.calls)];
-        case "decision":
-        case "loop":
-        case "try":
-        case "with":
-          return [
-            ...gap,
-            block(step.key, step.form, step.header ?? step.form, step.name, step.actions),
-            ...step.headerCalls.flatMap(callBlocks),
-            ...otherCalls(step.headerUnknown),
-            ...step.lanes.flatMap((lane) => [
-              laneBlock(lane),
-              ...(lane.test?.calls ?? []).flatMap(callBlocks),
-              ...otherCalls(lane.test?.unknown ?? []),
-              ...sequenceBlocks(lane.steps),
-            ]),
-          ];
-        case "exit":
-          return [
-            ...gap,
-            block(step.key, step.form, step.value?.kind === "text" ? `${step.form} ${step.value.text}` : step.form, step.name, step.actions),
-            ...(step.value?.kind === "call" ? callBlocks(step.value) : []),
-          ];
-        case "combined":
-          return [...gap, ...(step.steps ? sequenceBlocks(step.steps) : [])];
-        case "proposed":
-          return gap;
-      }
-    }),
-    ...hidden(sequence.endGap),
-  ];
-}
-
-/** Every block a drawn flow draws, its definition first, then its steps in the order they run, insets included. */
-export function flowBlocks(flow: DrawnFlow): DrawnBlock[] {
-  const { header } = flow;
-  return [block(header.key, header.form, header.label, header.name, header.actions), ...otherCalls(header.definedWith), ...sequenceBlocks(flow.steps)];
-}
-
-/** The block of a drawn flow with key `key`, if the flow draws it. */
+/** The block of a drawn flow with key `key`, if the flow draws it (in the calls it opens in place too). */
 export function findBlock(flow: DrawnFlow, key: Key): DrawnBlock | undefined {
   return flowBlocks(flow).find((item) => item.key === key);
-}
-
-/**
- * What `visitFlow` hands each part to, with the calls opened in place around it (outermost first). A
- * sequence comes with the body it is (a definition's or a part's key, or an open combined step's id)
- * and the file of the flow drawing it.
- */
-interface FlowVisitor {
-  readonly flow?: (flow: DrawnFlow, around: readonly Key[]) => void;
-  readonly box?: (box: CallBox, around: readonly Key[]) => void;
-  readonly callback?: (callback: Callback, around: readonly Key[]) => void;
-  readonly lane?: (lane: Lane) => void;
-  readonly sequence?: (sequence: Sequence, body: string, path: RepoPath) => void;
-}
-
-/** Walks a drawn flow's parts in the order they run, into the calls and callbacks it opens in place. */
-function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[] = []): void {
-  const box = (call: CallBox) => {
-    visitor.box?.(call, around);
-    if (call.inset) {
-      visitFlow(call.inset, visitor, [...around, call.key]);
-    }
-    for (const callback of call.callbacks) {
-      visitor.callback?.(callback, around);
-      if (callback.inset) {
-        visitFlow(callback.inset, visitor, [...around, callback.key]);
-      }
-    }
-  };
-  const sequence = (steps: Sequence, body: string) => {
-    visitor.sequence?.(steps, body, flow.header.path);
-    for (const step of steps.steps) {
-      switch (step.kind) {
-        case "call":
-          box(step);
-          break;
-        case "decision":
-        case "loop":
-        case "try":
-        case "with":
-          step.headerCalls.forEach(box);
-          for (const lane of step.lanes) {
-            visitor.lane?.(lane);
-            (lane.test?.calls ?? []).forEach(box);
-            sequence(lane.steps, lane.key);
-          }
-          break;
-        case "exit":
-          if (step.value?.kind === "call") {
-            box(step.value);
-          }
-          break;
-        case "combined":
-          if (step.steps) {
-            sequence(step.steps, step.item);
-          }
-          break;
-        case "thin":
-        case "proposed":
-          break;
-      }
-    }
-  };
-  visitor.flow?.(flow, around);
-  sequence(flow.steps, flow.header.key);
 }
 
 /**
@@ -361,18 +203,22 @@ function visitFlow(flow: DrawnFlow, visitor: FlowVisitor, around: readonly Key[]
  * or an open combined step's id), and the file of the flow drawing it.
  */
 export function eachSequence(flow: DrawnFlow, visit: (sequence: Sequence, body: string, path: RepoPath) => void): void {
-  visitFlow(flow, { sequence: visit });
+  visitFlow(flow, {
+    sequence: (sequence, body, at) => {
+      visit(sequence, body, at.flow.header.path);
+    },
+  });
 }
 
 /** Every block a drawn flow's collapsed combined steps hold, which each outlines. */
 export function heldBlocks(flow: DrawnFlow): Key[] {
   const held: Key[] = [];
-  eachSequence(flow, (sequence) => {
-    for (const step of sequence.steps) {
+  visitFlow(flow, {
+    step: (step) => {
       if (step.kind === "combined") {
         held.push(...(step.holds ?? []));
       }
-    }
+    },
   });
   return held;
 }
@@ -388,7 +234,14 @@ export function openPathOf(flow: DrawnFlow, key: Key): readonly Key[] | undefine
       found = [...around, own];
     }
   };
-  visitFlow(flow, { box: (box, around) => { at(box.key, around); }, callback: (callback, around) => { at(callback.key, around); } });
+  visitFlow(flow, {
+    box: (box, where) => {
+      at(box.key, where.around);
+    },
+    callback: (callback, where) => {
+      at(callback.key, where.around);
+    },
+  });
   return found;
 }
 
@@ -400,7 +253,7 @@ export function openPathOf(flow: DrawnFlow, key: Key): readonly Key[] | undefine
 export function combinableSteps(flow: DrawnFlow, body: Key): readonly Key[] | undefined {
   let found: readonly Key[] | undefined;
   visitFlow(flow, {
-    flow: (drawn) => {
+    flow: ({ flow: drawn }) => {
       if (found === undefined && drawn.header.key === body) {
         found = drawn.combinable;
       }

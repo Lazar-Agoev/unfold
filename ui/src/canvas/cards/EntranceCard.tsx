@@ -12,6 +12,7 @@
  * the card.
  */
 
+import type { CardShape } from "@unfold/desktop/drawing";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo } from "react";
 import { CodeButton } from "../../code/CodeButton";
@@ -20,7 +21,7 @@ import type { Card, StartCard } from "../../ipc/generated";
 import { clickItem, type PageTarget } from "../../state/boards";
 import { useCodeHover } from "../../state/codePanel";
 import { codePort, NODE_PORT } from "../arrows";
-import { startRowName, startRowPlace, startRows, unfoundCode, type CardShape } from "../cardText";
+import { startRowName, startRowPlace, startRows, unfoundCode } from "../cardText";
 import { useMeasure } from "../measure";
 import { startCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";

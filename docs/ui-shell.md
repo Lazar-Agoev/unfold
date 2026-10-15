@@ -121,7 +121,11 @@ the card's open paths, and the Show all calls switch.
   refetches it at once (`files_changed`), and the compile's `graph_updated` again.
 - **Arrows** come from call boxes whose callee has a card on the page: from the call on an expanded card (insets and
   collapsed combined steps included), from the edge on a compact card (one per target, carrying its calls). Start
-  cards point at their code in order; type fields point at their types. The board file holds no arrows.
+  cards point at their code in order, dashed to code whose file doesn't parse; type fields point at their types. The
+  board file holds no arrows. Which arrows a page draws, how a card shows, and the walk of a drawn flow (its blocks,
+  project calls, and combined and proposed steps, in insets opened from any call box) are one module the MCP server
+  imports too ([desktop/src/shared/drawing.ts](../desktop/src/shared/drawing.ts), `@unfold/desktop/drawing`), so
+  agents read what the person sees; the canvas places the arrows' ports.
 - **Connections, frames, resource cards, and notes** share the page's id space and undo history.
 - **Sizes** are measured with the bundled fonts before anything renders; measured sizes stay apart from document
   positions, and Arrange never erases authored contents.
@@ -175,7 +179,10 @@ undo history unchanged.
 - The window checks shapes and refusal texts; for example, `connect` refuses a connection that repeats a compiled
   call. The save checks keys, the overlay rules, and grounding.
 - People's words stay theirs unless the request says the person asked (`replacePeopleText`); unchanged text keeps
-  its author.
+  its author. A repair that removes an item, a name, or a description is held to the same rule, what goes with the
+  item included.
+- An edit that names the page revision the agent read (`expectRevision`) is compared in the step `saveStep` saves, so
+  a person's edit after the read refuses it (`revision_mismatch`).
 - **Working marks** (`working.ts`): while an agent works on a page, the top bar says "Claude is working…" and the items
   it changed have a soft outline. `finish_work` clears them and shows a "Claude finished" toast with the summary.
   They are never saved and never undo steps.

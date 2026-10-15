@@ -1,6 +1,7 @@
+import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentPage, AgentRepairRequest, AgentShellEvent } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
+import { pageRevision } from "../../../shared/revision";
 import type { BoardHealthView, HealthItem } from "../engine-types";
 import { finishWork, repair } from "./finish";
 import { harness, PROJECT } from "./testing";
@@ -25,6 +26,9 @@ const PAGE: AgentPage = {
   links: [{ id: "save", from: "charge", to: "orders", kind: "writes", anchors: [{ key: PLACE }], author: "agent:claude", description: { text: "Saves it.", author: "agent:claude", signature: "s" } }],
   resources: [{ id: "orders", kind: "table", name: "orders", anchors: [{ key: "a" }, { key: "b" }], at: [0, 200], author: "agent:claude" }],
 };
+
+/** The window's refusal to remove a person's words. */
+const PEOPLE_TEXT = `Can't change the description of ${PLACE}: Lazar wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.`;
 
 function health(...items: HealthItem[]): BoardHealthView {
   return { health: { items, missing: 0, outdated: 0, review: 0, brokenCombined: 0, brokenLinks: 0 }, label: null };
@@ -54,7 +58,10 @@ function app(...items: HealthItem[]) {
         case "agent_read":
           return { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } };
         case "agent_repair":
-          return { ok: true, page: { ...PAGE, title: "Placing an order" }, board: BOARD_INFO };
+          // As the window does: removing the card place takes Lazar's description with it.
+          return request.repair.kind === "remove" && isDeepStrictEqual(request.repair["target"], { card: "place" }) && request.replacePeopleText !== true
+            ? { ok: false, code: "people_text", message: PEOPLE_TEXT }
+            : { ok: true, page: { ...PAGE, title: "Placing an order" }, board: BOARD_INFO };
         default:
           return undefined;
       }
@@ -90,9 +97,19 @@ describe("repair", () => {
       `Ids: board ${BOARD.id}, page page-1. One undo step in Unfold, saved.`,
       "Next: check again to see what's left.",
     ]);
-    const removed = await test.call(repair, { ...AT, item: "place", repair: "remove" });
+  });
+
+  it("removes a person's words only when the person asked: the window refuses otherwise", async () => {
+    const test = app(MISSING_PLACE);
+    const refused = await test.call(repair, { ...AT, item: "place", repair: "remove" });
+    expect(refused).toMatchObject({ isError: true, text: PEOPLE_TEXT });
+    const removed = await test.call(repair, { ...AT, item: "place", repair: "remove", replacePeopleText: true });
     expect(removed.text).toContain("Removed (code stays as it is) the card place.");
-    expect(repairs(test)[1]).toMatchObject({ repair: { page: "page-1", kind: "remove", target: { card: "place" } }, items: [] });
+    expect(repairs(test)).toMatchObject([
+      { repair: { page: "page-1", kind: "remove", target: { card: "place" } }, items: [] },
+      { repair: { page: "page-1", kind: "remove", target: { card: "place" } }, items: [], replacePeopleText: true },
+    ]);
+    expect(repairs(test)[0]).not.toHaveProperty("replacePeopleText");
   });
 
   it("re-signs and accepts only what agents wrote: a person's words are theirs to sign off", async () => {
@@ -147,7 +164,7 @@ describe("repair", () => {
 describe("finish_work", () => {
   it("finishes every board the agent changed since it last finished, else the board in view", async () => {
     const test = app(MISSING_PLACE);
-    await test.call(repair, { ...AT, item: "place", repair: "remove" });
+    await test.call(repair, { ...AT, item: "place", repair: "remove", replacePeopleText: true });
     const read = { read_board: () => ({ document: { title: "Orders" } }) };
     const finishing = harness({ engine: read, window: () => undefined });
     expect((await finishing.call(finishWork, { summary: "Nothing" })).text).toBe(

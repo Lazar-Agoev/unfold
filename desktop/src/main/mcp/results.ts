@@ -45,10 +45,11 @@ export function textResult(...lines: readonly (string | null | undefined | false
 }
 
 /**
- * Keeps a result under {@link MAX_RESULT_CHARS}: a longer text is cut at a line and says so. Tools
- * page with a cursor well before this; it is the last guard.
+ * Keeps a result, or a refusal, under {@link MAX_RESULT_CHARS}: a longer text is cut at a line and
+ * says so. Tools page with a cursor well before this; it is the last guard.
  */
 export function fitResult(result: ToolResult): ToolResult {
+  const note = result.isError === true ? "… Cut here to stay under about 6,000 tokens." : "… Cut here to stay under about 6,000 tokens. Ask for less: a narrower filter, or the next page.";
   let budget = MAX_RESULT_CHARS;
   const content = result.content.map((block) => {
     if (block.type !== "text") {
@@ -59,7 +60,7 @@ export function fitResult(result: ToolResult): ToolResult {
       return block;
     }
     const cut = block.text.lastIndexOf("\n", budget);
-    const text = `${block.text.slice(0, cut > 0 ? cut : budget)}\n… Cut here to stay under about 6,000 tokens. Ask for less: a narrower filter, or the next page.`;
+    const text = `${block.text.slice(0, cut > 0 ? cut : budget)}\n${note}`;
     budget = 0;
     return { ...block, text };
   });
@@ -174,7 +175,7 @@ export function windowRefusal(failure: AgentFailure): ToolError {
   return new ToolError(hint === undefined ? failure.message : `${failure.message} ${hint}`, failure.code);
 }
 
-/** The result of a refusal. */
+/** The result of a refusal, kept under the size limit as every result is ({@link fitResult}). */
 export function errorResult(error: ToolError): ToolResult {
-  return { content: [{ type: "text", text: error.message }], isError: true };
+  return fitResult({ content: [{ type: "text", text: error.message }], isError: true });
 }

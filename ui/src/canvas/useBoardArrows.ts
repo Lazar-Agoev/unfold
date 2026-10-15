@@ -4,6 +4,7 @@
  */
 
 import { useQueries } from "@tanstack/react-query";
+import { cardShape, type CardShape } from "@unfold/desktop/drawing";
 import { useMemo } from "react";
 import type { Card, CardView, Page, TypeDefinition } from "../ipc/generated";
 import { engineQueryOptions } from "../ipc/queries";
@@ -11,7 +12,6 @@ import { cardKey, cardRefKey, cardView, findPage, useOpenBoard, type PageTarget 
 import { cardArgs, cardQuery, pageOverlay } from "../state/cards";
 import { useShowAllCalls } from "../state/showAllCalls";
 import { computeArrows, type Arrow, type ArrowCard } from "./arrows";
-import { cardShape, type CardShape } from "./cardText";
 
 export interface BoardArrows {
   /** What each loaded card drew, by card id. */

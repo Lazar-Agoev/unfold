@@ -210,6 +210,18 @@ describe("invalidation by event", () => {
     expect(stale().filter((entry) => entry.startsWith("card:"))).toEqual([`card:${P}:${ENTRANCE}`, `card:${P}:${MISSING}`, `card:${P}:${OPENS}`]);
   });
 
+  it("refreshes a card whose call opened from an exit draws a changed file", () => {
+    const opened = flow(OPENS, "src/opens.ts", flow("key-pay", PAY));
+    const [call] = opened.steps.steps;
+    if (call?.kind !== "call") {
+      throw new Error("the flow opens a call");
+    }
+    const exit: Step = { id: 0, state: "reached", kind: "exit", key: `${OPENS}-return`, form: "return", value: { ...call, kind: "call" }, actions: call.actions };
+    seed("card", { project: P, key: "key-exit", open: [[`${OPENS}-call`]] }, { type: "definition", flow: { ...opened, steps: { steps: [exit] } } });
+    applyEngineEvent(client, { type: "files_changed", project: P, paths: [PAY], truncated: false });
+    expect(stale().filter((entry) => entry.startsWith("card:"))).toEqual([`card:${P}:key-exit`, `card:${P}:${MISSING}`, `card:${P}:${OPENS}`]);
+  });
+
   it("entrances_changed refreshes what lists or draws the project's apps and entrances", () => {
     applyEngineEvent(client, { type: "entrances_changed", project: P });
     expect(stale()).toEqual(

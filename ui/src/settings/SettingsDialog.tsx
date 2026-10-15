@@ -1,16 +1,16 @@
 /**
  * Settings (app-wide, `settings.json` through Rust; the sidebar's gear): the editor command, and how to
- * connect an agent. The editor command saves with `set_settings` when the field is left, on Enter, and
- * when the dialog closes.
+ * connect an agent. The editor command saves through the main process (`save_settings`, the engine's
+ * main-process-only `set_settings`: it is a program `open_in_editor` runs) when the field is left, on
+ * Enter, and when the dialog closes.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Dialog, TextField, showToast } from "../components";
-import { call } from "../ipc/commands";
 import type { AppSettings } from "../ipc/generated";
 import { engineKey, engineQueryOptions } from "../ipc/queries";
-import { toUnfoldError } from "../ipc/unfold";
+import { toUnfoldError, windowCommand } from "../ipc/unfold";
 import { AgentsSection } from "./AgentsSection";
 import "./settings.css";
 
@@ -27,7 +27,7 @@ function SettingsForm({ saved, onClose }: { readonly saved: AppSettings; readonl
     }
     const settings: AppSettings = editorCommand === "" ? {} : { editorCommand };
     try {
-      const next = await call("set_settings", { settings });
+      const next = await windowCommand("save_settings", { settings });
       stored.current = next;
       client.setQueryData(engineKey("get_settings", {}), next);
     } catch (error) {

@@ -1,8 +1,9 @@
+import { fieldRows, projectCalls } from "@unfold/desktop/drawing";
 import { describe, expect, it } from "vitest";
 import type { CardView, DrawnFlow, StartCard, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
 import { cardRefKey } from "../state/boards/keys";
 import { fixture } from "../test/engine";
-import { NODE_PORT, callPort, codePort, computeArrows, fieldPort, fieldRows, portsByCard, projectCalls, type ArrowCard } from "./arrows";
+import { NODE_PORT, callPort, codePort, computeArrows, fieldPort, portsByCard, type ArrowCard } from "./arrows";
 
 const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
 
@@ -117,13 +118,32 @@ describe("arrows from call blocks", () => {
       "shop/format.py#order_label",
       "shop/format.py#summary",
     ]);
-    expect(projectCalls(drawn("07-cli"), false)).toEqual([{ call: "shop/cli.py#/if[0]/then/call:main", to: "shop/cli.py#main" }]);
+    expect(projectCalls(drawn("07-cli"), false)).toEqual([{ call: "shop/cli.py#/if[0]/then/call:main", callee: "main", to: "shop/cli.py#main" }]);
     expect(projectCalls(drawn("07-cli"), true)).toHaveLength(7);
   });
 
   it("draw nothing to a card that isn't on the page, to the card itself, or from a card not loaded yet", () => {
     expect(computeArrows([card("place", PLACE, "expanded")], page)).toEqual([]);
     expect(computeArrows([card("place", PLACE, "expanded"), card("load", LOAD)], models([[LOAD, leaf(LOAD)]]))).toEqual([]);
+  });
+});
+
+describe("the arrows read_page lists", () => {
+  it("are the canvas's: from a collapsed combined step's calls, from calls opened in place, and dashed to stale code", () => {
+    // The page desktop's read_page test reads (tools/pages.test.ts): the same six arrows.
+    const CLI = "shop/cli.py#";
+    const START = "entrance:shop/place";
+    const start: CardView = { type: "start", key: START, kind: "entrance", app: "Shop", name: "Place via the CLI", code: [{ key: CLI, state: "stale", label: "cli", path: "shop/cli.py", line: 1 }] };
+    const page = models([[START, start], [CLI, definition(drawn("07-cli"))], [PLACE, definition(drawn("place-order-shaped"))], [SAVE, leaf(SAVE)], [LOAD, leaf(LOAD)]]);
+    const arrows = computeArrows([card("start", START), card("cli", CLI, "expanded"), card("service", PLACE, "expanded"), card("save", SAVE), card("load", LOAD)], page);
+    expect(arrows.map((arrow) => [arrow.source, arrow.target, arrow.kind, arrow.dashed, arrow.calls])).toEqual([
+      ["start", "cli", "start", true, []],
+      ["cli", "service", "call", false, ["shop/cli.py#main/call:place_order"]],
+      ["cli", "load", "call", false, [LOAD_CALL]],
+      ["cli", "save", "call", false, [SAVE_CALL]],
+      ["service", "load", "call", false, [LOAD_CALL]],
+      ["service", "save", "call", false, [SAVE_CALL]],
+    ]);
   });
 });
 

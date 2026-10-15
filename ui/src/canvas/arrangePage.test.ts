@@ -9,7 +9,7 @@ const card = (id: string, at: [number, number], entrance = false): Card => (entr
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
 
 function call(source: string, target: string, port: string, order = 0): Arrow {
-  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, project: "p", kind: "call", dashed: false, order, calls: [port] };
+  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, kind: "call", dashed: false, order, calls: [port] };
 }
 
 const SIZES: Readonly<Record<string, { width: number; height: number }>> = {

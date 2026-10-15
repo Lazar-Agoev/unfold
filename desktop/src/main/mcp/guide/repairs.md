@@ -9,7 +9,8 @@ repair, one at a time, after reading the new code.
 - list_boards shows each board's health ("needs review: 2 missing · 1 broken
   connection").
 - check({board}) lists every page's problems, each with its item and the exact repair
-  calls it allows. check({page}) does one page.
+  calls it allows, as many pages as fit: pass its cursor for the rest. check({page})
+  does one page.
 - A problem's item is the id of a card, combined step, connection, resource card,
   frame, or proposed step, or, for a name, the block's key.
 
@@ -47,7 +48,9 @@ reference still means the same code". Both vouch for words, so:
 remove takes the item off the page: a card with its connections, a resource card with
 its connections, a combined step (its blocks stay), a name, a connection, or a proposed
 step. Never code. Remove only what's gone for good, or what the person asked to remove:
-a reconnect keeps everything written about the code.
+a reconnect keeps everything written about the code. A removal that takes a person's
+words (their description, name, combined step, or connection, or one going with the
+item) is refused unless replacePeopleText is true: pass it only when they asked.
 
 ## Worked example
 "I renamed OrderService.place to placeOrder. Fix my boards."

@@ -1,6 +1,5 @@
-import type { McpServer } from "@modelcontextprotocol/server";
+import type { McpServer, StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { GUIDE_TOPICS, guideText, type GuideTopic } from "./guide";
 import { INSTRUCTIONS } from "./instructions";
 import { MAX_RESULT_CHARS } from "./results";
@@ -26,12 +25,12 @@ const CALL = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\(/g;
 /** A guide topic named in text: `get_guide({topic: "diagrams"})`, `get_guide("diagrams")`, `(diagrams topic)`. */
 const TOPIC_NAMED = /get_guide\(\{\s*topic:\s*"([^"]+)"\s*\}\)|get_guide\("([^"]+)"\)|\(([a-z-]+) topic\)/g;
 
-/** Each tool's input schema, as the tools register them with the SDK, from a stand-in for its server. */
-function registered(): ReadonlyMap<string, z.ZodType> {
-  const inputs = new Map<string, z.ZodType>();
+/** Each tool's arguments as JSON Schema, as the tools list them with the SDK, from a stand-in for its server. */
+function registered(): ReadonlyMap<string, Record<string, unknown>> {
+  const inputs = new Map<string, Record<string, unknown>>();
   const server = {
-    registerTool(name: string, config: { readonly inputSchema: z.ZodType }) {
-      inputs.set(name, config.inputSchema);
+    registerTool(name: string, config: { readonly inputSchema: StandardSchemaWithJSON }) {
+      inputs.set(name, config.inputSchema["~standard"].jsonSchema.input({ target: "draft-2020-12" }));
     },
   } as unknown as McpServer;
   for (const tool of TOOLS) {
@@ -65,10 +64,10 @@ const TOOL_NAMES: ReadonlySet<string> = new Set(TOOLS.map((tool) => tool.name));
 const CALL_WITH_ARGUMENTS = new RegExp(`\\b(${[...TOOL_NAMES].join("|")})\\(\\{`, "g");
 /** Each tool's top-level arguments, by tool name. */
 const ARGUMENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
-  [...registered()].map(([name, input]) => [name, new Set(Object.keys((z.toJSONSchema(input) as { properties?: object }).properties ?? {}))]),
+  [...registered()].map(([name, input]) => [name, new Set(Object.keys((input as { properties?: object }).properties ?? {}))]),
 );
 /** The tools' names and every value their arguments take (op names, repair names, kinds). */
-const VOCABULARY: ReadonlySet<string> = new Set([...TOOL_NAMES, ...[...registered().values()].flatMap((input) => [...schemaValues(z.toJSONSchema(input), new Set())])]);
+const VOCABULARY: ReadonlySet<string> = new Set([...TOOL_NAMES, ...[...registered().values()].flatMap((input) => [...schemaValues(input, new Set())])]);
 
 /** The words in `text` written like tool names that aren't a tool's or one of its arguments' values. */
 function unknownWords(text: string, known: ReadonlySet<string>): string[] {

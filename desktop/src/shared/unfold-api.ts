@@ -7,6 +7,7 @@
  * transport level they are `unknown`. Window commands are handled by the main process and typed here.
  */
 
+import type { AppSettings } from "../../../ui/src/ipc/generated";
 import type { AgentShellEvent, AgentWindowCommands } from "./agent-api";
 import type { RenderShellEvent, RenderWindowCommands } from "./render-api";
 
@@ -126,6 +127,12 @@ export interface WindowCommands extends AgentWindowCommands, RenderWindowCommand
    * folder stays."). The UI then calls the engine's `remove_project`.
    */
   confirm_remove_project: { args: { name: string }; result: { confirmed: boolean } };
+  /**
+   * Save the app settings (Settings): the main process sends the engine's `set_settings`, which no
+   * window may send, since the editor command is a program `open_in_editor` runs. Resolves with the
+   * settings as saved; rejects with the engine's error (`invalid_args`).
+   */
+  save_settings: { args: { settings: AppSettings }; result: AppSettings };
   /**
    * Export a page of a board this window holds as a PNG image: the main process shows the save dialog
    * (default name from `title`, `.png`), draws the page in the render window (unsaved edits included)

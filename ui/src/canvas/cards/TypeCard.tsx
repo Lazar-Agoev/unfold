@@ -15,6 +15,7 @@
  * `</>` opens that field's line (an inherited one in its base).
  */
 
+import { fieldRows, type FieldRef, type FieldRow } from "@unfold/desktop/drawing";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { CodeButton } from "../../code/CodeButton";
@@ -26,7 +27,7 @@ import { useEngineQuery } from "../../ipc/queries";
 import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { isMissing } from "../../state/cards";
 import { useCodeHover } from "../../state/codePanel";
-import { NODE_PORT, fieldPort, fieldRows, type FieldRef, type FieldRow } from "../arrows";
+import { NODE_PORT, fieldPort } from "../arrows";
 import { useMeasure } from "../measure";
 import { fieldTexts, headerText, listedFields, typeCardWidth } from "../sizing";
 import { useCardMenu } from "./cardMenu";

@@ -10,13 +10,14 @@
  * the code panel open the same menu (`ReviewButton`).
  */
 
+import { flowBlocks, type DrawnBlock } from "@unfold/desktop/drawing";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Popover, SearchField, TextButton, showToast, useContextMenu, type MenuEntry } from "../../components";
 import { useEngineQuery } from "../../ipc";
 import type { CardView, HealthItem, HealthKind, Key, Page, ProjectId, RepairKind, Target } from "../../ipc/generated";
 import { toUnfoldError } from "../../ipc/unfold";
 import { findCard, findPage, getOpenBoard, itemsFor, kindWord, repairBoard, repairEffect, repairLabel, repairSpec, useOpenBoard, type PageTarget } from "../../state/boards";
-import { cardsDrawing, fetchCard, flowBlocks, overlayIds, type DrawnBlock } from "../../state/cards";
+import { cardsDrawing, fetchCard, overlayIds } from "../../state/cards";
 
 /** What the banner says about a card's first problem. */
 const BANNER_TEXT: Readonly<Record<HealthKind, string>> = {

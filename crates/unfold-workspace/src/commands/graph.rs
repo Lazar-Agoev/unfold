@@ -1,7 +1,7 @@
 //! Commands for one card (docs/reader.md#the-drawn-flow): `card` (a
-//! definition's drawn flow with the page's overlay, the card's open paths, and Show all calls;
-//! or an app's or entrance's card), and the agent text the MCP server prints: `code_text` (the
-//! compiled tree of a definition) and `flow_text` (a drawn flow). Each wakes the card's project
+//! definition's drawn flow with the page's overlay, the card's open paths, and Show all calls,
+//! and when asked its agent text, which the MCP server prints; or an app's or entrance's card),
+//! and `code_text` (the compiled tree of a definition, for agents). Each wakes the card's project
 //! and reads its committed graph; the reader draws and prints.
 
 use std::collections::BTreeMap;
@@ -94,7 +94,7 @@ pub struct ProposalArg {
     pub title: String,
 }
 
-/// The arguments of `card` and `flow_text`.
+/// The arguments of `card`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardArgs {
@@ -115,6 +115,11 @@ pub struct CardArgs {
     #[serde(default)]
     #[ts(optional)]
     pub show_all_calls: Option<bool>,
+    /// Whether a definition's card comes with its agent text, for the MCP server (off when
+    /// absent).
+    #[serde(default)]
+    #[ts(optional)]
+    pub agent_text: Option<bool>,
 }
 
 /// A card.
@@ -125,6 +130,10 @@ pub enum CardView {
     Definition {
         /// The drawn flow.
         flow: Box<DrawnFlow>,
+        /// The drawn flow as agent text, when asked.
+        #[serde(rename = "agentText", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        agent_text: Option<FlowText>,
     },
     /// An app's or entrance's card.
     Start(StartCard),
@@ -187,7 +196,8 @@ pub struct StartTarget {
 }
 
 /// `card`: an app's or entrance's card, or a definition's drawn flow shaped by the page's
-/// overlay, with the calls it opens in place drawn inside it.
+/// overlay, with the calls it opens in place drawn inside it, and when asked the same flow as
+/// agent text: one drawing for both.
 pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
     let key = key_arg(&args.key)?;
     let (overlay, open) = (overlay(args.overlay)?, open_paths(args.open)?);
@@ -196,6 +206,7 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
     let highlighters = workspace.highlighters();
     let sources = text_sources(&workspace, &highlighters);
     let show_all_calls = args.show_all_calls.unwrap_or(false);
+    let agent_text = args.agent_text.unwrap_or(false);
     reader
         .snapshot(|reader| {
             let apps = reader.apps()?;
@@ -205,13 +216,28 @@ pub fn card(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<CardView> {
             let Some(trees) = trees(reader, key, &open)? else {
                 return Ok(None);
             };
-            Ok(draw(&trees, &sources, key, &overlay, open, show_all_calls)
-                .map(|flow| CardView::Definition { flow: Box::new(flow) }))
+            let Some(block) = trees.block(key) else {
+                return Ok(None);
+            };
+            let card = drawing::Card {
+                definition: block.key().clone(),
+                open,
+                show_all_calls,
+            };
+            Ok(
+                drawing::draw(&trees, &sources, &overlay, &card).map(|flow| CardView::Definition {
+                    agent_text: agent_text.then(|| FlowText {
+                        text: drawing::flow_text(&flow),
+                        labels: drawing::labels(block.tree, block.id),
+                    }),
+                    flow: Box::new(flow),
+                }),
+            )
         })?
         .ok_or_else(|| CommandError::not_found(format!("no card `{key}`")))
 }
 
-/// The agent text of a drawn flow.
+/// A drawn flow as agent text (docs/reader.md#agent-text).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowText {
@@ -220,35 +246,6 @@ pub struct FlowText {
     /// Each block of the card's definition by its short label (relative to the definition, as
     /// agents write it) and full key, so a short label maps to a key by lookup.
     pub labels: Vec<CodeLabel>,
-}
-
-/// `flow_text`: a definition's drawn flow as agent text, shaped like `card`'s, with the label
-/// to key map of the definition's blocks.
-pub fn flow_text(ctx: &Ctx<'_>, args: CardArgs) -> CommandResult<FlowText> {
-    let key = key_arg(&args.key)?;
-    let (overlay, open) = (overlay(args.overlay)?, open_paths(args.open)?);
-    let workspace = ctx.live(&args.project)?;
-    let reader = workspace.readers()?.get()?;
-    let highlighters = workspace.highlighters();
-    let sources = text_sources(&workspace, &highlighters);
-    let show_all_calls = args.show_all_calls.unwrap_or(false);
-    reader
-        .snapshot(|reader| {
-            let Some(trees) = trees(reader, key, &open)? else {
-                return Ok(None);
-            };
-            let labels = match trees.block(key) {
-                Some(block) => drawing::code_text(block.tree, &sources, block.id).labels,
-                None => Vec::new(),
-            };
-            Ok(
-                draw(&trees, &sources, key, &overlay, open, show_all_calls).map(|flow| FlowText {
-                    text: drawing::flow_text(&flow),
-                    labels,
-                }),
-            )
-        })?
-        .ok_or_else(|| no_definition(key))
 }
 
 /// `code_text`: the compiled tree of a definition, for `read_code`: each block it owns with its
@@ -312,23 +309,6 @@ fn trees(reader: &Reader, key: &str, open: &[Vec<Key>]) -> unfold_store::Result<
         load_callees(reader, &mut trees, path)?;
     }
     Ok(Some(trees))
-}
-
-/// The drawn flow of definition `key`, whose [`trees`] are loaded.
-fn draw(
-    trees: &Trees,
-    sources: &TextSources<'_>,
-    key: &str,
-    overlay: &Overlay,
-    open: Vec<Vec<Key>>,
-    show_all_calls: bool,
-) -> Option<DrawnFlow> {
-    let card = drawing::Card {
-        definition: trees.block(key)?.key().clone(),
-        open,
-        show_all_calls,
-    };
-    drawing::draw(trees, sources, overlay, &card)
 }
 
 /// Loads the files of the callees an open path reaches, outermost first: a project call opens

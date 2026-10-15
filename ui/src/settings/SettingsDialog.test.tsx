@@ -26,11 +26,8 @@ async function open(
   setSettings: (args: { readonly settings: AppSettings }) => AppSettings = ({ settings }) => settings,
 ) {
   const fake = installFakeEngine({
-    handlers: {
-      get_settings: () => saved,
-      set_settings: setSettings,
-    },
-    windowHandlers: { agent_server_status: () => status },
+    handlers: { get_settings: () => saved },
+    windowHandlers: { agent_server_status: () => status, save_settings: (args) => setSettings(args as { readonly settings: AppSettings }) },
   });
   engine = fake;
   const onClose = vi.fn();
@@ -38,6 +35,9 @@ async function open(
   const dialog = await screen.findByRole("dialog", { name: "Settings" });
   return { fake, dialog, onClose, user: userEvent.setup() };
 }
+
+/** What the dialog saved, through the main process (`save_settings`). */
+const saves = (fake: FakeEngine) => fake.windowCalls.filter((call) => call.command === "save_settings").map((call) => call.args);
 
 const editorField = (dialog: HTMLElement) => within(dialog).getByRole("textbox", { name: "Editor command" });
 const agents = (dialog: HTMLElement) => within(dialog).getByRole("region", { name: "Agents" });
@@ -52,7 +52,7 @@ describe("Settings › Editor", () => {
     await user.type(field, " zed {{path}:{{line} ");
     await user.tab();
     await waitFor(() => {
-      expect(fake.callsOf("set_settings")).toEqual([{ settings: { editorCommand: "zed {path}:{line}" } }]);
+      expect(saves(fake)).toEqual([{ settings: { editorCommand: "zed {path}:{line}" } }]);
     });
   });
 
@@ -61,7 +61,7 @@ describe("Settings › Editor", () => {
     await user.clear(editorField(dialog));
     await user.keyboard("{Enter}");
     await waitFor(() => {
-      expect(fake.callsOf("set_settings")).toEqual([{ settings: {} }]);
+      expect(saves(fake)).toEqual([{ settings: {} }]);
     });
   });
 
@@ -71,7 +71,7 @@ describe("Settings › Editor", () => {
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(fake.callsOf("set_settings")).toEqual([{ settings: { editorCommand: "subl" } }]);
+      expect(saves(fake)).toEqual([{ settings: { editorCommand: "subl" } }]);
     });
   });
 
@@ -89,12 +89,12 @@ describe("Settings › Editor", () => {
     await user.type(editorField(dialog), "subl");
     await user.tab();
     await waitFor(() => {
-      expect(fake.callsOf("set_settings")).toHaveLength(1);
+      expect(saves(fake)).toHaveLength(1);
     });
     await user.click(editorField(dialog));
     await user.tab();
     await waitFor(() => {
-      expect(fake.callsOf("set_settings")).toEqual([{ settings: { editorCommand: "subl" } }, { settings: { editorCommand: "subl" } }]);
+      expect(saves(fake)).toEqual([{ settings: { editorCommand: "subl" } }, { settings: { editorCommand: "subl" } }]);
     });
   });
 
@@ -102,7 +102,7 @@ describe("Settings › Editor", () => {
     const { dialog, fake, onClose, user } = await open({ editorCommand: "subl" });
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(fake.callsOf("set_settings")).toEqual([]);
+    expect(saves(fake)).toEqual([]);
   });
 });
 

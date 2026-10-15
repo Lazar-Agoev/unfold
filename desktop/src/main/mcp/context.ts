@@ -9,12 +9,13 @@
 import type { AgentBoardRef, AgentIdentity, AgentPage } from "../../shared/agent-api";
 import type { AddedProject } from "../../shared/unfold-api";
 import type { AgentBridge } from "../agents/bridge";
-import { parseLink, resolveLink, type ResolvedLink } from "../agents/links";
+import { parseLink, projectsNamed, resolveLink, sharedName, type ResolvedLink } from "../agents/links";
 import type { PageRenderer } from "../agents/render";
-import { pageRevision } from "../agents/revision";
+import { pageRevision } from "../../shared/revision";
 import type { ViewTracker } from "../agents/views";
 import { EngineRequestError } from "../engine-host";
 import type { CommandArgs, CommandName, CommandResult, ProjectRow } from "./engine-types";
+import { clip } from "./format";
 import { cant, header, ToolError, windowRefusal, type ResultPlace } from "./results";
 
 /** What tools ask of the render window: page images and page checks. */
@@ -60,7 +61,10 @@ export interface ToolContext {
   held<C extends CommandName>(board: AgentBoardRef, command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
   /** The workspace's projects, in its order (read once per call). */
   projects(): Promise<readonly ProjectRow[]>;
-  /** A project by id, by name, or by a link to one of its boards. */
+  /**
+   * A project by id, by its folder's name (refused when several projects' folders have it), or by a
+   * link to one of its boards.
+   */
   project(reference: string): Promise<ProjectRow>;
   /** A link the person pasted, with its project resolved to an id. */
   link(text: string): Promise<ResolvedLink>;
@@ -128,10 +132,13 @@ export function toolContext(services: McpServices, agent: AgentIdentity, signal:
     },
     async project(reference) {
       const rows = await context.projects();
-      const id = reference.trim().toLowerCase().startsWith("unfold://") ? (await context.link(reference)).project : reference.trim();
-      const row = rows.find((project) => project.id === id) ?? rows.find((project) => project.name === id);
+      const named = reference.trim().toLowerCase().startsWith("unfold://") ? (await context.link(reference)).project : reference.trim();
+      const [row, ...others] = projectsNamed(rows, named);
       if (!row) {
-        throw cant("find the project", `no project named or with the id “${reference}” is in the workspace`, "list_projects shows each project's name and id.");
+        throw cant("find the project", `no project named or with the id “${clip(named, 60)}” is in the workspace`, "list_projects shows each project's name and id.");
+      }
+      if (others.length > 0) {
+        throw cant("tell which project you mean", sharedName(named, [row, ...others]), "Pass the project's id.");
       }
       return row;
     },

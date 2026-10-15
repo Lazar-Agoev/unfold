@@ -130,6 +130,28 @@ describe("add_project", () => {
   });
 });
 
+describe("save_settings", () => {
+  it("saves the Settings dialog's settings with the trusted set_settings, which no window may send itself", async () => {
+    const { engine, open, invoke } = setup();
+    const entry = open();
+    engine.answers.set("set_settings", (args) => Promise.resolve(args["settings"]));
+    expect(await invoke(entry, "save_settings", { settings: { editorCommand: "zed {path}:{line}" } })).toEqual({ ok: true, value: { editorCommand: "zed {path}:{line}" } });
+    expect(engine.commands()).toEqual([[entry.id, "set_settings", { settings: { editorCommand: "zed {path}:{line}" } }]]);
+  });
+
+  it("refuses settings that aren't an object, and passes on the engine's refusal", async () => {
+    const { engine, open, invoke } = setup();
+    const entry = open();
+    expect(await invoke(entry, "save_settings", { settings: "zed" })).toMatchObject({ ok: false, error: { code: "invalid_command" } });
+    expect(engine.commands()).toEqual([]);
+    engine.answers.set("set_settings", () => Promise.reject(new EngineRequestError({ code: "invalid_args", message: "the editor command contains a NUL character" })));
+    expect(await invoke(entry, "save_settings", { settings: { editorCommand: "zed\u0000" } })).toEqual({
+      ok: false,
+      error: { code: "invalid_args", message: "the editor command contains a NUL character" },
+    });
+  });
+});
+
 describe("confirm_remove_project", () => {
   it("asks with the project's name and reports the answer", async () => {
     const { engine, open, invoke } = setup();

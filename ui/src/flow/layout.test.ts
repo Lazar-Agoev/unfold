@@ -1,6 +1,6 @@
+import { flowBlocks } from "@unfold/desktop/drawing";
 import { describe, expect, it } from "vitest";
 import type { DrawnFlow, Key, Route, Step } from "../ipc/generated";
-import { flowBlocks } from "../state/cards";
 import { callbackText, layoutFlow, type FlowGeometry, type FlowPiece, type FlowWire, type Measure, type Rect } from "./layout";
 
 /** The reader's drawn flows of the nine examples and the shaped `place_order`, as the IPC sends them. */

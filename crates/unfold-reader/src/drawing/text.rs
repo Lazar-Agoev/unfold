@@ -4,8 +4,8 @@
 //!
 //! Both carry each block's full key at the end of its line, after `key=` (the calls listed on
 //! the line's calls too), so the server can turn the short label an agent writes into a key by
-//! looking it up, never by joining or splitting key text. [`CodeText::labels`] holds the same
-//! lookup for the compiled tree.
+//! looking it up, never by joining or splitting key text. [`labels`] is that lookup, read from
+//! the tree alone.
 //!
 //! The drawn flow's marks: `▸` a project call (it opens in place), `□` another box (a named or
 //! callback-taking library or unknown call), `·` a thin row, `?` an unknown call, `+` the calls
@@ -685,6 +685,22 @@ fn short_label(definition: &Key, key: &Key) -> String {
     key.steps_after(definition).unwrap_or_else(|| key.to_string())
 }
 
+/// Each block definition `definition` of `tree` owns, by its short label and full key, in the
+/// order the compiled tree lists them: by first line, in tree order within a line. It reads the
+/// tree alone, never the file.
+pub fn labels(tree: &FileTree, definition: u32) -> Vec<CodeLabel> {
+    let key = tree.key(definition);
+    let mut blocks: Vec<u32> = tree.owned(definition).collect();
+    blocks.sort_by_key(|&id| tree.node(id).lines.start);
+    blocks
+        .into_iter()
+        .map(|id| CodeLabel {
+            label: short_label(key, tree.key(id)),
+            key: tree.key(id).clone(),
+        })
+        .collect()
+}
+
 /// How wide the compiled tree's labels are aligned: a longer label is followed by one space, so
 /// a few deep receiver chains don't pad every row.
 const ALIGNED: usize = 40;
@@ -774,7 +790,6 @@ pub fn code_text(tree: &FileTree, sources: &TextSources<'_>, definition: u32) ->
         .max()
         .unwrap_or(0)
         .min(ALIGNED);
-    let mut labels = Vec::new();
     for row in rows {
         let length = row.label.chars().count();
         let padding = if length <= label_width {
@@ -792,14 +807,13 @@ pub fn code_text(tree: &FileTree, sources: &TextSources<'_>, definition: u32) ->
         );
         if let Some(key) = row.key {
             let _ = write!(out, "   key={key}");
-            labels.push(CodeLabel {
-                label: row.label,
-                key,
-            });
         }
         out.push('\n');
     }
-    CodeText { text: out, labels }
+    CodeText {
+        text: out,
+        labels: labels(tree, definition),
+    }
 }
 
 /// How the compiled tree describes block `id`: what it calls, binds, or tests.

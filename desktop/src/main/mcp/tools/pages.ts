@@ -4,20 +4,22 @@
  * `list_boards` lists a project's boards (`list_boards`, which never wakes a project), last edited
  * first, with each board's pages from its file (`read_board`). `read_page` reads a page as the
  * window holding its board has it (unsaved edits included), else as its file has it, then the code
- * of its cards, so it can say what the board draws between them, how each card shows (compact or
- * expanded, and the calls it opens in place, with an expanded card's drawn flow from `flow_text`),
- * and where each proposed step goes, with a note when its anchor is missing or held (from the
- * board's health while a window holds the board).
+ * of its cards (`card`, each drawn once), so it can say how each card shows (compact or expanded, and
+ * the calls it opens in place, with an expanded card's drawn flow as agent text), the arrows the board
+ * draws between them (the canvas's own `pageArrows`), and where each proposed step goes, with a note
+ * when its anchor is missing or held (from the board's health while a window holds the board). A long
+ * page's cursors page the lines its first page drew, while the page's revision holds.
  */
 
 import { z } from "zod";
 import type { AgentBoardRef, AgentIdentity } from "../../../shared/agent-api";
+import type { PageArrow } from "../../../shared/drawing";
 import type { ToolContext } from "../context";
 import type { Anchor, BoardHealthView, BoardSummary, Connection, Frame, Page, Proposal, Resource } from "../engine-types";
 import { authorText, callPathText, clip, count, joined, place, typeText } from "../format";
 import { cardView, pageCode, type CardCode, type PageCode } from "../page-code";
 import { nextLine, paged, pagedLines, textResult } from "../results";
-import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type ReadPage } from "../target";
+import { currentView, readPage as loadPage, pagePlace, projectOrView, resolveBoard, type BoardTarget, type ReadPage } from "../target";
 import { defineTool } from "../tool";
 
 /** Boards per page of `list_boards`. */
@@ -67,7 +69,7 @@ export const listBoards = defineTool({
   title: "List boards",
   description:
     'A project\'s boards, last edited first: each board\'s title and id, its pages with their ids, folder, when it was last edited, card count, health ("needs review: 1 missing · 2 outdated"; check lists the problems and their repairs), and whether it is open in Unfold or in view; then the empty folders. project is a name, id, or link (default: the project of the board in view, else the only project). Pass a board\'s and a page\'s id to read_page, check, and the tools that build pages. Reading changes nothing.',
-  input: z.object({
+  input: z.strictObject({
     project: z.string().min(1).optional().describe("The project's name or id, or a link to one of its boards"),
     cursor: cursorArg,
   }),
@@ -257,6 +259,33 @@ function proposalLine(proposal: Proposal, health: ProposalHealth, agent: AgentId
   ])}`;
 }
 
+/** A type arrow's field: its name (`=` for an alias's aliased type), with `from <Base>` for an inherited one. */
+function fieldName(code: PageCode, arrow: Extract<PageArrow, { kind: "type" }>): string {
+  const { member, base } = arrow.field;
+  if (!member) {
+    return "=";
+  }
+  const name = member.name ?? `(${member.kind})`;
+  const from = base !== undefined ? code.cards.get(arrow.source)?.definition?.inherited[base]?.from.text : undefined;
+  return from !== undefined ? `from ${from}: ${name}` : name;
+}
+
+/**
+ * An arrow's line: its ends, then what it stands for: its calls, each with the key read_call takes;
+ * the code an app or entrance starts at; or the field and its written type.
+ */
+function arrowLine(page: Page, code: PageCode, arrow: PageArrow): string {
+  const ends = `- ${named(page, code, arrow.source)} → ${named(page, code, arrow.target)}`;
+  switch (arrow.kind) {
+    case "call":
+      return `${ends}: calls ${arrow.calls.map((call) => `${call.callee} (call key ${call.call})`).join(", ")}`;
+    case "start":
+      return `${ends}: starts at ${arrow.code.label ?? arrow.code.key}${arrow.dashed ? ", dashed: its file doesn't parse, so it shows its last good code" : ""}`;
+    case "type":
+      return `${ends}: field ${fieldName(code, arrow)}: ${typeText(arrow.field.type)}`;
+  }
+}
+
 /** The page's items, section by section, as lines. */
 function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalHealth, agent: AgentIdentity): string[] {
   const frames = new Map((page.frames ?? []).flatMap((frame) => frame.members.map((member) => [member, frame.id] as const)));
@@ -279,10 +308,8 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalH
     (note) =>
       `- note ${note.id}, ${note.attach !== undefined ? `attached to ${named(page, code, note.attach)} at offset [${note.at.join(", ")}]` : `free at [${note.at.join(", ")}]`}, by ${authorText(note.author, agent)}: “${note.text}”`,
   );
-  const arrows = code.arrows.map(
-    (arrow) => `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: ${arrow.call !== undefined ? `calls ${arrow.text} (call key ${arrow.call})` : `starts at ${arrow.text}`}`,
-  );
-  const typeArrows = code.typeArrows.map((arrow) => `- ${named(page, code, arrow.from)} → ${named(page, code, arrow.to)}: field ${arrow.field}: ${typeText(arrow.type)}`);
+  const arrows = code.arrows.filter((arrow) => arrow.kind !== "type").map((arrow) => arrowLine(page, code, arrow));
+  const typeArrows = code.arrows.filter((arrow) => arrow.kind === "type").map((arrow) => arrowLine(page, code, arrow));
   return [
     ...(page.cards.length > 0 ? [`Cards (${page.cards.length}):`, ...cards] : []),
     ...section("Names", names),
@@ -297,12 +324,37 @@ function pageLines(page: Page, read: ReadPage, code: PageCode, health: ProposalH
   ];
 }
 
+/** A page's lines as `read_page` drew them: the page (its project, board, id, and revision) and the lines. */
+interface DrawnPage {
+  readonly page: string;
+  readonly lines: readonly string[];
+}
+
+/**
+ * The page each server read last, by the bridge its tools read pages through: a cursor of that page,
+ * at the same revision, pages these lines instead of drawing every card again.
+ */
+const drawnPages = new WeakMap<ToolContext["bridge"], DrawnPage>();
+
+/** A page's lines: as last drawn for a cursor of the same page at the same revision, else drawn now (and kept). */
+async function linesOf(context: ToolContext, target: BoardTarget, read: ReadPage, cursor: string | undefined): Promise<readonly string[]> {
+  const page = JSON.stringify([target.project.id, target.board.id, read.page.id, read.revision]);
+  const kept = drawnPages.get(context.bridge);
+  if (cursor !== undefined && kept?.page === page) {
+    return kept.lines;
+  }
+  const [code, health] = await Promise.all([pageCode(context, target.project, read.page), proposalHealth(context, target.board, read.page)]);
+  const lines = pageLines(read.page, read, code, health, context.agent);
+  drawnPages.set(context.bridge, { page, lines });
+  return lines;
+}
+
 export const readPage = defineTool({
   name: "read_page",
   title: "Read page",
   description:
     'Everything on a page, with ids: cards (name, file:line, key, compact or expanded and the calls each opens in place, frame, position and measured size, description and who wrote it; an expanded card\'s drawn flow, each line ending with its blocks\' keys), names, combined steps, frames as a tree, resource cards (kind, name, type, columns, anchors), connections (kind, ends, the call they leave from, channel, carried type, anchors, label), notes, proposed steps (title, reason, who proposed it, the block they go after or the body they start, and a note when that anchor is missing or held), the arrows Unfold draws for calls (each with the call key read_call takes) and from apps and entrances to their code, and type arrows from a field to a type. It reads the page as the window holding the board has it, unsaved edits included, else as its file has it. page is an id or a link (default: the page in view); a board without a page reads its first page. Long pages come in pages: pass cursor. The result\'s rev is the page\'s revision: pass it as expectRevision to the next edit. Reading changes nothing.',
-  input: z.object({
+  input: z.strictObject({
     board: z.string().min(1).optional().describe("A board's id or a link (default: the board in view)"),
     page: z.string().min(1).optional().describe("A page's id or a link (default: the page in view)"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),
@@ -312,8 +364,7 @@ export const readPage = defineTool({
   async run({ board, page, project, cursor }, context) {
     const target = await resolveBoard(context, { board, page, project });
     const read = await loadPage(context, target.board, target.page);
-    const [code, health] = await Promise.all([pageCode(context, target.project, read.page), proposalHealth(context, target.board, read.page)]);
-    const lines = pageLines(read.page, read, code, health, context.agent);
+    const lines = await linesOf(context, target, read, cursor);
     const shown = pagedLines(lines, cursor, LINES_PER_PAGE);
     return textResult(
       context.header(pagePlace(target.project, read)),

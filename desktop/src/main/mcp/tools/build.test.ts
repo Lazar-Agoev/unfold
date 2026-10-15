@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import entrances from "../../../../../testdata/workspace/commands/entrances.json";
 import type { AgentEditRequest, AgentItemResult, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
+import { pageRevision } from "../../../shared/revision";
 import type { EntrancesView, Page, ReadBoardResult } from "../engine-types";
 import { addCards, arrangePage, removeItems, setView } from "./build";
 import { harness, PROJECT, recorded } from "./testing";
@@ -18,14 +18,21 @@ const PAGE: AgentPage = { id: "page-1", title: "Placing an order", defaultView: 
 const ENGINE = { entrances: () => recorded<EntrancesView>(entrances) };
 const SAVED: AgentPage = { ...PAGE, cards: [{ id: "create-order", ref: { block: CREATE_ORDER }, at: [0, 0] }] };
 
-/** A window that holds the board, reads `PAGE`, and saves an edit as `items`. */
+/** The window's refusal of an edit whose expected revision isn't `PAGE`'s. */
+function mismatch(expected: string) {
+  return { ok: false, code: "revision_mismatch", message: `The page changed since you read it (rev ${expected}, now rev ${pageRevision(PAGE)}). Read it again, then make the change.` };
+}
+
+/** A window that holds the board, reads `PAGE`, and saves an edit as `items` (refusing one made on another revision, as it does). */
 function window(items: readonly AgentItemResult[], warnings: readonly string[] = []) {
   return (request: AgentShellEvent): unknown => {
     switch (request.type) {
       case "agent_read":
         return { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } };
       case "agent_edit":
-        return { ok: true, page: SAVED, board: BOARD_INFO, items, warnings };
+        return request.expectRevision !== undefined && request.expectRevision !== pageRevision(PAGE)
+          ? mismatch(request.expectRevision)
+          : { ok: true, page: SAVED, board: BOARD_INFO, items, warnings };
       case "agent_open_board":
         return { ok: true };
       default:
@@ -93,12 +100,12 @@ describe("add_cards", () => {
     ]);
   });
 
-  it("checks the revision the agent read, and teaches from the window's refusals", async () => {
+  it("sends the revision the agent read for the window to check, and teaches from the window's refusals", async () => {
     const test = harness({ engine: ENGINE, window: window([]) });
     inView(test);
     const stale = await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: "0123abcd" });
-    expect(stale).toMatchObject({ isError: true, text: `The page changed since you read it (rev 0123abcd, now rev ${pageRevision(PAGE)}). Read it again, then make the change. read_page reads it, with its new rev.` });
-    expect(edits(test)).toEqual([]);
+    expect(stale).toMatchObject({ isError: true, text: `${mismatch("0123abcd").message} read_page reads it, with its new rev.` });
+    expect(edits(test)).toMatchObject([{ title: "Add cards", expectRevision: "0123abcd" }]);
     expect((await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: pageRevision(PAGE) })).isError).toBe(false);
     expect((await test.call(addCards, { cards: [{ key: CREATE_ORDER }], expectRevision: "rev 18" })).text).toContain("expectRevision is a page's revision");
 
@@ -188,7 +195,7 @@ describe("arrange_page", () => {
     expect(edits(test)[0]?.ops).toEqual([{ op: "arrange", frame: "server", direction: "down", moves: [{ id: "a", rightOf: "b" }, { id: "c", at: [1, 2] }] }]);
     expect(text).toContain("- createOrder (card id create-order, updated) at [80, 120]");
     const twice = await test.call(arrangePage, { moves: [{ id: "a", rightOf: "b", below: "c" }] });
-    expect(twice).toMatchObject({ isError: true, text: "Each move takes exactly one of at, rightOf, or below." });
+    expect(twice).toMatchObject({ isError: true, text: "Can't call arrange_page: moves.0: Each move takes exactly one of at, rightOf, or below. Fix the arguments and call it again." });
   });
 });
 

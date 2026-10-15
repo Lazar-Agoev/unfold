@@ -1,13 +1,14 @@
 /**
  * Copy link: a board, a page, or an item on it (a card, frame, resource card, note, connection, or
- * proposed step) copies
- * `unfold://<project's folder name>/<board id>?page=<page id>&item=<item id>`, which a person pastes
- * into an agent's chat to point at it. Only the main process reads links; clicking one opens nothing.
+ * proposed step) copies `unfold://<project>/<board id>?page=<page id>&item=<item id>`, which a person
+ * pastes into an agent's chat to point at it. `<project>` is the project's folder name, or its id
+ * when another project's folder has the same name, so a link always names one project. Only the
+ * main process reads links; clicking one opens nothing.
  */
 
 import type { AgentLink } from "@unfold/desktop/agent-api";
 import { showToast } from "../components";
-import { toUnfoldError, windowCommand } from "../ipc";
+import { toUnfoldError, windowCommand, type ProjectId } from "../ipc";
 import type { BoardRef, PageTarget } from "../state/boards";
 import { getProjectIndex } from "../state/workspace";
 
@@ -21,9 +22,16 @@ export function boardLink(link: AgentLink): string {
   return `unfold://${encodeURIComponent(link.project)}/${board}${query.length > 0 ? `?${query.join("&")}` : ""}`;
 }
 
-/** Puts a link to `board` (and a page or item on it) on the clipboard, with the project's folder name. */
+/** How a link names project `id`: its folder's name, or its id when another project's folder has that name. */
+function linkProject(id: ProjectId): string | undefined {
+  const { rows, byId } = getProjectIndex();
+  const name = byId.get(id)?.name;
+  return name !== undefined && rows.some((row) => row.id !== id && row.name === name) ? id : name;
+}
+
+/** Puts a link to `board` (and a page or item on it) on the clipboard. */
 async function copyBoardItemLink(board: BoardRef, place: { readonly page?: string; readonly item?: string }): Promise<void> {
-  const project = getProjectIndex().byId.get(board.project)?.name;
+  const project = linkProject(board.project);
   try {
     if (project === undefined) {
       throw new Error("The board's project isn't in the workspace.");

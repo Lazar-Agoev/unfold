@@ -23,7 +23,7 @@ pub struct Ctx<'a> {
     /// Cancelled by `cancel(request)`.
     pub cancel: CancelToken,
     /// Whether the engine host marked the request as coming from the main process, which may
-    /// name absolute paths the person chose in a dialog.
+    /// name absolute paths the person chose in a dialog, and set the editor command.
     pub trusted: bool,
 }
 

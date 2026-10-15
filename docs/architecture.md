@@ -86,8 +86,9 @@ store, and reader on the previous graph. Remembered state files that are missing
 ## Security
 
 Every renderer path is relative to the named project and confined there, including symlink checks. Commands that
-take an operating-system path or keep the window's state are main-process only: the engine host marks them trusted,
-never a window's or the MCP server's requests. Engine payloads are bounded, and long requests can be cancelled.
+take an operating-system path, set a program Unfold runs (the editor command), or keep the window's state are
+main-process only: the engine host marks them trusted, never a window's or the MCP server's requests. Engine payloads
+are bounded, and long requests can be cancelled.
 
 The window and the render window use context isolation and sandboxing, without Node integration. They can't
 navigate, open windows, or get any permission, and nothing loads from the network; see

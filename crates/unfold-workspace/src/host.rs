@@ -19,8 +19,8 @@
 //! command that concerns a project names it ([`crate::projects`]). A command is
 //! `{"command": "<name>", "args": {…}}` (the [`Request`] table). The engine host may add
 //! `"trusted": true` to a command **the main process** sent (never to one a window sent):
-//! commands that take an absolute path or keep the window's state (`add_project`,
-//! `window_state`, `save_window_state`) require it.
+//! commands that take an absolute path, set the program `open_in_editor` runs, or keep the
+//! window's state (`add_project`, `set_settings`, `window_state`, `save_window_state`) require it.
 //!
 //! **Closing while a board is saved.** A window's final saves (its boards, the remembered window)
 //! and its detach travel on different channels (the window's port and the main process's

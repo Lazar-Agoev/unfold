@@ -1,30 +1,13 @@
 /**
- * What a card shows, read from what the reader drew (never from its key): how it is drawn (compact,
- * expanded, or as a type's fields), what its header says before its name, where it is, and the code
- * rows of an app's or entrance's card.
+ * What a card shows, read from what the reader drew (never from its key): what its header says before
+ * its name, where it is, and the code rows of an app's or entrance's card. How it is drawn is
+ * `cardShape` (`@unfold/desktop/drawing`).
  */
 
+import { drawsBlock, type CardShape } from "@unfold/desktop/drawing";
 import { shortPath } from "../code/text";
 import { isTypeKind, typeKindWord } from "../code/typeKinds";
-import type { CardView, Header, StartCard, StartTarget, View } from "../ipc/generated";
-
-/**
- * How a card is drawn: compact (its header; arrows leave its edge), expanded (its drawn flow, or an
- * app's or entrance's code rows; arrows leave from what makes them), or as a type's fields (a type's
- * card always, a class's while compact; calls leave its edge, type arrows its fields' rows).
- */
-export type CardShape = "compact" | "expanded" | "fields";
-
-/** How a card showing `view` is drawn in `shown` (its own view or its page's default). */
-export function cardShape(view: CardView | undefined, shown: View): CardShape {
-  if (view?.type === "definition") {
-    const { kind } = view.flow.header;
-    if (kind === "type" || (kind === "class" && shown === "compact")) {
-      return "fields";
-    }
-  }
-  return shown;
-}
+import type { Header, StartCard, StartTarget } from "../ipc/generated";
 
 /** What a definition card's header shows before its name: a glyph (`ƒ`, `λ`, `M`), or its kind's word. */
 export interface HeaderMark {
@@ -55,11 +38,6 @@ export function headerLocation(header: Pick<Header, "path" | "line">): string {
 export interface StartRow {
   readonly code: StartTarget;
   readonly index: number;
-}
-
-/** Whether a start's code has a block to draw: found, or stale (its last good block). */
-function drawsBlock(code: StartTarget): boolean {
-  return code.state === "found" || code.state === "stale";
 }
 
 /** The code rows a start card lists when expanded: the code that has a block, in order. */

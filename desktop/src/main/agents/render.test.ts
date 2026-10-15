@@ -5,6 +5,7 @@ import { EngineRequestError } from "../engine-host";
 import { createdWindows, FakeBrowserWindow, resetFakeElectron } from "../fake-electron";
 import type { BoardHealthView, HealthItem } from "../mcp/engine-types";
 import type { WindowEntry } from "../windows";
+import { AgentBridge } from "./bridge";
 import { imageFrame, PageRenderer } from "./render";
 import { ViewTracker } from "./views";
 
@@ -59,10 +60,6 @@ function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number } 
           : { ok: false as const, code: "board_not_open", message: "Unfold's window doesn't hold this board." },
       ),
     ),
-    open: vi.fn(() => {
-      views.hold(BOARD);
-      return Promise.resolve({ ok: true as const, windowId: 7 });
-    }),
   };
   let ids = 40;
   const renderer = new PageRenderer({
@@ -150,7 +147,7 @@ describe("screenshot", () => {
       requestId: expect.any(Number) as number,
     });
     expect(bridge.read).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
-    expect(engine.calls).toEqual([[7, "board_health", { project: BOARD.project, id: BOARD.id }]]);
+    expect(engine.calls).toEqual([[0, "board_health", { project: BOARD.project, id: BOARD.id }]]);
 
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 800, height: 400 } });
     const frame = await request(window, 2);
@@ -165,33 +162,37 @@ describe("screenshot", () => {
     expect(renderer.entries().map((entry) => entry.id)).toEqual([40]);
   });
 
-  it("reads a board no window holds from its file, without health, and says so", async () => {
-    const { engine, bridge, renderer } = setup();
+  it("reads a board no window holds from its file, with the health of its file", async () => {
+    const { engine, renderer } = setup();
     engine.answers.set("read_board", () => ({ document: { title: "Orders", pages: [PAGE] } }));
     const shot = renderer.screenshot({ board: BOARD, page: "page-1", item: "create-order" });
     const window = await loaded();
     const page = await request(window, 1);
-    expect(page).toMatchObject({ page: PAGE, health: null, item: "create-order" });
-    expect(engine.calls).toEqual([[0, "read_board", { project: BOARD.project, id: BOARD.id }]]);
-    expect(bridge.open).not.toHaveBeenCalled();
+    expect(page).toMatchObject({ page: PAGE, health: HEALTH.health, item: "create-order" });
+    expect(engine.calls).toEqual([
+      [0, "read_board", { project: BOARD.project, id: BOARD.id }],
+      [0, "board_health", { project: BOARD.project, id: BOARD.id }],
+    ]);
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 100, height: 50 } });
     renderer.settle((await request(window, 2)).requestId, { ok: true });
-    expect(await shot).toMatchObject({ ok: true, note: "No review banners: the board's health couldn't be read here (check reports it)." });
+    const result = await shot;
+    expect(result.ok && result.note).toBeUndefined();
   });
 
-  it("reads the board's file when the window closes as it reads, never opening it again", async () => {
+  it("reads the board's file when the window closes as it reads, and says when the health can't be read", async () => {
     const { engine, bridge, renderer } = setup({ held: true });
     engine.answers.set("read_board", () => ({ document: { title: "Orders", pages: [PAGE] } }));
+    engine.answers.set("board_health", () => {
+      throw new EngineRequestError({ code: "engine_unavailable", message: "the Unfold engine could not be loaded" });
+    });
     bridge.read.mockResolvedValueOnce({ ok: false, code: "window_closed", message: "Unfold's window closed before it answered." } as never);
     const shot = renderer.screenshot({ board: BOARD, page: "page-1" });
     const window = await loaded();
     const page = await request(window, 1);
     expect(page).toMatchObject({ page: PAGE, health: null });
-    expect(bridge.open).not.toHaveBeenCalled();
-    expect(engine.calls).toEqual([[0, "read_board", { project: BOARD.project, id: BOARD.id }]]);
     renderer.settle(page.requestId, { ok: true, bounds: { x: 0, y: 0, width: 100, height: 50 } });
     renderer.settle((await request(window, 2)).requestId, { ok: true });
-    expect((await shot).ok).toBe(true);
+    expect(await shot).toMatchObject({ ok: true, note: "No review banners: the board's health couldn't be read (the Unfold engine could not be loaded)." });
   });
 
   it("says when the board or the page isn't there", async () => {
@@ -310,36 +311,40 @@ describe("screenshot", () => {
 });
 
 describe("check", () => {
-  it("opens a board no window holds, and returns the page's health items with its page checks", async () => {
-    const { engine, bridge, renderer } = setup();
+  it("reads a board no window holds from its file, opening nothing, and returns the page's health items with its page checks", async () => {
+    const { engine, renderer } = setup();
     const checked = renderer.check({ board: BOARD, page: "page-1" });
     const window = await loaded();
     const page = await request(window, 1);
-    expect(page).toMatchObject({ type: "render_page", purpose: "check", health: HEALTH.health });
-    expect(bridge.open).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
-    expect(engine.calls).toEqual([[7, "board_health", { project: BOARD.project, id: BOARD.id }]]);
+    expect(page).toMatchObject({ type: "render_page", purpose: "check", page: PAGE, health: HEALTH.health });
+    expect(engine.calls).toEqual([
+      [0, "read_board", { project: BOARD.project, id: BOARD.id }],
+      [0, "board_health", { project: BOARD.project, id: BOARD.id }],
+    ]);
     renderer.settle(page.requestId, { ok: true, checks: [STRAYS] });
-    expect(await checked).toEqual({ ok: true, title: "Orders", page: "page-1", pageTitle: "Page page-1", health: [OUTDATED], checks: [STRAYS] });
+    expect(await checked).toEqual({ ok: true, title: "Orders", page: "page-1", pageTitle: "Placing an order", health: [OUTDATED], checks: [STRAYS] });
   });
 
-  it("opens the board again when the window its report named no longer holds it", async () => {
-    const { engine, bridge, renderer } = setup({ held: true });
-    bridge.read.mockImplementationOnce(() => {
-      // The real bridge forgets the board the window no longer holds.
-      bridge.views.release(BOARD);
-      return Promise.resolve({ ok: false, code: "board_not_open", message: "Not here." } as never);
-    });
-    const checked = renderer.check({ board: BOARD, page: "page-1" });
+  it("never opens a closed window: the bridge's read refuses, and the page comes from the file", async () => {
+    const engine = new FakeEngine();
+    const openWindow = vi.fn(() => Promise.reject(new Error("check opened the window")));
+    // The app's window is closed: nothing is current, and no board is held.
+    const closed = { get: () => undefined, current: () => undefined, deliver: () => undefined, focus: () => undefined };
+    const bridge = new AgentBridge({ window: closed, openWindow, views: new ViewTracker() });
+    const renderer = new PageRenderer({ ui: { kind: "app", dir: "/ui" }, bridge, engine, reserveId: () => 40 });
+    const page = renderer.check({ board: BOARD, page: "page-1" });
+    const board = renderer.checkBoard({ board: BOARD });
     const window = await loaded();
-    const page = await request(window, 1);
-    expect(bridge.open).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
-    expect(engine.calls).toEqual([[7, "board_health", { project: BOARD.project, id: BOARD.id }]]);
-    renderer.settle(page.requestId, { ok: true, checks: [] });
-    expect(await checked).toMatchObject({ ok: true, page: "page-1" });
+    renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [] });
+    expect(await page).toMatchObject({ ok: true, page: "page-1", health: [OUTDATED] });
+    renderer.settle((await request(window, 2)).requestId, { ok: true, checks: [] });
+    renderer.settle((await request(window, 3)).requestId, { ok: true, checks: [] });
+    expect(await board).toMatchObject({ ok: true, pages: [{ page: "page-1", health: [OUTDATED] }, { page: "page-2", health: [ELSEWHERE] }] });
+    expect(openWindow).not.toHaveBeenCalled();
   });
 
-  it("checks every page of a board in order", async () => {
-    const { renderer } = setup({ held: true });
+  it("checks every page of a board in order, each as the window that holds it has it", async () => {
+    const { engine, renderer } = setup({ held: true });
     const checked = renderer.checkBoard({ board: BOARD });
     const window = await loaded();
     renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [STRAYS] });
@@ -354,40 +359,19 @@ describe("check", () => {
         { page: "page-2", pageTitle: "Page page-2", health: [ELSEWHERE], checks: [] },
       ],
     });
+    // The health is read once for the board.
+    expect(engine.calls.filter(([, command]) => command === "board_health")).toHaveLength(1);
   });
 
-  it("opens the board again when the window its report named no longer holds it", async () => {
-    const { engine, bridge, renderer } = setup({ held: true });
-    // The window's report still listed the board: its first health read finds it gone.
-    let opened = 0;
-    bridge.open.mockImplementation(() => {
-      opened += 1;
-      bridge.views.hold(BOARD);
-      return Promise.resolve({ ok: true as const, windowId: 7 });
-    });
-    let reads = 0;
+  it("passes on why the board couldn't be read or checked", async () => {
+    const { engine, renderer } = setup();
     engine.answers.set("board_health", () => {
-      reads += 1;
-      if (reads === 1) {
-        throw new EngineRequestError({ code: "board_not_open", message: "The board isn't open." });
-      }
-      return HEALTH;
+      throw new EngineRequestError({ code: "board_invalid", message: "The board file isn't a board." });
     });
-    const checked = renderer.checkBoard({ board: BOARD });
-    const window = await loaded();
-    renderer.settle((await request(window, 1)).requestId, { ok: true, checks: [] });
-    renderer.settle((await request(window, 2)).requestId, { ok: true, checks: [] });
-    expect(await checked).toMatchObject({ ok: true, pages: [{ page: "page-1" }, { page: "page-2" }] });
-    expect(reads).toBe(2);
-    expect(opened).toBe(2);
-    expect(bridge.views.holds(BOARD)).toBe(true);
-  });
-
-  it("passes on why the board couldn't be opened or checked", async () => {
-    const { engine, bridge, renderer } = setup();
-    bridge.open.mockResolvedValueOnce({ ok: false, code: "board_not_found", message: "No such board." } as never);
-    expect(await renderer.check({ board: BOARD, page: "page-1" })).toEqual({ ok: false, code: "board_not_found", message: "No such board." });
-    engine.answers.delete("board_health");
+    expect(await renderer.check({ board: BOARD, page: "page-1" })).toEqual({ ok: false, code: "board_invalid", message: "The board file isn't a board." });
+    expect(await renderer.check({ board: BOARD, page: "page-9" })).toMatchObject({ ok: false, code: "page_not_found" });
+    engine.answers.delete("read_board");
     expect(await renderer.checkBoard({ board: BOARD })).toMatchObject({ ok: false, code: "board_not_found" });
+    expect(createdWindows).toEqual([]);
   });
 });

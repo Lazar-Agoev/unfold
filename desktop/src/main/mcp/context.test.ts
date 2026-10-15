@@ -10,8 +10,10 @@ vi.mock("electron", async () => (await import("../fake-electron")).electronModul
 
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 const ROWS = [
-  { id: "p-aaaaaaaaaa", name: "shop" },
-  { id: "p-bbbbbbbbbb", name: "payments" },
+  { id: "p-aaaaaaaaaa", name: "shop", path: "/code/shop" },
+  { id: "p-bbbbbbbbbb", name: "payments", path: "/code/payments" },
+  { id: "p-cccccccccc", name: "app", path: "/code/main/app" },
+  { id: "p-dddddddddd", name: "app", path: "/code/feature/app" },
 ];
 
 function setup(overrides: Partial<McpServices> = {}) {
@@ -51,6 +53,26 @@ describe("finding projects", () => {
     );
   });
 
+  it("refuses a folder name two projects share, and takes either one's id", async () => {
+    const { context } = setup();
+    await expect(context.project("app")).rejects.toThrow(
+      "Can't tell which project you mean: 2 projects have a folder named “app”: p-cccccccccc (/code/main/app), p-dddddddddd (/code/feature/app). Pass the project's id.",
+    );
+    expect((await context.project("p-dddddddddd")).path).toBe("/code/feature/app");
+    await expect(context.project("unfold://app/.unfold/boards/a.json")).rejects.toThrow("The link can't name one project: 2 projects have a folder named “app”");
+    expect((await context.project("unfold://p-dddddddddd/.unfold/boards/a.json")).id).toBe("p-dddddddddd");
+  });
+
+  it("quotes an unknown name short", async () => {
+    const { context } = setup();
+    const refused = await context.project("x".repeat(40_000)).then(
+      () => "",
+      (error: unknown) => (error instanceof Error ? error.message : ""),
+    );
+    expect(refused).toMatch(/^Can't find the project: no project named or with the id “x+…” is in the workspace\./);
+    expect(refused.length).toBeLessThan(300);
+  });
+
   it("resolves links, and says why text isn't one", async () => {
     const { context } = setup();
     expect(await context.link("unfold://shop/.unfold/boards/a.json?page=p1&item=c1")).toEqual({
@@ -60,7 +82,7 @@ describe("finding projects", () => {
       item: "c1",
     });
     await expect(context.link("https://example.com")).rejects.toThrow(ToolError);
-    await expect(context.link("unfold://elsewhere/b.json")).rejects.toThrow(/No project named “elsewhere”/);
+    await expect(context.link("unfold://elsewhere/b.json")).rejects.toThrow(/No project named or with the id “elsewhere”/);
   });
 });
 

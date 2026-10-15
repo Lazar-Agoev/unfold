@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import entrances from "../../../../../testdata/workspace/commands/entrances.json";
 import type { AgentBoardEditRequest, AgentCreateRequest, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
+import { pageRevision } from "../../../shared/revision";
 import type { BoardSummary, EntrancesView } from "../engine-types";
 import { createBoard, editPages, organizeBoards, show } from "./boards";
 import { harness, PROJECT, projectRow, recorded, refusal } from "./testing";

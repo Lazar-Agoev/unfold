@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cant, fitResult, header, MAX_RESULT_CHARS, nextLine, paged, pagedLines, textResult, ToolError, windowRefusal } from "./results";
+import { cant, errorResult, fitResult, header, MAX_RESULT_CHARS, nextLine, paged, pagedLines, textResult, ToolError, windowRefusal } from "./results";
 
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
@@ -28,6 +28,14 @@ describe("compact results", () => {
     expect(text).toMatch(/\n… Cut here to stay under about 6,000 tokens\. Ask for less: a narrower filter, or the next page\.$/);
     const short = textResult("short");
     expect(fitResult(short)).toEqual(short);
+  });
+
+  it("keep a refusal under the limit too, without asking for a next page", () => {
+    const refusal = errorResult(new ToolError(`Can't find “${"x".repeat(MAX_RESULT_CHARS * 2)}”.`));
+    const [block] = refusal.content;
+    const text = block?.type === "text" ? block.text : "";
+    expect(refusal.isError).toBe(true);
+    expect(text).toBe(`Can't find “${"x".repeat(MAX_RESULT_CHARS - 12)}\n… Cut here to stay under about 6,000 tokens.`);
   });
 });
 

@@ -4,7 +4,7 @@ import cardPlaceAnOrder from "../../../../../testdata/workspace/commands/card_pl
 import codeTextCreateOrder from "../../../../../testdata/workspace/commands/code_text_create_order.json";
 import relationsCreateOrder from "../../../../../testdata/workspace/commands/relations_create_order.json";
 import type { AgentPage } from "../../../shared/agent-api";
-import type { CardView, CodeText, Relations, TypeDefinition, TypeUses } from "../engine-types";
+import type { CardView, CodeText, Relations, TypeDefinition, TypeMember, TypeUses } from "../engine-types";
 import { getRelations, readCode } from "./code";
 import { harness, PROJECT, recorded } from "./testing";
 
@@ -103,6 +103,39 @@ describe("read_code", () => {
     expect(tools.commands()).not.toContain("relations");
   });
 
+  it("pages a class's members after its tree, keeping the lines after them", async () => {
+    // A class with 120 methods: its tree has a line for each, and its members list them again.
+    const methods = Array.from({ length: 120 }, (_, index) => `fetch_records_for_report_${index}`);
+    const tree: CodeText = {
+      text: methods.map((method, index) => `L${index * 8 + 10}  ${method}${" ".repeat(20)}function · key=data-pipelines/api/data_access.py#DataAccess.${method}`).join("\n"),
+      labels: [],
+    };
+    const members: TypeMember[] = methods.map((method) => ({
+      name: method,
+      kind: "method",
+      optional: false,
+      readonly: false,
+      default: false,
+      type: { text: "(self, run_id: str, start: datetime, end: datetime) -> list[ReportRecord]", spans: [] },
+    }));
+    const tools = app({ engine: { code_text: () => tree, type_definition: () => ({ ...CART_DEFINITION, members, inherited: [] }) } });
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const { text } = await tools.call(readCode, { key: CART, ...(cursor !== undefined ? { cursor } : {}) });
+      pages += 1;
+      expect(text).not.toContain("Cut here");
+      expect(text.split("\n").at(-1)).toBe("Next: read_call with a call's key for what it sends; get_relations for callers and uses; add_cards puts it on a page.");
+      for (const [line] of text.matchAll(/^- method \w+/gm)) {
+        seen.add(line);
+      }
+      cursor = /Next page: read_code with cursor "(\d+)"/.exec(text)?.[1];
+    } while (cursor !== undefined && pages < 10);
+    expect(cursor).toBeUndefined();
+    expect(seen.size).toBe(120);
+  });
+
   it("reads an entrance: what starts it and the code it starts at", async () => {
     const tools = app();
     const { text } = await tools.call(readCode, { key: PLACE_AN_ORDER });
@@ -151,7 +184,7 @@ describe("get_relations", () => {
     const lines = text.split("\n");
     expect(lines.slice(1, 4)).toEqual([
       `createOrder: key ${CREATE_ORDER}.`,
-      "Called from 1 place:",
+      "Callers (1):",
       "- src/routes/orders.ts at src/routes/orders.ts:49, passes (key src/routes/orders.ts#; call src/routes/orders.ts#/call:ordersRouter.post)",
     ]);
     expect(lines).toContain(`- line 32: calls orderService.place → OrderService.place (key src/services/order-service.ts#OrderService.place); key ${CREATE_ORDER}/call:orderService.place`);
@@ -172,15 +205,76 @@ describe("get_relations", () => {
     const { text } = await tools.call(getRelations, { key: CART, limit: 2 });
     expect(text.split("\n").slice(1)).toEqual([
       `Cart: key ${CART}.`,
-      "Used in 3 places (1–2 here):",
+      "Uses (1–2 of 3):",
       "- total at src/cart.ts:12 (key src/cart.ts#total)",
       "- PricedCart at src/cart.ts:20, extends (key src/cart.ts#PricedCart)",
       "No board shows it yet.",
-      'More: get_relations with cursor "2".',
+      'More: get_relations with cursor "2" for the next page.',
       "Next: read_code with a key; add_cards puts code on a page.",
     ]);
     expect(tools.commands()).not.toContain("relations");
     await tools.call(getRelations, { key: CART, limit: 2, cursor: "2" });
     expect(tools.engineCalls.filter(([command]) => command === "type_uses").at(-1)?.[1]).toEqual({ project: PROJECT, key: CART, offset: 2, limit: 2 });
+  });
+
+  it("pages callers and calls with one cursor under the size guard, and keeps the lines after them", async () => {
+    // As data-pipelines/ml/train_and_forecast.py#main in pathway-agents: 290 calls, long keys.
+    const file = `data-pipelines/${"forecasting-models/".repeat(3)}train_and_forecast.py`;
+    const outgoing = Array.from({ length: 290 }, (_, index) => ({
+      call: `${file}#main/try[0]/body/for[0]/body/call:pipeline.step_${index}`,
+      line: index + 10,
+      kind: "calls" as const,
+      text: `pipeline.step_${index}`,
+      to: { outcome: "project" as const, key: `${file}#Pipeline.step_${index}` },
+      targetName: `Pipeline.step_${index}`,
+    }));
+    const callers = Array.from({ length: 130 }, (_, index) => ({
+      owner: `${file}#caller_${index}`,
+      ownerName: `caller_${index}`,
+      call: `${file}#caller_${index}/call:main`,
+      path: file,
+      line: index + 400,
+      kind: "calls" as const,
+    }));
+    const tools = app({
+      engine: {
+        relations: ({ callersOffset, callersLimit }): Relations => {
+          const offset = Number(callersOffset);
+          const page = callers.slice(offset, offset + Number(callersLimit));
+          return {
+            ...recorded<Relations>(relationsCreateOrder),
+            callers: page,
+            callersTotal: callers.length,
+            callersNext: offset + page.length < callers.length ? offset + page.length : null,
+            outgoing,
+            reachedFrom: [{ key: "entrance:pipelines/train", name: "Train the models", app: "Pipelines" }],
+          };
+        },
+      },
+    });
+    const calls = new Set<string>();
+    const callersSeen = new Set<string>();
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const { text } = await tools.call(getRelations, { key: CREATE_ORDER, limit: 100, ...(cursor !== undefined ? { cursor } : {}) });
+      pages += 1;
+      expect(text).not.toContain("Cut here");
+      expect(text).toContain(`- Order placement › Placing an order (board id ${BOARD.id}, page id page-1)`);
+      expect(text.split("\n").at(-1)).toBe("Next: read_code with a key; add_cards puts code on a page.");
+      if (cursor === undefined) {
+        expect(text).toContain("Reached at least from: Train the models in Pipelines (key entrance:pipelines/train).");
+      }
+      for (const [, key] of text.matchAll(/; key (\S+)$/gm)) {
+        calls.add(key ?? "");
+      }
+      for (const [, key] of text.matchAll(/\(key (\S+); call /g)) {
+        callersSeen.add(key ?? "");
+      }
+      cursor = /More: get_relations with cursor "(\d+)"/.exec(text)?.[1];
+    } while (cursor !== undefined && pages < 20);
+    expect(cursor).toBeUndefined();
+    expect(calls.size).toBe(290);
+    expect(callersSeen.size).toBe(130);
   });
 });

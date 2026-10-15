@@ -5,7 +5,8 @@
  * offers tools and the instructions; no prompts, resources, sampling, roots, or logging.
  *
  * Every tool call goes through one wrapper: it works out who is calling, builds the call's context,
- * turns a `ToolError` into a refusal the agent reads, and keeps the result under about 6,000 tokens.
+ * turns a `ToolError` (a refusal of the arguments too) into a refusal the agent reads, and keeps every
+ * answer, a refusal too, under about 6,000 tokens.
  */
 
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";

@@ -2,17 +2,19 @@
  * Shape a card: `shape_card`, a card's whole shaping in one call.
  *
  * The agent names blocks by short label (`try[0]/except[0]`, `call:save_order`) or full key. A short
- * label names one of the card's own blocks, by lookup in the card's label map (`code_text`); a block of
- * a call the card opens in place is named by its full key, except in an open path, whose later blocks
- * map in the label map of what the block before it opens (the callee drawn in place, as `card` draws
- * it). An app's or entrance's card, or a type card, draws no flow: it takes only a description. The
- * window applies the shaping as one undo step, and the board's save checks every key and the overlay
- * rules. The result is the shaped card as `flow_text` prints it; a refusal of a key or a rule lists the
- * blocks the agent can choose from instead.
+ * label names one of the card's own blocks, by lookup in the card's label map (which `card` returns
+ * with its agent text); a block of a call the card opens in place is named by its full key, except in
+ * an open path, whose later blocks map in the label map of what the block before it opens (the callee
+ * drawn in place, as `card` draws it). An app's or entrance's card, or a type card, draws no flow
+ * (`flowless`): it takes only a description, and the window refuses anything else on it. The window
+ * applies the shaping as one undo step, and the board's save checks every key and the overlay rules.
+ * The result is the shaped card's agent text; a refusal of a key or a rule lists the blocks the agent
+ * can choose from instead.
  */
 
 import { z } from "zod";
 import type { AgentCallPath, ShapeCardOp } from "../../../shared/agent-api";
+import { flowless } from "../../../shared/drawing";
 import type { ToolContext } from "../context";
 import type { CardView, Page, ProjectRow } from "../engine-types";
 import { applyEdit, defined, editResult, editTarget, expectRevision, itemLine, itemsHeading, localIds, pageArgs, type AppliedEdit, type EditTarget } from "../edits";
@@ -25,22 +27,16 @@ import { defineTool } from "../tool";
 /** The refusal that comes from the shaping itself (the save's check of a key or an overlay rule), which the blocks to choose from answer. */
 const SHAPING_REFUSAL = "board_problem";
 
-/** A definition's label map, or none when it has no compiled tree to read (its keys are then taken as written). */
-async function labelsOf(context: ToolContext, project: ProjectRow, key: string): Promise<Labels> {
-  try {
-    return new Labels((await context.engine("code_text", { project: project.id, key })).labels);
-  } catch (error) {
-    if (error instanceof ToolError) {
-      return new Labels([]);
-    }
-    throw error;
-  }
+/** How `drawnCard` draws a card: the calls it opens in place, and whether with its agent text (and label map). */
+interface Drawing {
+  readonly open?: readonly AgentCallPath[];
+  readonly agentText?: boolean;
 }
 
-/** The card of `card` as `card` draws it with the calls `open` opens in place; none when it can't be read. */
-async function drawnCard(context: ToolContext, project: ProjectRow, card: string, open: readonly AgentCallPath[] = []): Promise<CardView | undefined> {
+/** The card of `card` as `card` draws it; none when it can't be read. */
+async function drawnCard(context: ToolContext, project: ProjectRow, card: string, { open = [], agentText = false }: Drawing): Promise<CardView | undefined> {
   try {
-    return await context.engine("card", { project: project.id, key: card, ...(open.length > 0 ? { open: open.map((path) => [...path]) } : {}) });
+    return await context.engine("card", { project: project.id, key: card, ...(open.length > 0 ? { open: open.map((path) => [...path]) } : {}), ...(agentText ? { agentText } : {}) });
   } catch (error) {
     if (error instanceof ToolError) {
       return undefined;
@@ -49,10 +45,20 @@ async function drawnCard(context: ToolContext, project: ProjectRow, card: string
   }
 }
 
+/** A drawn card's label map, from its agent text; none for a card that draws no flow (keys are then taken as written). */
+function labelsOf(view: CardView | undefined): Labels {
+  return new Labels(view?.type === "definition" ? (view.agentText?.labels ?? []) : []);
+}
+
+/** The label map of definition `key`, as its card's agent text gives it. */
+async function definitionLabels(context: ToolContext, project: ProjectRow, key: string): Promise<Labels> {
+  return labelsOf(await drawnCard(context, project, key, { agentText: true }));
+}
+
 /** The definition that the last block of `path` opens in place on the card of `card`, as `card` draws it. */
 async function openedDefinition(context: ToolContext, project: ProjectRow, card: string, path: readonly string[]): Promise<string | undefined> {
   const last = path.at(-1);
-  const view = await drawnCard(context, project, card, [path]);
+  const view = await drawnCard(context, project, card, { open: [path] });
   return view?.type === "definition" && last !== undefined ? openedFlow(view.flow, last)?.header.key : undefined;
 }
 
@@ -72,7 +78,7 @@ async function openPath(context: ToolContext, project: ProjectRow, card: string,
     if (opened === undefined) {
       return [...keys, ...path.slice(index + 1)];
     }
-    level = await labelsOf(context, project, opened);
+    level = await definitionLabels(context, project, opened);
   }
   return keys;
 }
@@ -87,10 +93,10 @@ async function refuseOpenedLabels(context: ToolContext, project: ProjectRow, car
   if (foreign.length === 0 || open.length === 0) {
     return;
   }
-  const view = await drawnCard(context, project, card, open);
+  const view = await drawnCard(context, project, card, { open });
   const opened = view?.type === "definition" ? openedDefinitions(view.flow) : [];
   for (const definition of opened) {
-    const theirs = await labelsOf(context, project, definition);
+    const theirs = await definitionLabels(context, project, definition);
     const block = foreign.find((label) => theirs.has(label));
     if (block !== undefined) {
       throw cant(
@@ -102,28 +108,12 @@ async function refuseOpenedLabels(context: ToolContext, project: ProjectRow, car
   }
 }
 
-/** A card that draws no flow, which takes only a description: why, and what to shape instead. */
-interface Flowless {
-  readonly why: string;
-  readonly instead: string;
-}
-
-/** Why a card takes only a description (an app's or entrance's card, a type card); undefined for a card that draws a flow. */
-function flowless(card: Page["cards"][number], view: CardView | undefined): Flowless | undefined {
-  if (!("block" in card.ref)) {
-    return { why: `${card.id} is an app's or entrance's card, which draws no flow of its own`, instead: "On it, shape_card writes only description; shape the cards of its code for the rest." };
-  }
-  return view?.type === "definition" && view.flow.header.kind === "type"
-    ? { why: `${card.id} is a type card, which shows fields, not a flow`, instead: "On it, shape_card writes only description; shape a function's, a class's, or a module's card for the rest." }
-    : undefined;
-}
-
-/** The shaped card as the person now sees it: `flow_text` with the saved page's overlay and the card's open paths. */
+/** The shaped card as the person now sees it: its agent text, drawn with the saved page's overlay and the card's open paths. */
 async function shapedFlow(context: ToolContext, target: EditTarget, edit: AppliedEdit, card: string, key: string): Promise<string> {
   const page = edit.page as unknown as Page;
   const open = page.cards.find((item) => item.id === card)?.open ?? [];
-  const flow = await context.engine("flow_text", { project: target.project.id, key, overlay: overlayArgs(page), open });
-  return flow.text.trimEnd();
+  const view = await context.engine("card", { project: target.project.id, key, overlay: overlayArgs(page), open, agentText: true });
+  return view.type === "definition" ? (view.agentText?.text.trimEnd() ?? "") : "";
 }
 
 const block = z.string().min(1);
@@ -133,7 +123,7 @@ export const shapeCard = defineTool({
   title: "Shape card",
   description:
     'Shapes one expanded card in one call, so its code-shaped flow reads as the few named steps a person would draw: title (names the card), description (one sentence on what it does and why), names ({block: text} on any block: a call, a branch as a yes-or-no question, a loop, an except part, an exit, a callback; null takes a name off), combine ([{steps, title, collapsed}]: consecutive steps of one body, or one whole control block, under one title; never overlapping or nesting; collapsed by default, and it keeps its ways out and its unknown-call count), and open ([[blocks]]: the calls or callbacks it opens in place, each a path of 1 to 3, outermost first, the next a call of what the one before opens; at most 64; it replaces what the card opens, [] closes them). Short labels from read_code (try[0]/except[0], call:save_order) name the card\'s own blocks; name a block of a call it opens in place by its full key (in open, each next block may be a short label of what the one before opens). Name only what the code doesn\'t say; naming a library or unknown call lifts it into a step, and it stays marked ? (a name never resolves a call). Names and combined steps apply page-wide, wherever that code is drawn. Changing or removing a person\'s name, title, or description is refused unless replacePeopleText is true: set it only when the person asked. An app\'s or entrance\'s card, or a type card, draws no flow: on it, shape_card writes only description. One undo step; the result is the shaped card as the person sees it. A refusal of a key or an overlay rule lists the blocks you can choose from. Read get_guide("diagrams") first.',
-  input: z.object({
+  input: z.strictObject({
     ...pageArgs,
     card: z.string().min(1).describe("The card's id (read_page lists them), or a link to it"),
     title: z.string().trim().min(1).max(120).optional().describe("The card's title: the page's name for its definition"),
@@ -141,7 +131,7 @@ export const shapeCard = defineTool({
     names: z.record(block, z.string().trim().min(1).max(120).nullable()).optional().describe("Names by block (a short label of the card's own code, or a key); null takes a name off"),
     combine: z
       .array(
-        z.object({
+        z.strictObject({
           steps: z.array(block).min(1).describe("The blocks it combines, in written order (short labels of the card's own code, or keys)"),
           title: z.string().trim().min(1).max(120),
           collapsed: z.boolean().optional().describe("Drawn as one step (default for a new one: true)"),
@@ -166,16 +156,10 @@ export const shapeCard = defineTool({
       throw cant("shape the card", `there is no card with id “${cardId}” on the page “${read.page.title}”`, "read_page lists the page's cards with their ids.");
     }
     const key = cardKey(found);
-    const drawn = await drawnCard(context, target.project, key);
-    const onlyDescribed = flowless(found, drawn);
-    if (onlyDescribed !== undefined) {
-      if (title !== undefined || names !== undefined || combine !== undefined || open !== undefined) {
-        throw cant("shape the card", onlyDescribed.why, onlyDescribed.instead);
-      }
-      const edit = await applyEdit(context, target, { title: "Describe card", op: { op: "shape_card", card: cardId, ...defined({ description, replacePeopleText }) }, expectRevision: revision });
-      return editResult(context, target, edit, [itemsHeading("shaped", edit.items), ...edit.items.map(itemLine)], "shape_card the next card the page is about, then compose the page; arrange_page and check.");
-    }
-    const labels = await labelsOf(context, target.project, key);
+    const drawn = await drawnCard(context, target.project, key, { agentText: true });
+    // A card that draws no flow takes only a description; the window refuses anything else on it.
+    const onlyDescribed = flowless(found.ref, drawn) !== undefined;
+    const labels = labelsOf(drawn);
     const paths: AgentCallPath[] | undefined = open === undefined ? undefined : await Promise.all(open.map((path) => openPath(context, target.project, key, labels, path)));
     const named = [...Object.keys(names ?? {}), ...(combine ?? []).flatMap((step) => step.steps)];
     await refuseOpenedLabels(context, target.project, key, labels, named, paths ?? found.open ?? []);
@@ -191,13 +175,16 @@ export const shapeCard = defineTool({
     };
     let edit: AppliedEdit;
     try {
-      edit = await applyEdit(context, target, { title: "Shape card", op, expectRevision: revision });
+      edit = await applyEdit(context, target, { title: onlyDescribed ? "Describe card" : "Shape card", op, expectRevision: revision });
     } catch (error) {
       if (error instanceof ToolError && error.code === SHAPING_REFUSAL) {
         const lines = drawn?.type === "definition" ? choiceLines(drawn.flow, labels) : [];
         throw new ToolError([error.message, ...lines].join("\n"), error.code);
       }
       throw error;
+    }
+    if (onlyDescribed) {
+      return editResult(context, target, edit, [itemsHeading("shaped", edit.items), ...edit.items.map(itemLine)], "shape_card the next card the page is about, then compose the page; arrange_page and check.");
     }
     const flow = await shapedFlow(context, target, edit, cardId, key);
     return editResult(

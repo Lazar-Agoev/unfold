@@ -139,7 +139,7 @@ export function applyArrange(page: Page, op: ArrangeOp, ctx: OpContext): AgentIt
       if (!card || arrow.kind !== "type") {
         return undefined;
       }
-      const definition = ctx.data.definition(arrow.project, cardKey(card));
+      const definition = ctx.data.definition(ctx.board.project, cardKey(card));
       const row = arrow.sourceHandle.slice("field:".length);
       return definition ? estimatedFieldOffset(definition, row, descriptionHeight(card.description, null, measureText)) : undefined;
     };

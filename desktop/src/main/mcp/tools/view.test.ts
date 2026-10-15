@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentPage, AgentShellEvent, CodePanelReport, ViewReport } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
+import { pageRevision } from "../../../shared/revision";
 import { harness, PROJECT } from "./testing";
 import { getCurrentView } from "./view";
 

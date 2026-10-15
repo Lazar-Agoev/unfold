@@ -1,25 +1,15 @@
 /**
- * Arrows between cards, from what the reader drew (docs/ui-shell.md#the-canvas). The
- * board file holds no arrows; they are derived from the cards' drawn flows, start cards, and type
- * definitions.
- *
- * - **Calls.** Every project call box of a card's drawn flow whose definition has a card on the page
- *   draws an arrow to that card. On an expanded card it leaves from the call (`callPort`: the card
- *   places the port level with the call's box, in the calls it opens in place too); on a compact card
- *   (and a type's or compact class's fields) from the card's edge, one arrow per card it calls, standing
- *   for all of those calls in the order they run.
- * - **Starts.** An app's or entrance's card points at the cards for its code, in order: from each code
- *   row when expanded, else from its edge. Code whose file stopped parsing (stale) is dashed.
- * - **Types.** A type card's fields (and a compact class's) point from a field's row to each card on the
- *   page its written type names, one per field and card.
- *
- * A call in a collapsed combined step leaves from the combined step's box: the drawn flow lists its
- * project calls with the definitions they reach.
+ * Arrows between cards on the canvas (docs/ui-shell.md#the-canvas). Which arrows a page draws is
+ * `pageArrows`, the rule the window and the MCP server share (`@unfold/desktop/drawing`): from call
+ * boxes, collapsed combined steps, and the calls a card opens in place; from an app's or entrance's
+ * card to its code; from a type's fields. The canvas only places them: each leaves its card from a
+ * port (`callPort`, `codePort`, `fieldPort`, or the edge, `NODE_PORT`). The board file holds no
+ * arrows.
  */
 
-import type { CallBox, CardView, DrawnFlow, Key, ProjectId, Sequence, TypeDefinition, TypeMember, TypeText, View } from "../ipc/generated";
+import { pageArrows, type ArrowPort, type DrawnCard } from "@unfold/desktop/drawing";
+import type { CardView, Key, ProjectId, TypeDefinition, View } from "../ipc/generated";
 import { cardRefKey } from "../state/boards/keys";
-import { cardShape, type CardShape } from "./cardText";
 
 export interface ArrowCard {
   readonly id: string;
@@ -40,8 +30,6 @@ export interface Arrow {
    */
   readonly sourceHandle: string;
   readonly target: string;
-  /** The project both cards are of. */
-  readonly project: ProjectId;
   /** A call's arrow, a start's to its code, or a field's to its type. */
   readonly kind: "call" | "start" | "type";
   readonly dashed: boolean;
@@ -78,203 +66,42 @@ export function fieldPort(row: string): string {
   return `field:${row}`;
 }
 
-/** A project call of a drawn flow: its block and the definition it reaches. */
-interface ProjectCall {
-  readonly call: Key;
-  readonly to: Key;
-}
-
-/**
- * The project calls a drawn flow draws, in the order they run: its call boxes (in frames' headers,
- * tests, lanes, exits, and open combined steps), the calls a collapsed combined step holds, and, with
- * `insets`, those of the calls it opens in place.
- */
-export function projectCalls(flow: DrawnFlow, insets: boolean): ProjectCall[] {
-  const calls: ProjectCall[] = [];
-  const box = (call: CallBox) => {
-    if (call.to.outcome === "project" && call.to.key !== undefined) {
-      calls.push({ call: call.key, to: call.to.key });
-    }
-    if (insets) {
-      if (call.inset) {
-        sequence(call.inset.steps);
-      }
-      for (const callback of call.callbacks) {
-        if (callback.inset) {
-          sequence(callback.inset.steps);
-        }
-      }
-    }
-  };
-  function sequence(steps: Sequence): void {
-    for (const step of steps.steps) {
-      switch (step.kind) {
-        case "call":
-          box(step);
-          break;
-        case "decision":
-        case "loop":
-        case "try":
-        case "with":
-          step.headerCalls.forEach(box);
-          for (const lane of step.lanes) {
-            (lane.test?.calls ?? []).forEach(box);
-            sequence(lane.steps);
-          }
-          break;
-        case "exit":
-          if (step.value?.kind === "call") {
-            box(step.value);
-          }
-          break;
-        case "combined":
-          if (step.steps) {
-            sequence(step.steps);
-          } else {
-            calls.push(...step.calls.map((held) => ({ call: held.key, to: held.to })));
-          }
-          break;
-        case "thin":
-        case "proposed":
-          break;
-      }
-    }
+/** The port an arrow leaves its card from. */
+function handle(port: ArrowPort): string {
+  switch (port.at) {
+    case "edge":
+      return NODE_PORT;
+    case "call":
+      return callPort(port.call);
+    case "code":
+      return codePort(port.index);
+    case "field":
+      return fieldPort(port.row);
   }
-  sequence(flow.steps);
-  return calls;
-}
-
-/** One row of a type card's fields: its id, the member it shows, and its written type. */
-export interface FieldRow {
-  /** `=` for an alias's aliased type, `<index>` for a member, `from<g>/<index>` for a member inherited from base g. */
-  readonly row: string;
-  /** The member; null for an alias's aliased type. */
-  readonly member: TypeMember | null;
-  readonly type: TypeText | undefined;
-  /** For an inherited member, the index of the base it comes from. */
-  readonly base?: number;
-  /**
-   * The member as the code panel opens it: the type that writes it (the card's, or the project base it
-   * is inherited from) and its index among that type's written members. Absent for an alias's aliased
-   * type.
-   */
-  readonly field?: FieldRef;
-}
-
-/** A written member of a class or type: the type's key and the member's index among its written members. */
-export interface FieldRef {
-  readonly key: Key;
-  readonly index: number;
 }
 
 /**
- * The rows a type card lists, in order: an alias's aliased type, its own members, then the members it
- * inherits, base by base.
- */
-export function fieldRows(definition: TypeDefinition): FieldRow[] {
-  return [
-    ...(definition.aliased ? [{ row: "=", member: null, type: definition.aliased }] : []),
-    ...definition.members.map((member, index) => ({ row: String(index), member, type: member.type, field: { key: definition.key, index } })),
-    ...definition.inherited.flatMap((group, base) => {
-      // A base that lists members is a project type, and its one span names its definition.
-      const from = group.from.spans[0]?.to.key;
-      return group.members.map((member, index) => ({ row: `from${base}/${index}`, member, type: member.type, base, ...(from !== undefined ? { field: { key: from, index } } : {}) }));
-    }),
-  ];
-}
-
-/** The calls of a definition card as arrows: one per call on an expanded card, else one per card reached from its edge. */
-function callArrows(card: ArrowCard, shape: CardShape, flow: DrawnFlow, cardOf: (key: Key) => string | undefined): Arrow[] {
-  const expanded = shape === "expanded";
-  const arrows = new Map<string, { arrow: Omit<Arrow, "calls">; calls: Key[] }>();
-  projectCalls(flow, expanded).forEach(({ call, to }, order) => {
-    const target = cardOf(to);
-    if (target === undefined || target === card.id) {
-      return;
-    }
-    const handle = expanded ? callPort(call) : NODE_PORT;
-    const id = `${card.id}|${handle}|${target}`;
-    const known = arrows.get(id);
-    if (known) {
-      if (!known.calls.includes(call)) {
-        known.calls.push(call);
-      }
-      return;
-    }
-    arrows.set(id, { arrow: { id, source: card.id, sourceHandle: handle, target, project: card.project, kind: "call", dashed: false, order }, calls: [call] });
-  });
-  return [...arrows.values()].map(({ arrow, calls }) => ({ ...arrow, calls }));
-}
-
-/** A start card's arrows: to the card for each of its code, in order. */
-function startArrows(card: ArrowCard, shape: CardShape, start: Extract<CardView, { type: "start" }>, cardOf: (key: Key) => string | undefined): Arrow[] {
-  const seen = new Set<string>();
-  return start.code.flatMap((code, index): Arrow[] => {
-    const target = code.state === "found" || code.state === "stale" ? cardOf(code.key) : undefined;
-    const handle = shape === "expanded" ? codePort(index) : NODE_PORT;
-    const id = `${card.id}|${handle}|${target ?? ""}`;
-    if (target === undefined || target === card.id || seen.has(id)) {
-      return [];
-    }
-    seen.add(id);
-    return [{ id, source: card.id, sourceHandle: handle, target, project: card.project, kind: "start", dashed: code.state === "stale", order: index, calls: [] }];
-  });
-}
-
-/** A type card's type arrows: from each field's row to each other card its written type names. */
-function typeArrows(card: ArrowCard, definition: TypeDefinition, cardOf: (key: Key) => string | undefined): Arrow[] {
-  // A base on the page lists its own fields there, with their arrows.
-  const shownBases = new Set(
-    definition.inherited.flatMap((group, base) => {
-      const to = group.from.spans[0]?.to;
-      return to?.outcome === "project" && to.key !== undefined && cardOf(to.key) !== undefined ? [base] : [];
-    }),
-  );
-  const arrows: Arrow[] = [];
-  fieldRows(definition).forEach(({ row, type, base }, order) => {
-    if (!type || (base !== undefined && shownBases.has(base))) {
-      return;
-    }
-    const reached = new Set<string>();
-    for (const { to } of type.spans) {
-      const target = to.outcome === "project" && to.key !== undefined ? cardOf(to.key) : undefined;
-      if (target === undefined || target === card.id || reached.has(target)) {
-        continue;
-      }
-      reached.add(target);
-      const port = fieldPort(row);
-      arrows.push({ id: `${card.id}|${port}|${target}`, source: card.id, sourceHandle: port, target, project: card.project, kind: "type", dashed: false, order, calls: [] });
-    }
-  });
-  return arrows;
-}
-
-/**
- * Every arrow on a page. `models` maps `cardRefKey(project, key)` to what the reader drew for loaded
- * cards (one not loaded draws no arrows yet); `definitions` maps the same keys to the loaded type
- * definitions of the cards that show fields.
+ * Every arrow on a page (`pageArrows`), at its ports. `models` maps `cardRefKey(project, key)` to what
+ * the reader drew for loaded cards (one not loaded draws no arrows yet); `definitions` maps the same
+ * keys to the loaded type definitions of the cards that show fields.
  */
 export function computeArrows(cards: readonly ArrowCard[], models: ReadonlyMap<string, CardView>, definitions: ReadonlyMap<string, TypeDefinition> = new Map()): Arrow[] {
-  const cardOfRef = new Map<string, string>();
-  for (const card of cards) {
+  const drawn = cards.map((card): DrawnCard => {
     const ref = cardRefKey(card.project, card.key);
-    if (models.get(ref)?.type !== "start" && !cardOfRef.has(ref)) {
-      cardOfRef.set(ref, card.id);
-    }
-  }
-  return cards.flatMap((card) => {
-    const ref = cardRefKey(card.project, card.key);
-    const model = models.get(ref);
-    if (!model) {
-      return [];
-    }
-    const cardOf = (key: Key) => cardOfRef.get(cardRefKey(card.project, key));
-    const shape = cardShape(model, card.view);
-    if (model.type === "start") {
-      return startArrows(card, shape, model, cardOf);
-    }
-    const definition = shape === "fields" ? definitions.get(ref) : undefined;
-    return [...callArrows(card, shape, model.flow, cardOf), ...(definition ? typeArrows(card, definition, cardOf) : [])];
+    return { id: card.id, key: card.key, view: card.view, model: models.get(ref), definition: definitions.get(ref) };
+  });
+  return pageArrows(drawn).map((arrow) => {
+    const sourceHandle = handle(arrow.port);
+    return {
+      id: `${arrow.source}|${sourceHandle}|${arrow.target}`,
+      source: arrow.source,
+      sourceHandle,
+      target: arrow.target,
+      kind: arrow.kind,
+      dashed: arrow.dashed,
+      order: arrow.order,
+      calls: arrow.kind === "call" ? arrow.calls.map((call) => call.call) : [],
+    };
   });
 }
 

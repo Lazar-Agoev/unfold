@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from "@tanstack/react-query";
+import { flowBlocks } from "@unfold/desktop/drawing";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +10,7 @@ import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { adoptBoardState, editPage, getOpenBoard, resetBoards } from "./boards/store";
 import { toggleOpen } from "./boards/document";
-import { cardArgs, cardArgsOf, cardName, combinableSteps, eachSequence, fetchCard, findBlock, flowBlocks, heldBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
+import { cardArgs, cardArgsOf, cardName, combinableSteps, eachSequence, fetchCard, findBlock, heldBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
 import { setShowAllCalls } from "./showAllCalls";
 
 const P = "p-orders0000";
@@ -153,6 +154,42 @@ describe("a drawn flow's blocks", () => {
     };
     expect(overlayIds(drawn)).toEqual(["reply", "log"]);
     expect(overlayIds(fixture("card", "card_place_an_order"))).toEqual([]);
+  });
+
+  it("list those drawn in calls opened from a frame's header, a test, or an exit", () => {
+    const GOLDENS = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
+    const reserve = GOLDENS["../../../testdata/goldens/drawn/04-reserve-first-free.json"];
+    if (!reserve) {
+      throw new Error("no golden 04-reserve-first-free");
+    }
+    const callee = (item: string, kind: "combined" | "proposed"): DrawnFlow => ({
+      ...reserve,
+      steps: {
+        steps: [
+          kind === "combined"
+            ? { id: 1, state: "reached", kind, item, title: item, members: [], collapsed: true, lines: [1, 2], conditions: 0, loops: 0, calls: [], library: 0, unknown: 0 }
+            : { id: 1, state: "reached", kind, item, title: item },
+        ],
+      },
+      routes: [],
+    });
+    // Opens the call box `key` wherever the flow draws it, with `inset` inside.
+    const opened = (value: unknown, key: string, inset: DrawnFlow): unknown => {
+      if (Array.isArray(value)) {
+        return value.map((item) => opened(item, key, inset));
+      }
+      if (typeof value !== "object" || value === null) {
+        return value;
+      }
+      const entries = Object.entries(value).map(([name, item]) => [name, opened(item, key, inset)] as const);
+      const box = "callee" in value && "callbacks" in value && "key" in value && value.key === key;
+      return { ...Object.fromEntries(entries), ...(box ? { inset } : {}) };
+    };
+    const FREE = "booking/slots.py#reserve_first_free";
+    let flow = opened(reserve, `${FREE}/for[0]/call:list_slots`, callee("in-header", "combined"));
+    flow = opened(flow, `${FREE}/for[0]/body/if[1]/then/call:is_free`, callee("in-test", "proposed"));
+    flow = opened(flow, `${FREE}/for[0]/else/raise[0]/call:NoFreeSlot`, callee("in-exit", "combined"));
+    expect(overlayIds({ type: "definition", flow: flow as DrawnFlow })).toEqual(["in-header", "in-test", "in-exit"]);
   });
 });
 

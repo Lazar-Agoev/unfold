@@ -239,13 +239,12 @@ fn an_open_board_keeps_its_session_until_it_closes() {
 
     // Closing the window closes it; opening it in the reopened window (a new id) reads the file.
     harness.host.detach_window(1).expect("detach");
-    assert_eq!(harness.on_code(2, "board_health", &id), "board_not_open");
+    assert_eq!(harness.on_code(2, "reload_board", &id), "board_not_open");
     let fresh = harness.on(2, "open_board", &id);
     assert_eq!(fresh["document"]["title"], "Theirs");
 
     // Closing it closes it.
     harness.on(2, "close_board", &id);
-    assert_eq!(harness.on_code(2, "board_health", &id), "board_not_open");
     assert_eq!(harness.on_code(2, "close_board", &id), "board_not_open");
     assert_eq!(harness.on_code(2, "open_board", "../x.json"), "invalid_args");
     assert_eq!(
@@ -316,7 +315,7 @@ fn boards_are_files_saved_as_they_are_edited() {
     let mark = harness.sink.mark();
     harness.on(1, "delete_board", &id);
     assert!(!harness.path(&id).exists());
-    assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
+    assert_eq!(harness.on_code(1, "close_board", &id), "board_not_open");
     let changed = harness.sink.events(mark, "boards_changed");
     assert_eq!(changed[0]["boards"], json!([id]));
     let mut ids = harness.board_ids();
@@ -371,6 +370,30 @@ fn a_project_without_a_graph_has_board_health_once_it_compiles() {
 }
 
 #[test]
+fn board_health_reads_a_board_no_window_has_open_from_its_file_without_opening_it() {
+    let harness = Harness::compiled("ts-orders");
+    // A board with one card (and its three named blocks) whose code is gone.
+    let board = sample_board().replace("middleware.ts#requireUser", "middleware.ts#requireAdmin");
+    harness.write(".unfold/boards/order-placement.json", &board);
+    let id = ".unfold/boards/order-placement.json";
+
+    let health = harness.on(1, "board_health", id);
+    assert_eq!(health["label"], "4 missing");
+    assert_eq!(health["health"]["items"][0]["target"]["card"], "middleware-0");
+    assert_eq!(harness.listed(id)["label"], "4 missing");
+    // It opened nothing; a window that opens the board finds the same health.
+    assert_eq!(harness.on_code(1, "close_board", id), "board_not_open");
+    harness.on(2, "open_board", id);
+    assert_eq!(harness.on(2, "board_health", id), health);
+
+    assert_eq!(
+        harness.on_code(1, "board_health", ".unfold/boards/nope.json"),
+        "not_found"
+    );
+    assert_eq!(harness.on_code(1, "board_health", "../x.json"), "invalid_args");
+}
+
+#[test]
 fn a_board_reads_without_being_opened_or_waking_its_project() {
     let harness = Harness::with("ts-orders", restless());
     harness.ok(9, "compile", json!({ "project": harness.project }));
@@ -390,7 +413,7 @@ fn a_board_reads_without_being_opened_or_waking_its_project() {
     assert!(!live(), "reading a board file doesn't wake its project");
 
     // It isn't opened: board commands refuse it until it is.
-    assert_eq!(harness.on_code(1, "board_health", id), "board_not_open");
+    assert_eq!(harness.on_code(1, "close_board", id), "board_not_open");
     let opened = harness.on(2, "open_board", id);
 
     // An edit is written to the file itself.
@@ -1145,7 +1168,7 @@ fn closing_a_window_waits_for_its_last_board_save() {
         let written: Value = serde_json::from_str(&harness.read(&id)).expect("board JSON");
         assert_eq!(written["pages"][0]["cards"][0]["id"], "create", "round {round}");
         // After the detach, the window's boards are closed.
-        assert_eq!(harness.on_code(1, "board_health", &id), "board_not_open");
+        assert_eq!(harness.on_code(1, "close_board", &id), "board_not_open");
     }
 }
 

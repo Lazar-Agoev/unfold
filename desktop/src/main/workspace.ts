@@ -16,9 +16,12 @@
  * - A folder from File › Add Project… joins the workspace through the trusted `add_project`, the
  *   only door for an outside path, and the window is told to select it (`project_added`), or why it
  *   couldn't be added (`project_add_failed`).
+ * - Settings saves the app settings through the trusted `set_settings`: the editor command is a
+ *   program `open_in_editor` runs, so no window sets it itself.
  */
 
 import { transportError } from "../shared/transport";
+import type { AppSettings } from "../../../ui/src/ipc/generated";
 import type { AddedProject, ShellEvent, ShownBoard } from "../shared/unfold-api";
 import type { EngineHost } from "./engine-host";
 import { EngineRequestError } from "./engine-host";
@@ -121,6 +124,15 @@ export class Workspace {
    */
   async add(windowId: number, path: string): Promise<AddedProject> {
     return addedProject(await this.engine.request(windowId, "add_project", { path }));
+  }
+
+  /**
+   * Saves the app settings window `windowId`'s Settings dialog sent (the engine checks them);
+   * resolves with them as saved. Rejects with an {@link EngineRequestError} whose message the person
+   * sees (`invalid_args`).
+   */
+  async saveSettings(windowId: number, settings: Readonly<Record<string, unknown>>): Promise<AppSettings> {
+    return (await this.engine.request(windowId, "set_settings", { settings })) as AppSettings;
   }
 
   /** Adds a project from File › Add Project…, then tells the window to select it, or why it couldn't be added. */

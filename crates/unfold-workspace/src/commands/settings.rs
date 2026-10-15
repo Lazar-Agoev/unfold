@@ -30,8 +30,11 @@ pub struct SetSettingsArgs {
     pub settings: AppSettings,
 }
 
-/// `set_settings`: saves the app settings and returns them.
+/// `set_settings`: saves the app settings and returns them. Main process only: the editor command
+/// is a program `open_in_editor` runs, so only the Settings dialog, through the main process, sets
+/// it.
 pub fn set_settings(ctx: &Ctx<'_>, args: SetSettingsArgs) -> CommandResult<AppSettings> {
+    ctx.require_trusted("set_settings")?;
     let settings = args.settings;
     if settings
         .editor_command

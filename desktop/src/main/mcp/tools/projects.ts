@@ -43,7 +43,7 @@ export const listProjects = defineTool({
   title: "List projects",
   description:
     "Every project in the Unfold workspace: its name, id, state (current, compiling, not compiled, resting, problems, unavailable), languages, and number of boards. Other tools take a project's id or name. A resting project isn't open right now and its languages aren't listed: get_project opens it and tells you everything else.",
-  input: z.object({}),
+  input: z.strictObject({}),
   annotations: { readOnlyHint: true },
   async run(_args, context) {
     const rows = await context.projects();
@@ -111,7 +111,7 @@ export const getProject = defineTool({
   title: "Get project",
   description:
     "One project: its state and compile progress, files and languages, the apps its unfold.toml declares with their entrance counts, health, settings (scope, Python projects, evidence files), and boards with their ids. project is a project's id or name (from list_projects) or a link the person pasted. It opens a resting project. Call it again to wait for a compile: the state reads compiling, with its progress, until the project is current.",
-  input: z.object({ project: z.string().min(1).describe("The project's id or name, or a link to one of its boards") }),
+  input: z.strictObject({ project: z.string().min(1).describe("The project's id or name, or a link to one of its boards") }),
   annotations: { readOnlyHint: true },
   async run({ project }, context) {
     const row = await context.project(project);

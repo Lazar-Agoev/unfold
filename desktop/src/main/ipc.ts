@@ -1,8 +1,8 @@
 /**
  * Window and dialog commands, the only IPC the main process answers (docs/ipc.md#how-a-command-travels). Engine
- * commands never come here: they travel over the window's port to the engine host. `add_project`
- * ends in an engine request the main process sends itself, with `"trusted": true`, because it takes a
- * path only the main process may choose.
+ * commands never come here: they travel over the window's port to the engine host. `add_project` and
+ * `save_settings` end in an engine request the main process sends itself, with `"trusted": true`:
+ * one takes a path only the main process may choose, the other the program `open_in_editor` runs.
  * `window_info`, `report_shown_board`, and `report_show_all_calls` hand the window's shown board and
  * its Show all calls switch to and from the workspace, which saves them with the window's bounds. The agent channel's commands (`report_view` and the
  * answers to agent requests) go to the agent bridge; `agent_server_status` reads the MCP server's
@@ -49,7 +49,7 @@ function invalid(message: string): CommandError {
 
 export interface WindowCommandServices {
   readonly window: Pick<AppWindow, "forWebContents">;
-  readonly workspace: Pick<Workspace, "add" | "shownBoard" | "showBoard" | "showAllCalls" | "setShowAllCalls">;
+  readonly workspace: Pick<Workspace, "add" | "saveSettings" | "shownBoard" | "showBoard" | "showAllCalls" | "setShowAllCalls">;
   readonly ui: UiSource;
   readonly agents: Pick<AgentBridge, "views" | "settle">;
   readonly mcp: Pick<McpService, "status">;
@@ -60,7 +60,7 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
   const handlers: { [C in WindowCommand]: Handler<C> } = {
     add_project: async (entry) => {
       const path = await chooseFolder(entry.window);
-      return path === null ? null : await addProject(entry, path);
+      return path === null ? null : await engineAnswer(() => workspace.add(entry.id, path));
     },
     confirm_remove_project: async (entry, args) => {
       const { name } = args;
@@ -68,6 +68,13 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
         throw invalid("confirm_remove_project: name must be a project name.");
       }
       return { confirmed: await confirmRemoveProject(entry.window, name) };
+    },
+    save_settings: async (entry, args) => {
+      const { settings } = args;
+      if (!isRecord(settings)) {
+        throw invalid("save_settings: settings must be an object, as get_settings returns it.");
+      }
+      return engineAnswer(() => workspace.saveSettings(entry.id, settings));
     },
     export_png: async (entry, args) => {
       const { project, board, page, title } = args;
@@ -154,9 +161,10 @@ export function registerWindowCommands({ window, workspace, ui, agents, mcp, ren
     },
   };
 
-  async function addProject(entry: WindowEntry, path: string) {
+  /** What a trusted engine request answers; the engine's refusal goes to the window as it is. */
+  async function engineAnswer<T>(request: () => Promise<T>): Promise<T> {
     try {
-      return await workspace.add(entry.id, path);
+      return await request();
     } catch (error) {
       throw error instanceof EngineRequestError ? new CommandError(error.error) : error;
     }

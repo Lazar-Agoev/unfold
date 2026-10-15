@@ -113,13 +113,16 @@ fn entrances_name_their_app_and_files_count_their_definitions() {
             .find(|hit| hit["key"] == key)
             .unwrap_or_else(|| panic!("no hit {key}: {results}"))
     };
-    // An entrance names its app; an app names none.
+    // An entrance names its app; an app names none. Each has the line of its entry in
+    // `unfold.toml`, as `entrances` gives it.
     let list = hit("entrance:server/list-orders");
     assert_eq!(list["kind"], "entrance");
     assert_eq!(list["name"], "List orders");
     assert_eq!(list["app"], "Server");
     assert_eq!(list["path"], "");
+    assert_eq!(list["line"], 13);
     assert_eq!(hit("entrance:worker/process-an-order")["app"], "Worker");
+    assert_eq!(hit("entrance:worker/process-an-order")["line"], 36);
     let app = harness.ok(
         1,
         "search",
@@ -131,6 +134,7 @@ fn entrances_name_their_app_and_files_count_their_definitions() {
         .unwrap_or_else(|| panic!("the app: {app}"));
     assert_eq!(scheduler["kind"], "app");
     assert_eq!(scheduler["app"], Value::Null);
+    assert_eq!(scheduler["line"], 40);
 
     // Files are the analyzed ones, each with its module's key and its definitions counted.
     let files = harness.ok(
@@ -156,6 +160,38 @@ fn entrances_name_their_app_and_files_count_their_definitions() {
             .iter()
             .all(|hit| hit["path"] != "tsconfig.json"),
         "only analyzed files"
+    );
+}
+
+#[test]
+fn definitions_match_by_name_and_files_by_path() {
+    let harness = Harness::compiled("ts-orders");
+    // A folder's name finds the files in it, and no definition: names only.
+    for folder in ["src", "jobs"] {
+        let results = harness.ok(
+            1,
+            "search",
+            json!({ "query": folder, "kinds": ["definitions", "files"], "limit": 500 }),
+        );
+        assert_eq!(results["definitions"]["total"], 0, "{folder}: {results}");
+        let files = hits(&results, "files");
+        assert!(!files.is_empty(), "{folder}: {results}");
+        assert!(
+            files
+                .iter()
+                .all(|hit| hit["path"].as_str().is_some_and(|path| path.contains(folder))),
+            "{results}"
+        );
+    }
+    // A definition is found by its name, wherever its file is.
+    let jobs = harness.ok(
+        1,
+        "search",
+        json!({ "query": "processOrder", "kinds": ["definitions"] }),
+    );
+    assert_eq!(
+        hits(&jobs, "definitions")[0]["key"],
+        "src/jobs/process-order.ts#processOrder"
     );
 }
 

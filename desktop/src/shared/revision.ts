@@ -1,7 +1,8 @@
 /**
  * Page revisions: what an agent passes as `expectRevision`, so an edit is refused when the page
- * changed since the agent read it. Computed only here, from the page JSON a window or the engine
- * reports.
+ * changed since the agent read it. Computed only here: by the main process, from the page JSON a
+ * window or the engine reports, and by the window, which compares an edit's expected revision as it
+ * saves the edit.
  */
 
 const FNV_OFFSET = 0xcbf29ce484222325n;

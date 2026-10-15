@@ -4,7 +4,7 @@ import { FakeBrowserWindow, resetFakeElectron } from "../fake-electron";
 import type { WindowEntry } from "../windows";
 import { AppWindow } from "../windows";
 import { AgentBridge, type AgentEditInput } from "./bridge";
-import { pageRevision } from "./revision";
+import { pageRevision } from "../../shared/revision";
 import { ViewTracker } from "./views";
 
 vi.mock("electron", async () => (await import("../fake-electron")).electronModule);
@@ -163,46 +163,22 @@ describe("routing an edit", () => {
 });
 
 describe("expected revisions", () => {
-  it("reads the page first and refuses an edit when it changed since the agent read it", async () => {
+  it("go with the edit to the window, which compares them as it saves it, with nothing read first", async () => {
     const { bridge, views, open } = setup();
     const holder = open();
     views.report(report([BOARD]));
 
     const refused = bridge.edit({ ...EDIT, expectRevision: "00000000" });
-    const read = await request(holder, 1);
-    expect(read).toMatchObject({ type: "agent_read", board: BOARD, page: "page-1" });
-    bridge.settle(holder.id, "read", read.requestId, { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } });
-    const outcome = await refused;
-    expect(outcome).toMatchObject({ ok: false, code: "revision_mismatch" });
-    expect(!outcome.ok && outcome.message).toContain(`now rev ${pageRevision(PAGE)}`);
-    expect(requests(holder)).toHaveLength(1);
-
-    const accepted = bridge.edit({ ...EDIT, expectRevision: pageRevision(PAGE) });
-    const reread = await request(holder, 2);
-    bridge.settle(holder.id, "read", reread.requestId, { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } });
-    const editing = await request(holder, 3);
-    expect(editing.type).toBe("agent_edit");
-    bridge.settle(holder.id, "edit", editing.requestId, SAVED);
-    expect((await accepted).ok).toBe(true);
-  });
-
-  it("loads the board again when the window's report still listed a board it no longer holds, then reads it", async () => {
-    const { bridge, views, open } = setup();
-    const entry = open();
-    views.report(report([BOARD]));
-
-    const outcome = bridge.edit({ ...EDIT, expectRevision: pageRevision(PAGE) });
-    const first = await request(entry, 1);
-    expect(first.type).toBe("agent_read");
-    bridge.settle(entry.id, "read", first.requestId, { ok: false, code: "board_not_open", message: "Not here." });
-    const opening = await request(entry, 2);
-    expect(opening.type).toBe("agent_open_board");
-    bridge.settle(entry.id, "open", opening.requestId, { ok: true });
-    const read = await request(entry, 3);
-    bridge.settle(entry.id, "read", read.requestId, { ok: true, page: PAGE, board: { ...BOARD_INFO, unsaved: false } });
-    const editing = await request(entry, 4);
-    bridge.settle(entry.id, "edit", editing.requestId, SAVED);
-    expect((await outcome).ok).toBe(true);
+    const sent = await request(holder, 1);
+    expect(sent).toMatchObject({ type: "agent_edit", board: BOARD, page: "page-1", expectRevision: "00000000" });
+    const mismatch = {
+      ok: false,
+      code: "revision_mismatch",
+      message: `The page changed since you read it (rev 00000000, now rev ${pageRevision(PAGE)}). Read it again, then make the change.`,
+    } as const;
+    bridge.settle(holder.id, "edit", sent.requestId, mismatch);
+    expect(await refused).toEqual(mismatch);
+    expect(requests(holder).map((event) => event.type)).toEqual(["agent_edit"]);
   });
 });
 

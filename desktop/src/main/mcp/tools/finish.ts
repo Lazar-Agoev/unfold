@@ -3,8 +3,10 @@
  *
  * `repair` finds the health item (`board_health`, as the window that holds the board), refuses to
  * re-sign or accept what a person wrote (that sign-off is theirs), and has the holding window
- * apply the repair the way Review does: saved at once, one undo step. `finish_work` clears the agent's
- * working marks on the boards it changed and shows its summary as a toast in the window.
+ * apply the repair the way Review does: saved at once, one undo step. The window refuses a removal
+ * that takes a person's words unless the person asked (`replacePeopleText`), as for `remove_items`.
+ * `finish_work` clears the agent's working marks on the boards it changed and shows its summary as a
+ * toast in the window.
  */
 
 import { z } from "zod";
@@ -63,8 +65,8 @@ export const repair = defineTool({
   name: "repair",
   title: "Repair",
   description:
-    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove (takes the item off the page: a card with the connections to it, a combined step, a name, a connection, a resource card with its connections, or a proposed step; never edits code), remove_description, resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, combined step's, connection's, resource card's, frame's, or proposed step's id, or a name's block key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
-  input: z.object({
+    "Applies one repair that a health problem offers (check lists each problem with its repair calls). repair is reconnect (to: the code's new key after a rename or move, from search or get_relations; for an anchor, a key or an evidence file's lines), remove (takes the item off the page: a card with the connections to it, a combined step, a name, a connection, a resource card with its connections, or a proposed step; never edits code), remove_description, resign (keeps the text and signs it against the current code), or accept (accepts the current code for a reference held for review). item is the problem's item: a card's, combined step's, connection's, resource card's, frame's, or proposed step's id, or a name's block key; anchor picks one of an item's anchors when several have problems. Reconnecting a card carries the steps of the connections that leave it. Re-sign or accept only after reading the new code (read_code), and only what an agent wrote: what a person wrote is theirs to sign off, so tell them in the chat instead. A removal that takes a person's words off the page (a description, a name, a combined step, a connection, or one going with the item) is refused unless replacePeopleText is true: set it only when the person asked. Read get_guide(\"repairs\") first. One undo step in Unfold, saved at once.",
+  input: z.strictObject({
     board: z.string().min(1).describe("The board's id or a link"),
     page: z.string().min(1).describe("The page's id or a link"),
     item: z.string().min(1).describe("The problem's item: an id, a name's block key, or a link"),
@@ -72,9 +74,10 @@ export const repair = defineTool({
     to: reconnectTo.optional().describe("reconnect: the new key, or an anchor {key} or {file, lines: [from, to]}"),
     anchor: z.number().int().min(0).optional().describe("Which of the item's anchors, when several have problems"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),
+    replacePeopleText: z.boolean().optional().describe("Only when the person asked to remove their words"),
   }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-  async run({ board, page, item, repair: name, to, anchor, project }, context) {
+  async run({ board, page, item, repair: name, to, anchor, project, replacePeopleText }, context) {
     const target = await resolveBoard(context, { board, page, project, item });
     if (target.page === undefined || target.item === undefined) {
       throw cant("tell what to repair", "the link names a board or a page, not an item", "Pass board, page, and item as check lists them.");
@@ -93,7 +96,14 @@ export const repair = defineTool({
       }
     }
     const spec = repairSpec(read.page, chosen, name, to);
-    const repaired = await context.bridge.repair({ board: target.board, page: target.page, agent: context.agent, repair: spec, items: outlined(chosen, name) });
+    const repaired = await context.bridge.repair({
+      board: target.board,
+      page: target.page,
+      agent: context.agent,
+      repair: spec,
+      items: outlined(chosen, name),
+      ...(replacePeopleText !== undefined ? { replacePeopleText } : {}),
+    });
     if (!repaired.ok) {
       throw windowRefusal(repaired);
     }
@@ -120,7 +130,7 @@ export const finishWork = defineTool({
   title: "Finish work",
   description:
     'Ends a piece of work: clears "Claude is working…" and the outlines on what you changed, and shows your one-line summary as a toast in the window ("Framed the order flow in three services"). It finishes every board you edited or repaired since you last called it (board names one instead; default, with none edited, the board in view). Call it once the work is reviewed (check and get_screenshot), then tell the person in the chat what you made, and which parts go beyond what Unfold compiled.',
-  input: z.object({
+  input: z.strictObject({
     summary: z.string().trim().min(1).max(200).describe("One line: what you made"),
     board: z.string().min(1).optional().describe("A board's id or a link (default: every board you changed)"),
     project: z.string().min(1).optional().describe("The board's project, when the board's id isn't enough"),

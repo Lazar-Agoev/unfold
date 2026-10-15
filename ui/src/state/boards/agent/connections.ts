@@ -8,9 +8,10 @@
  */
 
 import type { AgentConnectionSpec, AgentItemResult, AgentItemStatus, AgentLinkResult, ConnectOp } from "@unfold/desktop/agent-api";
+import { projectCalls } from "@unfold/desktop/drawing";
 import { tableColumns } from "../../../canvas/resources/columns";
 import type { Connection, Page } from "../../../ipc/generated";
-import { findBlock, flowBlocks } from "../../cards";
+import { findBlock } from "../../cards";
 import { cardKey, findCard, findCombined, isFreeId, isItemId } from "../document";
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
@@ -84,9 +85,10 @@ function checkRelates(ctx: OpContext, page: Page, spec: AgentConnectionSpec): vo
 }
 
 /**
- * Refuses a connection that repeats a compiled call: a project call of the from card's code (its step,
- * or any call without one) to the to card's definition, which Unfold already draws as an arrow. A
- * `calls` connection is the save's to check: it must start at an unknown call.
+ * Refuses a connection that repeats a compiled call: a project call the from card draws (its step, or
+ * any call without one; held by a collapsed combined step or opened in place too) to the to card's
+ * definition, which Unfold already draws as an arrow. A `calls` connection is the save's to check: it
+ * must start at an unknown call.
  */
 function checkNotCompiled(ctx: OpContext, page: Page, spec: AgentConnectionSpec, what: string): void {
   const from = findCard(page, spec.from);
@@ -96,10 +98,10 @@ function checkNotCompiled(ctx: OpContext, page: Page, spec: AgentConnectionSpec,
     return;
   }
   const target = cardKey(to);
-  const call = flowBlocks(model.flow).find((block) => block.to?.outcome === "project" && block.to.key === target && (spec.step === undefined || block.key === spec.step));
+  const call = projectCalls(model.flow, true).find((item) => item.to === target && (spec.step === undefined || item.call === spec.step));
   if (call) {
     throw invalid(
-      `${what} repeats a compiled call: ${cardName(ctx, from)} calls ${cardName(ctx, to)} (${call.label}), and Unfold already draws that arrow. Connections are for what the graph can't show: HTTP, queues, data, and where an unknown call goes. get_relations says what Unfold draws.`,
+      `${what} repeats a compiled call: ${cardName(ctx, from)} calls ${cardName(ctx, to)} (${call.callee}), and Unfold already draws that arrow. Connections are for what the graph can't show: HTTP, queues, data, and where an unknown call goes. get_relations says what Unfold draws.`,
     );
   }
 }

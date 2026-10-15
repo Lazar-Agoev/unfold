@@ -629,7 +629,11 @@ export type AgentRepairResult = { readonly ok: true; readonly page: AgentPage; r
 // ---------------------------------------------------------------------------------------------
 // Requests (shell events) and replies (window commands)
 
-/** Applies `ops` to a page of a board the window holds, as one undo step named "<agent> · <title>". */
+/**
+ * Applies `ops` to a page of a board the window holds, as one undo step named "<agent> · <title>".
+ * With `expectRevision`, refused (`revision_mismatch`) when the page as the window saves the edit
+ * isn't the one the agent read.
+ */
 export interface AgentEditRequest {
   readonly requestId: number;
   readonly board: AgentBoardRef;
@@ -638,6 +642,8 @@ export interface AgentEditRequest {
   /** The tool's title, which names the undo step ("Add cards"). */
   readonly title: string;
   readonly ops: readonly AgentOp[];
+  /** The page revision the agent read (`pageRevision`). */
+  readonly expectRevision?: string;
 }
 
 /** Reads a page of a board the window holds. */
@@ -706,6 +712,11 @@ export interface AgentRepairRequest {
   readonly repair: { readonly page: string; readonly kind: string; readonly [field: string]: unknown };
   /** The ids of the page's items the repair changed, to outline. */
   readonly items: readonly string[];
+  /**
+   * A removal (`remove`, `remove_description`) that takes a person's words off the page, what goes
+   * with the item included, is refused unless `replacePeopleText`.
+   */
+  readonly replacePeopleText?: boolean;
 }
 
 /** Ends an agent's piece of work on a board: its working marks clear and its summary shows as a toast. */
@@ -840,11 +851,11 @@ export interface AgentServerStatus {
 }
 
 /**
- * A link to a board, a page, or an item: `unfold://<project's folder name>/<board id>?page=<page
- * id>&item=<item id>`, each part URI-encoded. Only the main process parses links.
+ * A link to a board, a page, or an item: `unfold://<project>/<board id>?page=<page id>&item=<item
+ * id>`, each part URI-encoded. Only the main process parses links.
  */
 export interface AgentLink {
-  /** The name of the project's folder. */
+  /** The project's folder name, or its id when another project's folder has the same name. */
   readonly project: string;
   readonly board: string;
   readonly page?: string;

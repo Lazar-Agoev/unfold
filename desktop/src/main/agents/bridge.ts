@@ -7,9 +7,9 @@
  * it answers fails its requests with `window_closed`. A window can't be told to drop a request, so a
  * change that times out (`unconfirmed`) may still land.
  *
- * Page revisions are checked here: an edit that passes `expectRevision` reads the page from the
- * holding window first and is refused when it changed. The bridge also remembers which boards each
- * agent edited or repaired until it finishes its work on them, so `finish_work` knows where to finish.
+ * An edit that passes `expectRevision` carries it to the window, which refuses it when the page it
+ * saves the edit on isn't the one the agent read. The bridge also remembers which boards each agent
+ * edited or repaired until it finishes its work on them, so `finish_work` knows where to finish.
  */
 
 import type {
@@ -30,14 +30,14 @@ import type {
   AgentShowResult,
 } from "../../shared/agent-api";
 import type { AppWindow, WindowEntry } from "../windows";
-import { pageRevision } from "./revision";
+import { pageRevision } from "../../shared/revision";
 import type { ViewTracker } from "./views";
 
 /** How long the window may take to answer by default: opening the window included. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** An edit as a tool asks for it: the request without its id, and the page revision the agent read. */
-export type AgentEditInput = Omit<AgentEditRequest, "requestId"> & { readonly expectRevision?: string };
+/** An edit as a tool asks for it: the request without its id. */
+export type AgentEditInput = Omit<AgentEditRequest, "requestId">;
 
 /** An applied edit with the page's new revision, or a refusal. */
 export type AgentEditOutcome = (AgentEditSuccess & { readonly revision: string }) | AgentFailure;
@@ -142,42 +142,16 @@ export class AgentBridge {
 
   /**
    * Applies an agent's operations to a page as one undo step, in the window (loading the board's
-   * session first). With `expectRevision`, refuses (`revision_mismatch`) when the page changed since
-   * the agent read it.
+   * session first). With `expectRevision`, the window refuses it (`revision_mismatch`) when the page
+   * changed since the agent read it.
    */
-  async edit(input: AgentEditInput): Promise<AgentEditOutcome> {
-    const { expectRevision, ...request } = input;
-    for (let attempt = 0; ; attempt += 1) {
-      const opened = await this.open({ board: request.board, page: request.page });
-      if (!opened.ok) {
-        return opened;
-      }
-      const entry = this.window.get(opened.windowId);
-      if (!entry) {
-        return this.closed();
-      }
-      const read = expectRevision === undefined ? null : ((await this.ask(entry, "read", { type: "agent_read", board: request.board, page: request.page })) as AgentReadSuccess | AgentFailure);
-      if (read?.ok === true) {
-        const now = pageRevision(read.page);
-        if (now !== expectRevision) {
-          return failure(
-            "revision_mismatch",
-            `The page changed since you read it (rev ${expectRevision}, now rev ${now}). Read it again, then make the change.`,
-          );
-        }
-      }
-      const result = read?.ok === false ? read : ((await this.ask(entry, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure);
-      // A report that still listed a board the window no longer holds: load it again, once.
-      if (!result.ok && result.code === "board_not_open" && attempt === 0) {
-        this.views.release(request.board);
-        continue;
-      }
-      if (!result.ok) {
-        return result;
-      }
-      this.recordWork(request.agent.author, request.board);
-      return { ...result, revision: pageRevision(result.page) };
+  async edit(request: AgentEditInput): Promise<AgentEditOutcome> {
+    const result = (await this.askHolder({ board: request.board, page: request.page }, "edit", { type: "agent_edit", ...request })) as AgentEditSuccess | AgentFailure;
+    if (!result.ok) {
+      return result;
     }
+    this.recordWork(request.agent.author, request.board);
+    return { ...result, revision: pageRevision(result.page) };
   }
 
   /**

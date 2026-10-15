@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import cardCreateOrder from "../../../../../testdata/workspace/commands/card_create_order.json";
 import cardPlaceAnOrder from "../../../../../testdata/workspace/commands/card_place_an_order.json";
-import flowTextCreateOrder from "../../../../../testdata/workspace/commands/flow_text_create_order.json";
+import cardTextCreateOrder from "../../../../../testdata/workspace/commands/card_text_create_order.json";
+import drawnCli from "../../../../../testdata/goldens/drawn/07-cli.json";
+import drawnShaped from "../../../../../testdata/goldens/drawn/place-order-shaped.json";
 import type { AgentPage, AgentShellEvent } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
-import type { BoardSummary, CardView, FlowText, NodeKind, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
+import { pageRevision } from "../../../shared/revision";
+import type { BoardSummary, CardView, DrawnFlow, NodeKind, Page, ReadBoardResult, TypeDefinition } from "../engine-types";
 import { listBoards, readPage } from "./pages";
 import { harness, PROJECT, projectRow, recorded } from "./testing";
 
@@ -98,8 +100,9 @@ const DEFINITIONS: Readonly<Record<string, TypeDefinition>> = {
   [BASKET]: { ...CART_DEFINITION, key: BASKET, kind: "class", name: "Basket", line: 20, members: CART_DEFINITION.members.slice(0, 1) },
 };
 
-const CARDS: Readonly<Record<string, () => CardView>> = {
-  [CREATE_ORDER]: () => recorded<CardView>(cardCreateOrder),
+const CARDS: Readonly<Record<string, (args: Readonly<Record<string, unknown>>) => CardView>> = {
+  // Asked with its agent text, the card comes with it, as `card` answers with the page's overlay and open paths.
+  [CREATE_ORDER]: (args) => recorded<CardView>(args["agentText"] === true ? cardTextCreateOrder : cardCreateOrder),
   [ENTRANCE]: () => recorded<CardView>(cardPlaceAnOrder),
   [PLACE]: () => definitionCard(PLACE, "function", "method", "OrderService.place", 13),
   [CART]: () => definitionCard(CART, "type", "interface", "Cart", 12),
@@ -112,7 +115,7 @@ function card(args: Readonly<Record<string, unknown>>): CardView {
   if (!answer) {
     throw new Error(`no card ${String(args["key"])}`);
   }
-  return answer();
+  return answer(args);
 }
 
 function file(page: AgentPage = PAGE): ReadBoardResult {
@@ -129,7 +132,6 @@ function app(window?: (request: AgentShellEvent) => unknown) {
   return harness({
     engine: {
       card,
-      flow_text: () => recorded<FlowText>(flowTextCreateOrder),
       type_definition: (args) => DEFINITIONS[String(args["key"])],
       read_board: () => file(),
     },
@@ -157,15 +159,22 @@ describe("read_page", () => {
       `- createOrder (card id create-order): function at src/routes/orders.ts:25; key ${CREATE_ORDER}; expanded; at [320, 0], 520×310; in frame server; description by you: “Places the order now, or queues it.”`,
     );
     expect(createOrder).toBeGreaterThan(0);
-    // An expanded card's drawn flow, as flow_text prints it, shaped by the page's overlay and the card's open paths.
+    // An expanded card's drawn flow as agent text, in the same answer as its model: drawn once, with the page's overlay and the card's open paths.
     expect(lines[createOrder + 1]).toBe(`    ( createOrder )   key=${CREATE_ORDER}`);
-    expect(test.engineCalls.find(([command]) => command === "flow_text")?.[1]).toEqual({
-      project: PROJECT,
-      key: CREATE_ORDER,
-      overlay: { names: [{ key: `${CREATE_ORDER}/if[0]`, text: "Asked to queue it?" }], combined: [{ id: "queue-it", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]`], collapsed: true }], proposed: [] },
-      open: [],
-    });
-    expect(test.engineCalls.filter(([command]) => command === "flow_text")).toHaveLength(1);
+    expect(test.engineCalls.filter(([command, args]) => command === "card" && args["key"] === CREATE_ORDER)).toEqual([
+      [
+        "card",
+        {
+          project: PROJECT,
+          key: CREATE_ORDER,
+          overlay: { names: [{ key: `${CREATE_ORDER}/if[0]`, text: "Asked to queue it?" }], combined: [{ id: "queue-it", title: "Queue it for a worker", members: [`${CREATE_ORDER}/if[0]`], collapsed: true }], proposed: [] },
+          open: [],
+          agentText: true,
+        },
+      ],
+    ]);
+    // Each of the page's five cards is drawn once.
+    expect(test.commands().filter((command) => command === "card")).toHaveLength(5);
     expect(lines).toContain(`- OrderService.place (card id place): method at src/services/order-service.ts:13; key ${PLACE}; compact (the page's default); at [800, 0]; in frame checks`);
     expect(lines).toContain(`- Cart (card id cart): interface at src/cart.ts:12; key ${CART}; fields; at [0, 400]`);
     expect(lines).toContain(`- “Asked to queue it?” on ${CREATE_ORDER}/if[0], by Lazar (a person)`);
@@ -199,7 +208,7 @@ describe("read_page", () => {
     };
     const typeLines = async (cards: AgentPage["cards"]) => {
       const page: AgentPage = { ...PAGE, cards, names: [], combined: [], links: [], frames: [], resources: [], notes: [] };
-      const test = harness({ engine: { card, flow_text: () => ({ text: "", labels: [] }), type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), read_board: () => file(page) } });
+      const test = harness({ engine: { card, type_definition: (args) => (args["key"] === CART ? withBase : DEFINITIONS[String(args["key"])]), read_board: () => file(page) } });
       const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
       return { lines: text.split("\n").filter((line) => line.includes(": field ")), definitions: test.commands().filter((command) => command === "type_definition").length };
     };
@@ -243,7 +252,6 @@ describe("read_page", () => {
     const test = harness({
       engine: {
         card,
-        flow_text: () => recorded<FlowText>(flowTextCreateOrder),
         board_health: () => ({
           health: { items: [{ page: "page-1", kind: "review", target: { proposal: "audit" }, message: review, repairs: ["accept", "reconnect", "remove"] }], missing: 0, outdated: 0, review: 1, brokenCombined: 0, brokenLinks: 0 },
           label: null,
@@ -289,6 +297,24 @@ describe("read_page", () => {
     expect(rest.text.split("\n").at(-1)).toBe("Next: check reviews the page; pass its rev as expectRevision to an edit that builds on what you read.");
   });
 
+  it("keeps a page's result for its cursors while the page's revision holds", async () => {
+    const many = (y: number): AgentPage => ({ ...PAGE, cards: Array.from({ length: 130 }, (_, index) => ({ id: `c${index}`, ref: { block: CART_ITEM }, at: [index, y] })), names: [], combined: [], links: [], frames: [], resources: [], notes: [] });
+    let page = many(0);
+    const paged = harness({ engine: { card, type_definition: () => DEFINITIONS[CART_ITEM], read_board: () => file(page) } });
+    const drawn = () => paged.commands().filter((command) => command === "card").length;
+    await paged.call(readPage, { board: BOARD.id, project: "ts-orders" });
+    expect(drawn()).toBe(130);
+    const rest = await paged.call(readPage, { board: BOARD.id, project: "ts-orders", cursor: "120" });
+    expect(rest.text).toContain("- CartItem (card id c129)");
+    expect(drawn()).toBe(130);
+    // A first page reads the code again, and so does a cursor once the page changed.
+    await paged.call(readPage, { board: BOARD.id, project: "ts-orders" });
+    expect(drawn()).toBe(260);
+    page = many(10);
+    await paged.call(readPage, { board: BOARD.id, project: "ts-orders", cursor: "120" });
+    expect(drawn()).toBe(390);
+  });
+
   it("pages a page of long lines before the size guard would cut it, so every line stays reachable", async () => {
     const description = { text: "d".repeat(300), author: "agent:claude", signature: "s" };
     const ids = Array.from({ length: 130 }, (_, index) => `c${index}`);
@@ -303,6 +329,55 @@ describe("read_page", () => {
       cursor = /Next page: read_page with cursor "(\d+)"/.exec(text)?.[1];
     } while (cursor !== undefined);
     expect(seen).toEqual(ids);
+  });
+
+  it("lists the arrows the canvas draws: from a collapsed combined step's calls, from calls opened in place, and dashed to code whose file doesn't parse", async () => {
+    const SERVICE = "shop/service.py#place_order";
+    const CLI = "shop/cli.py#";
+    const SAVE = "shop/store.py#save_order";
+    const LOAD = "shop/store.py#load_order";
+    const START = "entrance:shop/place";
+    const page: AgentPage = {
+      ...PAGE,
+      defaultView: "expanded",
+      cards: [
+        { id: "start", ref: { entrance: START }, at: [0, 0], view: "compact" },
+        { id: "cli", ref: { block: CLI }, at: [400, 0] },
+        { id: "service", ref: { block: SERVICE }, at: [800, 0] },
+        { id: "save", ref: { block: SAVE }, at: [1200, 0], view: "compact" },
+        { id: "load", ref: { block: LOAD }, at: [1200, 400], view: "compact" },
+      ],
+      names: [],
+      combined: [],
+      links: [],
+      frames: [],
+      resources: [],
+      notes: [],
+    };
+    const start: CardView = { type: "start", key: START, kind: "entrance", app: "Shop", name: "Place via the CLI", code: [{ key: CLI, state: "stale", label: "cli", path: "shop/cli.py", line: 1 }] };
+    const models: Readonly<Record<string, CardView>> = {
+      [START]: start,
+      // Its insets open main and, in main, place_order, which calls load_order.
+      [CLI]: { type: "definition", flow: recorded<DrawnFlow>(drawnCli) },
+      // save_order is held by its collapsed combined step "save".
+      [SERVICE]: { type: "definition", flow: recorded<DrawnFlow>(drawnShaped) },
+      [SAVE]: definitionCard(SAVE, "function", "method", "save_order", 3),
+      [LOAD]: definitionCard(LOAD, "function", "method", "load_order", 1),
+    };
+    const test = harness({ engine: { card: (args) => models[String(args["key"])], read_board: () => file(page) } });
+    const { text } = await test.call(readPage, { board: BOARD.id, project: "ts-orders" });
+    const lines = text.split("\n");
+    const at = lines.indexOf("Arrows Unfold draws for calls and starts (6):");
+    expect(lines.slice(at + 1, at + 7)).toEqual([
+      "- Place via the CLI (start) → shop/cli.py (cli): starts at cli, dashed: its file doesn't parse, so it shows its last good code",
+      // From the calls cli opens in place: main, and in it place_order.
+      `- shop/cli.py (cli) → Place an order (service): calls place_order (call key ${CLI}main/call:place_order)`,
+      `- shop/cli.py (cli) → load_order (load): calls load_order (call key ${SERVICE}/call:load_order)`,
+      `- shop/cli.py (cli) → save_order (save): calls save_order (call key ${SERVICE}/call:save_order)`,
+      `- Place an order (service) → load_order (load): calls load_order (call key ${SERVICE}/call:load_order)`,
+      // From the collapsed combined step that holds it.
+      `- Place an order (service) → save_order (save): calls save_order (call key ${SERVICE}/call:save_order)`,
+    ]);
   });
 
   it("says which board it means when none is in view", async () => {

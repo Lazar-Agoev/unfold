@@ -44,25 +44,46 @@ describe("parseLink", () => {
       }
     }
   });
+
+  it("quotes long text short", () => {
+    const parsed = parseLink(`unfold://${"x".repeat(40_000)}`);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) {
+      expect(parsed.message).toMatch(/^“unfold:\/\/x+…” isn't an Unfold link: it names no board\./);
+      expect(parsed.message.length).toBeLessThan(300);
+    }
+  });
 });
 
 describe("resolveLink", () => {
   const projects = [
-    { id: "p-orders0000", name: "ts-orders" },
-    { id: "p-orders2000", name: "ts-orders" },
-    { id: "p-payments00", name: "payments" },
+    { id: "p-orders0000", name: "ts-orders", path: "/code/main/ts-orders" },
+    { id: "p-orders2000", name: "ts-orders", path: "/code/feature/ts-orders" },
+    { id: "p-payments00", name: "payments", path: "/code/payments" },
   ];
 
-  it("names the first project whose folder has the link's name", () => {
-    expect(resolveLink({ project: "ts-orders", board: "b.json", page: "page-1" }, projects)).toEqual({
+  it("names a project by its folder's name, or by its id", () => {
+    expect(resolveLink({ project: "payments", board: "b.json", page: "page-1" }, projects)).toEqual({
       ok: true,
-      link: { project: "p-orders0000", board: "b.json", page: "page-1" },
+      link: { project: "p-payments00", board: "b.json", page: "page-1" },
+    });
+    expect(resolveLink({ project: "p-orders2000", board: "b.json" }, projects)).toEqual({ ok: true, link: { project: "p-orders2000", board: "b.json" } });
+  });
+
+  it("refuses a folder name two projects share, naming each one's id and folder", () => {
+    const resolved = resolveLink({ project: "ts-orders", board: "b.json", page: "page-1" }, projects);
+    expect(resolved).toEqual({
+      ok: false,
+      message:
+        "The link can't name one project: 2 projects have a folder named “ts-orders”: p-orders0000 (/code/main/ts-orders), p-orders2000 (/code/feature/ts-orders). Ask the person to copy the link again (it then names the project by its id), or pass project (its id) with board and page.",
     });
   });
 
-  it("says when no project has the name", () => {
+  it("says when no project has the name, quoting it short", () => {
     const resolved = resolveLink({ project: "shop", board: "b.json" }, projects);
     expect(resolved).toMatchObject({ ok: false });
-    expect(!resolved.ok && resolved.message).toContain("No project named “shop” is in the workspace");
+    expect(!resolved.ok && resolved.message).toContain("No project named or with the id “shop” is in the workspace");
+    const long = resolveLink({ project: "x".repeat(40_000), board: "b.json" }, projects);
+    expect(!long.ok && long.message.length).toBeLessThan(300);
   });
 });

@@ -7,20 +7,30 @@ use serde_json::{Value, json};
 
 use crate::common::Harness;
 
+impl Harness {
+    /// Saves the app settings as the main process does for the Settings dialog.
+    fn set_settings(&self, settings: Value) -> Result<Value, unfold_workspace::CommandError> {
+        self.trusted("set_settings", json!({ "settings": settings }))
+    }
+}
+
 #[test]
 fn settings_round_trip_through_settings_json() {
     let harness = Harness::new("ts-orders", false);
     assert_eq!(harness.ok(1, "get_settings", json!({})), json!({}));
     let settings = json!({ "editorCommand": "code -g {path}:{line}" });
-    assert_eq!(
-        harness.ok(1, "set_settings", json!({ "settings": settings })),
-        settings
-    );
+    assert_eq!(harness.set_settings(settings.clone()).expect("saved"), settings);
     assert_eq!(harness.ok(1, "get_settings", json!({})), settings);
     let text = std::fs::read_to_string(harness.base.join("app/settings.json")).expect("settings.json");
     assert_eq!(serde_json::from_str::<Value>(&text).expect("json"), settings);
     // Clearing the command leaves nothing in the file.
-    harness.ok(1, "set_settings", json!({ "settings": {} }));
+    harness.set_settings(json!({})).expect("cleared");
+    assert_eq!(harness.ok(1, "get_settings", json!({})), json!({}));
+    // A window can't set the program `open_in_editor` runs.
+    assert_eq!(
+        harness.code(1, "set_settings", json!({ "settings": settings })),
+        "untrusted"
+    );
     assert_eq!(harness.ok(1, "get_settings", json!({})), json!({}));
 }
 
@@ -33,7 +43,7 @@ fn rejected_settings_are_not_saved() {
         json!({ "editorCommand": "code", "threadLimit": 2 }),
     ] {
         assert_eq!(
-            harness.code(1, "set_settings", json!({ "settings": settings })),
+            harness.set_settings(settings.clone()).expect_err("refused").code,
             "invalid_args",
             "{settings}"
         );
@@ -45,11 +55,9 @@ fn rejected_settings_are_not_saved() {
 fn opening_unfold_toml_creates_an_empty_one_first() {
     let harness = Harness::new("ts-orders", false);
     // An editor command that does nothing, so the test opens no app.
-    harness.ok(
-        1,
-        "set_settings",
-        json!({ "settings": { "editorCommand": "/usr/bin/true" } }),
-    );
+    harness
+        .set_settings(json!({ "editorCommand": "/usr/bin/true" }))
+        .expect("saved");
     let config = harness.root.join("unfold.toml");
     std::fs::remove_file(&config).expect("remove unfold.toml");
     let open = json!({ "project": harness.project, "path": "unfold.toml" });

@@ -7,51 +7,29 @@
 
 import type { QueryKey } from "@tanstack/react-query";
 import type { CodePanelReport, ViewReport, ViewSelection } from "@unfold/desktop/agent-api";
+import { flowBlocks, visitFlow } from "@unfold/desktop/drawing";
 import type { Rect, Size } from "../canvas/layout";
 import { codeViewArgs } from "../code/view";
-import { engineKey, queryClient, windowCommand, type CallBox, type CardView, type CodeView, type DrawnFlow, type Key, type Page, type Sequence } from "../ipc";
+import { engineKey, queryClient, windowCommand, type CardView, type CodeView, type DrawnFlow, type Key, type Page } from "../ipc";
 import { getCodeOpen, onCodePanelChange, type CodeOpen } from "../state/codePanel";
 import { displayedRects, findPage, getOpenBoard, getPageView, useBoards, type Camera, type PageTarget, type Selection } from "../state/boards";
-import { cardArgsOf, cardQuery, flowBlocks, overlayIds } from "../state/cards";
+import { cardArgsOf, cardQuery, overlayIds } from "../state/cards";
 import { getShownBoard, useShownBoardStore } from "../state/shownBoard";
 
 /** How long the window waits after a change before reporting its view. */
 export const REPORT_DELAY_MS = 150;
 
-/** The flows a drawn flow opens in place itself (not those they open in turn). */
-function openedFlows(flow: DrawnFlow): DrawnFlow[] {
-  const box = (call: CallBox): DrawnFlow[] => [call.inset, ...call.callbacks.map((callback) => callback.inset)].filter((inset) => inset !== undefined);
-  const sequence = (steps: Sequence): DrawnFlow[] =>
-    steps.steps.flatMap((step): DrawnFlow[] => {
-      switch (step.kind) {
-        case "call":
-          return box(step);
-        case "decision":
-        case "loop":
-        case "try":
-        case "with":
-          return [...step.headerCalls.flatMap(box), ...step.lanes.flatMap((lane) => [...(lane.test?.calls ?? []).flatMap(box), ...sequence(lane.steps)])];
-        case "exit":
-          return step.value?.kind === "call" ? box(step.value) : [];
-        case "combined":
-          return step.steps ? sequence(step.steps) : [];
-        case "thin":
-        case "proposed":
-          return [];
-      }
-    });
-  return sequence(flow.steps);
-}
-
-/** The definition whose drawn flow holds block `key` as its own: the flow's, or that of a call it opens in place. */
+/** The definition whose drawn flow draws block `key` as its own: the flow's, or that of a call it opens in place. */
 function stepOwner(flow: DrawnFlow, key: Key): Key | undefined {
-  for (const inset of openedFlows(flow)) {
-    const owner = stepOwner(inset, key);
-    if (owner !== undefined) {
-      return owner;
-    }
-  }
-  return flowBlocks(flow).some((item) => item.key === key) ? flow.header.key : undefined;
+  let owner: Key | undefined;
+  visitFlow(flow, {
+    flow: (at) => {
+      if (owner === undefined && flowBlocks(at.flow, false).some((item) => item.key === key)) {
+        owner = at.flow.header.key;
+      }
+    },
+  });
+  return owner;
 }
 
 /**

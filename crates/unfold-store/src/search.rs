@@ -13,8 +13,9 @@
 //! | Entrance | Its name | Its app's name and its `on` | Empty | `entrance` |
 //! | File | File name | Empty | Path | `module` |
 //!
-//! Queries match `name`, `qualified_name`, and `path` only, so typing `function` does not match
-//! every function's kind.
+//! Queries never match `kind`, so typing `function` does not match every function's kind. A
+//! file matches by its name and path; anything else by its name and qualified name only, so a
+//! folder's name finds the folder's files, not every definition in them.
 
 use std::fmt::Write as _;
 
@@ -40,6 +41,14 @@ impl CandidateKind {
             Self::File => 3,
         }
     }
+
+    /// The columns a query matches for this kind.
+    pub(crate) const fn columns(self) -> &'static [&'static str] {
+        match self {
+            Self::File => &["name", "path"],
+            Self::Definition | Self::App | Self::Entrance => &["name", "qualified_name"],
+        }
+    }
 }
 
 /// The search row ID of the item of `kind` whose key has ID `key_id`.
@@ -55,7 +64,7 @@ pub(crate) enum Plan {
     /// An FTS5 `MATCH` expression: every term is at least three characters, so the trigram
     /// index answers it.
     Match(String),
-    /// `LIKE` patterns, all of which must match one of the searched columns: some term is too
+    /// `LIKE` patterns, all of which must match one of the kind's columns: some term is too
     /// short for trigrams.
     Like(Vec<String>),
 }
@@ -63,15 +72,15 @@ pub(crate) enum Plan {
 /// The fewest characters a trigram index can look up.
 const TRIGRAM: usize = 3;
 
-/// Plans `query`: whitespace separates terms, and every term must match (as a substring,
-/// ignoring ASCII case) one of the searched columns.
-pub(crate) fn plan(query: &str) -> Plan {
+/// Plans `query` for candidates of `kind`: whitespace separates terms, and every term must match
+/// (as a substring, ignoring ASCII case) one of the kind's [columns](CandidateKind::columns).
+pub(crate) fn plan(query: &str, kind: CandidateKind) -> Plan {
     let terms: Vec<&str> = query.split_whitespace().collect();
     if terms.is_empty() {
         return Plan::Empty;
     }
     if terms.iter().all(|term| term.chars().count() >= TRIGRAM) {
-        let mut expression = String::from("{name qualified_name path} : (");
+        let mut expression = format!("{{{}}} : (", kind.columns().join(" "));
         for (index, term) in terms.iter().enumerate() {
             if index > 0 {
                 expression.push_str(" AND ");
@@ -105,13 +114,17 @@ mod tests {
 
     #[test]
     fn plans_match_for_long_terms_and_like_for_short_ones() {
-        assert_eq!(plan("  "), Plan::Empty);
+        assert_eq!(plan("  ", CandidateKind::Definition), Plan::Empty);
         assert_eq!(
-            plan("order pla\"ce"),
-            Plan::Match(r#"{name qualified_name path} : ("order" AND "pla""ce")"#.into())
+            plan("order pla\"ce", CandidateKind::Definition),
+            Plan::Match(r#"{name qualified_name} : ("order" AND "pla""ce")"#.into())
         );
         assert_eq!(
-            plan("or 50%_x"),
+            plan("orders.ts", CandidateKind::File),
+            Plan::Match(r#"{name path} : ("orders.ts")"#.into())
+        );
+        assert_eq!(
+            plan("or 50%_x", CandidateKind::Entrance),
             Plan::Like(vec!["%or%".into(), r"%50\%\_x%".into()])
         );
     }

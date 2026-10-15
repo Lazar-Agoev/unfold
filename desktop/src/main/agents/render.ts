@@ -4,11 +4,11 @@
  * process then captures it (`screenshot`, and the board menu's Export PNG…), or takes the layout and content
  * checks the window ran on the drawn page and adds the board's health (`check`, `checkBoard`).
  *
- * - **The page** comes from the window that holds the board (unsaved edits included) or, for an image
- *   of a board the window doesn't hold, from the engine (`read_board`, which loads no session). Health
- *   needs the board's session (`board_health` runs for the holding window), so a check loads a board
- *   the window doesn't hold there first, as an edit does; an image of such a board has no review
- *   banners.
+ * - **The page** comes from the window that holds the board (unsaved edits included) or, for a board
+ *   the window doesn't hold, or when it is closed, from the engine (`read_board`, which loads no
+ *   session). The board's health is the engine's `board_health`: the session's while the board is
+ *   open, else its file's. Reading never changes anything: an image or a check opens neither the
+ *   window nor a board session, and the person's view doesn't move.
  * - **The render window** is created on demand with every window's hardening, offscreen (it never
  *   shows) at the image's scale, and attached to the engine for the cards' data. It holds no board
  *   session, and may send only `render_ready`. Requests run one at a time; it closes after a minute without
@@ -104,7 +104,7 @@ type RenderEngine = Pick<EngineHost, "attach" | "detach" | "untrusted">;
 
 export interface PageRendererOptions {
   readonly ui: UiSource;
-  readonly bridge: Pick<AgentBridge, "read" | "open" | "views">;
+  readonly bridge: Pick<AgentBridge, "read">;
   readonly engine: RenderEngine;
   /** A window id from the app window's sequence (`AppWindow.reserveId`). */
   readonly reserveId: () => number;
@@ -114,15 +114,15 @@ export interface PageRendererOptions {
   readonly idleMs?: number;
 }
 
-/** The page a request draws, with what it needs besides. */
+/** The page a request draws, and its board's title. */
 interface PageSource {
   readonly ok: true;
   readonly page: AgentPage;
-  /** The board's title. */
   readonly title: string;
-  /** The board's health, when a window holds it. */
-  readonly health: BoardHealthView | null;
 }
+
+/** A board's health, or why it couldn't be read. */
+type HealthOutcome = { readonly ok: true; readonly view: BoardHealthView } | AgentFailure;
 
 interface RenderWindow {
   readonly entry: WindowEntry;
@@ -177,6 +177,16 @@ function checked(result: unknown): RenderAnswer {
   return failure("internal", "The render window answered with a malformed result.");
 }
 
+/** Page `page` of a board's file, or a refusal that lists the pages it has. */
+function filePage(file: ReadBoardResult, page: string): PageSource | AgentFailure {
+  const found = file.document.pages.find((item) => item.id === page);
+  if (!found) {
+    const pages = file.document.pages.map((item) => `\`${item.id}\` (${item.title})`).join(", ");
+    return failure("page_not_found", `The board has no page \`${page}\`. Its pages: ${pages}.`);
+  }
+  return { ok: true, page: found, title: file.document.title };
+}
+
 /** An engine failure as a refusal (a missing board file reads `board_not_found`); anything else is thrown again. */
 function engineFailure(error: unknown, board: AgentBoardRef): AgentFailure {
   if (!(error instanceof EngineRequestError)) {
@@ -208,41 +218,43 @@ export class PageRenderer {
     return this.serialized(() => this.takeImage(request));
   }
 
-  /** A page's health items and page checks (loading the board's session in the window when it doesn't hold it). */
+  /** A page's health items and page checks. */
   check(request: { readonly board: AgentBoardRef; readonly page: string }): Promise<PageChecksOutcome> {
     return this.serialized(async () => {
-      const source = await this.source(request.board, request.page, true);
+      const source = await this.source(request.board, request.page);
       if (!source.ok) {
         return source;
       }
-      const checked = await this.checkPage(request.board, source);
+      const health = await this.health(request.board);
+      if (!health.ok) {
+        return health;
+      }
+      const checked = await this.checkPage(request.board, source, health.view);
       return checked.ok ? { ...checked, title: source.title } : checked;
     });
   }
 
-  /** Every page's health items and page checks, in page order (opening the board when no window holds it). */
+  /** Every page's health items and page checks, in page order. */
   checkBoard(request: { readonly board: AgentBoardRef }): Promise<BoardChecksOutcome> {
     return this.serialized(async () => {
       const { board } = request;
-      const health = await this.heldHealth(board);
+      const file = await this.file(board);
+      if (!file.ok) {
+        return file;
+      }
+      const health = await this.health(board);
       if (!health.ok) {
         return health;
       }
-      let file: ReadBoardResult;
-      try {
-        file = (await this.options.engine.untrusted(0, "read_board", { project: board.project, id: board.id })) as ReadBoardResult;
-      } catch (error) {
-        return engineFailure(error, board);
-      }
       const pages: PageChecks[] = [];
-      let title = "";
-      for (const { id: page } of file.document.pages) {
-        const read = await this.options.bridge.read({ board, page });
-        if (!read.ok) {
-          return read;
+      let title = file.result.document.title;
+      for (const { id: page } of file.result.document.pages) {
+        const source = (await this.held(board, page)) ?? filePage(file.result, page);
+        if (!source.ok) {
+          return source;
         }
-        title = read.board.title;
-        const checked = await this.checkPage(board, { ok: true, page: read.page, title, health: health.view });
+        title = source.title;
+        const checked = await this.checkPage(board, source, health.view);
         if (!checked.ok) {
           return checked;
         }
@@ -308,14 +320,15 @@ export class PageRenderer {
   }
 
   private async takeImage({ board, page, item, scale = 1 }: ScreenshotRequest): Promise<ScreenshotOutcome> {
-    const source = await this.source(board, page, false);
+    const source = await this.source(board, page);
     if (!source.ok) {
       return source;
     }
+    const health = await this.health(board);
     const window = this.window(scale);
     const drawn = await this.ask(
       window,
-      { type: "render_page", purpose: "image", board, title: source.title, page: source.page, health: source.health?.health ?? null, ...(item !== undefined ? { item } : {}) },
+      { type: "render_page", purpose: "image", board, title: source.title, page: source.page, health: health.ok ? health.view.health : null, ...(item !== undefined ? { item } : {}) },
       this.options.timeoutMs ?? RENDER_TIMEOUT_MS,
     );
     if (!drawn.ok) {
@@ -340,99 +353,60 @@ export class PageRenderer {
     const size = image.getSize(scale);
     const notes = [
       ...(frame.zoom < 1 ? [`Drawn at ${Math.round(frame.zoom * 100)}% to fit ${MAX_IMAGE_SIDE.toLocaleString("en-US")} px on its long side; take a frame's or a card's image to read it closer.`] : []),
-      ...(source.health === null ? ["No review banners: the board's health couldn't be read here (check reports it)."] : []),
+      ...(health.ok ? [] : [`No review banners: the board's health couldn't be read (${health.message}).`]),
     ];
     return { ok: true, png: image.toPNG({ scaleFactor: scale }), width: size.width, height: size.height, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
   }
 
-  /** Runs the page checks on a page and picks its health items. */
-  private async checkPage(board: AgentBoardRef, source: PageSource): Promise<({ readonly ok: true } & PageChecks) | AgentFailure> {
+  /** Runs the page checks on a page and picks its health items from its board's. */
+  private async checkPage(board: AgentBoardRef, source: PageSource, health: BoardHealthView): Promise<({ readonly ok: true } & PageChecks) | AgentFailure> {
     const answer = await this.ask(
       this.window(),
-      { type: "render_page", purpose: "check", board, title: source.title, page: source.page, health: source.health?.health ?? null },
+      { type: "render_page", purpose: "check", board, title: source.title, page: source.page, health: health.health },
       this.options.timeoutMs ?? RENDER_TIMEOUT_MS,
     );
     if (!answer.ok) {
       return answer;
     }
-    const health = (source.health?.health.items ?? []).filter((item) => item.page === source.page.id);
-    return { ok: true, page: source.page.id, pageTitle: source.page.title, health, checks: answer.checks ?? [] };
+    const items = health.health.items.filter((item) => item.page === source.page.id);
+    return { ok: true, page: source.page.id, pageTitle: source.page.title, health: items, checks: answer.checks ?? [] };
+  }
+
+  /** The page to draw: as the window that holds the board has it, else from the board's file. */
+  private async source(board: AgentBoardRef, page: string): Promise<PageSource | AgentFailure> {
+    const held = await this.held(board, page);
+    if (held !== null) {
+      return held;
+    }
+    const file = await this.file(board);
+    return file.ok ? filePage(file.result, page) : file;
   }
 
   /**
-   * The page to draw: from the window that holds the board, with its health (`open`: loading its
-   * session there when it doesn't); without `open`, from the board's file when the window doesn't hold
-   * it or closes, never opening a closed window.
+   * The page as the window that holds the board has it (unsaved edits included); null when no window
+   * holds it, or the window closes as it reads, never opening it again.
    */
-  private async source(board: AgentBoardRef, page: string, open: boolean): Promise<PageSource | AgentFailure> {
-    if (!open) {
-      const read = await this.options.bridge.read({ board, page });
-      if (!read.ok) {
-        return read.code === "board_not_open" || read.code === "window_closed" ? this.fromFile(board, page) : read;
-      }
-      const health = await this.health(read.windowId, board);
-      return { ok: true, page: read.page, title: read.board.title, health: health.ok ? health.view : null };
+  private async held(board: AgentBoardRef, page: string): Promise<PageSource | AgentFailure | null> {
+    const read = await this.options.bridge.read({ board, page });
+    if (read.ok) {
+      return { ok: true, page: read.page, title: read.board.title };
     }
-    for (let attempt = 0; ; attempt += 1) {
-      const opened = await this.options.bridge.open({ board, page });
-      if (!opened.ok) {
-        return opened;
-      }
-      const read = await this.options.bridge.read({ board, page });
-      // A report that still listed a board the window no longer holds (the bridge forgets it): load it again, once.
-      if (!read.ok && read.code === "board_not_open" && attempt === 0) {
-        continue;
-      }
-      if (!read.ok) {
-        return read;
-      }
-      const health = await this.health(read.windowId, board);
-      if (!health.ok) {
-        return health;
-      }
-      return { ok: true, page: read.page, title: read.board.title, health: health.view };
-    }
+    return read.code === "board_not_open" || read.code === "window_closed" ? null : read;
   }
 
-  /** The page as the board's file has it, without loading its session. */
-  private async fromFile(board: AgentBoardRef, page: string): Promise<PageSource | AgentFailure> {
-    let result: ReadBoardResult;
+  /** The board as its file holds it, without loading its session. */
+  private async file(board: AgentBoardRef): Promise<{ readonly ok: true; readonly result: ReadBoardResult } | AgentFailure> {
     try {
-      result = (await this.options.engine.untrusted(0, "read_board", { project: board.project, id: board.id })) as ReadBoardResult;
+      return { ok: true, result: (await this.options.engine.untrusted(0, "read_board", { project: board.project, id: board.id })) as ReadBoardResult };
     } catch (error) {
       return engineFailure(error, board);
     }
-    const found = result.document.pages.find((item) => item.id === page);
-    if (!found) {
-      const pages = result.document.pages.map((item) => `\`${item.id}\` (${item.title})`).join(", ");
-      return failure("page_not_found", `The board has no page \`${page}\`. Its pages: ${pages}.`);
-    }
-    return { ok: true, page: found, title: result.document.title, health: null };
   }
 
-  /**
-   * The board's health, as the window sees it (opening the board in the background when it isn't
-   * open). A report that still listed a board the window let go of fails with `board_not_open`: the
-   * bridge forgets it and the board is opened again, once.
-   */
-  private async heldHealth(board: AgentBoardRef): Promise<{ readonly ok: true; readonly view: BoardHealthView } | AgentFailure> {
-    for (let attempt = 0; ; attempt += 1) {
-      const opened = await this.options.bridge.open({ board });
-      if (!opened.ok) {
-        return opened;
-      }
-      const health = await this.health(opened.windowId, board);
-      if (health.ok || health.code !== "board_not_open" || attempt > 0) {
-        return health;
-      }
-      this.options.bridge.views.release(board);
-    }
-  }
-
-  private async health(windowId: number, board: AgentBoardRef): Promise<{ readonly ok: true; readonly view: BoardHealthView } | AgentFailure> {
+  /** The board's health: its session's while a window holds it, else its file's (`board_health` opens nothing). */
+  private async health(board: AgentBoardRef): Promise<HealthOutcome> {
     try {
-      const view = (await this.options.engine.untrusted(windowId, "board_health", { project: board.project, id: board.id })) as BoardHealthView;
-      return { ok: true, view };
+      return { ok: true, view: (await this.options.engine.untrusted(0, "board_health", { project: board.project, id: board.id })) as BoardHealthView };
     } catch (error) {
       return engineFailure(error, board);
     }

@@ -21,6 +21,7 @@
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
+import { flowBlocks } from "@unfold/desktop/drawing";
 import { useUpdateNodeInternals } from "@xyflow/react";
 import { useLayoutEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { CodeButton } from "../../code/CodeButton";
@@ -35,7 +36,7 @@ import { layoutFlow, type FlowGeometry } from "../../flow/layout";
 import type { Card, CardView, DrawnFlow, FlowState, Header, Key, LinkEnd } from "../../ipc/generated";
 import type { UnfoldError } from "../../ipc/unfold";
 import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
-import { flowBlocks, heldBlocks, isMissing } from "../../state/cards";
+import { heldBlocks, isMissing } from "../../state/cards";
 import { openGap, useCodeHover, useCodePanel } from "../../state/codePanel";
 import { callPort, stepPort } from "../arrows";
 import { useMeasure } from "../measure";

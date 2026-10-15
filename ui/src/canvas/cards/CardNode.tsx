@@ -7,12 +7,12 @@
  * expanded to its drawn flow.
  */
 
+import { cardShape } from "@unfold/desktop/drawing";
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import type { Card, View } from "../../ipc/generated";
 import { cardView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { useCard } from "../../state/cards";
-import { cardShape } from "../cardText";
 import { BlockCard } from "./BlockCard";
 import { EntranceCard } from "./EntranceCard";
 import { TypeCard } from "./TypeCard";

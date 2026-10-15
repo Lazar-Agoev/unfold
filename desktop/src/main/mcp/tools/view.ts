@@ -101,7 +101,7 @@ export const getCurrentView = defineTool({
   title: "Get current view",
   description:
     "What the person is looking at in the Unfold window: the project, board, and page (with its revision), the selection (a card, a step (one shown in a call opened in place names the definition that owns it), a combined step, a proposed step, a frame, a resource card, a note, a connection, or an arrow between two cards with the calls it draws), what the code panel shows (its block's key, or the lines it opened on, and the file and lines on screen), and the items in view, each with its id. Call it when the person says \"this\", \"here\", \"this code\", or \"the selected card\", and before working on the page they're viewing. Once you start, pass the board and page ids to other tools: the person may switch pages. It never moves their view, and never opens or moves the code panel: it is the person's.",
-  input: z.object({}),
+  input: z.strictObject({}),
   annotations: { readOnlyHint: true },
   alwaysLoad: true,
   async run(_args, context) {

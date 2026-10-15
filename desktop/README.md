@@ -14,7 +14,8 @@ Electron utility process, the engine host, loads the Rust addon. The renderer ha
 | Hardening, the `app://` origin | `main/security.ts`, `protocol.ts`, `app-url.ts` |
 | Engine host supervision and routing | `main/engine-host.ts`; `engine-host/index.ts`, `router.ts`, `binding.ts` |
 | The renderer's API | `preload/index.ts`; `shared/unfold-api.ts`, `transport.ts` |
-| Agent bridge, links, view reports, page images | `main/agents/`; `shared/agent-api.ts`, `render-api.ts` |
+| Agent bridge, links, view reports, page images | `main/agents/`; `shared/agent-api.ts`, `render-api.ts`, `revision.ts` (`@unfold/desktop/revision`) |
+| What a page draws, read one way for the window and the MCP server: the walk of a drawn flow, how a card shows, the arrows between cards | `shared/drawing.ts` (`@unfold/desktop/drawing`) |
 | MCP server, tools, guide | `main/mcp/`; tools in `main/mcp/tools/`, guide topics in `main/mcp/guide/` |
 | Build and packaging | `electron.vite.config.ts`, `electron-builder.yml` |
 
@@ -22,8 +23,8 @@ Electron utility process, the engine host, loads the Rust addon. The renderer ha
 
 The preload exposes only `window.unfold`. Engine commands travel over the window's MessagePort to the engine host,
 which hands them to the addon; window commands (`window_info`, `export_png`, `report_view`, …) go to main over IPC.
-Main's own trusted requests, such as adding a project from the folder picker and the window's state, use the utility
-process's parent port. Adding an engine command changes the Rust command table, not each hop.
+Main's own trusted requests, such as adding a project from the folder picker, saving Settings, and the window's
+state, use the utility process's parent port. Adding an engine command changes the Rust command table, not each hop.
 
 Main restarts a crashed engine host and hands the window fresh ports; the window reconnects with its board and
 unsaved edits. Main does no graph work and never waits on the engine.
@@ -41,15 +42,17 @@ instructions only. The listener refuses requests with an `Origin` header, a `Hos
 `127.0.0.1` or `localhost`, or an oversized body. Each request names its client: Claude Code signs its edits as
 `agent:claude`, Codex as `agent:codex`.
 
-- **Tools** are `defineTool`s in `main/mcp/tools/`, listed in order in `tools/index.ts`. Results stay under about
-  6,000 tokens, and refusals say what to call instead. Tools read through the engine with untrusted requests, as a
+- **Tools** are `defineTool`s in `main/mcp/tools/`, listed in order in `tools/index.ts`. Every object in a tool's
+  arguments is a `z.strictObject`, so an unknown argument is refused, never dropped. Results and refusals stay under
+  about 6,000 tokens, and refusals say what to call instead. Tools read through the engine with untrusted requests, as a
   window does.
 - **The guide** (`main/mcp/guide/*.md`) and the server instructions (`instructions.ts`) teach agents that use
   Unfold. `teaching.test.ts` checks their size limits and that they name only tools, arguments, and topics that
   exist. `tasks.md` is the manual task suite for the person tuning that teaching; agents never see it. Edit them when
   product behavior changes, not as repository onboarding.
 - **The agent bridge** (`main/agents/bridge.ts`) has the window make an agent's edits as it makes the person's: one
-  undo step each, signed with the agent's name, refused when the page changed since the agent's `expectRevision`.
+  undo step each, signed with the agent's name, refused when the page changed since the agent's `expectRevision`
+  (the window compares it as it saves the edit, with `shared/revision.ts`).
   An edit to a board the window doesn't hold loads that board's session in the background without changing what the
   person sees; if the window is closed, the bridge opens it (after the launch restore). A request that times out is
   `unconfirmed` and may still land, so re-read before retrying.
@@ -62,9 +65,10 @@ instructions only. The listener refuses requests with an `Origin` header, a `Hos
 
 `PageRenderer` (`main/agents/render.ts`) draws one page read-only in a hidden, hardened window (`render.html`) for
 `get_screenshot`, the board menu's Export PNG…, and `check`. The page comes from the window when it holds the board,
-unsaved edits included, else from the engine. The render window reads card data from the engine but holds no
-board session. Rendering waits for fonts and measured content and bounds the canvas size, image bytes, deadlines,
-and queued work.
+unsaved edits included, else from the engine, and its health from `board_health`, which judges the file of a board no
+window has open: neither opens the window or a board session. The render window reads card data from the engine but
+holds no board session. Rendering waits for fonts and measured content and bounds the canvas size, image bytes,
+deadlines, and queued work.
 
 ## Packaging
 

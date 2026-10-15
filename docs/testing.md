@@ -68,7 +68,7 @@ Tests compile temporary copies of `testdata/` folders and compare the output wit
 | `goldens/{ts-orders,py-orders,mixed-playground}.flows.txt` | `unfold-reader`'s drawing tests | Every definition drawn with no overlay, printed as agent text |
 | `goldens/drawn/*.json` | `unfold-reader`'s drawing tests | Drawn flows as the IPC sends them. The UI's layout tests read them |
 | `goldens/sample.jsonl` | `unfold-core`'s canonical tests | The sample `shop` graph |
-| `workspace/commands/*.json`, `workspace/commands/{py-orders,mixed-playground}/*.json` | `unfold-workspace/tests/commands/goldens.rs` | Command results, normalized: every command on `ts-orders` (the UI tests' engine answers), and `project_summary`, `entrances`, `card`, `code_view`, and `flow_text` on `py-orders` and the mixed playground |
+| `workspace/commands/*.json`, `workspace/commands/{py-orders,mixed-playground}/*.json` | `unfold-workspace/tests/commands/goldens.rs` | Command results, normalized: every command on `ts-orders` (the UI tests' engine answers), and `project_summary`, `entrances`, `card` (with and without its agent text), and `code_view` on `py-orders` and the mixed playground |
 | `boards/order-system.json` | `unfold-workspace/tests/commands/claims.rs` | The example board, saved to itself with real signatures |
 | `fixtures/typed-lines/expected/*.jsonl`, `fixtures/typescript-typed/*.typed`, `fixtures/typescript-structure/*.tree`, `fixtures/typescript-evidence/*/expected.links` | The language crates | Typed records, node trees, links per case |
 

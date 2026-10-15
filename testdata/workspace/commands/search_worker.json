@@ -14,7 +14,7 @@
         "qualifiedName": "npm run worker",
         "path": "",
         "kind": "app",
-        "line": null,
+        "line": 30,
         "app": null,
         "score": 664
       },
@@ -25,7 +25,7 @@
         "qualifiedName": "Worker queue emails",
         "path": "",
         "kind": "entrance",
-        "line": null,
+        "line": 35,
         "app": "Worker",
         "score": 332
       },
@@ -36,7 +36,7 @@
         "qualifiedName": "Worker queue reports",
         "path": "",
         "kind": "entrance",
-        "line": null,
+        "line": 37,
         "app": "Worker",
         "score": 332
       },
@@ -47,7 +47,7 @@
         "qualifiedName": "Worker queue orders",
         "path": "",
         "kind": "entrance",
-        "line": null,
+        "line": 36,
         "app": "Worker",
         "score": 332
       }

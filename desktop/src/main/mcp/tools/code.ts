@@ -3,19 +3,20 @@
  *
  * `read_code` prints a definition's compiled tree (`code_text`): each block with its short label and
  * full key beside the line it starts on, what it calls, binds, or tests, and the code between blocks;
- * a type's or class's members (`type_definition`); and an app's or entrance's code (`card`).
- * `get_relations` pages callers (`relations`) or a type's uses (`type_uses`), and lists the board
- * pages that show it (`board_refs`).
+ * a type's or class's members (`type_definition`), paged with the tree; and an app's or entrance's
+ * code (`card`). `get_relations` pages callers and calls (`relations`) and a type's uses
+ * (`type_uses`) with one cursor, and lists the board pages that show it (`board_refs`).
  */
 
 import { z } from "zod";
-import type { CardView, LinkEnd, OutgoingView, StartCard, TypeDefinition, TypeMember } from "../engine-types";
+import type { CallerView, CardView, LinkEnd, OutgoingView, StartCard, TypeDefinition, TypeMember, TypeUsePlace } from "../engine-types";
 import { count, place, typeText } from "../format";
 import { cursorOffset, nextLine, pagedLines, textResult } from "../results";
+import { fitting, linesLength, moreLine, section, type Section } from "../sections";
 import { codeTarget } from "../target";
 import { defineTool } from "../tool";
 
-/** Lines of the compiled tree per page (fewer when they are long). */
+/** Lines of the compiled tree, then of a type's members, per page (fewer when they are long). */
 const LINES_PER_PAGE = 150;
 
 /** Where a call or a type name goes, in words. */
@@ -35,6 +36,14 @@ function endText(to: LinkEnd, name?: string): string {
 /** One call or link a definition makes, as `get_relations` lists it. */
 function callLine(call: OutgoingView): string {
   return `- line ${call.line}: ${call.kind} ${call.text} → ${endText(call.to, call.targetName)}; key ${call.call}`;
+}
+
+function callerLine(caller: CallerView): string {
+  return `- ${caller.ownerName} at ${place(caller.path, caller.line)}${caller.kind === "calls" ? "" : `, ${caller.kind}`} (key ${caller.owner}; call ${caller.call})`;
+}
+
+function useLine(use: TypeUsePlace): string {
+  return `- ${use.label} at ${place(use.path, use.line)}${use.kind === "annotation" ? "" : `, ${use.kind}`} (key ${use.owner})`;
 }
 
 function memberLine(member: TypeMember): string {
@@ -81,8 +90,8 @@ export const readCode = defineTool({
   name: "read_code",
   title: "Read code",
   description:
-    "Reads a module, function, method, class, or type as Unfold compiled it, or an app or entrance, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person's view. A definition: its compiled tree, one line per block with the line it starts on, its short label (try[0]/except[0]) and full key, and how it is drawn: ▸ a project call (a box, with its target's key), ? an unknown call (with the reason), builtin, binds, tests, and exit values; ⋯ marks code that isn't a block. shape_card takes the short labels or the keys; propose, connect, and read_call take the keys. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An app or entrance: what starts it and the code it starts at, with each key's state. Long trees come in pages: pass cursor. Reading changes nothing.",
-  input: z.object({
+    "Reads a module, function, method, class, or type as Unfold compiled it, or an app or entrance, by key (from search, list_entrances, read_page, or get_relations) or a link to a card; without key, the card selected in the person's view. A definition: its compiled tree, one line per block with the line it starts on, its short label (try[0]/except[0]) and full key, and how it is drawn: ▸ a project call (a box, with its target's key), ? an unknown call (with the reason), builtin, binds, tests, and exit values; ⋯ marks code that isn't a block. shape_card takes the short labels or the keys; propose, connect, and read_call take the keys. A type or class: its members with written types and what each type name links to, inherited members by base, and how many places use it. An app or entrance: what starts it and the code it starts at, with each key's state. Long trees and member lists come in pages: pass cursor. Reading changes nothing.",
+  input: z.strictObject({
     key: z.string().min(1).optional().describe("The code's key, or a link to a card (default: the selected card)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
     cursor: cursorArg,
@@ -103,16 +112,17 @@ export const readCode = defineTool({
       isType ? context.engine("type_definition", { project: id, key: code.key }) : null,
       header.kind === "type" ? null : context.engine("relations", { project: id, key: code.key, callersLimit: 1 }),
     ]);
-    const shown = pagedLines(tree.text.trimEnd().split("\n"), cursor, LINES_PER_PAGE);
-    const first = cursorOffset(cursor) === 0;
+    // A type's members continue the tree's lines, so one cursor pages both.
+    const treeLines = tree.text.trimEnd().split("\n");
+    const shown = pagedLines([...treeLines, ...(definition ? definitionLines(definition) : [])], cursor, LINES_PER_PAGE);
+    const offset = cursorOffset(cursor);
     return textResult(
       head,
       `${header.form} ${header.label} at ${place(header.path, header.line)}; key ${header.key}.`,
       code.step !== undefined ? `Selected in the person's view: the block ${code.step}.` : null,
-      `Compiled tree:\n${shown.items.join("\n")}`,
+      offset < treeLines.length ? `Compiled tree:\n${shown.items.join("\n")}` : shown.items.join("\n"),
       nextLine(shown, "read_code"),
-      definition && first ? definitionLines(definition).join("\n") : null,
-      relations && first ? `Called from ${count(relations.callersTotal, "place")}.` : null,
+      relations && offset === 0 ? `Called from ${count(relations.callersTotal, "place")}.` : null,
       `Next: read_call with a call's key for what it sends; get_relations for callers${isType ? " and uses" : ""}; add_cards puts it on a page.`,
     );
   },
@@ -125,11 +135,11 @@ export const getRelations = defineTool({
   name: "get_relations",
   title: "Get relations",
   description:
-    "How a module, function, method, class, or type connects: who calls it (each caller's name, file:line, and the call's key, paged), what it calls and links to (project, library, builtin, or unknown), which entrances reach it (at least: what the graph proves), and which board pages already show it. For a type or class: the places that use it (each use's owner, file:line, and key, with extends and implements marked). key comes from search, read_code, read_page, or a link to a card; without key, the card selected in the person's view. limit sets a page of callers or uses (default 20, at most 100); pass the next cursor for more. Use it to choose what goes on a page, and before drawing a connection, to check whether Unfold already draws that call. Reading changes nothing.",
-  input: z.object({
+    "How a module, function, method, class, or type connects: who calls it (each caller's name, file:line, and the call's key), what it calls and links to (project, library, builtin, or unknown), which entrances reach it (at least: what the graph proves), and which board pages already show it. For a type or class: the places that use it (each use's owner, file:line, and key, with extends and implements marked). key comes from search, read_code, read_page, or a link to a card; without key, the card selected in the person's view. Callers, calls, and uses come in pages: limit is per list (default 20, at most 100; a page of long lines shows fewer), and the next cursor pages them all. Use it to choose what goes on a page, and before drawing a connection, to check whether Unfold already draws that call. Reading changes nothing.",
+  input: z.strictObject({
     key: z.string().min(1).optional().describe("The code's key, or a link to a card (default: the selected card)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
-    limit: z.number().int().min(1).max(100).default(20).describe("Callers or uses per page"),
+    limit: z.number().int().min(1).max(100).default(20).describe("Callers, calls, and uses per page"),
     cursor: z.string().optional().describe("The cursor an earlier page gave"),
   }),
   annotations: { readOnlyHint: true },
@@ -146,36 +156,37 @@ export const getRelations = defineTool({
       isType ? context.engine("type_uses", { project: id, key: code.key, offset, limit }) : null,
       context.engine("board_refs", { project: id, key: code.key }),
     ]);
-    const callers = relations
-      ? [
-          `Called from ${count(relations.callersTotal, "place")}${relations.callers.length < relations.callersTotal ? ` (${offset + 1}–${offset + relations.callers.length} here)` : ""}:`,
-          ...relations.callers.map((caller) => `- ${caller.ownerName} at ${place(caller.path, caller.line)}${caller.kind === "calls" ? "" : `, ${caller.kind}`} (key ${caller.owner}; call ${caller.call})`),
-        ]
-      : [];
     const calls = relations ? relations.outgoing.toSorted((a, b) => a.line - b.line) : [];
-    const usesLines = uses
-      ? [
-          `Used in ${count(uses.total, "place")}${uses.places.length < uses.total ? ` (${offset + 1}–${offset + uses.places.length} here)` : ""}:`,
-          ...uses.places.map((use) => `- ${use.label} at ${place(use.path, use.line)}${use.kind === "annotation" ? "" : `, ${use.kind}`} (key ${use.owner})`),
-        ]
-      : [];
-    const more = (relations?.callersNext ?? null) !== null || (uses !== null && offset + limit < uses.total);
-    return textResult(
+    const head = [
       context.header({ project: code.project.name }),
       `${name}: key ${code.key}.`,
       card.type === "start" ? "An app or entrance: read_code lists its code; list_entrances, what else starts the project." : null,
-      ...callers,
-      calls.length > 0 && offset === 0 ? [`Calls and links (${calls.length}):`, ...calls.map(callLine)].join("\n") : null,
+      relations?.callersTotal === 0 && offset === 0 ? "No caller in the graph." : null,
+      uses?.total === 0 && offset === 0 ? "No place uses it in the graph." : null,
+    ];
+    const tail = [
       relations && offset === 0
         ? relations.reachedFrom.length > 0
           ? `Reached at least from: ${relations.reachedFrom.map((from) => `${from.name} in ${from.app} (key ${from.key})`).join(", ")}.`
           : "No entrance reaches it in the graph."
         : null,
-      ...usesLines,
       boards.refs.length > 0
         ? [`On boards${boards.truncated ? " (the first 50)" : ""}:`, ...boards.refs.map((ref) => `- ${ref.title} › ${ref.pageTitle} (board id ${ref.board}, page id ${ref.page})`)].join("\n")
         : "No board shows it yet.",
-      more ? `More: get_relations with cursor "${offset + limit}".` : null,
+    ];
+    // Callers and uses come from the engine a page at a time, from the cursor; calls all at once.
+    const page = fitting(limit, linesLength([...head, ...tail]), (size) =>
+      [
+        relations ? section("Callers", relations.callers, relations.callersTotal, offset, size, callerLine) : null,
+        section("Calls and links", calls.slice(offset), calls.length, offset, size, callLine),
+        uses ? section("Uses", uses.places, uses.total, offset, size, useLine) : null,
+      ].filter((item): item is Section => item !== null),
+    );
+    return textResult(
+      ...head,
+      ...page.sections.flatMap((item) => item.lines),
+      ...tail,
+      moreLine(page.sections, "get_relations", offset + page.limit),
       "Next: read_code with a key; add_cards puts code on a page.",
     );
   },

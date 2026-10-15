@@ -1,6 +1,6 @@
 import { describe as group, expect, it, vi } from "vitest";
 import type { AgentEditRequest, AgentFailure, AgentItemResult, AgentPage, AgentShellEvent } from "../../../shared/agent-api";
-import { pageRevision } from "../../agents/revision";
+import { pageRevision } from "../../../shared/revision";
 import { addNotes, addResources, connect, describe, frameCards, propose } from "./shape";
 import { harness, PROJECT } from "./testing";
 

@@ -691,7 +691,7 @@ description?: Description,
 open?: Array<Array<Key>>, };
 
 /**
- * The arguments of `card` and `flow_text`.
+ * The arguments of `card`.
  */
 export type CardArgs = { 
 /**
@@ -714,7 +714,12 @@ open?: Array<Array<string>>,
 /**
  * Whether builtin calls are drawn (Show all calls; off when absent).
  */
-showAllCalls?: boolean, };
+showAllCalls?: boolean, 
+/**
+ * Whether a definition's card comes with its agent text, for the MCP server (off when
+ * absent).
+ */
+agentText?: boolean, };
 
 /**
  * What a card shows: one block (a module, definition, or type) or one start (an app's start
@@ -737,7 +742,11 @@ export type CardView = { "type": "definition",
 /**
  * The drawn flow.
  */
-flow: DrawnFlow, } | { "type": "start" } & StartCard;
+flow: DrawnFlow, 
+/**
+ * The drawn flow as agent text, when asked.
+ */
+agentText?: FlowText, } | { "type": "start" } & StartCard;
 
 /**
  * How many rows of each table a `relates` connection joins.
@@ -1659,7 +1668,7 @@ actions: Actions, };
 export type FlowState = "current" | "changed" | "doesNotParse";
 
 /**
- * The agent text of a drawn flow.
+ * A drawn flow as agent text (docs/reader.md#agent-text).
  */
 export type FlowText = { 
 /**
@@ -3286,7 +3295,8 @@ path: string,
  */
 kind: string, 
 /**
- * A definition's first line.
+ * A definition's first line; the first line of an app's or entrance's entry in
+ * `unfold.toml` (absent when the file as it is now doesn't declare it).
  */
 line: number | null, 
 /**
@@ -4208,18 +4218,13 @@ export interface Commands {
   open_in_editor: { args: OpenInEditorArgs; result: null };
   /**
    * A card: a definition's drawn flow (with the page's overlay, the card's open paths, and
-   * Show all calls), or an app's or entrance's card.
+   * Show all calls; with its agent text when asked), or an app's or entrance's card.
    */
   card: { args: CardArgs; result: CardView };
   /**
    * Agent text: the compiled tree of a definition, with each block's label and key.
    */
   code_text: { args: ProjectKeyArgs; result: CodeText };
-  /**
-   * Agent text: a definition's drawn flow, shaped like `card`'s, with its blocks' labels and
-   * keys.
-   */
-  flow_text: { args: CardArgs; result: FlowText };
   /**
    * Callers (paginated), outgoing calls, and reached-from.
    */
@@ -4362,7 +4367,6 @@ export const COMMAND_NAMES = [
   "open_in_editor",
   "card",
   "code_text",
-  "flow_text",
   "relations",
   "callers",
   "board_refs",

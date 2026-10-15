@@ -101,7 +101,7 @@ export const readCall = defineTool({
   title: "Read call",
   description:
     "One call's contract, as the board's arrow contract shows it: what the caller sends (each argument beside the parameter it fills and that parameter's written type, or why it fills none), what comes back (the callee's written return type, whether it's awaited, and where the value lands), what the callee raises directly, and which part of the caller catches it. Name the call by its key (from read_code, such as shop/service.py#place_order/try[0]/body/call:charge_card). Without call, it reads the arrow selected in the person's view (every call it draws). Written types only: Unfold never infers a type, so a parameter without one says so; get_guide(\"graph\") says what a contract proves. Reading changes nothing.",
-  input: z.object({
+  input: z.strictObject({
     call: z.string().min(1).optional().describe("The call's key (default: the selected arrow's calls)"),
     project: z.string().min(1).optional().describe("The project's name or id (default: the project of the board in view)"),
   }),

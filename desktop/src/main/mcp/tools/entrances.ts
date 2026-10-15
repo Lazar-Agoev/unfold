@@ -64,7 +64,7 @@ export const setApp = defineTool({
   name: "set_app",
   title: "Set app",
   description: `Adds an app to a project's unfold.toml (an [[app]] table), or changes an existing app's run, code, or about. app is its name (a new app's heading on Home) or the key of an existing one. run is the command that starts it, as written in package.json, pyproject.toml, a Procfile, or a Dockerfile (Unfold never runs it); code is the key of the block where that command starts, usually a module (src/server.ts#), from search or read_code; about is one sentence for its card. A field left out keeps what the file says; null removes it. Its entrances stay (set_entrance writes them). ${SHARED} It never recompiles: Unfold looks up the keys again; list_entrances then shows whether code is found. Returns the change to unfold.toml as a diff. Read get_guide("setup") first.`,
-  input: z.object({
+  input: z.strictObject({
     project: projectArg,
     app: appArg,
     run: field("The command that starts it"),
@@ -81,7 +81,7 @@ export const setEntrance = defineTool({
   name: "set_entrance",
   title: "Set entrance",
   description: `Adds one entrance to an app in a project's unfold.toml, creating the app when it is new, or changes an entrance the app has. app is the app's name or key; name is the entrance's name, what a person calls it ("Place an order"), or an existing one's key. on is what starts it, as written: POST /orders/{id}, queue emails, every 5 minutes (display text; Unfold never parses it). code is the block it starts at, or a list of blocks in the order they run: a module, a definition, or an inline handler, by key (search, read_code), never a call, branch, or exit; a new entrance needs it. about is one sentence for its card. A field left out keeps what the file says; null removes on or about. ${SHARED} It never recompiles: Unfold looks up the keys again; list_entrances then shows whether each code is found. Returns the change as a diff. Read get_guide("setup") first.`,
-  input: z.object({
+  input: z.strictObject({
     project: projectArg,
     app: appArg,
     name: z.string().trim().min(1).max(200).describe("The entrance's name, or an existing one's key"),
@@ -103,7 +103,7 @@ export const removeEntrance = defineTool({
   name: "remove_entrance",
   title: "Remove entrance",
   description: `Removes one entrance from an app in a project's unfold.toml, or, without entrance, the whole app with its entrances. app and entrance are names or keys (list_entrances lists them). Boards that show a removed entrance find it missing, and offer the entrance with the same code if there is one. ${SHARED} It never recompiles. Returns the change as a diff.`,
-  input: z.object({
+  input: z.strictObject({
     project: projectArg,
     app: appArg,
     entrance: z.string().trim().min(1).max(200).optional().describe("The entrance's name or key (absent: the whole app)"),

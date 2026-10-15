@@ -134,13 +134,10 @@ command_table! {
     /// created empty first when it has none.
     "open_in_editor" => OpenInEditor(files::OpenInEditorArgs) -> () = files::open_in_editor;
     /// A card: a definition's drawn flow (with the page's overlay, the card's open paths, and
-    /// Show all calls), or an app's or entrance's card.
+    /// Show all calls; with its agent text when asked), or an app's or entrance's card.
     "card" => Card(graph::CardArgs) -> graph::CardView = graph::card;
     /// Agent text: the compiled tree of a definition, with each block's label and key.
     "code_text" => CodeText(ProjectKeyArgs) -> unfold_reader::drawing::CodeText = graph::code_text;
-    /// Agent text: a definition's drawn flow, shaped like `card`'s, with its blocks' labels and
-    /// keys.
-    "flow_text" => FlowText(graph::CardArgs) -> graph::FlowText = graph::flow_text;
     /// Callers (paginated), outgoing calls, and reached-from.
     "relations" => Relations(relations::RelationsArgs) -> relations::Relations = relations::relations;
     /// Show callers: the distinct definitions that call a definition.

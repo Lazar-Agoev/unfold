@@ -132,12 +132,13 @@ defaults are steps of the body they are written in.
 MCP server never lays out flows itself:
 
 - `code_text` prints a definition's compiled tree, for `read_code`;
-- `flow_text` prints a drawn flow, for `shape_card` results and `read_page`.
+- `flow_text` prints a drawn flow, for `shape_card` results and `read_page`. The `card` command returns it beside the
+  flow it prints when asked (`agentText`), so a card is drawn once for both.
 
 Every line ends with the full keys of its blocks after `key=`, the calls listed on a box, a chip, an exit's value,
-or in a thin row included, in the order they are printed. Each result also carries a label → key map, so the
-server turns an agent's short label (`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or
-splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
+or in a thin row included, in the order they are printed. Each result also carries a label → key map (`labels`,
+read from the tree alone, in the compiled tree's order), so the server turns an agent's short label
+(`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
 collapsed or open combined step, `⋯` a gap tick, `↳` a callback (`↳ callback onSuccess () =>`: the property it is written as, then its
 signature), `+ PROPOSED` a proposal, `· never runs` and
 `· truncated` for route states (a truncated definition's on its first line). A handler's line is its clause, then

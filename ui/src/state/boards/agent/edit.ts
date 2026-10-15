@@ -6,10 +6,13 @@
  * session's working document with the same pure edits people's actions use, as one undo step named
  * "<agent> · <title>", every new or changed text signed with the agent's identity. It is saved at
  * once (`saveStep`) and becomes an undo step only once the engine accepts it, so a refused edit leaves
- * the board as it was and answers with the engine's code and message. The items it changed are marked
- * as the agent's work until it finishes.
+ * the board as it was and answers with the engine's code and message. Its expected revision is
+ * compared in the same step that makes the change to save, so a person's edit that lands after the
+ * agent read the page refuses it. The items it changed are marked as the agent's work until it
+ * finishes.
  */
 
+import { pageRevision } from "@unfold/desktop/revision";
 import type {
   AgentEditRequest,
   AgentEditResult,
@@ -145,6 +148,13 @@ export async function applyAgentEdit(request: AgentEditRequest): Promise<AgentEd
       applies.push(await prepare(op, { ...base, warnings: [] }));
     }
     const outcome = await saveStep(ref, request.page, `${request.agent.name} · ${request.title}`, (document) => {
+      const current = findPage(document, request.page);
+      if (current && request.expectRevision !== undefined && pageRevision(current) !== request.expectRevision) {
+        throw new AgentRefusal(
+          "revision_mismatch",
+          `The page changed since you read it (rev ${request.expectRevision}, now rev ${pageRevision(current)}). Read it again, then make the change.`,
+        );
+      }
       const ctx: OpContext = { ...base, warnings: [] };
       let items: AgentItemResult[] = [];
       const next = produce(document, (draft) => {

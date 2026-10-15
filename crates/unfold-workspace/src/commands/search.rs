@@ -6,15 +6,18 @@
 //!
 //! One request is one fan-out in Rust: every project asked for (all of them by default) is
 //! searched in parallel, and the results are merged. In each project, everything comes from the
-//! store's FTS5 index over names, which returns every item whose name, qualified name, or path
-//! contains each word of the query: so only a compiled project has results. Every candidate is
-//! ranked with `nucleo-matcher`'s fuzzy score (a match in the name counts most, then the
-//! qualified name, then the path); merged results sort by score, then workspace order, then
-//! shorter name, then key, so they are deterministic. Only the returned hits get details from the
-//! stored graph (definitions' lines, entrances' apps, files' definition counts), with one reader
-//! per project. Searching never wakes a project.
+//! store's FTS5 index over names, which returns every definition, app, or entrance whose name or
+//! qualified name contains each word of the query, and every file whose name or path does: so
+//! only a compiled project has results. Every candidate is ranked with `nucleo-matcher`'s fuzzy
+//! score (a match in the name counts more than one in the qualified name; files by their path);
+//! merged results sort by score, then workspace order, then shorter name, then key, so they are
+//! deterministic. Only the returned hits get details, with one reader per project: definitions'
+//! lines and files' definition counts from the stored graph, and entrances' apps, and the line in
+//! `unfold.toml` that declares each app and entrance, read from the file as it is now. Searching
+//! never wakes a project.
 
 use std::cmp::Ordering;
+use std::path::Path;
 
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -23,14 +26,17 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::NodeKind;
-use unfold_core::{Key, RepoPath};
+use unfold_core::{Key, LineBreaks, LineIndex, RepoPath};
+use unfold_engine::settings::{AppEntry, SettingsFile};
 use unfold_reader::catalog;
 use unfold_store::{CandidateKind, ReadPool, Reader, SearchCandidate};
 
 use super::count;
+use super::entrances::span_of;
 use crate::ipc::context::Ctx;
 use crate::ipc::error::CommandResult;
 use crate::projects::{ProjectHandle, ProjectId};
+use crate::workspace::settings_text;
 
 /// Results per kind when the request doesn't say.
 const DEFAULT_LIMIT: u32 = 50;
@@ -92,7 +98,8 @@ pub struct SearchHit {
     pub path: String,
     /// A definition's node kind (`module`, `class`, `function`, `type`), `app`, or `entrance`.
     pub kind: String,
-    /// A definition's first line.
+    /// A definition's first line; the first line of an app's or entrance's entry in
+    /// `unfold.toml` (absent when the file as it is now doesn't declare it).
     pub line: Option<u32>,
     /// An entrance's app, by name.
     pub app: Option<String>,
@@ -238,7 +245,7 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     for (project, found) in projects.iter().zip(&found) {
         if let Some(pool) = &found.readers {
             detail(
-                project.id(),
+                project,
                 pool,
                 &mut definitions.hits,
                 &mut entrances.hits,
@@ -254,16 +261,17 @@ pub fn search(ctx: &Ctx<'_>, args: SearchArgs) -> CommandResult<SearchResults> {
     })
 }
 
-/// Fills in one project's returned hits from its stored graph: definitions' lines, entrances'
-/// apps, and files' definition counts (one grouped query).
+/// Fills in one project's returned hits: definitions' lines, entrances' apps, and files'
+/// definition counts (one grouped query) from its stored graph, and apps' and entrances' lines
+/// from its `unfold.toml`.
 fn detail(
-    project: &ProjectId,
+    project: &ProjectHandle<'_>,
     pool: &ReadPool,
     definitions: &mut [SearchHit],
     entrances: &mut [SearchHit],
     files: &mut [FileHit],
 ) -> CommandResult<()> {
-    let ours = |hit_project: &ProjectId| hit_project == project;
+    let ours = |hit_project: &ProjectId| hit_project == project.id();
     if !definitions.iter().any(|hit| ours(&hit.project))
         && !entrances.iter().any(|hit| ours(&hit.project))
         && !files.iter().any(|hit| ours(&hit.project))
@@ -278,10 +286,14 @@ fn detail(
     }
     if entrances.iter().any(|hit| ours(&hit.project)) {
         let apps = reader.apps()?;
+        let declared = declared(project.root());
         for hit in entrances.iter_mut().filter(|hit| ours(&hit.project)) {
             hit.app = catalog::start(&apps, hit.key.as_str())
                 .filter(|start| start.key() != &start.app().key)
                 .map(|start| start.app().name.to_string());
+            hit.line = declared.as_ref().and_then(|(entries, lines)| {
+                span_of(entries, hit.key.as_str()).map(|span| lines.span(span).start)
+            });
         }
     }
     let paths: Vec<&str> = files
@@ -294,6 +306,14 @@ fn detail(
         hit.definitions = counts.get(&hit.path).copied();
     }
     Ok(())
+}
+
+/// The apps and entrances of the `unfold.toml` under `root` as it is now, with its lines: `None`
+/// when the file is missing, unreadable, or invalid. Reading it never wakes the project.
+fn declared(root: &Path) -> Option<(Vec<AppEntry>, LineIndex)> {
+    let text = settings_text(root).ok()??;
+    let file = SettingsFile::parse(&text).ok()?;
+    Some((file.apps, LineIndex::new(&text, LineBreaks::Newlines)))
 }
 
 /// The projects to look in, in workspace order: every project, or those `only` names (each must
@@ -376,9 +396,8 @@ fn search_project(
     Ok(found)
 }
 
-/// Ranks store candidates: a name match counts four times, a qualified-name match twice, a path
-/// match once. Every candidate is scored, but only the `limit` best are turned into hits (with
-/// owned strings).
+/// Ranks store candidates: a name match counts twice as much as a qualified-name match. Every
+/// candidate is scored, but only the `limit` best are turned into hits (with owned strings).
 fn rank(
     project: &ProjectId,
     pattern: &Pattern,
@@ -395,8 +414,7 @@ fn rank(
         .map(|(index, candidate)| {
             let named = score(&candidate.name).map_or(0, |score| score * 4);
             let qualified = score(&candidate.qualified_name).map_or(0, |score| score * 2);
-            let path = score(&candidate.path).unwrap_or(0);
-            (named.max(qualified).max(path), index)
+            (named.max(qualified), index)
         })
         .collect();
     ranked.sort_by(|&(a_score, a), &(b_score, b)| {

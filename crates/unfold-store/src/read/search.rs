@@ -16,12 +16,13 @@ use crate::search::{CandidateKind, Plan, plan};
 const WEIGHTS: &str = "8.0, 4.0, 1.0, 0.0, 0.0";
 
 impl Reader {
-    /// Up to `limit` candidates of `kind` whose name, qualified name, or path contains every
-    /// whitespace-separated term of `query`, ignoring ASCII case; with `item_kinds`, only those
-    /// whose item kind (a definition's node kind, such as `function`) is one of them. The order
-    /// is a rough relevance order that the caller may re-rank: BM25 with name matches weighted
-    /// over qualified-name and path matches, or shortest name first for terms too short for
-    /// trigrams; ties go by key, so the order depends only on what is stored.
+    /// Up to `limit` candidates of `kind` whose searched columns contain every
+    /// whitespace-separated term of `query`, ignoring ASCII case: a file's name and path, and
+    /// anything else's name and qualified name ([`CandidateKind::columns`]). With `item_kinds`,
+    /// only those whose item kind (a definition's node kind, such as `function`) is one of them.
+    /// The order is a rough relevance order that the caller may re-rank: BM25 with name matches
+    /// weighted over qualified-name and path matches, or shortest name first for terms too short
+    /// for trigrams; ties go by key, so the order depends only on what is stored.
     pub fn search(
         &self,
         query: &str,
@@ -41,7 +42,7 @@ impl Reader {
         };
         let mut sql = String::from("SELECT key, name, qualified_name, path, kind FROM search WHERE ");
         let mut values = Vec::new();
-        let order = match plan(query) {
+        let order = match plan(query, kind) {
             Plan::Empty => return Ok(Vec::new()),
             Plan::Match(expression) => {
                 let at = bind(&mut values, Value::Text(expression));
@@ -51,11 +52,16 @@ impl Reader {
             Plan::Like(patterns) => {
                 for (index, pattern) in patterns.into_iter().enumerate() {
                     let at = bind(&mut values, Value::Text(pattern));
+                    let matches: Vec<String> = kind
+                        .columns()
+                        .iter()
+                        .map(|column| format!("{column} LIKE ?{at} ESCAPE '\\'"))
+                        .collect();
                     let _ = write!(
                         sql,
-                        "{}(name LIKE ?{at} ESCAPE '\\' OR qualified_name LIKE ?{at} ESCAPE '\\' \
-                         OR path LIKE ?{at} ESCAPE '\\')",
-                        if index > 0 { " AND " } else { "" }
+                        "{}({})",
+                        if index > 0 { " AND " } else { "" },
+                        matches.join(" OR ")
                     );
                 }
                 "length(name), key".to_owned()

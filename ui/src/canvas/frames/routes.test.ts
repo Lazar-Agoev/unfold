@@ -4,7 +4,7 @@ import { NODE_PORT, type Arrow } from "../arrows";
 import { routeArrows, routeLinks } from "./routes";
 
 function arrow(source: string, port: string, target: string, extra: Partial<Arrow> = {}): Arrow {
-  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, project: "p", kind: "call", dashed: false, order: 0, calls: [port], ...extra };
+  return { id: `${source}|${port}|${target}`, source, sourceHandle: port, target, kind: "call", dashed: false, order: 0, calls: [port], ...extra };
 }
 
 /** `checks` (collapsed) holds a and b; `api` (collapsed) holds c. */

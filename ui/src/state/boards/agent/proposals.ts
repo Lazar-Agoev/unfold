@@ -10,8 +10,9 @@
  */
 
 import type { AgentItemStatus, AgentProposalResult, AgentProposalSpec, AgentProposalSpot, ProposeOp } from "@unfold/desktop/agent-api";
+import type { DrawnBlock } from "@unfold/desktop/drawing";
 import type { Page, Proposal } from "../../../ipc/generated";
-import { findBlock, type DrawnBlock } from "../../cards";
+import { findBlock } from "../../cards";
 import { cardKey, isFreeId } from "../document";
 import { addProposal, findProposal, moveProposal, proposalReason, proposalTitle, PROPOSAL_REASON_MAX, PROPOSAL_TITLE_MAX, updateProposal, type ProposalChange } from "../proposals";
 import { AgentRefusal, guardPeopleText, invalid, type OpContext } from "./context";

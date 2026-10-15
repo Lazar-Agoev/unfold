@@ -29,8 +29,8 @@ const lineRange = z
 
 /** What a claim cites: a block's or an entrance's key, or an evidence file's lines. */
 export const anchorArg = z.union([
-  z.object({ key: z.string().min(1).describe("A block's or entrance's key") }),
-  z.object({
+  z.strictObject({ key: z.string().min(1).describe("A block's or entrance's key") }),
+  z.strictObject({
     file: z.string().min(1).describe("An evidence file's path in the project (read_file reads it)"),
     lines: lineRange.describe("Its lines [from, to], 1-based and inclusive"),
   }),
