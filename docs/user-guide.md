@@ -117,8 +117,9 @@ In the sidebar, a folder's menu has **New Board Here**, **Rename…**, and **Del
   left.
 - **From the code panel:** `⊕` beside a definition adds its card.
 
-When a function and the function it calls are both on the page, an arrow joins them: from the call on an expanded
-card, or from the edge of a compact one. An entrance's card points at the cards for its code.
+When a function and the function it calls are both on the page, an arrow joins them: from the call itself on an
+expanded card (the line crosses the card from the call to its edge), or from the edge of a compact one. Lines run in
+straight runs with rounded corners and go around the cards in their way; arrows into one card join before it. An entrance's card points at the cards for its code.
 
 ## Read a card
 

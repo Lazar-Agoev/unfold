@@ -139,7 +139,11 @@ one, redraws every card once).
   board file holds no arrows. Which arrows a page draws, how a card shows, and the walk of a drawn flow (its blocks,
   project calls, and combined and proposed steps, in insets opened from any call box) are one module the MCP server
   imports too ([desktop/src/shared/drawing.ts](../desktop/src/shared/drawing.ts), `@unfold/desktop/drawing`), so
-  agents read what the person sees; the canvas places the arrows' ports.
+  agents read what the person sees; the canvas places the arrows' ports. On an expanded card a line starts at its
+  call's box and crosses the card to its edge (under a box beside the row, it steps down and leaves below it). Every
+  line, arrows and connections alike, is orthogonal with rounded corners and goes around the cards it doesn't join
+  (`ui/src/canvas/lines/route.ts`): arrows into one card join into one trunk with one head, connections into one side
+  spread along it, and lines sharing a gap each get their own track.
 - **Connections, frames, resource cards, and notes** share the page's id space and undo history.
 - **Sizes** are measured with the bundled fonts before anything renders; measured sizes stay apart from document
   positions, and Arrange never erases authored contents.
