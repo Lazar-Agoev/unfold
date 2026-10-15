@@ -1,4 +1,4 @@
 escaped-array-keys.ts#run #0 types `Repo` → project escaped-array-keys.ts#Repo
-escaped-array-keys.ts#run/call:values%5B%5D.save #0 calls `values[`\x30`].save` → unknown unknown_receiver
-escaped-array-keys.ts#run/call:values%5B%5D.save[1] #0 calls `values["\x30"].save` → unknown unknown_receiver
-escaped-array-keys.ts#run/call:values%5B%5D.save[2] #0 calls `values[`\u0030`].save` → unknown unknown_receiver
+escaped-array-keys.ts#run/call:values%5B%5D.save #0 calls `values[].save` → unknown unknown_receiver
+escaped-array-keys.ts#run/call:values%5B%5D.save[1] #0 calls `values[].save` → unknown unknown_receiver
+escaped-array-keys.ts#run/call:values%5B%5D.save[2] #0 calls `values[].save` → unknown unknown_receiver

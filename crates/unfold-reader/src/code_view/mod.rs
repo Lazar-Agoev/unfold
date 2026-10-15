@@ -288,7 +288,7 @@ pub fn code_view(sources: &CodeSources<'_>, request: &CodeRequest) -> Result<Cod
         Origin::Source(tree) if current => Some(&**tree),
         Origin::Source(_) | Origin::Input(_) | Origin::Outside(_) => None,
     };
-    let text = Text::new(body.text());
+    let text = Text::new(body.text(), selected.origin.line_breaks());
     let render = Render::new(&text, selected.origin.path(), view)?;
     Ok(CodeView {
         file: Some(selected.origin.path().clone()),
@@ -354,7 +354,7 @@ fn load(sources: &CodeSources<'_>, origin: &Origin) -> (CodeState, Option<Body>)
         Origin::Input(input) => Some(input.hash),
         Origin::Outside(path) => return now(sources, path, CodeState::NotAnalyzed),
     };
-    match verify_file(sources.root, origin.path(), expected) {
+    match verify_file(sources.root, origin.path(), expected, origin.line_breaks()) {
         Verified::Current(source) => (CodeState::Current, Some(Body::Verified(source))),
         Verified::Changed => now(sources, origin.path(), CodeState::Changed),
         Verified::Missing => (CodeState::NotFound, None),

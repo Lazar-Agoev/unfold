@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::hash::ContentHash;
-use super::lines::LineIndex;
+use super::lines::{LineBreaks, LineIndex};
 use super::utf16::Utf16Index;
 use crate::path::RepoPath;
 
@@ -97,9 +97,9 @@ impl Snapshot {
         self.text.is_empty()
     }
 
-    /// Builds the text's line index.
-    pub fn line_index(&self) -> LineIndex {
-        LineIndex::new(&self.text)
+    /// Builds the text's line index, with lines ending at `breaks`.
+    pub fn line_index(&self, breaks: LineBreaks) -> LineIndex {
+        LineIndex::new(&self.text, breaks)
     }
 
     /// Builds the text's UTF-8 to UTF-16 offset index.

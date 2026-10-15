@@ -251,6 +251,44 @@ fn a_type_name_resolves_only_to_a_type_declaration() {
     unresolved(link(&links, "Twice"), Reason::Ambiguous);
 }
 
+/// A written type name links from the definition its annotation types: a declaration's or a
+/// class field's from the function or class it names, or else from the definition it is written
+/// in; a parameter's or return type's from its function; a heritage clause's from its class or
+/// interface; a catch clause's from its `catch` part.
+#[test]
+fn an_annotation_links_from_the_definition_it_types() {
+    let source = "interface Handler {}\ninterface Plain {}\ninterface Local {}\ninterface Count {}\n\
+                  interface Arg {}\nclass Base<T> {}\n\
+                  export const handle: Handler = (r: Arg) => r;\n\
+                  export const plain: Plain = 1;\n\
+                  export function run(): Local { const local: Local = {}; try {} catch (error: any) {} return local; }\n\
+                  export class Box extends Base<Arg> { handler: Handler = () => {}; count: Count = 1; }\n\
+                  export const Made = class extends Base<Plain> { field: Count = 1; };\n";
+    let compiled = compile_source("a.ts", source).valid();
+    let file = compiled.file("a.ts");
+    let froms: Vec<(&str, &str)> = type_links(&compiled, "a.ts")
+        .iter()
+        .map(|link| (&*link.text, file.nodes[link.from as usize].key.as_str()))
+        .collect();
+    assert_eq!(
+        froms,
+        [
+            ("Plain", "a.ts#"),
+            ("Handler", "a.ts#handle"),
+            ("Arg", "a.ts#handle"),
+            ("Local", "a.ts#run"),
+            ("Local", "a.ts#run"),
+            ("Base", "a.ts#Box"),
+            ("Arg", "a.ts#Box"),
+            ("Count", "a.ts#Box"),
+            ("Handler", "a.ts#Box.handler"),
+            ("Base", "a.ts#Made"),
+            ("Plain", "a.ts#Made"),
+            ("Count", "a.ts#Made"),
+        ]
+    );
+}
+
 /// The pairing of each argument of the call node with `key`.
 #[track_caller]
 fn pairings(compiled: &Compiled, path: &str, key: &str) -> Vec<Option<Pairing>> {

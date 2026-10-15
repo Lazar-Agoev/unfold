@@ -96,6 +96,40 @@ boot();
     );
 }
 
+/// A definition's doc is the nearest JSDoc before it, past line comments such as
+/// `// eslint-disable-next-line`, as TypeScript reads it; not across a blank line or a block
+/// comment.
+#[test]
+fn a_doc_is_found_past_line_comments() {
+    assert_tree_at(
+        "a.ts",
+        r#"/** Charges. */
+// eslint-disable-next-line
+export function charge() {}
+
+/** Refunds. */
+// @ts-ignore
+// prettier-ignore
+const refund = () => {};
+
+/** Apart. */
+// eslint-disable-next-line
+
+function apart() {}
+
+/** Hidden. */
+/* plain */
+function hidden() {}
+"#,
+        &[
+            "charge function head=`function charge()` doc=`/** Charges. */`",
+            "refund lambda head=`() =>` doc=`/** Refunds. */`",
+            "apart function head=`function apart()`",
+            "hidden function head=`function hidden()`",
+        ],
+    );
+}
+
 /// The `export` and the JSDoc of `export let sys = (() => { … })();` belong to the
 /// declaration: a function declared inside the arrow starts at its own `function` keyword, and
 /// its doc is only a JSDoc written directly before it.
@@ -256,6 +290,113 @@ on(event, () => other());
             "  /callback[0] lambda head=`() =>`",
             "    /call:other call head=`other`",
             "      ↳ calls `other` → unknown unknown_name",
+        ],
+    );
+}
+
+/// A class expression is an inline definition, keyed where it is written like an inline
+/// function: `callback[n]` in a call's arguments (labeled by the property it is written as) and
+/// `lambda[n]` anywhere else, with the form `class`. Its methods and calls are its own.
+#[test]
+fn class_expressions_are_inline_definitions() {
+    assert_tree_at(
+        "a.ts",
+        r#"function Timestamped(Base) {
+  return class extends Base {
+    stamp() { log("stamp"); }
+  };
+}
+const mixin = (B) => class extends B { name() { log("name"); } };
+customElements.define("x-widget", class extends HTMLElement {
+  connectedCallback() { log("connected"); }
+});
+register({ Widget: class {} });
+"#,
+        &[
+            "Timestamped function head=`function Timestamped(Base)`",
+            "  /return[0] return",
+            "    /lambda[0] class head=`class extends Base`",
+            "      ↳ extends `Base` → unknown unknown_name",
+            "      .stamp method head=`stamp()`",
+            "        /call:log call head=`log`",
+            "          ↳ calls `log` → unknown unknown_name",
+            "mixin lambda head=`(B) =>`",
+            "  /lambda[0] class head=`class extends B`",
+            "    ↳ extends `B` → unknown unknown_name",
+            "    .name method head=`name()`",
+            "      /call:log call head=`log`",
+            "        ↳ calls `log` → unknown unknown_name",
+            "/call:customElements.define(\"x-widget\") call head=`customElements.define`",
+            "  ↳ calls `customElements.define` → library global",
+            "  /callback[0] class head=`class extends HTMLElement`",
+            "    ↳ extends `HTMLElement` → library global",
+            "    .connectedCallback method head=`connectedCallback()`",
+            "      /call:log call head=`log`",
+            "        ↳ calls `log` → unknown unknown_name",
+            "/call:register call head=`register`",
+            "  ↳ calls `register` → unknown unknown_name",
+            "  /callback[0] class head=`class`",
+        ],
+    );
+    let compiled = compile_source("a.ts", "register({ Widget: class {} });\n").valid();
+    let widget = &compiled.file("a.ts").nodes[2];
+    assert_eq!(
+        (widget.key.as_str(), widget.name.as_deref()),
+        ("a.ts#/call:register/callback[0]", Some("Widget"))
+    );
+}
+
+/// A function in an object literal that isn't an argument is named by its property, after the
+/// names of the declaration or property that names the object; an assignment names nothing.
+#[test]
+fn object_literal_functions_are_named_by_their_properties() {
+    assert_tree_at(
+        "a.ts",
+        r#"function make() {
+  return { onClick: () => click(), run() { go(); } };
+}
+module.exports = { exported: () => {} };
+const config = { routes: { home() {} } };
+exports.direct = () => {};
+Svc.prototype.extra = function () {};
+use({ inArgument: () => {} });
+"#,
+        &[
+            "make function head=`function make()`",
+            "  /return[0] return",
+            "    a.ts#make.onClick lambda head=`() =>`",
+            "      /call:click call head=`click`",
+            "        ↳ calls `click` → unknown unknown_name",
+            "    a.ts#make.run method head=`run()`",
+            "      /call:go call head=`go`",
+            "        ↳ calls `go` → unknown unknown_name",
+            "exported lambda head=`() =>`",
+            "config.routes.home method head=`home()`",
+            "/lambda[0] lambda head=`() =>`",
+            "/lambda[1] lambda head=`function ()`",
+            "/call:use call head=`use`",
+            "  ↳ calls `use` → unknown unknown_name",
+            "  /callback[0] lambda head=`() =>`",
+        ],
+    );
+}
+
+/// A property name keeps its `.`, which its key escapes; only an empty name leaves a method
+/// unnamed, keyed `lambda[n]` with the form `method`.
+#[test]
+fn property_names_keep_their_dots() {
+    assert_tree_at(
+        "a.ts",
+        r#"const handlers = { "order.created": () => {}, "": () => {} };
+class Box { "quoted.name"() {} ""() {} [Symbol.iterator]() {} }
+"#,
+        &[
+            "handlers.order%2Ecreated lambda head=`() =>`",
+            "/lambda[0] lambda head=`() =>`",
+            "Box class head=`class Box`",
+            "  .quoted%2Ename method head=`\"quoted.name\"()`",
+            "  /lambda[0] method head=`\"\"()`",
+            "  /lambda[1] method head=`[Symbol.iterator]()`",
         ],
     );
 }
@@ -708,9 +849,9 @@ super_.call(this);
             "  /call:String call head=`String`",
             "    ↳ calls `String` → builtin ecmascript",
             "/call:handlers%5B%5D call head=`handlers[kind]`",
-            "  ↳ calls `handlers[…]` → unknown dynamic",
+            "  ↳ calls `handlers[]` → unknown dynamic",
             "/call:\"\".join call head=`\", \".join`",
-            "  ↳ calls `(…).join` → unknown unknown_receiver",
+            "  ↳ calls `\"\".join` → unknown unknown_receiver",
             "/call:(…).strip call head=`(row.get(\"x\") || \"\").strip`",
             "  ↳ calls `(…).strip` → unknown unknown_receiver",
             "  /call:row.get call head=`row.get`",
@@ -728,6 +869,64 @@ super_.call(this);
             "  ↳ calls `super_.call` → unknown unknown_receiver",
         ],
     );
+}
+
+/// A call's name and its `calls` link's text are one spelling, the callee normalization: a
+/// string literal is `""`, a subscript `[]`, and any other expression `(…)`, with `await`,
+/// parentheses, `!`, and casts dropped.
+#[test]
+fn a_calls_link_reads_as_its_call() {
+    let source = r#"export {};
+"str".trim();
+`text`.trim();
+a["key"]();
+a[0]();
+a[key()]();
+new Box().open();
+(await getRepo()).save();
+(a.b! as Thing).c();
+this?.d?.();
+tag`x`.e();
+import("./lazy.js").then();
+import.meta.resolve("x");
+"#;
+    let compiled = compile_source("a.ts", source).valid();
+    let file = compiled.file("a.ts");
+    let spelled: Vec<(&str, &str)> = file
+        .links
+        .iter()
+        .filter(|link| link.kind == unfold_core::vocab::LinkKind::Calls)
+        .map(|link| {
+            let name = file.nodes[link.from as usize].name.as_deref().unwrap_or_default();
+            (name, &*link.text)
+        })
+        .collect();
+    let names: Vec<&str> = spelled.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        names,
+        [
+            "\"\".trim",
+            "\"\".trim",
+            "a[]",
+            "a[]",
+            "a[]",
+            "key",
+            "(…).open",
+            "Box",
+            "getRepo().save",
+            "getRepo",
+            "a.b.c",
+            "this.d",
+            "(…).e",
+            "tag",
+            "(…).then",
+            "import",
+            "import.meta.resolve",
+        ]
+    );
+    for (name, text) in spelled {
+        assert_eq!(name, text, "a call's name and its link's text");
+    }
 }
 
 #[test]

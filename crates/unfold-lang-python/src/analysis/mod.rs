@@ -5,16 +5,17 @@
 //! - measures the tree's depth, so it can be dropped safely ([`crate::parse::release`]);
 //! - takes a per-file write census ([`scope`]) and proves the identities that shape structure
 //!   ([`Proofs`]): `builtins.property` (getter and setter forms), `typing.TYPE_CHECKING`
-//!   (erased imports), and `importlib.import_module` (literal dynamic imports, which are calls
-//!   with an `imports` link).
+//!   (erased imports), `typing.overload` (stubs, which are left out), and
+//!   `importlib.import_module` (literal dynamic imports, which are calls with an `imports`
+//!   link).
 //!
 //! **Per file by design.** These proofs decide which forms and links exist, so they must be
 //! settled at extraction, which sees one file. The proof of concept decided them with its
 //! whole-program binder, which also saw what a star import binds and whether another module
 //! mutates an imported module's attribute; here a star import is assumed not to rebind
-//! `property`, `TYPE_CHECKING`, or an `importlib` alias, and only same-file attribute writes
-//! (`typing.TYPE_CHECKING = True`) invalidate an imported identity. Everything else is the
-//! binder's ([`crate::bind`], [`crate::link`]), which sees the whole program.
+//! `property`, `TYPE_CHECKING`, `overload`, or an `importlib` alias, and only same-file
+//! attribute writes (`typing.TYPE_CHECKING = True`) invalidate an imported identity. Everything
+//! else is the binder's ([`crate::bind`], [`crate::link`]), which sees the whole program.
 
 pub(crate) mod checks;
 mod proofs;
@@ -89,9 +90,11 @@ struct Walker<'a> {
     census: Census<'a>,
     stack: Vec<Task<'a>>,
     depth: usize,
-    pep765: bool,
     guards: Vec<Guard<'a>>,
+    /// The `def`s written directly in a class body, with the scope they are written in.
     definitions: Vec<(&'a StmtFunctionDef, u32)>,
+    /// Every decorated `def`, with the scope its decorators are evaluated in.
+    decorated: Vec<(&'a StmtFunctionDef, u32)>,
     imports: Vec<(TextSize, u32)>,
     failure: Option<SourceFailure>,
     /// Calls that may be dynamic imports: the call, its scope, the literal, and its range.
@@ -101,17 +104,16 @@ struct Walker<'a> {
     scratch: Vec<&'a Expr>,
 }
 
-/// Walks `module` once: checks, depth, census, and proofs. `pep765` turns on the grammar 3.14
-/// checks for transfers out of `finally`. The walk always completes, even after a failure, so
-/// the depth is known whatever the tree.
-pub(crate) fn analyze(module: &ModModule, pep765: bool) -> Analysis {
+/// Walks `module` once: checks, depth, census, and proofs. The walk always completes, even
+/// after a failure, so the depth is known whatever the tree.
+pub(crate) fn analyze(module: &ModModule) -> Analysis {
     let mut walker = Walker {
         census: Census::new(),
         stack: Vec::new(),
         depth: 0,
-        pep765,
         guards: Vec::new(),
         definitions: Vec::new(),
+        decorated: Vec::new(),
         imports: Vec::new(),
         failure: None,
         dynamic: Vec::new(),
@@ -181,6 +183,9 @@ impl<'a> Walker<'a> {
                 if context.owner == Owner::Class {
                     self.definitions.push((function, scope));
                 }
+                if !function.decorator_list.is_empty() {
+                    self.decorated.push((function, scope));
+                }
                 let outer = self.type_parameters(function.type_params.as_deref(), inner);
                 let body_scope = self.census.push(ScopeKind::Function, outer.scope);
                 self.bind_parameters(&function.parameters, body_scope);
@@ -214,14 +219,14 @@ impl<'a> Walker<'a> {
                 self.decorators(&class.decorator_list, inner);
             }
             Stmt::Return(node) => {
-                checks::transfer(context.flags, Transfer::Return, node.range.start(), self.pep765)?;
+                checks::transfer(context.flags, Transfer::Return, node.range.start())?;
                 self.expr_task(node.value.as_deref(), inner);
             }
             Stmt::Break(node) => {
-                checks::transfer(context.flags, Transfer::Break, node.range.start(), self.pep765)?;
+                checks::transfer(context.flags, Transfer::Break, node.range.start())?;
             }
             Stmt::Continue(node) => {
-                checks::transfer(context.flags, Transfer::Continue, node.range.start(), self.pep765)?;
+                checks::transfer(context.flags, Transfer::Continue, node.range.start())?;
             }
             Stmt::Delete(node) => self.exprs(node.targets.iter(), inner),
             Stmt::TypeAlias(node) => {
@@ -298,13 +303,7 @@ impl<'a> Walker<'a> {
             }
             Stmt::Try(node) => {
                 checks::handlers(&node.handlers)?;
-                self.statements(
-                    &node.finalbody,
-                    Context {
-                        flags: inner.flags.enter_finally(),
-                        ..inner
-                    },
-                );
+                self.statements(&node.finalbody, inner);
                 self.statements(&node.orelse, inner);
                 for ruff_python_ast::ExceptHandler::ExceptHandler(handler) in node.handlers.iter().rev() {
                     let flags = Flags {
@@ -575,6 +574,15 @@ impl<'a> Walker<'a> {
             proofs
                 .kinds
                 .insert(function.range.start(), member_form(function, scope, &identities));
+        }
+        for &(function, scope) in &self.decorated {
+            let stub = function
+                .decorator_list
+                .iter()
+                .any(|decorator| identities.is(&decorator.expression, scope, "typing.overload"));
+            if stub {
+                proofs.stubs.insert(function.range.start());
+            }
         }
         let mut guards: Vec<Option<bool>> = vec![None; self.guards.len()];
         for &(start, guard) in &self.imports {

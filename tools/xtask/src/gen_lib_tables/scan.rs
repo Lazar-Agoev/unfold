@@ -27,8 +27,6 @@ pub(crate) struct Symbol {
     pub(crate) class_or_interface: bool,
     /// Some declaration is a type alias.
     pub(crate) type_alias: bool,
-    /// Some declaration is a function (a value namespace's functions are its value's methods).
-    pub(crate) function: bool,
     /// The method names of its interface declarations, merged.
     pub(crate) methods: BTreeSet<String>,
     /// The names its interface declarations extend, as written (`IteratorObject`), merged.
@@ -238,9 +236,7 @@ impl<'a> Walker<'_, 'a> {
             }
             Declaration::FunctionDeclaration(function) => {
                 if let Some(id) = &function.id {
-                    let symbol = scope.symbol(id.name.as_str());
-                    symbol.value = true;
-                    symbol.function = true;
+                    scope.symbol(id.name.as_str()).value = true;
                 }
             }
             Declaration::ClassDeclaration(class) => {
@@ -518,7 +514,7 @@ impl Model {
 impl Model {
     /// Each global value's type, for member calls on it: the type its variable declarations
     /// write when they write exactly one plain reference (`Object` → `ObjectConstructor`), or the
-    /// value namespace itself when it has functions (`Reflect` → `Reflect`), sorted by name.
+    /// value namespace itself when it has values (`Reflect` → `Reflect`), sorted by name.
     pub(crate) fn global_value_types(&self) -> Vec<(String, String)> {
         let mut types = Vec::new();
         for (name, symbol) in &self.globals.symbols {
@@ -527,7 +523,7 @@ impl Model {
             }
             if let [written] = symbol.value_types.iter().collect::<Vec<_>>()[..] {
                 types.push((name.clone(), written.clone()));
-            } else if !namespace_functions(symbol).is_empty() {
+            } else if !namespace_values(symbol).is_empty() {
                 types.push((name.clone(), name.clone()));
             }
         }
@@ -535,8 +531,9 @@ impl Model {
     }
 
     /// The method names of each interface, qualified through namespaces, with those of the
-    /// interfaces it extends; and the function names of each value namespace (`Reflect`). Only
-    /// names with at least one method are listed, sorted by name, each with its methods sorted.
+    /// interfaces it extends; and the value names of each value namespace (`Reflect`'s functions,
+    /// `Intl`'s `Collator`). Only names with at least one are listed, sorted by name, each with its
+    /// names sorted.
     pub(crate) fn methods(&self) -> anyhow::Result<Vec<(String, Vec<String>)>> {
         let mut symbols = BTreeMap::new();
         qualified_symbols(&self.globals, "", &mut symbols, 0);
@@ -551,14 +548,14 @@ impl Model {
             }
         }
         for (name, symbol) in &symbols {
-            let functions = namespace_functions(symbol);
-            if !symbol.value || functions.is_empty() {
+            let values = namespace_values(symbol);
+            if !symbol.value || values.is_empty() {
                 continue;
             }
             if methods.contains_key(name) {
-                bail!("`{name}` is both an interface with methods and a namespace with functions");
+                bail!("`{name}` is both an interface with methods and a namespace with values");
             }
-            methods.insert(name.clone(), functions);
+            methods.insert(name.clone(), values);
         }
         Ok(methods
             .into_iter()
@@ -623,13 +620,13 @@ impl Model {
     }
 }
 
-/// The function names a symbol's namespace exports.
-fn namespace_functions(symbol: &Symbol) -> BTreeSet<String> {
+/// The value names a symbol's namespace exports (`Reflect.ownKeys`, `Intl.Collator`).
+fn namespace_values(symbol: &Symbol) -> BTreeSet<String> {
     symbol.namespace.as_ref().map_or_else(BTreeSet::new, |namespace| {
         namespace
             .symbols
             .iter()
-            .filter(|(name, export)| export.function && is_plain_identifier(name))
+            .filter(|(name, export)| export.value && is_plain_identifier(name))
             .map(|(name, _)| name.clone())
             .collect()
     })

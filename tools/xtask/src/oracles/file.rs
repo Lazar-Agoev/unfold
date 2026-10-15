@@ -13,8 +13,14 @@ use unfold_core::vocab::Language;
 
 use super::corpora::listing_sha256;
 
+/// The outcome of a call whose target the oracle finds outside the corpus.
+pub(crate) const EXTERNAL: &str = "external";
+
 /// The `format` every oracle header names.
 pub(crate) const FORMAT: &str = "unfold-oracle";
+
+/// The format version: 2 added the `module` of an `external` call row.
+pub(crate) const VERSION: u32 = 2;
 
 /// One line of an oracle file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +40,7 @@ pub(crate) enum Line {
 pub(crate) struct Header {
     /// Always [`FORMAT`].
     pub format: String,
-    /// Format version (1).
+    /// Format version ([`VERSION`]).
     pub version: u32,
     /// The corpus name.
     pub corpus: String,
@@ -105,6 +111,10 @@ pub(crate) struct CallRow {
     /// Why there is no target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Box<str>>,
+    /// For an `external` outcome: the module label of the file that declares the target
+    /// (`python:logging`, `ecmascript`, a package name), as Unfold labels that location.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<Box<str>>,
     /// More about the outcome (an unmapped declaration).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<Box<str>>,
@@ -152,7 +162,7 @@ impl OracleFile {
             Some(Err(error)) => bail!("line 1: {error}"),
             _ => bail!("line 1 is not a header"),
         };
-        if header.format != FORMAT || header.version != 1 {
+        if header.format != FORMAT || header.version != VERSION {
             bail!("unsupported format {} version {}", header.format, header.version);
         }
         let mut calls = Vec::new();
@@ -235,6 +245,9 @@ fn check_call(row: &CallRow) -> anyhow::Result<()> {
     }
     if row.refused.is_some() && row.target.is_none() {
         bail!("`refused` needs a `target`");
+    }
+    if row.module.is_some() != (row.outcome.as_deref() == Some(EXTERNAL)) {
+        bail!("a call row has a `module` exactly when its outcome is `{EXTERNAL}`");
     }
     Ok(())
 }

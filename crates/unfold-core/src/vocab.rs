@@ -225,8 +225,9 @@ vocabulary! {
 }
 
 vocabulary! {
-    /// Where an unnamed function is written, which decides its key step.
-    Inline, "inline function" {
+    /// Where an inline definition (an unnamed function, or a TypeScript class expression) is
+    /// written, which decides its key step.
+    Inline, "inline definition" {
         /// In a call's arguments, object properties included: `callback[n]`.
         Callback = "callback",
         /// Anywhere else, including called where it is written: `lambda[n]`.

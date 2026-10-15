@@ -17,12 +17,18 @@ dependencies (`imports`), and the type names of annotations and heritage clauses
 - **The other folders** cover binder rules (`binder-*`), the override census
   (`overrides`), overloads, narrowing, receivers, script globals across files (`scripts`), the C
   decisions (`c2-objects`, `c4-this-parameter`, `c6-node-process`, `c8-dynamic-import`), written return
-  types (`return-types`: a class or nothing, `await` on `async` callables, and call initializers),
-  initializers of reassigned variables (`reassigned`) and overwritten class properties (`class-fields`), which
-  aren't followed, and ECMAScript's standard objects (`builtins`: its globals by name, and a built-in method on a
-  literal or a written class type, beside host globals, which stay `library global`; `builtins-overrides`: a written
-  class type a project class may override is `overridden`, and structural interfaces give no receiver;
-  `builtins-patched`: a project write to a global or a prototype makes its calls `dynamic`). In `class-fields` the
+  types (`return-types`: a class or nothing, a generic type by its class, `await` on `async` callables, and call
+  initializers), initializers of reassigned variables (`reassigned`) and overwritten class properties
+  (`class-fields`), which aren't followed, and ECMAScript's standard objects (`builtins`: its globals by name, and a
+  built-in method on a literal or a written class type, beside host globals, which stay `library global`;
+  `builtins-overrides`: a written class type a project class may override is `overridden`, and structural
+  interfaces give no receiver; `builtins-inherited`: a method a project class inherits from an ECMAScript base is a
+  builtin, and a member inherited from outside the project is `overridden` when a subclass declares it;
+  `builtins-patched`: a project write to a global or a prototype makes its calls `dynamic`, inherited ones included;
+  `builtins-instances`: so does a write to an instance's member, for every value of its type; `builtins-replaced`:
+  so is every member of what `new` of a replaced global constructs; `builtins-members`: `Intl`'s values and globals
+  read from `globalThis` are builtins, and a call through a member of a library value is `unknown_receiver`, while
+  the member itself keeps its label). In `class-fields` the
   checker resolves `Swapped`, `Exposed`, and `Base` to `Repo.save` by declared type, where Unfold, which can't prove
   the property's value, leaves them unknown.
 
@@ -43,8 +49,10 @@ for these deliberate differences:
 | `c2-objects` | `service.arrow()`, `written.run()` | `unknown_receiver` | `mutable_binding` | C-2's mutation census: the member is written (or deleted) somewhere |
 | `c6-node-process` | `process.cwd()` on a `NodeJS.Process` parameter | external `global` | library `node` | C-6 |
 | `c8-dynamic-import` | `printReport()`, `renamed()`, `fromExpression()`, `express()` | `not_concrete` | resolved (external `express`) | C-8: a binding destructured from a literal awaited dynamic import reads that module's export |
+| `builtins-members` | A call through a member of a library value: `s[0].toLowerCase()`, `e.message.trim()`, `Math.PI.toFixed()`, `Function.prototype.toString.call(f)`, `s.trim.call(s)`, `console.log.bind(console)`, `Intl.Collator.supportedLocalesOf(…)`, `globalThis.console.log(…)`, `.compare` on `new Intl.Collator(…)`, and `(Error as any).captureStackTrace(e)` | external `global` | `unknown_receiver` | A member's own value isn't read; its owner's label wouldn't say where the method is declared (the checker finds these in `ecmascript` and `global`, and the last nowhere) |
 
 Two shapes come from the node model rather than from evidence: every dynamic `import()` is a call
-node, whose `calls` link (written at its `import` keyword) is `unknown dynamic`; and a class
-expression with no name to key it by can't be a node, so in `poc-native-binding-17` the default
-`e = class { method() { f(); } }` is left out (`outer` is `truncated`) and its call has no link.
+node, whose `calls` link (written at its `import` keyword) is `unknown dynamic`; and in
+`poc-native-binding-17` the default `d = { method() { f(); } }` names its method `outer.method`,
+while the default `e = class { method() { f(); } }` is an inline class, `outer/lambda[3]`, whose
+method is `outer/lambda[3].method`.

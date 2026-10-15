@@ -6,15 +6,16 @@
 //! their members, attributes through C3 linearizations and instance fields, and `super()`
 //! across every linearization that can reach it. A call is an instance of the class it
 //! constructs, or of the class its one proven `def`'s written return type names (an `async
-//! def`'s through `await`); nothing is inferred from a body. The standard library's stubs
-//! ([`super::library`]) type what the covered modules' functions and classes give, the
-//! standard-library classes written as annotations or return types, and literals, and their
-//! instances' members are looked up through the stub classes: only a member the class has, and
-//! only while the stubs write its type, so a further hop on a value they write no type for is
-//! unknown. A member of an instance of a written type is overridden when another class may
-//! define it: any class for `object` and protocols, and a project class that derives from the
-//! written class and defines the member. It only ever withholds: a value it cannot prove is
-//! empty, ambiguous, or refused.
+//! def`'s through `await`); nothing is inferred from a body. Written annotations are read as
+//! their `types` links read them ([`super::types`]): an alias (`Alias = Repo`) names no class.
+//! The standard library's stubs ([`super::library`]) type what the covered modules' functions
+//! and classes give, the standard-library classes written as annotations or return types, and
+//! literals, and their instances' members are looked up through the stub classes: only a
+//! member the class has, and only while the stubs write its type, so a further hop on a value
+//! they write no type for is unknown. A member the project replaces is dynamic. A member of an
+//! instance of a written type is overridden when another class may define it: any class for
+//! `object` and protocols, and a project class that derives from the written class and defines
+//! the member. It only ever withholds: a value it cannot prove is empty, ambiguous, or refused.
 
 use smallvec::SmallVec;
 use unfold_engine::evidence::Refusal;
@@ -172,10 +173,13 @@ impl Binder<'_> {
                     return Value::ambiguous();
                 }
                 let text = program.text(sym);
-                if library::builtin(text) {
-                    return Value::external("builtins", text);
+                if !library::builtin(text) {
+                    return Value::default();
                 }
-                Value::default()
+                if self.external_invalid("builtins", text) {
+                    return Value::refused(Refusal::Dynamic);
+                }
+                Value::external("builtins", text)
             }
             &ExprKind::Lambda(node) => Value {
                 declarations: SmallVec::from_elem(NodeRef { file, node }, 1),
@@ -285,8 +289,9 @@ impl Binder<'_> {
     /// What a call through `callee` returns: an instance of the class its written return type
     /// names ([`ReturnFact`](crate::bind::ir::ReturnFact)), when the callee is exactly one
     /// proven, concrete `def`. An `async def`'s return type is read only through `await`, and
-    /// any other's only without it. The class must be a proven class that is not wrapped, or a
-    /// standard-library class, and an `Optional` must be `typing.Optional`.
+    /// any other's only without it. The class is read as its `types` link reads it
+    /// ([`Binder::written_type`]); it must be a proven class (a wrapped one's members are
+    /// `wrapper`) or a standard-library class, and an `Optional` must be `typing.Optional`.
     fn returned(&self, callee: &Value, awaited: bool, seen: &Seen, ctx: &mut Ctx) -> Option<Value> {
         let [declaration] = callee.declarations.as_slice() else {
             return None;
@@ -318,7 +323,7 @@ impl Binder<'_> {
                 return None;
             }
         }
-        let class = self.resolve_seen(written(returns.class), &mut seen.clone(), ctx);
+        let class = self.written_type(written(returns.class), seen, ctx);
         if let Some(library) = library_class(&class) {
             return Some(Value::library_instance(library::instance(library, false)));
         }
@@ -517,11 +522,18 @@ impl Binder<'_> {
         }
     }
 
-    /// A value whose written annotation proves an instance of a class, or of a
-    /// standard-library class ([`Binder::annotated_library`]).
+    /// What a written annotation names, read as its `types` link reads it (the type meaning,
+    /// [`super::types`]): a name an assignment binds (`Alias = Repo`) is its own declaration,
+    /// never followed to its value.
+    pub(crate) fn written_type(&self, annotation: ExprRef, seen: &Seen, ctx: &mut Ctx) -> Value {
+        self.type_value(annotation, &mut seen.clone(), ctx)
+    }
+
+    /// A value whose written annotation ([`Binder::written_type`]) proves an instance of a class,
+    /// or of a standard-library class ([`Binder::annotated_library`]).
     fn annotated(&self, mut value: Value, annotation: Option<ExprRef>, seen: &Seen, ctx: &mut Ctx) -> Value {
         if let Some(annotation) = annotation {
-            let annotated = self.resolve_seen(annotation, &mut seen.clone(), ctx);
+            let annotated = self.written_type(annotation, seen, ctx);
             if let Some(class) = annotated.class
                 && self.class_access_proven(&annotated, ctx)
             {
@@ -537,8 +549,8 @@ impl Binder<'_> {
         value
     }
 
-    /// The standard-library class a written annotation names, its type arguments left out
-    /// (`str`, `dict[str, Any]`, `logging.Logger`).
+    /// The standard-library class a written annotation ([`Binder::written_type`]) names, its type
+    /// arguments left out (`str`, `dict[str, Any]`, `logging.Logger`).
     pub(crate) fn annotated_library(
         &self,
         annotation: ExprRef,
@@ -552,7 +564,7 @@ impl Binder<'_> {
             },
             _ => annotation,
         };
-        library_class(&self.resolve_seen(written, &mut seen.clone(), ctx))
+        library_class(&self.written_type(written, seen, ctx))
     }
 
     /// A parameter: the receiver of an ordinary method (an instance) or a proven `classmethod`
@@ -645,7 +657,7 @@ impl Binder<'_> {
         }
     }
 
-    fn external_invalid(&self, specifier: &str, member: &str) -> bool {
+    pub(crate) fn external_invalid(&self, specifier: &str, member: &str) -> bool {
         let key = format!("external:{specifier}");
         self.invalid_modules.get(key.as_str()).is_some_and(|invalid| {
             invalid.contains(&self.program.known.star)
@@ -742,10 +754,16 @@ impl Binder<'_> {
         }
     }
 
-    /// `receiver.member`.
+    /// `receiver.member`. A member of an import that names nothing names nothing too.
     pub(crate) fn member_value(&self, receiver: Value, member: Sym, seen: &mut Seen, ctx: &mut Ctx) -> Value {
         if receiver.refusal.is_some() || receiver.ambiguous {
             return receiver;
+        }
+        if receiver.missing {
+            return Value {
+                missing: true,
+                ..Value::default()
+            };
         }
         if !self.class_access_proven(&receiver, ctx) {
             return Value {
@@ -784,6 +802,9 @@ impl Binder<'_> {
         let longer = || Value::external(&external.module, &dotted(&external.member, name));
         match library::known(external) {
             Known::Stub(Stub::Module(_)) | Known::Uncovered => longer(),
+            Known::Stub(Stub::Class(class)) if self.library_replaced(class, member, true) => {
+                Value::refused(Refusal::Dynamic)
+            }
             Known::Stub(Stub::Class(class)) if library::lookup(class, name).is_some() => longer(),
             Known::Stub(Stub::Instance(instance)) => self.library_member(instance, member),
             Known::Stub(Stub::Class(_) | Stub::Function { .. }) | Known::Untyped => Value::default(),
@@ -791,12 +812,16 @@ impl Binder<'_> {
     }
 
     /// Member `member` of an instance of a standard-library class: an external origin in the
-    /// class's module, with what the stubs prove it is. A class that declares `__getattr__`
-    /// along its linearization makes a member it doesn't declare dynamic; any other member it
-    /// doesn't have is unknown. On an instance of a written type, a member another class may
-    /// define ([`Binder::library_overridden`]) is overridden, and nothing more is known of it.
+    /// class's module, with what the stubs prove it is. A member the project may have replaced
+    /// ([`Binder::library_replaced`]) is dynamic. A class that declares `__getattr__` along its
+    /// linearization makes a member it doesn't declare dynamic; any other member it doesn't
+    /// have is unknown. On an instance of a written type, a member another class may define
+    /// ([`Binder::library_overridden`]) is overridden, and nothing more is known of it.
     fn library_member(&self, instance: Instance, member: Sym) -> Value {
         let class = instance.class;
+        if self.library_replaced(class, member, instance.exact) {
+            return Value::refused(Refusal::Dynamic);
+        }
         let name = self.program.text(member);
         let Some(found) = library::lookup(class, name) else {
             return if library::lookup(class, "__getattr__").is_some() {
@@ -818,6 +843,21 @@ impl Binder<'_> {
             stub: library::on_instance(instance, found).filter(|stub| !matches!(stub, Stub::Class(_))),
             ..Value::default()
         }
+    }
+
+    /// Whether a project write may have replaced `member` of standard-library `class` or of its
+    /// instances (`exact` when the value is exactly of `class`): a write to the member, or to
+    /// every member, of a class `class` inherits from, or, unless `exact`, of a class that
+    /// derives from `class`, which the value may be an instance of.
+    fn library_replaced(&self, class: &StubClass, member: Sym, exact: bool) -> bool {
+        let star = self.program.known.star;
+        self.invalid_library.iter().any(|(&written, invalid)| {
+            (invalid.contains(&member) || invalid.contains(&star))
+                && (library::linearization(class).contains(&written)
+                    || (!exact
+                        && library::class(written)
+                            .is_some_and(|written| library::linearization(written).contains(&class.name))))
+        })
     }
 
     /// Whether a class other than a written standard-library `class` may define `member` for its

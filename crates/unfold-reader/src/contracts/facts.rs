@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::LinkKind;
-use unfold_core::{FileGraph, Graph, LinkTarget, RepoPath};
+use unfold_core::{FileGraph, Graph, LineBreaks, LinkTarget, RepoPath};
 use unfold_store::Reader;
 
 use crate::error::Result;
@@ -118,7 +118,7 @@ impl<'a> Facts<'a> {
         if let Some(found) = self.texts.get(path) {
             return found.clone();
         }
-        let found = verify_file(self.root, path, file.file().hash)
+        let found = verify_file(self.root, path, file.file().hash, LineBreaks::of(file.language()))
             .into_source()
             .map(Rc::new);
         self.texts.insert(path.clone(), found.clone());

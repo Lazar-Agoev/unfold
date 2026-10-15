@@ -1,4 +1,4 @@
-a.ts# module truncated
+a.ts# module
 a.ts#variable lambda
   range `function () {}`
   head `function ()`
@@ -16,7 +16,12 @@ a.ts#/lambda[0] lambda
   head `() =>`
   body `{}`
   stmt `target = () => {};`
-a.ts#/lambda[1] lambda
+a.ts#/lambda[1] class
+  range `class {}`
+  head `class`
+  body `{}`
+  stmt `target ||= class {};`
+a.ts#/lambda[2] lambda
   range `() => {}`
   head `() =>`
   body `{}`
@@ -31,7 +36,7 @@ a.ts#withDefault/lambda[0] lambda
   range `() => {}`
   head `() =>`
   body `{}`
-a.ts#/lambda[2] lambda
+a.ts#/lambda[3] lambda
   range `() => {}`
   head `() =>`
   body `{}`
@@ -42,7 +47,7 @@ a.ts#object.property lambda
   body `{}`
   stmt `const object = { property: () => {}, [computed]: () => {}, 42: () => {}, "text": () => {}, method() {}, get value() { return 1; } };`
   name `object.property`
-a.ts#/lambda[3] lambda
+a.ts#/lambda[4] lambda
   range `() => {}`
   head `() =>`
   body `{}`
@@ -111,17 +116,17 @@ a.ts#default lambda
   body `{}`
   stmt `export default (() => {});`
   name `default`
-a.ts#/lambda[4] lambda
+a.ts#/lambda[5] lambda
   range `() => {}`
   head `() =>`
   body `{}`
   stmt `[assignedDefault = () => {}] = pairs;`
-a.ts#/lambda[5] lambda
+a.ts#/lambda[6] lambda
   range `function () {}`
   head `function ()`
   body `{}`
   stmt `({ key: renamed = function () {}, shorthand = () => {} } = options);`
-a.ts#/lambda[6] lambda
+a.ts#/lambda[7] lambda
   range `() => {}`
   head `() =>`
   body `{}`

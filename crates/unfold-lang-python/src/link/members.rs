@@ -151,7 +151,7 @@ impl Binder<'_> {
         }
         let mut classes: SmallVec<[Held; 2]> = SmallVec::new();
         for &annotation in &field.annotations {
-            let value = self.resolve_seen(annotation, &mut seen.clone(), ctx);
+            let value = self.written_type(annotation, seen, ctx);
             if !self.class_access_proven(&value, ctx) {
                 return Some(Value::default());
             }

@@ -11,5 +11,5 @@ utility-classes.ts#use #9 types `Repo` → project utility-classes.ts#Repo
 utility-classes.ts#use/call:a.save #0 calls `a.save` → unknown unknown_receiver
 utility-classes.ts#use/call:b.save #0 calls `b.save` → unknown unknown_receiver
 utility-classes.ts#use/call:c.save #0 calls `c.save` → unknown unknown_receiver
-utility-classes.ts#use/call:d%5B%5D.save #0 calls `d["value"].save` → unknown unknown_receiver
+utility-classes.ts#use/call:d%5B%5D.save #0 calls `d[].save` → unknown unknown_receiver
 utility-classes.ts#use/call:e.save #0 calls `e.save` → unknown unknown_receiver

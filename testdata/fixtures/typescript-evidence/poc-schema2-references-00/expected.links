@@ -10,6 +10,6 @@ main.ts#/call:Job #1 passes `renamed` → project defs.ts#handler
 main.ts#/call:Handlers #0 calls `Handlers` → project defs.ts#Handlers
 main.ts#/call:register[1] #0 calls `register` → unknown not_concrete
 main.ts#/call:register[1] #1 passes `local.member` → project defs.ts#Handlers.member
-main.ts#/call:register[1] #2 passes `local["member"]` → project defs.ts#Handlers.member
+main.ts#/call:register[1] #2 passes `local[]` → project defs.ts#Handlers.member
 main.ts#/call:register[1] #3 passes `Handlers.ready` → project defs.ts#Handlers.ready
 main.ts#/call:register[1] #4 passes `local.field` → project defs.ts#Handlers.field

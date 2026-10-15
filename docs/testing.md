@@ -84,8 +84,10 @@ Independent oracles check resolution: the TypeScript checker and Pyright, with t
 `testdata/reference/oracles/`, so the check needs no Node.
 
 - **Precision is exact.** Every `calls` link Unfold resolves to a project definition, and every `passes` link, must
-  name the oracle's target. A disagreement fails unless `justified.toml` lists it with a reason, and an entry that
-  matches nothing is stale and fails.
+  name the oracle's target. A `library` or `builtin` call fails when the oracle names a project target for it, or
+  finds it declared in another module than Unfold's label (`ecmascript` against `global`, `python:json` against
+  `python:builtins`); where the oracle has no answer, the label isn't compared. A disagreement fails unless
+  `justified.toml` lists it with a reason, and an entry that matches nothing is stale and fails.
 - **Recall has floors that only rise.** When the check reports recall above a floor, raise the floor to the
   reported counts. Never lower one to accept a change.
 - **A stale oracle fails.** Each oracle file records a hash of its corpus. Rerun `cargo xtask oracles refresh

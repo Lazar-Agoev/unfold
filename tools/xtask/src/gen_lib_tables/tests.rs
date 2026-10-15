@@ -160,9 +160,11 @@ fn methods_merge_across_declarations_and_follow_extends() {
                 interface ArrayConstructor { isArray(arg: any): arg is any[]; } \
                 declare var Array: ArrayConstructor; declare var NaN: number; \
                 declare var Inline: { f(): void }; \
-                declare namespace Reflect { function ownKeys(target: object): PropertyKey[]; const x: number; } \
+                declare namespace Reflect { function ownKeys(target: object): PropertyKey[]; } \
                 declare namespace Intl { interface Options { a(): void; } interface Collator extends Options { compare(): number; } \
-                interface Empty {} }";
+                interface Empty {} interface CollatorConstructor { supportedLocalesOf(): string[]; } \
+                var Collator: CollatorConstructor; const PluralRules: { new (): unknown }; \
+                function getCanonicalLocales(): string[]; }";
     let more = "interface Array<T> { at(index: number): T | undefined; }";
     let model = model(&[base, more]);
     assert_eq!(
@@ -174,9 +176,22 @@ fn methods_merge_across_declarations_and_follow_extends() {
                 "ArrayIterator".to_owned(),
                 vec!["map".to_owned(), "next".to_owned()]
             ),
+            // A value namespace's members are its values, not only its functions.
+            (
+                "Intl".to_owned(),
+                vec![
+                    "Collator".to_owned(),
+                    "PluralRules".to_owned(),
+                    "getCanonicalLocales".to_owned()
+                ]
+            ),
             (
                 "Intl.Collator".to_owned(),
                 vec!["a".to_owned(), "compare".to_owned()]
+            ),
+            (
+                "Intl.CollatorConstructor".to_owned(),
+                vec!["supportedLocalesOf".to_owned()]
             ),
             ("Intl.Options".to_owned(), vec!["a".to_owned()]),
             (
@@ -190,6 +205,7 @@ fn methods_merge_across_declarations_and_follow_extends() {
         model.global_value_types(),
         [
             ("Array".to_owned(), "ArrayConstructor".to_owned()),
+            ("Intl".to_owned(), "Intl".to_owned()),
             ("Reflect".to_owned(), "Reflect".to_owned()),
         ]
     );

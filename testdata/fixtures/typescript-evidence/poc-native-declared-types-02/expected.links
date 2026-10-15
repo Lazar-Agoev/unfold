@@ -2,5 +2,5 @@ new.ts#/call:Repo #0 calls `Repo` → project new.ts#Repo
 new.ts#/call:repo.save #0 calls `repo.save` → project new.ts#Repo.save
 new.ts#Holder/call:Repo #0 calls `Repo` → project new.ts#Repo
 new.ts#Holder.run/call:this.repo.save #0 calls `this.repo.save` → project new.ts#Repo.save
-new.ts#/call:(…).save #0 calls `Repo.save` → project new.ts#Repo.save
+new.ts#/call:(…).save #0 calls `(…).save` → project new.ts#Repo.save
 new.ts#/call:(…).save/call:Repo #0 calls `Repo` → project new.ts#Repo

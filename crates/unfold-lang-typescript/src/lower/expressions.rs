@@ -98,8 +98,7 @@ impl Lowering<'_> {
                 },
                 _ => {
                     let expression = argument.to_expression();
-                    let value =
-                        values::may_name(expression).then(|| self.values.value(expression, self.source));
+                    let value = values::may_name(expression).then(|| self.values.value(expression));
                     ArgumentFact {
                         range: range(expression.span()),
                         value,
@@ -128,7 +127,7 @@ impl Lowering<'_> {
     }
 
     pub(super) fn call_expression(&mut self, it: &CallExpression<'_>) {
-        let value = self.values.value(&it.callee, self.source);
+        let value = self.values.value(&it.callee);
         let arguments = self.argument_facts(&it.arguments);
         let context = if matches!(it.callee, Expression::Super(_)) {
             CallContext::Construct
@@ -165,7 +164,7 @@ impl Lowering<'_> {
     }
 
     pub(super) fn new_expression(&mut self, it: &NewExpression<'_>) {
-        let value = self.values.value(&it.callee, self.source);
+        let value = self.values.value(&it.callee);
         let arguments = self.argument_facts(&it.arguments);
         let call = self.call_node(CallNode {
             address: it.unstable_address(),
@@ -198,7 +197,7 @@ impl Lowering<'_> {
     /// A tagged template: a call of its tag, with no arguments; the code in its template is the
     /// call's.
     pub(super) fn tagged_template(&mut self, it: &TaggedTemplateExpression<'_>) {
-        let value = self.values.value(&it.tag, self.source);
+        let value = self.values.value(&it.tag);
         let call = self.call_node(CallNode {
             address: it.unstable_address(),
             range: range(it.span),
@@ -235,7 +234,7 @@ impl Lowering<'_> {
         let arguments = written
             .iter()
             .map(|&expression| {
-                let value = values::may_name(expression).then(|| self.values.value(expression, self.source));
+                let value = values::may_name(expression).then(|| self.values.value(expression));
                 ArgumentFact {
                     range: range(expression.span()),
                     value,

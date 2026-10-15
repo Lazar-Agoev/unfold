@@ -15,7 +15,7 @@ use unfold_core::text::ByteRange;
 use crate::bind::ir::{BindFacts, NodeId};
 
 /// The version of Python extraction: the payload format and every rule that shapes facts.
-pub const PAYLOAD_VERSION: u32 = 12;
+pub const PAYLOAD_VERSION: u32 = 13;
 
 /// Why a payload cannot be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

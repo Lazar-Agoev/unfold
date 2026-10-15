@@ -836,6 +836,30 @@ fn widening_shows_a_step_of_the_path_and_keeps_the_selection_marked() {
     assert_eq!(steps(&tick), ["shop/service.py", "*place_order*", "line 24"]);
 }
 
+/// U+2028 ends a TypeScript line but not a Python one, so each file's view numbers its lines
+/// the way its language does.
+#[test]
+fn each_language_ends_lines_its_own_way() {
+    let mut graph = GraphBuilder::new();
+    let py = "TEXT = \"a\u{2028}b\"\ndef f():\n    return 1\n";
+    let module = graph.file("ls.py", Language::Python, py);
+    let python = graph.def(
+        module,
+        Form::Function,
+        "f",
+        graph.find(module, "def f():\n    return 1"),
+    );
+    let ts = "const TEXT = \"a\u{2028}b\";\nfunction g() {}\n";
+    let module = graph.file("ls.ts", Language::TypeScript, ts);
+    let typescript = graph.def(module, Form::Function, "g", graph.find(module, "function g() {}"));
+    let playground = Playground::built(&graph);
+
+    let view = view(&playground, Target::Block(graph.key(python)));
+    assert_eq!(shown(&view), ["2 def f():", "3     return 1"]);
+    let view = view_of(&playground, Target::Block(graph.key(typescript)), None);
+    assert_eq!(shown(&view), ["3 function g() {}"]);
+}
+
 #[test]
 fn lines_are_dedented_with_real_numbers_and_utf16_columns() {
     let text = "class Cart:\n    def total(self):\n        label = \"é😀\"; price = compute(label)\n        return price\n";

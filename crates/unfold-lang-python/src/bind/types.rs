@@ -220,7 +220,8 @@ impl<'a> Builder<'a> {
 
     /// The class a return annotation names when it is written in one of the forms a call's value
     /// is read from ([`ReturnFact`]): a class, the class or `None` (`Repo | None`, `None | Repo`,
-    /// `Optional[Repo]`), where the class is a name, a member chain, or a quoted dotted name.
+    /// `Optional[Repo]`), where the class is a name, a member chain, or a quoted dotted name. A
+    /// generic class is read by its class, its type arguments dropped (`Repo[str]` is `Repo`).
     /// Any other annotation names none. Records no type names: [`Builder::annotation`] has.
     pub(super) fn returned_class(&mut self, returns: &'a Expr, scope: ScopeId) -> Option<ReturnFact> {
         let (class, optional) = match returns {
@@ -235,6 +236,10 @@ impl<'a> Builder<'a> {
                 _ => return None,
             },
             class => (class, None),
+        };
+        let class = match class {
+            Expr::Subscript(generic) => &*generic.value,
+            class => class,
         };
         let class = match class {
             Expr::StringLiteral(literal) => {

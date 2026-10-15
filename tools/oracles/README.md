@@ -68,6 +68,23 @@ mix of indexed and outside declarations, make it `ambiguous`; no declaration is 
 definition with exactly its range (a class node for a class, a function node for a function,
 method, or constructor); a body with no such node is `unmapped`.
 
+**Where an outside declaration lives.** An `external` row records the `module` label of the files
+that declare the callee, named as Unfold labels that location
+([TypeScript › Module labels](../../docs/languages/typescript.md#module-labels)):
+
+| Declared in | `module` |
+| --- | --- |
+| A standard edition in the default library: `lib.es5.d.ts`, `lib.es2015.*` and later, not `lib.esnext.*` | `ecmascript` |
+| The rest of the default library (`lib.dom.d.ts`, `lib.esnext.*`, …) | `global` |
+| `@types/node`: inside `declare module "fs"`, or a global | `node:fs`, or `global` |
+| A package under `node_modules` (`@types/a__b` is `@a/b`) | its name: `express`, `@scope/name` |
+| Any other file | its path in the corpus |
+
+Declarations in several of these give their labels as a sorted JSON array, the way Unfold writes
+the label of several possible origins. The corpora are compiled from copies without
+`node_modules`, so in practice the checker sees only the default library: package imports are
+`unknown` to it, and only `ecmascript` and `global` are compared.
+
 **Refusals kept beside the target.** When the checker names one body but the shared policy would
 still refuse the site, the row keeps the target and adds `refused`: `overridden` (an instance method
 or field that a subclass of the receiver's class overrides, by an override census over every class
@@ -77,9 +94,10 @@ not a class member). Precision compares the target; recall leaves these sites ou
 **Output** (`<corpus>.typescript.jsonl`; the Python files share the format):
 
 ```text
-{"t":"header","format":"unfold-oracle","version":1,"corpus":"ts-orders","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"…","export_sha256":"…","files":34,"sites":212,"resolved":71,"references":15,"unfold_sites_without_checker_site":1}
+{"t":"header","format":"unfold-oracle","version":2,"corpus":"ts-orders","language":"typescript","oracle":"typescript","oracle_version":"6.0.3","corpus_sha256":"…","export_sha256":"…","files":34,"sites":212,"resolved":71,"references":15,"unfold_sites_without_checker_site":1}
 {"t":"call","site":"src/cli.ts#main/switch[0]/case[0]/call:importOrders","target":"src/jobs/import-orders.ts#importOrders"}
 {"t":"call","site":"src/cli.ts#main/switch[0]/case[1]/call:printReport","outcome":"not_concrete"}
+{"t":"call","site":"src/cli.ts#/call:main().catch","outcome":"external","module":"ecmascript"}
 {"t":"call","site":"src/services/order-service.ts#OrderService.place/call:this.payments.charge","target":"src/services/payment.ts#PaymentProvider.charge","refused":"overridden"}
 {"t":"reference","site":"src/jobs/retry-failed.ts#retryFailed/call:withRetry","position":0,"target":"src/jobs/send-email.ts#flushOutbox"}
 ```

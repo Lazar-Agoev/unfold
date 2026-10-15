@@ -3,7 +3,8 @@
 //! counts only when there is exactly one and it is indexed, as the proof of concept's
 //! `comparePythonCalls` counted it (`compilers/codegraph/test/python-reference.ts`). Offsets go from
 //! UTF-16 to UTF-8 bytes through each file's text. A site is named by the Unfold call node with
-//! exactly its range, and a target by the Unfold definition with exactly its range.
+//! exactly its range, and a target by the Unfold definition with exactly its range. One target
+//! outside the corpus is `external`, with the module its typeshed stub file declares it in.
 
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -16,7 +17,9 @@ use unfold_core::vocab::{Language, NodeKind};
 use unfold_core::{ByteRange, ContentHash, Graph, RepoPath, Snapshot, Utf16Index, canonical};
 
 use super::corpora::{Lock, OracleCorpus, PathMapping, PyrightRows};
-use super::file::{CallRow, FORMAT, Header, OracleFile, Provenance, ReferenceRow, corpus_sha256};
+use super::file::{
+    CallRow, EXTERNAL, FORMAT, Header, OracleFile, Provenance, ReferenceRow, VERSION, corpus_sha256,
+};
 
 /// The Pyright version the saved rows were produced with.
 pub(crate) const PYRIGHT_VERSION: &str = "1.1.407";
@@ -230,16 +233,19 @@ pub(crate) fn import(
                 call.range = Some([start, end]);
             }
         }
-        match row.canonical.single_indexed() {
-            Some(target) => match target_key(target, &rows.paths, &nodes, &mut convert)? {
+        match row.canonical.targets.as_slice() {
+            [target] if target.indexed => match target_key(target, &rows.paths, &nodes, &mut convert)? {
                 Ok(key) => call.target = Some(key.into()),
                 Err(detail) => {
                     call.outcome = Some("unmapped".into());
                     call.detail = Some(detail.into());
                 }
             },
-            None if row.canonical.targets.len() == 1 => call.outcome = Some("external".into()),
-            None => call.outcome = Some(row.canonical.policy.as_str().into()),
+            [target] => {
+                call.outcome = Some(EXTERNAL.into());
+                call.module = Some(stdlib_label(&target.file_path)?.into());
+            }
+            _ => call.outcome = Some(row.canonical.policy.as_str().into()),
         }
         for argument in row.arguments.iter().filter(|argument| argument.eligible) {
             let Some(target) = argument.canonical.single_indexed() else {
@@ -271,7 +277,7 @@ pub(crate) fn import(
     let calls: Vec<CallRow> = calls.into_iter().map(|(_, row)| row).collect();
     let header = Header {
         format: FORMAT.to_owned(),
-        version: 1,
+        version: VERSION,
         corpus: corpus.name.clone(),
         language: Language::Python,
         oracle: "pyright".to_owned(),
@@ -301,6 +307,18 @@ pub(crate) fn import(
         calls,
         references: references.into_iter().map(|(_, row)| row).collect(),
     })
+}
+
+/// The module label of a target outside the corpus: the first part of the module its typeshed
+/// standard-library stub declares it in, labeled as Unfold labels the standard library
+/// (`typeshed/stdlib/logging/config.pyi` gives `python:logging`, `builtins.pyi` `python:builtins`).
+/// The saved rows have no other outside targets.
+fn stdlib_label(path: &str) -> anyhow::Result<String> {
+    let module = path
+        .strip_prefix("typeshed/stdlib/")
+        .with_context(|| format!("target {path} is outside the corpus and typeshed's stdlib"))?;
+    let first = module.split('/').next().unwrap_or(module);
+    Ok(format!("python:{}", first.strip_suffix(".pyi").unwrap_or(first)))
 }
 
 fn order(a: &(String, u32, u32), b: &(String, u32, u32)) -> std::cmp::Ordering {

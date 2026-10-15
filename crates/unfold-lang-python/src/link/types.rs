@@ -12,7 +12,7 @@
 //! | import | followed: a module, an external origin (`typing.Optional` → `python:typing`), or a module member looked up as a type |
 //! | assignment, parameter, any other write | that declaration, not its value |
 //! | competing writes | as for values: the policy decides (`mutable_binding`, or `ambiguous` for competing imports) |
-//! | none | `ambiguous` under a star import with unknown names; external `builtins` for a name the stubs' `builtins` binds ([`library::builtin`]); else nothing (`unknown_name`) |
+//! | none | `ambiguous` under a star import with unknown names; external `builtins` for a name the stubs' `builtins` binds ([`library::builtin`]), `dynamic` once the project writes it; else nothing (`unknown_name`) |
 //!
 //! A qualified name resolves its receiver in the type meaning too (a module, a class for a
 //! nested class, an external origin), then the member: a module's member as above, a class's
@@ -65,7 +65,7 @@ impl Binder<'_> {
     }
 
     /// What a name or member chain denotes as a type.
-    fn type_value(&self, expr: ExprRef, seen: &mut Seen, ctx: &mut Ctx) -> Value {
+    pub(crate) fn type_value(&self, expr: ExprRef, seen: &mut Seen, ctx: &mut Ctx) -> Value {
         if seen.has(SeenKey::Expr(expr)) || !ctx.enter() {
             return Value::default();
         }
@@ -93,10 +93,13 @@ impl Binder<'_> {
                     return Value::ambiguous();
                 }
                 let text = program.text(sym);
-                if library::builtin(text) {
-                    return Value::external("builtins", text);
+                if !library::builtin(text) {
+                    return Value::default();
                 }
-                Value::default()
+                if self.external_invalid("builtins", text) {
+                    return Value::refused(Refusal::Dynamic);
+                }
+                Value::external("builtins", text)
             }
             ExprKind::Member { base, name } => {
                 let base = ExprRef {
@@ -172,10 +175,17 @@ impl Binder<'_> {
     }
 
     /// `receiver.member` as a type: a module's member, an external origin's longer path, or a
-    /// class's member through its linearization.
+    /// class's member through its linearization. A member of an import that names nothing names
+    /// nothing too.
     fn type_member(&self, receiver: Value, member: Sym, seen: &mut Seen, ctx: &mut Ctx) -> Value {
         if receiver.refusal.is_some() || receiver.ambiguous {
             return receiver;
+        }
+        if receiver.missing {
+            return Value {
+                missing: true,
+                ..Value::default()
+            };
         }
         if let Some(module) = &receiver.module {
             return self.module_member_in(module, member, Meaning::Type, seen, ctx);

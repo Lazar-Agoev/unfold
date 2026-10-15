@@ -62,14 +62,14 @@ poc = "185 of 232"
 [[floor]]
 corpus = "typescript-6.0.3-src-upstream"
 language = "typescript"
-matched = 69139
-resolved = 71517
+matched = 69144
+resolved = 71519
 
 [[floor]]
 corpus = "typescript-6.0.3-src"
 language = "typescript"
-matched = 71269
-resolved = 73647
+matched = 71274
+resolved = 73649
 poc = "96.0% (70,717 of 73,649)"
 
 # The proof of concept measured 4,440 of 4,440 in place, with its TypeScript fork's declarations

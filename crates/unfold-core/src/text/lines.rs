@@ -1,11 +1,31 @@
 //! One-based line numbers for byte offsets.
 
 use super::range::{ByteRange, LineSpan};
+use crate::vocab::Language;
+
+/// What ends a line. CR, LF, and CRLF always do, and CRLF counts once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineBreaks {
+    /// Only CR, LF, and CRLF: Python's line ends, and those of any text that isn't a source.
+    Newlines,
+    /// CR, LF, CRLF, U+2028, and U+2029: ECMAScript's line terminators.
+    EcmaScript,
+}
+
+impl LineBreaks {
+    /// The line breaks of `language`'s sources.
+    pub const fn of(language: Language) -> Self {
+        match language {
+            Language::Python => Self::Newlines,
+            Language::TypeScript => Self::EcmaScript,
+        }
+    }
+}
 
 /// The byte offset at which each line starts.
 ///
-/// CR, LF, CRLF, U+2028, and U+2029 end a line, and CRLF counts once. Line `n` (one-based)
-/// starts at `starts[n - 1]`; the first line always starts at 0, so an empty text has one line.
+/// Line `n` (one-based) starts at `starts[n - 1]`; the first line always starts at 0, so an
+/// empty text has one line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineIndex {
     starts: Vec<u32>,
@@ -13,9 +33,9 @@ pub struct LineIndex {
 }
 
 impl LineIndex {
-    /// Indexes `text`. Texts longer than `u32::MAX` bytes are rejected earlier, by
-    /// [`Snapshot`](super::Snapshot); offsets past `u32::MAX` saturate here.
-    pub fn new(text: &str) -> Self {
+    /// Indexes `text`, whose lines end at `breaks`. Texts longer than `u32::MAX` bytes are
+    /// rejected earlier, by [`Snapshot`](super::Snapshot); offsets past `u32::MAX` saturate here.
+    pub fn new(text: &str, breaks: LineBreaks) -> Self {
         let bytes = text.as_bytes();
         let mut starts = vec![0];
         let mut index = 0;
@@ -29,7 +49,8 @@ impl LineIndex {
                     starts.push(to_u32(index + 1));
                 }
                 // U+2028 and U+2029 encode as E2 80 A8 and E2 80 A9.
-                0xE2 if bytes.get(index + 1) == Some(&0x80)
+                0xE2 if breaks == LineBreaks::EcmaScript
+                    && bytes.get(index + 1) == Some(&0x80)
                     && matches!(bytes.get(index + 2), Some(0xA8 | 0xA9)) =>
                 {
                     index += 2;
@@ -97,7 +118,7 @@ mod tests {
 
     /// A deliberately simple reference: one plus the number of terminators that end at or
     /// before `offset`, where a CRLF is one two-byte terminator.
-    fn naive_line_of(text: &str, offset: usize) -> u32 {
+    fn naive_line_of(text: &str, offset: usize, breaks: LineBreaks) -> u32 {
         let mut ends = Vec::new();
         let mut characters = text.char_indices().peekable();
         while let Some((index, character)) = characters.next() {
@@ -106,7 +127,8 @@ mod tests {
                     characters.next();
                     ends.push(index + 2);
                 }
-                '\r' | '\n' | '\u{2028}' | '\u{2029}' => ends.push(index + character.len_utf8()),
+                '\r' | '\n' => ends.push(index + 1),
+                '\u{2028}' | '\u{2029}' if breaks == LineBreaks::EcmaScript => ends.push(index + 3),
                 _ => {}
             }
         }
@@ -116,20 +138,15 @@ mod tests {
     #[test]
     fn handles_every_terminator() {
         let text = "a\nb\r\nc\rd\u{2028}e\u{2029}f";
-        let index = LineIndex::new(text);
-        assert_eq!(index.line_count(), 6);
-        let line_of = |needle: char| index.line_of(u32::try_from(text.find(needle).unwrap()).unwrap());
-        assert_eq!(
-            [
-                line_of('a'),
-                line_of('b'),
-                line_of('c'),
-                line_of('d'),
-                line_of('e'),
-                line_of('f')
-            ],
-            [1, 2, 3, 4, 5, 6]
-        );
+        let lines_of = |breaks: LineBreaks| {
+            let index = LineIndex::new(text, breaks);
+            let line_of = |needle: char| index.line_of(u32::try_from(text.find(needle).unwrap()).unwrap());
+            (index.line_count(), ['a', 'b', 'c', 'd', 'e', 'f'].map(line_of))
+        };
+        assert_eq!(lines_of(LineBreaks::EcmaScript), (6, [1, 2, 3, 4, 5, 6]));
+        // U+2028 and U+2029 end no line outside ECMAScript.
+        assert_eq!(lines_of(LineBreaks::Newlines), (4, [1, 2, 3, 4, 4, 4]));
+        let index = LineIndex::new(text, LineBreaks::EcmaScript);
         // The LF of a CRLF belongs to the line the CR ends.
         assert_eq!(index.line_of(4), 2);
         assert_eq!(index.line_start(3), Some(5));
@@ -138,14 +155,20 @@ mod tests {
     }
 
     #[test]
+    fn each_language_has_its_line_breaks() {
+        assert_eq!(LineBreaks::of(Language::Python), LineBreaks::Newlines);
+        assert_eq!(LineBreaks::of(Language::TypeScript), LineBreaks::EcmaScript);
+    }
+
+    #[test]
     fn empty_and_trailing_newline() {
-        let empty = LineIndex::new("");
+        let empty = LineIndex::new("", LineBreaks::Newlines);
         assert_eq!(empty.line_count(), 1);
         assert_eq!(
             empty.span(ByteRange::new(0, 0).unwrap()),
             LineSpan { start: 1, end: 1 }
         );
-        let trailing = LineIndex::new("x\n");
+        let trailing = LineIndex::new("x\n", LineBreaks::Newlines);
         assert_eq!(trailing.line_count(), 2);
         // A whole-file range ending in a newline ends on the newline's line.
         assert_eq!(
@@ -157,7 +180,7 @@ mod tests {
     #[test]
     fn bom_and_astral_characters() {
         let text = "\u{feff}a\n😀b\nc";
-        let index = LineIndex::new(text);
+        let index = LineIndex::new(text, LineBreaks::Newlines);
         assert_eq!(index.line_of(0), 1);
         assert_eq!(index.line_of(3), 1);
         assert_eq!(index.line_of(5), 2);
@@ -170,9 +193,14 @@ mod tests {
         fn agrees_with_a_naive_splitter(
             text in proptest::string::string_regex("([a-c\r\n\u{2028}\u{2029}é😀]){0,40}").unwrap()
         ) {
-            let index = LineIndex::new(&text);
-            for (offset, _) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
-                prop_assert_eq!(index.line_of(u32::try_from(offset).unwrap()), naive_line_of(&text, offset));
+            for breaks in [LineBreaks::Newlines, LineBreaks::EcmaScript] {
+                let index = LineIndex::new(&text, breaks);
+                for (offset, _) in text.char_indices().chain(std::iter::once((text.len(), ' '))) {
+                    prop_assert_eq!(
+                        index.line_of(u32::try_from(offset).unwrap()),
+                        naive_line_of(&text, offset, breaks)
+                    );
+                }
             }
         }
     }

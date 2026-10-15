@@ -1,6 +1,7 @@
 # Resolved links the oracle does not confirm, each with its reason. Every entry must match exactly
-# one disagreement (corpus, language, call node, argument position, and Unfold's target); an entry that
-# matches nothing is stale and fails `cargo xtask oracles check`. Rules: testdata/reference/README.md.
+# one disagreement (corpus, language, call node, argument position, and Unfold's target: a key, or
+# for a library or builtin call its outcome and label, `library python:os`); an entry that matches
+# nothing is stale and fails `cargo xtask oracles check`. Rules: testdata/reference/README.md.
 
 # Decision C-8 (docs/languages/typescript.md, "Decisions"): a binding destructured from a literal
 # awaited dynamic import is that module's export. The checker's symbol for `printReport` is the

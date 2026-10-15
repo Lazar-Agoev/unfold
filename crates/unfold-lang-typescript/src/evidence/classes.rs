@@ -4,9 +4,12 @@
 //!
 //! A class's base is the class its written `extends` expression denotes (directly, through a
 //! static receiver, or through `const` aliases of a class); an external or excluded base ends a
-//! member lookup at that boundary. A base expression that names nothing known (and isn't
-//! `null`) is an *unknown base*: the class may be an indexed subclass of anything, so its
-//! overriding members make calls to those names on other receivers ambiguous.
+//! member lookup at that boundary, where a method the ECMAScript tables list for an ECMAScript
+//! base (`Array`'s `map`, `ArrayConstructor`'s `from`) is a builtin. A member inherited from
+//! outside the project may still run a known subclass's member of that name when called through
+//! an instance ([`TypeScriptLinked::subclass_declares`]). A base expression that names nothing
+//! known (and isn't `null`) is an *unknown base*: the class may be an indexed subclass of
+//! anything, so its overriding members make calls to those names on other receivers ambiguous.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
@@ -15,7 +18,8 @@ use unfold_engine::{DeclRef, FileId};
 
 use super::{Receiver, Target, Walk};
 use crate::link::TypeScriptLinked;
-use crate::payload::binding::{DeclFlags, DeclKind, Expr, VarKind};
+use crate::payload::binding::{Decl, DeclFlags, DeclKind, Expr, VarKind};
+use crate::tables;
 
 /// A class's members by name (instance and static tables), its members in order, and its
 /// written base expression.
@@ -34,22 +38,21 @@ pub(crate) struct Base {
     pub(crate) external: bool,
     pub(crate) excluded: bool,
     pub(crate) locations: SmallVec<[ExternalLocation; 1]>,
+    /// The ECMAScript global the base expression names (`Array` in `extends Array<Row>`).
+    pub(crate) ecmascript: Option<&'static str>,
     /// The base expression names nothing known.
     pub(crate) unknown: bool,
 }
 
-impl Base {
-    /// The base as a receiver.
-    fn receiver(&self, is_static: bool) -> Receiver {
-        Receiver {
-            class: self.class,
-            external: self.external,
-            excluded: self.excluded,
-            locations: self.locations.clone(),
-            is_static,
-            ..Receiver::default()
-        }
-    }
+/// Whether a class member may override an inherited one: an instance member with a body, or a
+/// field, that isn't ambient, a constructor, or a private name.
+fn overrides_inherited(decl: &Decl) -> bool {
+    !decl.flags.has(DeclFlags::STATIC)
+        && !decl.flags.has(DeclFlags::AMBIENT)
+        && !decl.flags.has(DeclFlags::PRIVATE)
+        && decl.kind != DeclKind::Constructor
+        && (decl.flags.has(DeclFlags::HAS_BODY)
+            || matches!(decl.kind, DeclKind::Property | DeclKind::Parameter))
 }
 
 impl TypeScriptLinked<'_> {
@@ -127,7 +130,8 @@ impl TypeScriptLinked<'_> {
         let file = class.file;
         let target = self.target(walk, file, expression);
         // A builtin base's members are only known to be outside the project: a member other
-        // than an ECMAScript method may come from the host (Node's `Error.captureStackTrace`).
+        // than an ECMAScript method may come from the host (Node's `Error.captureStackTrace`),
+        // so lookup labels only the methods the tables list as builtins.
         let mut base = Base {
             class: self.class_for_target(&target),
             external: !target.external.is_empty(),
@@ -144,6 +148,7 @@ impl TypeScriptLinked<'_> {
                     })
                     .collect()
             },
+            ecmascript: self.global_value(file, expression),
             unknown: false,
         };
         if base.class.is_none() && !target.ambiguous && target.excluded.is_empty() {
@@ -272,11 +277,34 @@ impl TypeScriptLinked<'_> {
                 return Target::excluded(base.locations);
             }
             if base.external {
-                return Target::external(base.locations);
+                let builtin = base
+                    .ecmascript
+                    .and_then(|global| tables::ecmascript_member_type(global, is_static))
+                    .is_some_and(|type_name| tables::is_ecmascript_method(type_name, name));
+                return if builtin {
+                    Target::external([ExternalLocation::Builtin])
+                } else {
+                    Target::external(base.locations)
+                };
             }
             current = base.class;
         }
         Target::default()
+    }
+
+    /// The ECMAScript global a class's bases end at (`Array` for `class Rows extends
+    /// Array<Row>`, and for its project subclasses).
+    pub(crate) fn ecmascript_base(&self, walk: &mut Walk, class: DeclRef) -> Option<&'static str> {
+        let mut visited = FxHashSet::default();
+        let mut current = class;
+        while visited.insert(current) {
+            let base = self.base_of(walk, current);
+            match base.class {
+                Some(next) => current = next,
+                None => return base.ecmascript,
+            }
+        }
+        None
     }
 
     /// What `this` means in context `context` of `file`.
@@ -291,17 +319,31 @@ impl TypeScriptLinked<'_> {
         }
     }
 
-    /// What `super` means as a receiver: the enclosing member's class's base.
+    /// What `super` means as a receiver: the enclosing member's class's base. An ECMAScript
+    /// base has the methods of its instances (or, in a static member, of the class), and one the
+    /// project replaced is `dynamic`.
     pub(crate) fn super_receiver(&self, walk: &mut Walk, file: FileId, context: u32) -> Receiver {
-        match self
+        let Some((class, is_static)) = self
             .binding(file)
             .and_then(|binding| binding.contexts.get(context as usize))
             .and_then(|context| context.receiver)
-        {
-            Some((class, is_static)) => self
-                .base_of(walk, DeclRef { file, index: class })
-                .receiver(is_static),
-            None => Receiver::default(),
+        else {
+            return Receiver::default();
+        };
+        let base = self.base_of(walk, DeclRef { file, index: class });
+        if base.ecmascript.is_some_and(|global| self.global_replaced(global)) {
+            return Receiver::dynamic();
+        }
+        Receiver {
+            class: base.class,
+            external: base.external,
+            excluded: base.excluded,
+            locations: base.locations,
+            builtin: base
+                .ecmascript
+                .and_then(|global| tables::ecmascript_member_type(global, is_static)),
+            is_static,
+            ..Receiver::default()
         }
     }
 
@@ -467,19 +509,7 @@ impl TypeScriptLinked<'_> {
             if !unknown {
                 continue;
             }
-            for member in self.class_members(class) {
-                let Some(decl) = self.decl(member) else {
-                    continue;
-                };
-                let overriding = !decl.flags.has(DeclFlags::STATIC)
-                    && !decl.flags.has(DeclFlags::AMBIENT)
-                    && decl.kind != DeclKind::Constructor
-                    && (decl.flags.has(DeclFlags::HAS_BODY)
-                        || matches!(decl.kind, DeclKind::Property | DeclKind::Parameter));
-                if !overriding {
-                    continue;
-                }
-                let name: Box<str> = decl.name.clone().unwrap_or_else(|| "*".into());
+            for name in self.overriding_names(class) {
                 let owners = overrides.entry(name).or_default();
                 if !owners.contains(&class) {
                     owners.push(class);
@@ -487,6 +517,47 @@ impl TypeScriptLinked<'_> {
             }
         }
         overrides
+    }
+
+    /// For each class, the names of the overriding members its known subclasses declare (`*`
+    /// for a member whose name isn't known): a call through the class that reaches a member it
+    /// inherits from outside the project may run one of them instead.
+    pub(crate) fn find_subclass_members(&self) -> FxHashMap<DeclRef, FxHashSet<Box<str>>> {
+        let mut found: FxHashMap<DeclRef, FxHashSet<Box<str>>> = FxHashMap::default();
+        let mut classes: Vec<DeclRef> = self.tables.classes.keys().copied().collect();
+        classes.sort_unstable();
+        for class in classes {
+            let names = self.overriding_names(class);
+            if names.is_empty() {
+                continue;
+            }
+            let mut visited = FxHashSet::from_iter([class]);
+            let mut current = self.tables.bases.get(&class).and_then(|base| base.class);
+            while let Some(ancestor) = current.filter(|&ancestor| visited.insert(ancestor)) {
+                found.entry(ancestor).or_default().extend(names.iter().cloned());
+                current = self.tables.bases.get(&ancestor).and_then(|base| base.class);
+            }
+        }
+        found
+    }
+
+    /// Whether a known subclass of `class` declares an overriding member `name`.
+    pub(crate) fn subclass_declares(&self, class: DeclRef, name: &str) -> bool {
+        self.tables
+            .subclass_members
+            .get(&class)
+            .is_some_and(|names| names.contains(name) || names.contains("*"))
+    }
+
+    /// The names of a class's own members that may override inherited ones (`*` for a member
+    /// whose name isn't known).
+    pub(crate) fn overriding_names(&self, class: DeclRef) -> Vec<Box<str>> {
+        self.class_members(class)
+            .filter_map(|member| {
+                let decl = self.decl(member).filter(|decl| overrides_inherited(decl))?;
+                Some(decl.name.clone().unwrap_or_else(|| "*".into()))
+            })
+            .collect()
     }
 
     /// Whether a class with an unlinked local base, other than `receiver`, declares an

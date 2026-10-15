@@ -1,6 +1,6 @@
 arrays.ts#run #0 types `Repo` → project arrays.ts#Repo
-arrays.ts#run/call:values%5B%5D.save #0 calls `values[0].save` → unknown unknown_receiver
-arrays.ts#run/call:values%5B%5D.save[1] #0 calls `values[…].save` → unknown unknown_receiver
-arrays.ts#run/call:values%5B%5D.save[2] #0 calls `values["0"].save` → unknown unknown_receiver
+arrays.ts#run/call:values%5B%5D.save #0 calls `values[].save` → unknown unknown_receiver
+arrays.ts#run/call:values%5B%5D.save[1] #0 calls `values[].save` → unknown unknown_receiver
+arrays.ts#run/call:values%5B%5D.save[2] #0 calls `values[].save` → unknown unknown_receiver
 arrays.ts#run/call:values.map #0 calls `values.map` → builtin ecmascript
-arrays.ts#run/call:values%5B%5D #0 calls `values["map"]` → builtin ecmascript
+arrays.ts#run/call:values%5B%5D #0 calls `values[]` → builtin ecmascript

@@ -150,8 +150,9 @@ fn merge_namespace(namespaces: &mut SmallVec<[Namespace; 1]>, namespace: Namespa
 }
 
 /// What evidence knows about a receiver: its class (and whether the access is static), or that
-/// it is external, excluded, an array, or an unbound `this`; and the ECMAScript type whose
-/// methods it has, when a literal or a written type says so.
+/// it is external, excluded, an array, an unbound `this`, or what a replaced ECMAScript global
+/// constructs; and the ECMAScript type whose methods it has, when a literal or a written type
+/// says so.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Receiver {
     pub(crate) class: Option<DeclRef>,
@@ -169,6 +170,9 @@ pub(crate) struct Receiver {
     pub(crate) nominal: bool,
     pub(crate) is_static: bool,
     pub(crate) unbound_this: bool,
+    /// What `new` of an ECMAScript global the project replaced constructs (or `super` in a
+    /// class extending one): the replacement's value, whose members are `dynamic`.
+    pub(crate) dynamic: bool,
 }
 
 impl Receiver {
@@ -200,6 +204,13 @@ impl Receiver {
     fn unbound() -> Self {
         Self {
             unbound_this: true,
+            ..Self::default()
+        }
+    }
+
+    fn dynamic() -> Self {
+        Self {
+            dynamic: true,
             ..Self::default()
         }
     }
@@ -285,6 +296,9 @@ pub(crate) struct Tables {
     /// Member name (`*` for an unknown name) → classes with an unlinked local base that
     /// declare an overriding member of that name.
     pub(crate) unknown_overrides: FxHashMap<Box<str>, SmallVec<[DeclRef; 2]>>,
+    /// Class declarations → the names of the overriding members their known subclasses
+    /// declare (`*` for an unknown name).
+    pub(crate) subclass_members: FxHashMap<DeclRef, FxHashSet<Box<str>>>,
     /// Narrowed receivers: root → the member paths narrowed under it.
     pub(crate) narrowed: FxHashMap<RootId, FxHashSet<Vec<Box<str>>>>,
     /// `const` object-literal variables → their object (an index into the file's objects).

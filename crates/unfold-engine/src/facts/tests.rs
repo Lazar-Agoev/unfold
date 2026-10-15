@@ -40,9 +40,9 @@ fn nodes() -> Vec<Node> {
         first_literal: None,
         takes_callback: false,
     };
-    let f = keys.push(0, Child::Definition("f")).unwrap();
+    let f = keys.push(0, Child::Definition(&["f"])).unwrap();
     let g_call = keys.push(1, call).unwrap();
-    let class = keys.push(0, Child::Definition("C")).unwrap();
+    let class = keys.push(0, Child::Definition(&["C"])).unwrap();
     vec![
         node(keys.keys()[0].clone(), None, Form::Module, None, range(0, 40)),
         node(f, Some(0), Form::Function, Some("f"), range(0, 20)),

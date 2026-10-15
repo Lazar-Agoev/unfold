@@ -157,7 +157,8 @@ pub struct FunctionFact {
 }
 
 /// A return annotation that names one class: `-> Repo`, `-> "Repo"`, `-> Repo | None`, or
-/// `-> Optional[Repo]` (the class a name or member chain, or a quoted dotted name).
+/// `-> Optional[Repo]` (the class a name or member chain, or a quoted dotted name), a generic
+/// class read by its class (`-> Repo[str]`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReturnFact {
     /// The class's name or member chain (synthesized for a quoted name), in the annotation's

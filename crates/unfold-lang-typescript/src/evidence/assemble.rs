@@ -2,9 +2,10 @@
 //! `expressionEvidence` and `annotationEvidence`): candidates from the value's target, the
 //! receiver class, static and `super` access, an unbound `this`, ambiguity from members that
 //! may override through an unknown base, a library member a project class may override or the
-//! project may have patched, and the access root's import binding. A written type
-//! name's evidence ([`TypeScriptLinked::type_facts`]) is looked up in the type meaning, with
-//! undeclared library types and global type aliases external.
+//! project may have patched (or a member of what a replaced global constructs), and the access
+//! root's import binding. A written type name's evidence ([`TypeScriptLinked::type_facts`]) is
+//! looked up in the type meaning, with undeclared library types and global type aliases
+//! external.
 
 use std::borrow::Cow;
 
@@ -70,36 +71,47 @@ impl TypeScriptLinked<'_> {
         let super_access = matches!(self.expr(file, expression), Some(Expr::Super(_)))
             || receiver_expr
                 .is_some_and(|receiver| matches!(self.expr(file, receiver), Some(Expr::Super(_))));
-        let overridable = target.declarations.iter().any(|&declaration| {
-            self.decl(declaration)
-                .is_some_and(|decl| matches!(decl.kind, DeclKind::Method | DeclKind::Property))
-        });
+        // A library member, or an ECMAScript global by name.
+        let library = target.declarations.is_empty() && !target.external.is_empty();
+        // The project class whose instance reaches a member it inherits from outside the project.
+        let inherited = receiver
+            .as_ref()
+            .filter(|receiver| library && !receiver.is_static && !super_access)
+            .and_then(|receiver| receiver.class);
+        let overridable = inherited.is_some()
+            || target.declarations.iter().any(|&declaration| {
+                self.decl(declaration)
+                    .is_some_and(|decl| matches!(decl.kind, DeclKind::Method | DeclKind::Property))
+            });
         let unknown_override = !static_access
             && !super_access
             && overridable
             && name.is_some_and(|name| self.may_have_unknown_override(receiver_class, name));
+        let subclass_override = inherited
+            .zip(name)
+            .is_some_and(|(class, name)| self.subclass_declares(class, name));
         let import_binding = root_name.and_then(|(_, lookup)| self.import_binding(file, lookup));
-        // A library member, or an ECMAScript global by name.
-        let library = target.declarations.is_empty() && !target.external.is_empty();
-        let dispatch = match (access, &receiver, name) {
-            (Some(object), Some(receiver), Some(name)) if library => {
-                self.library_dispatch(file, object, receiver, name)
+        let dispatch = if !library {
+            Dispatch::Library
+        } else if self
+            .global_value(file, expression)
+            .is_some_and(|global| self.global_replaced(global))
+        {
+            Dispatch::Patched
+        } else {
+            match (access, &receiver, name) {
+                (Some(object), Some(receiver), Some(name)) => {
+                    self.library_dispatch(&mut walk, file, object, receiver, name)
+                }
+                _ => Dispatch::Library,
             }
-            (None, _, _)
-                if library
-                    && self
-                        .global_value(file, expression)
-                        .is_some_and(|global| self.global_replaced(global)) =>
-            {
-                Dispatch::Patched
-            }
-            _ => Dispatch::Library,
         };
+        let dynamic = receiver.as_ref().is_some_and(|receiver| receiver.dynamic);
         Evidence {
             candidates: candidates.into_iter().collect(),
-            refusal: (dispatch == Dispatch::Patched).then_some(Refusal::Dynamic),
+            refusal: (dynamic || dispatch == Dispatch::Patched).then_some(Refusal::Dynamic),
             ambiguous: target.ambiguous || unknown_override,
-            overridden: dispatch == Dispatch::Overridden,
+            overridden: subclass_override || dispatch == Dispatch::Overridden,
             receiver_class,
             super_access,
             static_access,

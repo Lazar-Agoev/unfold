@@ -101,13 +101,15 @@ function memberName(node) {
  *
  * `locate(node)` returns `{ path, start, end }` (UTF-8 bytes, getStart to end) for a node in an
  * indexed file, or `undefined` outside the graph; `blockKey(path, start, end, kind)` returns the
- * Unfold block with exactly that range and kind.
+ * Unfold block with exactly that range and kind; `outsideModule(declaration)` returns the module
+ * label of a declaration outside the indexed files.
  */
 export class CheckerQuestions {
-  constructor(checker, locate, blockKey) {
+  constructor(checker, locate, blockKey, outsideModule) {
     this.checker = checker;
     this.locate = locate;
     this.blockKey = blockKey;
+    this.outsideModule = outsideModule;
   }
 
   /** Identity of a class declaration in the graph, for the override census. */
@@ -190,14 +192,26 @@ export class CheckerQuestions {
       && memberName(signature) === memberName(implementation);
   }
 
+  /**
+   * The outcome of declarations that all lie outside the indexed files, with the module label of
+   * where they are declared: one label, or, as Unfold writes several possible origins, a JSON
+   * array of them in UTF-16 order.
+   */
+  external(declarations) {
+    const labels = [...new Set(declarations.map(declaration => this.outsideModule(declaration)))].sort();
+    return { outcome: "external", module: labels.length === 1 ? labels[0] : JSON.stringify(labels) };
+  }
+
   /** One concrete target from the declarations the checker names, or the outcome without one. */
   decide(declarations, context) {
     if (!declarations.length) return { outcome: "unknown" };
     const effective = declarations.filter(declaration => !isAugmentation(declaration));
-    if (!effective.length) return { outcome: declarations.every(declaration => !this.locate(declaration)) ? "external" : "not_concrete" };
+    if (!effective.length) {
+      return declarations.every(declaration => !this.locate(declaration)) ? this.external(declarations) : { outcome: "not_concrete" };
+    }
     const answers = effective.map(declaration => ({ declaration, answer: this.concrete(declaration, context) }));
     const indexed = answers.filter(item => !item.answer.external);
-    if (!indexed.length) return { outcome: "external" };
+    if (!indexed.length) return this.external(effective);
     if (indexed.length !== answers.length) return { outcome: "ambiguous" };
     const targets = [...new Set(indexed.filter(item => item.answer.key).map(item => item.answer.key))];
     if (targets.length > 1) return { outcome: "ambiguous" };

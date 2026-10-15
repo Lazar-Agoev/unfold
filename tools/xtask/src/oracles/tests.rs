@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use unfold_core::testkit::sample;
-use unfold_core::vocab::{InputRole, Language, LinkKind};
+use unfold_core::vocab::{InputRole, Language, LinkKind, Reason};
 use unfold_core::{ContentHash, Graph, Input, LinkTarget, RepoPath};
 
 use super::compare::{Ratio, compare};
 use super::corpora::{OracleCorpora, listing_sha256};
-use super::file::{CallRow, FORMAT, Header, OracleFile, ReferenceRow, corpus_sha256};
+use super::file::{CallRow, EXTERNAL, FORMAT, Header, OracleFile, ReferenceRow, VERSION, corpus_sha256};
 use super::floors::Floors;
 use super::justified::Justified;
 
@@ -23,7 +25,7 @@ fn project(to: &LinkTarget) -> Option<Box<str>> {
 }
 
 /// An oracle that agrees with every Python link of `graph`: resolved sites name Unfold's target,
-/// the rest have no target.
+/// `library` and `builtin` sites are `external` in Unfold's module, and the rest have no target.
 fn agreeing_oracle(graph: &Graph) -> OracleFile {
     let mut calls = Vec::new();
     let mut references = Vec::new();
@@ -36,11 +38,23 @@ fn agreeing_oracle(graph: &Graph) -> OracleFile {
             let site: Box<str> = file.nodes[link.from as usize].key.as_str().into();
             let target = project(&link.to);
             match link.kind {
-                LinkKind::Calls => calls.push(CallRow {
-                    site: Some(site),
-                    outcome: target.is_none().then(|| "unknown".into()),
-                    target,
-                    ..CallRow::default()
+                LinkKind::Calls => calls.push(match &link.to {
+                    LinkTarget::Project(_) => CallRow {
+                        site: Some(site),
+                        target,
+                        ..CallRow::default()
+                    },
+                    LinkTarget::Library(label) | LinkTarget::Builtin(label) => CallRow {
+                        site: Some(site),
+                        outcome: Some(EXTERNAL.into()),
+                        module: Some(label.as_str().into()),
+                        ..CallRow::default()
+                    },
+                    LinkTarget::Unknown(_) => CallRow {
+                        site: Some(site),
+                        outcome: Some("unknown".into()),
+                        ..CallRow::default()
+                    },
                 }),
                 LinkKind::Passes => {
                     let argument = file
@@ -63,7 +77,7 @@ fn agreeing_oracle(graph: &Graph) -> OracleFile {
     OracleFile {
         header: Header {
             format: FORMAT.to_owned(),
-            version: 1,
+            version: VERSION,
             corpus: "sample".to_owned(),
             language: Language::Python,
             oracle: "pyright".to_owned(),
@@ -82,14 +96,44 @@ fn agreeing_oracle(graph: &Graph) -> OracleFile {
     }
 }
 
-fn resolved_calls(graph: &Graph) -> usize {
+/// The Python `calls` links of `graph` whose target `matches`.
+fn python_calls(graph: &Graph, matches: impl Fn(&LinkTarget) -> bool) -> usize {
     graph
         .files
         .iter()
         .filter(|file| file.file.language == Language::Python)
         .flat_map(|file| &file.links)
-        .filter(|link| link.kind == LinkKind::Calls && matches!(link.to, LinkTarget::Project(_)))
+        .filter(|link| link.kind == LinkKind::Calls && matches(&link.to))
         .count()
+}
+
+fn resolved_calls(graph: &Graph) -> usize {
+    python_calls(graph, |to| matches!(to, LinkTarget::Project(_)))
+}
+
+fn external_calls(graph: &Graph) -> usize {
+    python_calls(graph, |to| {
+        matches!(to, LinkTarget::Library(_) | LinkTarget::Builtin(_))
+    })
+}
+
+/// The oracle row at the first site whose Unfold call is `library` with `label`.
+fn library_row<'a>(graph: &Graph, oracle: &'a mut OracleFile, label: &str) -> &'a mut CallRow {
+    let site = graph
+        .files
+        .iter()
+        .flat_map(|file| file.links.iter().map(move |link| (file, link)))
+        .find(|(_, link)| {
+            link.kind == LinkKind::Calls
+                && matches!(&link.to, LinkTarget::Library(found) if found.as_str() == label)
+        })
+        .map(|(file, link)| file.nodes[link.from as usize].key.as_str().to_owned())
+        .unwrap();
+    oracle
+        .calls
+        .iter_mut()
+        .find(|row| row.site.as_deref() == Some(site.as_str()))
+        .unwrap()
 }
 
 #[test]
@@ -107,6 +151,9 @@ fn an_agreeing_oracle_gives_full_precision_and_recall() {
         }
     );
     assert!(comparison.references.total > 0);
+    assert_eq!(comparison.external.total, external_calls(&graph));
+    assert_eq!(comparison.external.part, comparison.external.total);
+    assert_eq!(comparison.precision().part, comparison.precision().total);
     assert_eq!(
         comparison.recall,
         Ratio {
@@ -152,13 +199,106 @@ fn a_different_or_missing_target_is_a_disagreement_until_justified() {
 }
 
 #[test]
-fn reference_disagreements_and_recall_misses_are_counted() {
+fn a_library_call_the_oracle_resolves_in_the_project_is_a_disagreement() {
     let graph = graph();
+    let mut oracle = agreeing_oracle(&graph);
+    let project = oracle.calls.iter().find_map(|row| row.target.clone()).unwrap();
+    let row = library_row(&graph, &mut oracle, "python:logging");
+    let site = row.site.clone().unwrap();
+    row.outcome = None;
+    row.module = None;
+    row.target = Some(project.clone());
+
+    let comparison = compare("sample", Language::Python, &graph, &oracle, &Justified::default());
+    assert!(!comparison.precise());
+    assert_eq!(comparison.unjustified.len(), 1);
+    let disagreement = &comparison.unjustified[0];
+    assert_eq!(disagreement.site, site);
+    assert_eq!(&*disagreement.unfold, "library python:logging");
+    assert_eq!(&*disagreement.oracle, format!("target {project}"));
+    assert_eq!(
+        disagreement.to_string(),
+        format!("{site}: Unfold resolves library python:logging, the oracle says target {project}")
+    );
+    // The comparison counts against precision.
+    assert_eq!(comparison.external.total, external_calls(&graph));
+    assert_eq!(comparison.external.part, comparison.external.total - 1);
+    assert_eq!(comparison.precision().part + 1, comparison.precision().total);
+
+    // A justification names the claim as Unfold's target.
+    let text = format!(
+        "[[justified]]\ncorpus = \"sample\"\nlanguage = \"python\"\nsite = \"{site}\"\ntarget = \"library python:logging\"\nreason = \"r\"\n"
+    );
+    let justified = Justified::parse(&text).unwrap();
+    assert!(compare("sample", Language::Python, &graph, &oracle, &justified).precise());
+}
+
+#[test]
+fn a_library_or_builtin_label_must_name_the_oracles_module() {
+    let graph = graph();
+    let mut oracle = agreeing_oracle(&graph);
+    let row = library_row(&graph, &mut oracle, "python:logging");
+    let site = row.site.clone().unwrap();
+    row.module = Some("python:typing".into());
+
+    let comparison = compare("sample", Language::Python, &graph, &oracle, &Justified::default());
+    assert!(!comparison.precise());
+    assert_eq!(comparison.unjustified.len(), 1);
+    assert_eq!(
+        comparison.unjustified[0].to_string(),
+        format!(
+            "{site}: Unfold resolves library python:logging, the oracle says no target (external python:typing)"
+        )
+    );
+    assert_eq!(comparison.external.part, comparison.external.total - 1);
+
+    // An oracle that has no answer for the site neither confirms nor contradicts the label.
+    let row = library_row(&graph, &mut oracle, "python:logging");
+    row.outcome = Some("ambiguous_unknown_or_wrapped".into());
+    row.module = None;
+    let comparison = compare("sample", Language::Python, &graph, &oracle, &Justified::default());
+    assert!(comparison.precise());
+    assert_eq!(comparison.external.total, external_calls(&graph) - 1);
+    assert_eq!(comparison.external.part, comparison.external.total);
+}
+
+#[test]
+fn a_project_call_the_oracle_finds_outside_names_the_module() {
+    let graph = graph();
+    let mut oracle = agreeing_oracle(&graph);
+    let row = oracle.calls.iter_mut().find(|row| row.target.is_some()).unwrap();
+    row.target = None;
+    row.outcome = Some(EXTERNAL.into());
+    row.module = Some("python:builtins".into());
+    let comparison = compare("sample", Language::Python, &graph, &oracle, &Justified::default());
+    assert_eq!(comparison.unjustified.len(), 1);
+    assert_eq!(
+        &*comparison.unjustified[0].oracle,
+        "no target (external python:builtins)"
+    );
+}
+
+#[test]
+fn reference_disagreements_and_recall_misses_are_counted() {
+    let mut graph = graph();
+    // Unfold leaves one Python call unresolved.
+    let link = graph
+        .files
+        .iter_mut()
+        .filter(|file| file.file.language == Language::Python)
+        .flat_map(|file| &mut Arc::make_mut(file).links)
+        .find(|link| link.kind == LinkKind::Calls && matches!(link.to, LinkTarget::Builtin(_)))
+        .unwrap();
+    link.to = LinkTarget::Unknown(Reason::UnknownReceiver);
     let mut oracle = agreeing_oracle(&graph);
     let removed = oracle.references.pop().unwrap();
     // A site Unfold leaves unresolved that the oracle resolves is a recall miss, not a
     // precision failure.
-    let unresolved = oracle.calls.iter_mut().find(|row| row.target.is_none()).unwrap();
+    let unresolved = oracle
+        .calls
+        .iter_mut()
+        .find(|row| row.outcome.as_deref() == Some("unknown"))
+        .unwrap();
     unresolved.outcome = None;
     unresolved.target = Some(removed.target.clone());
     let comparison = compare("sample", Language::Python, &graph, &oracle, &Justified::default());
@@ -207,6 +347,9 @@ fn oracle_files_round_trip_and_reject_malformed_rows() {
         r#"{"t":"call","target":"a.ts#function:f"}"#,
         // A refusal without a target.
         r#"{"t":"call","site":"a.ts#call[0]","outcome":"unknown","refused":"overridden"}"#,
+        // A module on an outcome other than `external`, or `external` without one.
+        r#"{"t":"call","site":"a.ts#call[0]","outcome":"unknown","module":"ecmascript"}"#,
+        r#"{"t":"call","site":"a.ts#call[0]","outcome":"external"}"#,
         // An unknown field.
         r#"{"t":"call","site":"a.ts#call[0]","outcome":"unknown","why":"x"}"#,
         // A second header.

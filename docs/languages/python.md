@@ -25,16 +25,21 @@ Paths are relative to `crates/unfold-lang-python/src/`. Read a module's comment 
 `[[python.project]]` grammar version (3.12, 3.13, or 3.14, the default). Strict UTF-8 is required: a declared
 non-UTF-8 encoding fails the file even when its bytes decode. A file also fails on the compile-time errors CPython
 reports that Ruff's parser leaves to later passes ([analysis/checks.rs](../../crates/unfold-lang-python/src/analysis/checks.rs)):
-`return` outside a function, `break`/`continue` outside a loop or leaving an `except*` handler, under 3.14 leaving a
-`finally` block, duplicate parameters, a bare `except:` that isn't last, and the `match` pattern errors.
+`return` outside a function, `break`/`continue` outside a loop or leaving an `except*` handler, duplicate parameters,
+a bare `except:` that isn't last, and the `match` pattern errors. Leaving a `finally` block with `return`, `break`, or
+`continue` compiles under every grammar: CPython 3.14 only warns about it (PEP 765).
+
+Lines end at CR, LF, and CRLF, as CPython counts them: a U+2028 or U+2029 in a string or a comment doesn't end a line
+([Graph model › Text, ranges, and lines](../graph-model.md#text-ranges-and-lines)).
 
 A file either parses completely or fails with a message and the offset of its first problem; a failure keeps the
 file's last good facts ([Engine](../engine.md#facts-cache-and-failures)). Python is never run: no imports, no
 annotations evaluated, no decorators executed. Cached facts hold binder state, not a Ruff tree.
 
 A per-file pre-pass proves the identities that decide structure, before lowering: `builtins.property` (getter and
-setter forms), `typing.TYPE_CHECKING` (its imports get no link), and `importlib.import_module` (a literal call also
-has an `imports` link). A star import is assumed not to rebind them; only a same-file write invalidates one.
+setter forms), `typing.TYPE_CHECKING` (its imports get no link), `typing.overload` (its stubs are left out), and
+`importlib.import_module` (a literal call also has an `imports` link). A star import is assumed not to rebind them;
+only a same-file write invalidates one.
 
 ## Lowering
 
@@ -65,6 +70,9 @@ Choices the lowering makes:
 - `conditional` holds inside ternaries and comprehensions, and a walrus keeps `exit_value`.
 - Past the depth limit a node is marked `truncated` and nothing below it is lowered. Lowering recurses on a stack
   that grows as needed, so deep syntax can't overflow it.
+- A `def` with a decorator proven to be `typing.overload` is a stub. It is left out with everything written in it
+  (its decorators, defaults, and annotations), as TypeScript leaves out overload signatures, so the implementation
+  takes the plain key: `pkg/parse.py#parse`. A decorator named `overload` that isn't `typing`'s keeps the `def`.
 
 ## Imports and source roots
 
@@ -74,8 +82,11 @@ Every file resolves its imports through its own source roots, the same however t
   project folder is that project's root, or else the nearest folder above the file with a `pyproject.toml`, or else
   the open folder; its root is `src/` for a src layout, and the folder itself otherwise.
 - **Absolute imports** `a.b` are looked for under every source root as `a/b/__init__.py`, then `a/b.py`, then a
-  namespace folder `a/b`. More than one match is `ambiguous`, listed as a problem; nothing is external, labeled by
-  its first part.
+  namespace folder `a/b`. More than one match is `ambiguous`, listed as a problem. Nothing found is `not_found` when
+  the first part may name project code: a module or package a source root reaches, or, unless the standard library
+  has a module of that name, a Python module or a folder of them anywhere in the project (code the source roots
+  don't reach can still be imported after a `sys.path` change). Any other miss is external, labeled by its first
+  part. Calls and type names through a module that isn't found are `not_found` too.
 - **Relative imports** need the importing file to lie in a source root deep enough for its dots; nothing found is
   `not_found`.
 - A module that exists outside the index (a source root outside `[scope]`) is `not_indexed`, never `not_found`.
@@ -101,6 +112,10 @@ rules for functions, lambdas, comprehensions, class bodies, `global`, `nonlocal`
 - Attribute writes from any file invalidate module members and class members; `self.attr = …` in a method records
   an instance field; a proven `exec` or `eval` makes every identity in its module `unsupported`; a proven
   `setattr`/`delattr` invalidates the member it names, or every member.
+- The same writes replace standard-library members: on `builtins` (`builtins.print = …`), on a stub class
+  (`logging.Logger.info = …`), or on an instance the stubs type (`logger.info = …`, which may be any instance of its
+  class). Calls that may reach a replaced member are `dynamic`: through the class, the classes that inherit the
+  member, and written types that may hold one of them.
 - C3 linearization governs member lookup. A builtin exception base sits in the linearization after every user
   class. Construction and instance access bind receivers differently from access through the class; `super()` must
   agree across every linearization that can reach it.
@@ -118,9 +133,15 @@ A call gives an instance of a class only when it is proven ([link/value.rs](../.
 - **Construction:** the call constructs a proven, concrete project class.
 - **Written return type:** the callee is exactly one proven, concrete `def` that isn't overridden or wrapped, and its
   annotation is a class (a name, member chain, or quoted dotted name), `Repo | None` or `None | Repo`, or
-  `Optional[Repo]` with `Optional` proven to be `typing.Optional`. An `async def`'s type is read only through
-  `await`, any other's only without it. Generics, unions of classes, TypeVars, `Self`, and `Union[Repo, None]` give
-  nothing.
+  `Optional[Repo]` with `Optional` proven to be `typing.Optional`. A generic class is read by its class, its type
+  arguments dropped, as written variable types are: `-> Repo[str]` gives `Repo`, `-> list[int]` gives `list`. An
+  `async def`'s type is read only through `await`, any other's only without it. Unions of classes, TypeVars, `Self`,
+  `type[Repo]`, quoted generics, and `Union[Repo, None]` give nothing, and so does a class that derives from
+  `Generic[T]`, whose base Unfold doesn't read.
+- **Written annotations are read as their `types` links are:** in the type meaning, where a name an assignment binds
+  (`Alias = Repo`) is its own declaration, never followed. So `-> Alias` and `param: Alias` give nothing, as the
+  `types` link says `not_concrete`. A class with a decorator that isn't proven transparent is still its own type,
+  as for its `types` link, and calls to its members are `wrapper`.
 - **Standard-library stubs:** eight modules (`builtins`, `logging`, `os` with `os.path`, `json`, `re`, `datetime`,
   `pathlib`, `asyncio`) and every class their members reach, generated into `stubs.rs` by
   `cargo xtask gen-py-stubs` from typeshed at the commit pinned in `stdlib.rs`. Nothing is read at run time.

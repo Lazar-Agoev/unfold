@@ -13,12 +13,13 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import readline from "node:readline";
 import ts from "typescript";
 import { CheckerQuestions, overrideCensus, unwrap } from "./typescript-oracle/checker.mjs";
 
 const FORMAT = "unfold-oracle";
+const VERSION = 2;
 
 function parseArguments(argv) {
   const options = {};
@@ -150,6 +151,39 @@ function compilerOptions(config) {
   return { ...parsed.options, noEmit: true };
 }
 
+/**
+ * The module label of a declaration outside the indexed files, named as Unfold labels that
+ * location (docs/languages/typescript.md, "Module labels"): a standard edition of ECMAScript in the
+ * default library (`lib.es5.d.ts`, `lib.es2015.*`, not `lib.esnext.*`) is `ecmascript`, the rest of
+ * the default library `global`; in `@types/node`, a module it declares is `node:<name>` and a global
+ * `global`; another package is its name (`@types/a__b` is `@a/b`); any other file is its path in
+ * the corpus.
+ */
+function outsideModule(program, folder, declaration) {
+  const file = declaration.getSourceFile();
+  if (program.isSourceFileDefaultLibrary(file)) {
+    const name = basename(file.fileName);
+    return name.startsWith("lib.es") && !name.startsWith("lib.esnext") ? "ecmascript" : "global";
+  }
+  const parts = relative(folder, file.fileName).split(sep);
+  const packages = parts.lastIndexOf("node_modules");
+  if (packages === -1) return parts.join("/");
+  const [first, second] = parts.slice(packages + 1);
+  if (first === "@types" && second === "node") return nodeModule(declaration);
+  if (first === "@types") return second.includes("__") ? `@${second.replace("__", "/")}` : second;
+  return first.startsWith("@") ? `${first}/${second}` : first;
+}
+
+/** `node:<name>` for a declaration in `@types/node`'s `declare module "<name>"`, else `global`. */
+function nodeModule(declaration) {
+  for (let node = declaration; node; node = node.parent) {
+    if (!ts.isModuleDeclaration(node)) continue;
+    if (node.flags & ts.NodeFlags.GlobalAugmentation) return "global";
+    if (ts.isStringLiteral(node.name)) return `node:${node.name.text.replace(/^node:/, "")}`;
+  }
+  return "global";
+}
+
 const isCallSite = node => ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node)
   || (ts.isCallExpression(node) && node.expression.kind !== ts.SyntaxKind.ImportKeyword);
 
@@ -164,7 +198,7 @@ function namedArgument(argument) {
   return undefined;
 }
 
-function evaluateGroup(group, sources, graph, results) {
+function evaluateGroup(folder, group, sources, graph, results) {
   const host = ts.createCompilerHost(group.options, true);
   const getSourceFile = host.getSourceFile.bind(host);
   const readFile = host.readFile.bind(host);
@@ -183,7 +217,7 @@ function evaluateGroup(group, sources, graph, results) {
   };
   // The checker's `function`, `method`, and `constructor` bodies are all function nodes.
   const blockKey = (path, start, end, kind) => graph.targets.get(`${path}\0${start}\0${end}\0${kind === "class" ? "class" : "function"}`);
-  const questions = new CheckerQuestions(program.getTypeChecker(), locate, blockKey);
+  const questions = new CheckerQuestions(program.getTypeChecker(), locate, blockKey, declaration => outsideModule(program, folder, declaration));
   for (const absolute of group.files) {
     const file = program.getSourceFile(absolute);
     if (!file) throw new Error(`the checker did not load ${absolute}`);
@@ -223,7 +257,12 @@ function siteRows(node, questions, locate, graph) {
 
 /** The row fields of one answer, in a fixed order. */
 function shape(answer) {
-  if (!answer.target) return answer.detail ? { outcome: answer.outcome, detail: answer.detail } : { outcome: answer.outcome };
+  if (!answer.target) {
+    const fields = { outcome: answer.outcome };
+    if (answer.module) fields.module = answer.module;
+    if (answer.detail) fields.detail = answer.detail;
+    return fields;
+  }
   const fields = { target: answer.target };
   if (answer.refused) fields.refused = answer.refused;
   if (answer.override) fields.override = answer.override;
@@ -236,7 +275,7 @@ async function main() {
   const graph = await readExport(options.export);
   const { sources, corpusSha256 } = readCorpus(folder, graph);
   const results = { rows: [], shapes: [] };
-  for (const group of configurationGroups(folder, sources)) evaluateGroup(group, sources, graph, results);
+  for (const group of configurationGroups(folder, sources)) evaluateGroup(folder, group, sources, graph, results);
 
   const overridden = overrideCensus(results.shapes);
   for (const { row } of results.rows) {
@@ -254,7 +293,7 @@ async function main() {
   const header = {
     t: "header",
     format: FORMAT,
-    version: 1,
+    version: VERSION,
     corpus: options.corpus,
     language: "typescript",
     oracle: "typescript",

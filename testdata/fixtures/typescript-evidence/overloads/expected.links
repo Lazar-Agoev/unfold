@@ -1,5 +1,5 @@
 a.ts#/call:over #0 calls `over` → project a.ts#over
-a.ts#/call:(…).m #0 calls `K.m` → project a.ts#K.m
+a.ts#/call:(…).m #0 calls `(…).m` → project a.ts#K.m
 a.ts#/call:(…).m/call:K #0 calls `K` → project a.ts#K.constructor
 a.ts#/call:K #0 calls `K` → project a.ts#K.constructor
 a.ts#/call:ambient #0 calls `ambient` → unknown not_concrete

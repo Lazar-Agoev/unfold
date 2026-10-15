@@ -13,7 +13,9 @@ use std::path::Path;
 
 use serde::Serialize;
 use unfold_core::text::OffsetError;
-use unfold_core::{ByteRange, ContentHash, LineIndex, RepoPath, Snapshot, Utf16Index, text::Utf16Range};
+use unfold_core::{
+    ByteRange, ContentHash, LineBreaks, LineIndex, RepoPath, Snapshot, Utf16Index, text::Utf16Range,
+};
 
 use crate::error::{ReaderError, Result};
 
@@ -27,9 +29,9 @@ pub struct Source {
 }
 
 impl Source {
-    fn new(snapshot: Snapshot) -> Self {
+    fn new(snapshot: Snapshot, breaks: LineBreaks) -> Self {
         Self {
-            lines: snapshot.line_index(),
+            lines: snapshot.line_index(breaks),
             utf16: snapshot.utf16_index(),
             snapshot,
         }
@@ -139,8 +141,14 @@ pub enum SourceState {
 }
 
 /// Reads `path` under `root` and verifies it against `expected`, the hash its facts came from
-/// (`None` for a failed file, which has no facts).
-pub fn verify_file(root: &Path, path: &RepoPath, expected: Option<ContentHash>) -> Verified {
+/// (`None` for a failed file, which has no facts). Its lines end at `breaks`: a source's
+/// language's, [`LineBreaks::Newlines`] for any other file.
+pub fn verify_file(
+    root: &Path,
+    path: &RepoPath,
+    expected: Option<ContentHash>,
+    breaks: LineBreaks,
+) -> Verified {
     let Some(expected) = expected else {
         return Verified::Missing;
     };
@@ -151,7 +159,7 @@ pub fn verify_file(root: &Path, path: &RepoPath, expected: Option<ContentHash>) 
     // after the hash matches. Bytes that are not UTF-8 (or too large) cannot be the bytes the
     // facts came from, which decoded, so they count as changed.
     match Snapshot::new(path.clone(), bytes) {
-        Ok(snapshot) if snapshot.hash() == expected => Verified::Current(Source::new(snapshot)),
+        Ok(snapshot) if snapshot.hash() == expected => Verified::Current(Source::new(snapshot, breaks)),
         _ => Verified::Changed,
     }
 }
@@ -167,20 +175,33 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
         std::fs::write(dir.path().join("src/a.ts"), "let a = 1;\n").unwrap();
         let hash = ContentHash::of(b"let a = 1;\n");
-        let Verified::Current(source) = verify_file(dir.path(), &path, Some(hash)) else {
+        let Verified::Current(source) = verify_file(dir.path(), &path, Some(hash), LineBreaks::EcmaScript)
+        else {
             panic!("expected current source");
         };
         assert_eq!(source.text(), "let a = 1;\n");
 
         std::fs::write(dir.path().join("src/a.ts"), "let a = 2;\n").unwrap();
-        assert_eq!(verify_file(dir.path(), &path, Some(hash)), Verified::Changed);
+        assert_eq!(
+            verify_file(dir.path(), &path, Some(hash), LineBreaks::EcmaScript),
+            Verified::Changed
+        );
 
         std::fs::write(dir.path().join("src/a.ts"), [0xff, 0xfe]).unwrap();
-        assert_eq!(verify_file(dir.path(), &path, Some(hash)), Verified::Changed);
+        assert_eq!(
+            verify_file(dir.path(), &path, Some(hash), LineBreaks::EcmaScript),
+            Verified::Changed
+        );
 
         std::fs::remove_file(dir.path().join("src/a.ts")).unwrap();
-        assert_eq!(verify_file(dir.path(), &path, Some(hash)), Verified::Missing);
-        assert_eq!(verify_file(dir.path(), &path, None), Verified::Missing);
+        assert_eq!(
+            verify_file(dir.path(), &path, Some(hash), LineBreaks::EcmaScript),
+            Verified::Missing
+        );
+        assert_eq!(
+            verify_file(dir.path(), &path, None, LineBreaks::EcmaScript),
+            Verified::Missing
+        );
         assert_eq!(Verified::Missing.state(), SourceState::Missing);
         assert!(Verified::Changed.source().is_none());
     }
@@ -191,9 +212,12 @@ mod tests {
         let text = "a = \"é😀\"\nb = 1\n";
         std::fs::write(dir.path().join("m.py"), text).unwrap();
         let path = RepoPath::new("m.py").unwrap();
-        let Verified::Current(source) =
-            verify_file(dir.path(), &path, Some(ContentHash::of(text.as_bytes())))
-        else {
+        let Verified::Current(source) = verify_file(
+            dir.path(),
+            &path,
+            Some(ContentHash::of(text.as_bytes())),
+            LineBreaks::Newlines,
+        ) else {
             panic!("expected current source");
         };
         // `b` starts after `a = "é😀"\n`: 13 bytes, but 10 UTF-16 units (é is 1, 😀 is 2).

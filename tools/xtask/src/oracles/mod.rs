@@ -4,9 +4,10 @@
 //!
 //! - `check` compiles each corpus in `testdata/reference/oracles/corpora.toml` from a temporary
 //!   copy (or reads `--actual`) and compares it with the cached oracle files: every resolved call,
-//!   construction, and named reference must name the oracle's target unless `justified.toml`
-//!   explains why not, and recall must stay at or above `floors.toml`. It needs no Node: the
-//!   oracle files are cached, keyed by a hash of the corpus bytes.
+//!   construction, and named reference must name the oracle's target, and every `library` or
+//!   `builtin` call the module the oracle finds it in, unless `justified.toml` explains why not;
+//!   recall must stay at or above `floors.toml`. It needs no Node: the oracle files are cached,
+//!   keyed by a hash of the corpus bytes.
 //! - `refresh` regenerates the oracle files: TypeScript through the developer-only Node script
 //!   `tools/oracles/typescript-oracle.mjs` (the published `typescript` package), Python by
 //!   converting the proof of concept's saved Pyright rows ([`python`]).
@@ -228,7 +229,7 @@ fn report(
     limit: usize,
 ) {
     println!(
-        "{} {language} ({} {}): precision {} ({} justified; agreeing calls {}, references {}); recall {}{}; reference recall {}",
+        "{} {language} ({} {}): precision {} ({} justified; agreeing calls {}, references {}, library and builtin calls {}); recall {}{}; reference recall {}",
         corpus.name,
         oracle.header.oracle,
         oracle.header.oracle_version,
@@ -236,6 +237,7 @@ fn report(
         comparison.justified.len(),
         comparison.calls,
         comparison.references,
+        comparison.external,
         comparison.recall,
         floor.map_or_else(String::new, |floor| match &floor.poc {
             Some(poc) => format!(", floor {} (proof of concept: {poc})", floor.ratio()),

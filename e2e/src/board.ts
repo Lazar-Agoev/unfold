@@ -65,7 +65,7 @@ export function dock(page: Page): Locator {
 
 /**
  * Waits until the active page's camera has stopped moving (focusing a card pans with an animation):
- * its transform unchanged for ten consecutive frames.
+ * its transform unchanged for ten checks in a row, 16 ms apart.
  */
 export async function cameraSettled(page: Page): Promise<void> {
   await boardView(page).evaluate(
@@ -74,6 +74,7 @@ export async function cameraSettled(page: Page): Promise<void> {
         const viewport = view.querySelector<HTMLElement>(".react-flow__viewport");
         let last = viewport?.style.transform ?? "";
         let still = 0;
+        // Timers, not animation frames: a window that stops drawing frames would wait forever.
         const tick = () => {
           const now = viewport?.style.transform ?? "";
           still = now === last ? still + 1 : 0;
@@ -81,10 +82,10 @@ export async function cameraSettled(page: Page): Promise<void> {
           if (still >= 10) {
             resolve();
           } else {
-            requestAnimationFrame(tick);
+            setTimeout(tick, 16);
           }
         };
-        requestAnimationFrame(tick);
+        setTimeout(tick, 16);
       }),
   );
 }

@@ -15,7 +15,7 @@ impl File {
     }
 
     fn def(&mut self, parent: u32, name: &str) -> u32 {
-        self.push(parent, Child::Definition(name))
+        self.push(parent, Child::Definition(&[name]))
     }
 
     fn form(&mut self, parent: u32, form: Form) -> u32 {
@@ -170,7 +170,7 @@ fn named_definitions_are_qualified_by_their_enclosing_definition() {
     let class = f.def(0, "Repo");
     let save = f.def(class, "save");
     let handler = f.def(0, "handler");
-    let property = f.def(0, "handlers.onCreate");
+    let property = f.push(0, Child::Definition(&["handlers", "onCreate"]));
     let default = f.def(0, "default");
     let outer = f.def(0, "place_order");
     let guard = f.form(outer, F::If);
@@ -604,6 +604,25 @@ fn names_and_callees_escape_reserved_characters() {
     let call = f.call(0, &name("x/y").member("z#").index());
     assert_eq!(f.key(odd), "a.ts#a%25b%2Fc%23d%5Be%5Df:g é");
     assert_eq!(f.key(call), "a.ts#/call:x%2Fy.z%23%5B%5D");
+    // A name escapes `.` too, which separates names; a callee writes its members with it.
+    let dotted = f.push(0, Child::Definition(&["handlers", "order.created"]));
+    let inner = f.def(dotted, "v1.2");
+    assert_eq!(f.key(dotted), "a.ts#handlers.order%2Ecreated");
+    assert_eq!(f.key(inner), "a.ts#handlers.order%2Ecreated.v1%2E2");
+    let Ok(ParsedKey::Block(parsed)) = Key::from_text(f.key(inner)).parse() else {
+        panic!("a block key");
+    };
+    let names: Vec<_> = parsed
+        .segments()
+        .iter()
+        .map(|segment| match segment {
+            Segment::Name { name, .. } => &**name,
+            _ => panic!("a name"),
+        })
+        .collect();
+    assert_eq!(names, ["handlers", "order.created", "v1.2"]);
+    assert_eq!(parsed.to_key().as_str(), f.key(inner));
+    assert!(Key::from_text("a.ts#/call:a%2Eb").parse().is_err());
     let Ok(ParsedKey::Block(parsed)) = Key::from_text(f.key(call)).parse() else {
         panic!("a block key");
     };
@@ -635,7 +654,12 @@ fn bad_pushes_are_rejected_and_push_nothing() {
     ] {
         assert_eq!(keys.push(0, Child::Form(form)), Err(KeyError::NotAStep(form)));
     }
-    assert_eq!(keys.push(0, Child::Definition("")), Err(KeyError::EmptyName));
+    assert_eq!(keys.push(0, Child::Definition(&[""])), Err(KeyError::EmptyName));
+    assert_eq!(
+        keys.push(0, Child::Definition(&["handlers", ""])),
+        Err(KeyError::EmptyName)
+    );
+    assert_eq!(keys.push(0, Child::Definition(&[])), Err(KeyError::EmptyName));
     let empty = Callee::name("");
     let call = Child::Call {
         callee: &empty,
@@ -825,13 +849,25 @@ fn entrance_keys_come_from_names() {
     assert_eq!(slug("Orders API (v2)").unwrap(), "orders-api-v2");
     assert_eq!(slug("Café Größe").unwrap(), "café-größe");
     assert_eq!(slug("ÀB").unwrap(), "àb");
+    // Names are normalized to NFC first, and a combining mark stays with its letter: an accent
+    // typed precomposed or combining slugs the same, and `İ` lowercases to `i` with its dot.
+    assert_eq!(slug("Caf\u{e9} orders").unwrap(), "caf\u{e9}-orders");
+    assert_eq!(slug("Cafe\u{301} refunds").unwrap(), "caf\u{e9}-refunds");
+    assert_eq!(slug("İstanbul").unwrap(), "i\u{307}stanbul");
+    assert_eq!(slug("q\u{303} x").unwrap(), "q\u{303}-x");
     for invalid in ["", "   ", "--", "!?", "→ ←"] {
         assert_eq!(slug(invalid), Err(SlugError(invalid.into())));
         assert!(Key::app(invalid).is_err());
         assert!(Key::entrance("Shop", invalid).is_err());
         assert!(Key::entrance(invalid, "Place").is_err());
     }
-    for name in ["Shop API", "1. Collect incoming email", "Café Größe"] {
+    for name in [
+        "Shop API",
+        "1. Collect incoming email",
+        "Café Größe",
+        "Cafe\u{301} refunds",
+        "İstanbul",
+    ] {
         let key = Key::app(name).unwrap();
         assert!(matches!(key.parse(), Ok(ParsedKey::App { .. })), "{key}");
     }

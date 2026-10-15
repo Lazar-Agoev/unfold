@@ -32,7 +32,9 @@ they inform names and types but get no nodes. JavaScript files are not indexed; 
 
 Parsing uses the pinned oxc parser and is strict: any syntax diagnostic fails the file with its message and offset,
 and a recovered tree is never used. Each parse runs on a thread whose stack is sized from the text, and text nested
-deeper than the census's limit fails instead of overflowing. Extraction keeps token-exact ranges and never
+deeper than the census's limit fails instead of overflowing. Above about a megabyte, the stack is sized from a lexical
+estimate of the nesting, in which a new statement returns to its level (after a `}`, or after a line break that ends
+an expression), so thousands of sibling declarations or statements are flat, not deep. Extraction keeps token-exact ranges and never
 pretty-prints syntax. Linking reads only cached facts, never a retained parse tree.
 
 ## Lowering
@@ -43,8 +45,8 @@ pretty-prints syntax. Linking reads only cached facts, never a retained parse tr
 | --- | --- |
 | The file | `module`; a leading file JSDoc is its `doc` |
 | Function declarations; methods, constructors, accessors (class or object literal) | `function` (`function`, `method`, `constructor`, `getter`, `setter`) |
-| Arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments, object properties included; named by `const x = …`, a class property, a property of an object a declaration names, or `export default`; `lambda[n]` anywhere else |
-| `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`) |
+| Arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments, object properties included (labeled by the property); named by `const x = …`, a class property, a property of an object literal that isn't an argument (after the names of the declaration or property that names the object), or `export default`; `lambda[n]` anywhere else |
+| `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`). A class expression is named like a function expression, or by its own name in a body; otherwise it is an inline definition, `callback[n]` or `lambda[n]` with the form `class` |
 | Decorators | Calls in the enclosing body, role `decorator`, `for` the definition, no `stmt` |
 | A class's `extends` call | A call in the enclosing body, role `base` |
 | Parameter defaults | Calls at the start of the function's own body, role `default` |
@@ -63,13 +65,22 @@ Choices the lowering makes:
 
 - Namespaces are not nodes; their definitions are qualified (`N.f`).
 - A function expression's own name is ignored for keys; the declaration or property that holds it names it.
+- A property name keeps its `.`, which the key escapes (`"order.created"` is `order%2Ecreated`). A method with an
+  empty or computed name is `lambda[n]` with its form (`method`, `getter`, `setter`).
+- An assignment names nothing: `exports.run = () => …` and `Svc.prototype.run = function () {…}` are `lambda[n]`,
+  as a plain `target = () => …` is.
+- A call's name and its links' text follow one rule, the callee normalization: `"str".trim()` is `"".trim`,
+  `a["key"]()` is `a[]`, `new Box().open()` is `(…).open`, and `(await getRepo()).save()` is `getRepo().save`.
+- An annotation links from the definition it types: a parameter's and return type's from its function, a class's
+  heritage from the class, and a declaration's or field's from the function or class it names when that definition
+  begins the statement; any other from the definition it is written in.
 - A template literal without substitutions counts as a string literal, for callees (`""`) and for the
   first-literal key rule.
-- A JSDoc is a definition's `doc` only with no blank line between it and the definition.
+- A definition's `doc` is the nearest JSDoc before it, past line comments such as `// eslint-disable-next-line`,
+  as TypeScript reads it, with no blank line between.
 - A decorator on a class field is a plain call: a field isn't a definition.
 - What can't be placed is marked `truncated` on the nearest node above it: nesting past the depth limit (the code
-  below is left out and the census skips it), a `break` out of a labeled plain block, and a class expression with
-  no name to key it by.
+  below is left out and the census skips it), and a `break` out of a labeled plain block.
 
 ## Project configuration
 
@@ -90,7 +101,9 @@ context files, and configuration inputs), never the disk or installed packages:
 3. Files resolve by TypeScript's extension rules (`.js` names `.ts`, `.tsx`, or `.d.ts`). JavaScript resolves only
    with `allowJs`; JSON only with `resolveJsonModule` and its extension written.
 4. Under `node16`/`nodenext`, the mode follows the file's module format; `exports` and `imports` use `types`,
-   `node`, `import` or `require`, and `customConditions`.
+   `node`, `import` or `require`, and `customConditions`. A dynamic `import()` uses the extension rules of its
+   file's static imports, with the conditions of an ESM import: `import("./names")` resolves wherever
+   `import … from "./names"` does.
 
 What the specifier reaches decides the import's outcome:
 
@@ -151,19 +164,48 @@ A receiver's type comes only from what is written ([receivers.rs](../../crates/u
   `null` or `undefined`, gives that class;
 - through `await`, the `Promise<Repo>` an `async` callee declares, with the library `Promise`.
 
+Every written type, a return type included, is read by its class with its type arguments dropped: `Repo<string>` is
+a `Repo`, `number[]` and `Array<Row>` are `Array`s, and a non-`async` `Promise<Repo>` return type is a `Promise`
+(so `later().then` is a builtin call, and `await later()` gives nothing).
+
 Library receivers (`string`, arrays, `Map`, `NodeJS.Process`) come from the generated tables. **ECMAScript's
-standard objects are `builtin ecmascript`:** its globals by name (`JSON.parse`, `Object.keys`, `String(…)`,
-`new Error(…)`, `extends Error`), and a built-in method on a primitive, a literal, an exact value, or a written class
-type (`[1, 2].map`, `rows.map` where `rows: Row[]`). A written class type is `overridden` when a project class that
-may be one (through `extends`, or an `implements` naming the type) declares the member. Structural interfaces
-(`Iterator`, `PromiseLike`, `ArrayLike`, `ReadonlyArray`), `Object`, `object`, and `Function` give no receiver. A
-project write to a global, its member, or its prototype (`JSON.parse = …`, `Object.defineProperty(Array.prototype,
-…)`) makes those calls `dynamic`. DOM and Node globals (`console`, `fetch`, `setTimeout`, `process`) stay
-`library global`.
+standard objects are `builtin ecmascript`:** its globals by name or read from the global object (`JSON.parse`,
+`globalThis.JSON.parse`, `Object.keys`, `String(…)`, `new Error(…)`, `extends Error`), the values of its namespaces
+(`Intl.Collator(…)`, `Reflect.ownKeys(…)`), a built-in method on a primitive, a literal, an exact value, or a written
+class type (`[1, 2].map`, `rows.map` where `rows: Row[]`; every ECMAScript type has `Object`'s methods too, as in
+`new Error(…).toString()`), and a built-in method a project class inherits from an
+ECMAScript base (`super.map(…)`, `this.reduce(…)`, and `Rows.from(…)` in `class Rows extends Array<number>`). Any
+other member of such a base, like Node's `Error.captureStackTrace`, is `library global`. A written class type is
+`overridden` when a project class that may be one (through `extends`, or an `implements` naming the type) declares
+the member. A member a project class inherits from outside the project is, through an instance, `overridden` when a
+known subclass declares it and `ambiguous` when a class with an unknown base does, as a project member is; never
+through `super` or the class itself. Structural interfaces (`Iterator`, `PromiseLike`, `ArrayLike`,
+`ReadonlyArray`), `Object`, `object`, and `Function` give no receiver. DOM and Node globals (`console`, `fetch`,
+`setTimeout`, `process`) stay `library global`.
+
+**A member of a default-library value is labeled, but its own value isn't read.** `Error.captureStackTrace`,
+`console.log`, and `[1].map` are labeled as above, but what such a member holds (an element, a property, a method,
+a namespace's value) has no type Unfold reads, so a call through it is `unknown_receiver`: `s[0].toLowerCase()`,
+`e.message.trim()`, `Math.PI.toFixed()`, `Function.prototype.toString.call(f)`, `s.trim.call(t)`,
+`Intl.Collator.supportedLocalesOf(…)`, `process.argv.slice(2)`, a member of what `new Intl.Collator()` constructs,
+and a member of a global asserted to a type that gives no receiver (`(Error as any).captureStackTrace(…)`). The
+label would name where the owner is declared, not the method: most of these are ECMAScript's. A chain through a
+package import keeps the package's label, since the import proves the module.
+
+**A project write to ECMAScript's own objects makes the calls that may reach it `dynamic`.** It writes to a global,
+its member, or its prototype (`JSON.parse = …`, `Object.defineProperty(Array.prototype, …)`), or to a member of an
+instance whose type the tables give (`rows.map = …` where `rows: Row[]`, `map.get = …` where `map = new Map()`,
+`this.get = …` in a class extending `Map`), which counts for the instance's whole type, since any other value of it
+may be the same object; a computed key on an array (`rows[i] = row`) writes an element, not a member. A call may
+reach a member written on its receiver's type or a type that type extends, and,
+for a written type, whose value may be of a type extending it, on such a type too. Replacing a global
+(`globalThis.Map = …`, `Map = …`) makes a call of it, every member of what `new` of it constructs, and the members a
+class extending it inherits `dynamic`.
 
 There is no inference, substitution, contextual typing, or flow narrowing. A receiver whose root is the left operand
 of `instanceof`, or an argument of a type predicate (or of an unknown call in a condition), anywhere in the program,
-gets no declared receiver. Generic, union-of-classes, and disagreeing return types leave the value unknown.
+gets no declared receiver. Unions of classes, type variables, and disagreeing return types leave the value
+unknown.
 
 ## Module labels
 

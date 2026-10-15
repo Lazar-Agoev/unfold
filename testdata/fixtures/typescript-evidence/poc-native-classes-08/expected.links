@@ -1,4 +1,4 @@
 names.ts#Base.run/call:this.%23m #0 calls `this.#m` → project names.ts#Base.%23m
-names.ts#Base.run/call:this%5B%5D #0 calls `this["literal"]` → project names.ts#Base.literal
-names.ts#Base.run/call:this%5B%5D[1] #0 calls `this[1]` → project names.ts#Base.1
+names.ts#Base.run/call:this%5B%5D #0 calls `this[]` → project names.ts#Base.literal
+names.ts#Base.run/call:this%5B%5D[1] #0 calls `this[]` → project names.ts#Base.1
 names.ts#Child #0 extends `Base` → project names.ts#Base

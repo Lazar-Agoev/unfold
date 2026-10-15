@@ -4,7 +4,7 @@
 use unfold_core::key::Callee;
 use unfold_core::testkit::{GraphBuilder, NodeRef};
 use unfold_core::vocab::{Inline, Language, LinkKind, NodeKind, Outcome};
-use unfold_core::{FileGraph, Key};
+use unfold_core::{FileGraph, Key, LineBreaks};
 
 use crate::catalog;
 use crate::relations::{callers, outgoing};
@@ -333,7 +333,12 @@ fn source_is_shown_only_while_it_matches_the_facts() {
     let playground = Playground::load("py-orders");
     let path = "src/orders_playground/lib/validate.py";
     let file = playground.graph.file(path).unwrap();
-    let verified = verify_file(&playground.root, &file.file.path, file.file.hash);
+    let verified = verify_file(
+        &playground.root,
+        &file.file.path,
+        file.file.hash,
+        LineBreaks::Newlines,
+    );
     let source = verified.source().expect("the playground matches its golden");
     let tree = playground.trees();
     let function = tree
@@ -352,11 +357,11 @@ fn source_is_shown_only_while_it_matches_the_facts() {
     std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
     std::fs::write(&copy, source.text()).unwrap();
     assert_eq!(
-        verify_file(dir.path(), &file.file.path, file.file.hash).state(),
+        verify_file(dir.path(), &file.file.path, file.file.hash, LineBreaks::Newlines).state(),
         SourceState::Current
     );
     std::fs::write(&copy, source.text().replace("nonempty", "non-empty")).unwrap();
-    let changed = verify_file(dir.path(), &file.file.path, file.file.hash);
+    let changed = verify_file(dir.path(), &file.file.path, file.file.hash, LineBreaks::Newlines);
     assert_eq!(changed.state(), SourceState::Changed);
     assert!(changed.source().is_none());
 }

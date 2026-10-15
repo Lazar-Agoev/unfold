@@ -11,7 +11,8 @@
 //! `lib.esnext.*` proposals): the language's own globals (`JSON`, `Math`, `Promise`; not the
 //! DOM's or Node's `console`), the type of each, its class types (`Array`, `Map`, `Error`) and
 //! what each of its types extends, and the methods of its built-in types (`Array`, `String`,
-//! `ObjectConstructor`), so a built-in method can be named on a literal or a written type.
+//! `ObjectConstructor`) and the values of its namespaces (`Reflect.ownKeys`, `Intl.Collator`), so
+//! a built-in method can be named on a literal or a written type.
 //!
 //! Each table is a sorted static array searched by bisection.
 
@@ -99,6 +100,16 @@ pub fn ecmascript_value_type(name: &str) -> Option<&'static str> {
     table.get(index).map(|(_, written)| *written)
 }
 
+/// The type whose members the ECMAScript class `global`'s instances have (`Array`), or, when
+/// `is_static`, the class itself (`ArrayConstructor`).
+pub fn ecmascript_member_type(global: &str, is_static: bool) -> Option<&'static str> {
+    if is_static {
+        ecmascript_value_type(global)
+    } else {
+        ecmascript_class(global)
+    }
+}
+
 /// The ECMAScript interface `name` (`Array`, `Map`, `ReadonlyArray`, `PromiseLike`), or `name`
 /// prefixed with `globalThis.`, as the methods table spells it: one with methods of its own or
 /// inherited.
@@ -117,15 +128,19 @@ pub fn is_ecmascript_type(qualified: &str) -> bool {
 }
 
 /// Whether `method` is a method of the ECMAScript type `type_name` (`Array`, `String`,
-/// `Promise`, `ObjectConstructor`), the interfaces it extends included, or a function of the
-/// value namespace `type_name` (`Reflect`).
+/// `Promise`, `ObjectConstructor`), the interfaces it extends included, or a value of the value
+/// namespace `type_name` (`Reflect.ownKeys`, `Intl.Collator`). Every ECMAScript type also has
+/// `Object`'s methods (`toString`, `valueOf`), as TypeScript gives every object type.
 pub fn is_ecmascript_method(type_name: &str, method: &str) -> bool {
-    let table = generated::ECMASCRIPT_METHODS;
-    table
-        .binary_search_by(|(key, _)| key.cmp(&type_name))
-        .ok()
-        .and_then(|index| table.get(index))
-        .is_some_and(|(_, methods)| methods.binary_search(&method).is_ok())
+    let declares = |name: &str| {
+        let table = generated::ECMASCRIPT_METHODS;
+        table
+            .binary_search_by(|(key, _)| (*key).cmp(name))
+            .ok()
+            .and_then(|index| table.get(index))
+            .is_some_and(|(_, methods)| methods.binary_search(&method).is_ok())
+    };
+    declares(type_name) || (is_ecmascript_type(type_name) && declares("Object"))
 }
 
 #[cfg(test)]
@@ -182,6 +197,9 @@ mod tests {
             "undefined",
         ] {
             assert!(is_ecmascript_global(name), "{name}");
+        }
+        // Every ECMAScript global is a known global (a library receiver by name).
+        for name in generated::ECMASCRIPT_GLOBALS {
             assert!(is_known_global(name), "{name}");
         }
         for name in [
@@ -247,12 +265,18 @@ mod tests {
         assert_eq!(ecmascript_value_type("JSON"), Some("JSON"));
         assert_eq!(ecmascript_value_type("Reflect"), Some("Reflect"));
         assert_eq!(ecmascript_value_type("console"), None);
+        assert_eq!(ecmascript_member_type("Array", false), Some("Array"));
+        assert_eq!(ecmascript_member_type("Array", true), Some("ArrayConstructor"));
+        assert_eq!(ecmascript_member_type("Error", false), Some("Error"));
+        assert_eq!(ecmascript_member_type("JSON", false), None);
         for (type_name, method) in [
             ("JSON", "parse"),
             ("ObjectConstructor", "keys"),
             ("Math", "max"),
             ("PromiseConstructor", "all"),
             ("Reflect", "ownKeys"),
+            ("Intl", "Collator"),
+            ("Intl", "getCanonicalLocales"),
             ("Array", "map"),
             ("Array", "includes"),
             ("Array", "flatMap"),

@@ -50,11 +50,14 @@ fn syntax_newer_than_the_configured_version_fails() {
     assert_eq!(accepted_by("greeting = t\"hello {name}\"\n"), ["3.14"]);
     // Python 3.15 syntax fails under every supported version.
     assert_eq!(accepted_by("lazy import json\n"), Vec::<&str>::new());
-    // PEP 765: the proof of concept's 3.14 grammar rejected leaving `finally` with a transfer.
+    // PEP 765: CPython 3.14 only warns about leaving `finally` with a transfer, so every grammar
+    // accepts it.
     let finally_return = "def f():\n    try:\n        pass\n    finally:\n        return 1\n";
-    assert_eq!(accepted_by(finally_return), ["3.12", "3.13"]);
+    assert_eq!(accepted_by(finally_return), all);
     let finally_break = "for x in y:\n    try:\n        pass\n    finally:\n        break\n";
-    assert_eq!(accepted_by(finally_break), ["3.12", "3.13"]);
+    assert_eq!(accepted_by(finally_break), all);
+    let finally_continue = "for x in y:\n    try:\n        pass\n    finally:\n        continue\n";
+    assert_eq!(accepted_by(finally_continue), all);
     let inner_loop =
         "def f():\n    try:\n        pass\n    finally:\n        for x in y:\n            break\n";
     assert_eq!(accepted_by(inner_loop), all);

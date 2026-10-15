@@ -7,7 +7,10 @@
 //! It also lists the written types whose names become `types` links ([`Typed::linked`]): the
 //! return and parameter types recorded here, class property types, variable annotations, catch
 //! clause annotations, a type alias's aliased type, and an interface's body. Binding walks
-//! exactly those types for names.
+//! exactly those types for names. Each is recorded with the node its names link from
+//! ([`Owners`]), as is each class's and interface's head, whose heritage clauses binding reads.
+
+use std::cmp::Reverse;
 
 use oxc_ast::ast::{
     BindingPattern, ClassElement, FormalParameter, FormalParameters, MethodDefinitionKind, PropertyKey,
@@ -39,7 +42,10 @@ pub(crate) struct Typed<'s> {
     parameters: Vec<Parameter>,
     members: Vec<Member>,
     /// The ranges of the written types whose type names get links.
-    pub(crate) linked: FxHashSet<ByteRange>,
+    linked: FxHashSet<ByteRange>,
+    /// Each linked type's range, and each class's and interface's head, with the node the type
+    /// names written there link from.
+    owners: Vec<(ByteRange, u32)>,
 }
 
 impl<'s> Typed<'s> {
@@ -51,13 +57,14 @@ impl<'s> Typed<'s> {
             parameters: Vec::new(),
             members: Vec::new(),
             linked: FxHashSet::default(),
+            owners: Vec::new(),
         }
     }
 
-    /// The finished records.
-    pub(crate) fn finish(self) -> (TypeFacts, FxHashSet<ByteRange>) {
+    /// The finished records, the linked types, and the owners of the type names in them.
+    pub(crate) fn finish(self) -> (TypeFacts, FxHashSet<ByteRange>, Owners) {
         let types = TypeFacts::new(self.signatures, self.parameters, self.members);
-        (types, self.linked)
+        (types, self.linked, Owners::new(self.owners))
     }
 
     fn written(&self, range: ByteRange) -> Option<WrittenType> {
@@ -75,16 +82,28 @@ impl<'s> Typed<'s> {
             .map(Box::from)
     }
 
-    /// A written annotation's type (without its colon), linked.
-    fn linked_type(&mut self, annotation: Option<&TSTypeAnnotation<'_>>) -> Option<WrittenType> {
+    /// Links the written type at `range` from `owner`.
+    fn link(&mut self, range: ByteRange, owner: u32) {
+        self.linked.insert(range);
+        self.owners.push((range, owner));
+    }
+
+    /// A written annotation's type (without its colon), linked from `owner`.
+    fn linked_type(&mut self, annotation: Option<&TSTypeAnnotation<'_>>, owner: u32) -> Option<WrittenType> {
         let ty = self.written(range(annotation?.type_annotation.span()))?;
-        self.linked.insert(ty.range);
+        self.link(ty.range, owner);
         Some(ty)
     }
 
-    /// Links a variable's or catch clause's annotation.
-    pub(crate) fn annotation(&mut self, annotation: Option<&TSTypeAnnotation<'_>>) {
-        self.linked_type(annotation);
+    /// A written annotation's type (without its colon), not linked.
+    fn written_type(&self, annotation: Option<&TSTypeAnnotation<'_>>) -> Option<WrittenType> {
+        self.written(range(annotation?.type_annotation.span()))
+    }
+
+    /// Links a variable's, class field's, or catch clause's annotation from `owner`: the
+    /// definition it types, the definition it is written in, or the `catch` part.
+    pub(crate) fn annotation(&mut self, annotation: Option<&TSTypeAnnotation<'_>>, owner: u32) {
+        self.linked_type(annotation, owner);
     }
 
     /// The signature and parameters of function `node`: an explicit `this` first, then each
@@ -92,7 +111,7 @@ impl<'s> Typed<'s> {
     pub(crate) fn function(&mut self, node: u32, callable: &Callable<'_, '_>) {
         let mut index = 0;
         if let Some(this) = callable.this {
-            let ty = self.linked_type(this.type_annotation.as_deref());
+            let ty = self.linked_type(this.type_annotation.as_deref(), node);
             self.parameters.push(Parameter {
                 node,
                 index,
@@ -111,7 +130,7 @@ impl<'s> Typed<'s> {
             index += 1;
         }
         if let Some(rest) = &callable.parameters.rest {
-            let ty = self.linked_type(rest.type_annotation.as_deref());
+            let ty = self.linked_type(rest.type_annotation.as_deref(), node);
             self.parameters.push(Parameter {
                 node,
                 index,
@@ -123,7 +142,7 @@ impl<'s> Typed<'s> {
                 ty,
             });
         }
-        let returns = self.linked_type(callable.returns);
+        let returns = self.linked_type(callable.returns, node);
         self.signatures.push(Signature { node, returns });
     }
 
@@ -132,7 +151,7 @@ impl<'s> Typed<'s> {
             BindingPattern::AssignmentPattern(it) => (&it.left, true),
             pattern => (pattern, parameter.initializer.is_some()),
         };
-        let ty = self.linked_type(parameter.type_annotation.as_deref());
+        let ty = self.linked_type(parameter.type_annotation.as_deref(), node);
         Parameter {
             node,
             index,
@@ -145,9 +164,16 @@ impl<'s> Typed<'s> {
         }
     }
 
-    /// The members of interface `node`, whose body is linked.
+    /// The members of interface `node`, whose body is linked; its head's heritage links from
+    /// it too.
     pub(crate) fn interface(&mut self, node: u32, it: &TSInterfaceDeclaration<'_>) {
-        self.linked.insert(range(it.body.span));
+        let body = range(it.body.span);
+        let head = ByteRange {
+            start: it.span.start,
+            end: body.start,
+        };
+        self.owners.push((head, node));
+        self.link(body, node);
         for member in &it.body.body {
             self.signature_member(node, member);
         }
@@ -156,7 +182,7 @@ impl<'s> Typed<'s> {
     /// The members of type alias `node` (those of an object type literal that is its whole
     /// aliased type), whose aliased type is linked.
     pub(crate) fn type_alias(&mut self, node: u32, it: &TSTypeAliasDeclaration<'_>) {
-        self.linked.insert(range(it.type_annotation.span()));
+        self.link(range(it.type_annotation.span()), node);
         if let TSType::TSTypeLiteral(literal) = &it.type_annotation {
             for member in &literal.members {
                 self.signature_member(node, member);
@@ -189,15 +215,17 @@ impl<'s> Typed<'s> {
         }
     }
 
-    /// The instance properties of class `node`, its fields' types linked: its fields and
-    /// `accessor` properties, and the parameter properties of its constructor, in written
-    /// order.
-    pub(crate) fn class(&mut self, node: u32, elements: &[ClassElement<'_>]) {
+    /// The instance properties of class `node`, whose head (`head`, its heritage) links from it:
+    /// its fields and `accessor` properties, and the parameter properties of its constructor, in
+    /// written order. The lowering links each field's type from the definition it types, and
+    /// the constructor's parameters' types from the constructor.
+    pub(crate) fn class(&mut self, node: u32, head: ByteRange, elements: &[ClassElement<'_>]) {
+        self.owners.push((head, node));
         for element in elements {
             match element {
                 ClassElement::PropertyDefinition(it) if !it.r#static => {
                     let name = self.key_range(&it.key, it.computed);
-                    let ty = self.linked_type(it.type_annotation.as_deref());
+                    let ty = self.written_type(it.type_annotation.as_deref());
                     self.member(node, range(it.span), MemberKind::Property, Some(name), |member| {
                         member.optional = it.optional;
                         member.readonly = it.readonly;
@@ -207,7 +235,7 @@ impl<'s> Typed<'s> {
                 }
                 ClassElement::AccessorProperty(it) if !it.r#static => {
                     let name = self.key_range(&it.key, it.computed);
-                    let ty = self.linked_type(it.type_annotation.as_deref());
+                    let ty = self.written_type(it.type_annotation.as_deref());
                     self.member(node, range(it.span), MemberKind::Property, Some(name), |member| {
                         member.default = it.value.is_some();
                         member.ty = ty;
@@ -235,7 +263,7 @@ impl<'s> Typed<'s> {
         let BindingPattern::BindingIdentifier(id) = pattern else {
             return;
         };
-        let ty = self.linked_type(parameter.type_annotation.as_deref());
+        let ty = self.written_type(parameter.type_annotation.as_deref());
         self.member(
             node,
             range(parameter.span),
@@ -371,6 +399,48 @@ impl<'s> Typed<'s> {
             .find(inner.end, Kind::RBrack)
             .map_or(inner.end, |token| token.end());
         ByteRange { start, end }
+    }
+}
+
+/// The node each written type name links from: the innermost recorded range that holds it, or
+/// else the module. Linked types and class and interface heads lie inside one another or apart,
+/// never across.
+pub(crate) struct Owners {
+    /// The ranges with their nodes, by start, each before the ranges inside it.
+    ranges: Vec<(ByteRange, u32)>,
+    /// The index of the range around each one.
+    around: Vec<Option<usize>>,
+}
+
+impl Owners {
+    fn new(mut ranges: Vec<(ByteRange, u32)>) -> Self {
+        ranges.sort_unstable_by_key(|&(range, _)| (range.start, Reverse(range.end)));
+        let mut around = Vec::with_capacity(ranges.len());
+        let mut open: Vec<usize> = Vec::new();
+        for (index, &(range, _)) in ranges.iter().enumerate() {
+            while open.last().is_some_and(|&outer| !ranges[outer].0.contains(range)) {
+                open.pop();
+            }
+            around.push(open.last().copied());
+            open.push(index);
+        }
+        Self { ranges, around }
+    }
+
+    /// The node the type name written at `name` links from.
+    pub(crate) fn owner(&self, name: ByteRange) -> u32 {
+        let mut at = self
+            .ranges
+            .partition_point(|(range, _)| range.start <= name.start)
+            .checked_sub(1);
+        while let Some(index) = at {
+            let (range, node) = self.ranges[index];
+            if range.contains(name) {
+                return node;
+            }
+            at = self.around[index];
+        }
+        0
     }
 }
 

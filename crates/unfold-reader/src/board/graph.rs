@@ -23,7 +23,7 @@ use std::path::Path;
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{LinkKind, MemberKind, NodeKind, TargetState};
-use unfold_core::{App, ByteRange, FileGraph, Graph, Key, LineIndex, LinkTarget, RepoPath};
+use unfold_core::{App, ByteRange, FileGraph, Graph, Key, LineBreaks, LinkTarget, RepoPath};
 use unfold_store::Reader;
 
 use super::model::{References, Signature};
@@ -108,13 +108,14 @@ impl BoardGraph {
     pub fn from_graph(graph: &Graph, root: &Path) -> Self {
         let mut loaded = Self::new();
         for file in &graph.files {
-            let source = verify_file(root, &file.file.path, file.file.hash);
+            let breaks = LineBreaks::of(file.file.language);
+            let source = verify_file(root, &file.file.path, file.file.hash, breaks);
             loaded.add_file(FileGraph::clone(file), source);
         }
         for input in &graph.inputs {
             loaded.add_input(
                 input.path.clone(),
-                verify_file(root, &input.path, Some(input.hash)),
+                verify_file(root, &input.path, Some(input.hash), LineBreaks::Newlines),
             );
         }
         loaded.set_apps(graph.apps.clone());
@@ -159,7 +160,8 @@ impl BoardGraph {
         // An anchor's file is read only when the graph records it as an input.
         for &path in &references.files {
             if let Some(input) = inputs.iter().find(|input| &input.path == path) {
-                loaded.add_input(path.clone(), verify_file(root, path, Some(input.hash)));
+                let source = verify_file(root, path, Some(input.hash), LineBreaks::Newlines);
+                loaded.add_input(path.clone(), source);
             }
         }
         let mut facts = Facts::new(reader as &dyn FactSource, root);
@@ -190,7 +192,8 @@ impl BoardGraph {
             return Ok(());
         }
         if let Some(file) = reader.file_graph(path.as_str())? {
-            let source = verify_file(root, &file.file.path, file.file.hash);
+            let breaks = LineBreaks::of(file.file.language);
+            let source = verify_file(root, &file.file.path, file.file.hash, breaks);
             self.add_file(file, source);
         }
         Ok(())
@@ -313,7 +316,7 @@ impl BoardGraph {
             Some(Verified::Changed | Verified::Missing) => return Lines::Unverified,
             Some(Verified::Current(source)) => source,
         };
-        let index = LineIndex::new(source.text());
+        let index = source.lines();
         let (Some(start), true) = (index.line_start(first), last <= index.line_count()) else {
             return Lines::PastEnd;
         };

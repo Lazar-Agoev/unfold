@@ -167,9 +167,10 @@ playgrounds' `unfold.toml` files are full examples (`testdata/playgrounds/`).
 | An app's start | `entrance:shop-api` |
 | An entrance | `entrance:shop-api/place-an-order` |
 
-Each name is lowercased, every run of characters other than letters and digits becomes `-`, and leading and
-trailing `-` are dropped: `"1. Collect incoming email"` is `1-collect-incoming-email`. A name with no letters or
-digits makes no key. Boards and agents use these keys; renaming an entrance or moving it to another app makes a
+Each name is normalized to NFC and lowercased, every run of characters other than letters and digits becomes `-`
+(a combining mark stays with its letter), and leading and trailing `-` are dropped: `"1. Collect incoming email"` is
+`1-collect-incoming-email`, and `Café` slugs to `café` however its accent is typed. A name with no letters or digits
+makes no key. Boards and agents use these keys; renaming an entrance or moving it to another app makes a
 board's reference missing, and the board then offers the entrance with the same `code`.
 
 ### Entry problems

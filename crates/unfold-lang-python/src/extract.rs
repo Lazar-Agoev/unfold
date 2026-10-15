@@ -29,7 +29,7 @@ pub fn extract(file: &Snapshot, version: PythonVersion) -> Result<FileFacts, Sou
     let module = parse::parse_module(text, version)
         .ok_or_else(|| failure("the parser did not produce a module", None))?;
     let syntax_error = parse::syntax_error(&module);
-    let analysis = analysis::analyze(module.syntax(), version >= PythonVersion::V3_14);
+    let analysis = analysis::analyze(module.syntax());
     let result = match (syntax_error, &analysis.failure) {
         (Some(problem), _) => Err(problem),
         (None, Some(problem)) => Err(problem.clone()),
@@ -73,6 +73,7 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
         nodes,
         imports: lowered_imports,
         truncated,
+        stubs,
         signatures,
         parameters,
         members,
@@ -92,7 +93,7 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
         imports.push(import.fact);
         written.push(syntax);
     }
-    let payload = payload(text, &truncated, written, bind)
+    let payload = payload(text, &truncated, &stubs, written, bind)
         .to_bytes()
         .map_err(|error| failure(error.to_string(), None))?;
     let types = TypeFacts::new(signatures, parameters, members);
@@ -104,7 +105,8 @@ fn facts(file: &Snapshot, module: &Module, analysis: &Analysis) -> Result<FileFa
 /// The file's written type names as `types` and `extends` links before linking, with the
 /// binder's expression of each (aligned). A name in an annotation starts at the nearest
 /// definition around it, a base at its class, and a handler's class at its `except` part; a
-/// name inside a truncated block, or whose node wasn't lowered, has no link.
+/// name inside a truncated block or an overload stub, or whose node wasn't lowered, has no
+/// link.
 fn type_refs(
     text: &str,
     lowered: &Lowered<'_>,
@@ -132,6 +134,7 @@ fn type_refs(
             .truncated
             .iter()
             .any(|truncated| truncated.range.contains(name.range))
+            || lowered.stubs.iter().any(|stub| stub.contains(name.range))
         {
             continue;
         }
@@ -164,12 +167,21 @@ fn innermost(candidates: &[(u32, ByteRange)], range: ByteRange) -> Option<u32> {
         .map(|&(id, _)| id)
 }
 
-/// The payload: the call sites from a fresh lexer pass (without those truncated blocks hide),
-/// the written imports, and the binder facts.
-fn payload(text: &str, truncated: &[Truncated], imports: Vec<ImportSyntax>, bind: BindFacts) -> Payload {
+/// The payload: the call sites from a fresh lexer pass (without those truncated blocks hide or
+/// overload stubs hold), the written imports, and the binder facts.
+fn payload(
+    text: &str,
+    truncated: &[Truncated],
+    stubs: &[ByteRange],
+    imports: Vec<ImportSyntax>,
+    bind: BindFacts,
+) -> Payload {
     let calls = census::calls(text)
         .into_iter()
-        .filter(|range| !truncated.iter().any(|truncated| truncated.hides(*range)))
+        .filter(|range| {
+            !truncated.iter().any(|truncated| truncated.hides(*range))
+                && !stubs.iter().any(|stub| stub.contains(*range))
+        })
         .collect();
     Payload {
         version: PAYLOAD_VERSION,

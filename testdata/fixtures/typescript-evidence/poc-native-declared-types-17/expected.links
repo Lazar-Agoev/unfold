@@ -1,8 +1,8 @@
-callable-return.ts# #0 types `D` → project callable-return.ts#D
-callable-return.ts#factory #0 types `C` → project callable-return.ts#C
+callable-return.ts#factory #0 types `D` → project callable-return.ts#D
+callable-return.ts#factory #1 types `C` → project callable-return.ts#C
 callable-return.ts#factory/call:C #0 calls `C` → project callable-return.ts#C
-callable-return.ts#Holder #0 types `D` → project callable-return.ts#D
-callable-return.ts#Holder.factory #0 types `C` → project callable-return.ts#C
+callable-return.ts#Holder.factory #0 types `D` → project callable-return.ts#D
+callable-return.ts#Holder.factory #1 types `C` → project callable-return.ts#C
 callable-return.ts#Holder.factory/call:C #0 calls `C` → project callable-return.ts#C
 callable-return.ts#Holder.run/call:this.factory().m #0 calls `this.factory().m` → unknown unknown_receiver
 callable-return.ts#Holder.run/call:this.factory().m/call:this.factory #0 calls `this.factory` → project callable-return.ts#Holder.factory

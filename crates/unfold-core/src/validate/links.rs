@@ -75,7 +75,8 @@ fn check_source(
     }
 }
 
-/// A link's range lies inside its node; a link from a definition is not written inside a
+/// A link's range lies inside its node, or inside the statement a definition begins (the
+/// annotation of a declaration that names it); a link from a definition is not written inside a
 /// nearer definition, since a block belongs to the nearest definition above it.
 fn check_range(
     checker: &mut Checker<'_>,
@@ -88,7 +89,8 @@ fn check_range(
     if link.range.is_empty() {
         checker.report(subject(), "range is empty");
     }
-    if !source.range.contains(link.range) {
+    let declared = source.kind().is_definition() && source.stmt.is_some_and(|stmt| stmt.contains(link.range));
+    if !source.range.contains(link.range) && !declared {
         checker.report(
             subject(),
             format!(

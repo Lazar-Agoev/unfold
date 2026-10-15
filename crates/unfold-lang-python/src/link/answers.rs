@@ -72,8 +72,8 @@ pub(crate) fn module_target(binder: &Binder<'_>, module: &ModuleValue) -> Module
     }
 }
 
-/// The import binding a value's root proves: an external origin, or a relative import that
-/// names nothing.
+/// The import binding a value's root proves: an external origin, or an import that names
+/// nothing.
 pub(crate) fn import_binding(value: &Value) -> Option<ImportBinding> {
     match (&value.external, value.missing) {
         (Some(external), _) => Some(ImportBinding {

@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use unfold_core::vocab::{InputRole, TargetState};
-use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineIndex, RepoPath};
+use unfold_core::{App, ByteRange, ContentHash, EntranceTarget, Graph, Key, LineBreaks, LineIndex, RepoPath};
 use unfold_engine::entrances::{FixKind, Fixes};
 use unfold_engine::settings::edit::names_app;
 use unfold_engine::settings::{AppEntry, EntranceEntry, EntryProblem, EntryProblemKind};
@@ -282,7 +282,7 @@ pub(crate) fn app_views(
     text: Option<&str>,
     states: Option<&States<'_>>,
 ) -> Vec<AppView> {
-    let lines = text.map(LineIndex::new);
+    let lines = text.map(|text| LineIndex::new(text, LineBreaks::Newlines));
     let span = |range: ByteRange| {
         lines.as_ref().map(|lines| {
             let span = lines.span(range);

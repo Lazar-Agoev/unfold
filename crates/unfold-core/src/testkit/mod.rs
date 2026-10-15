@@ -13,7 +13,7 @@ use crate::model::{
     App, Entrance, EntranceTarget, File, FileGraph, Graph, Input, Link, LinkTarget, ModuleLabel, Node,
 };
 use crate::path::RepoPath;
-use crate::text::{ByteRange, LineIndex, Snapshot};
+use crate::text::{ByteRange, LineBreaks, LineIndex, Snapshot};
 use crate::typed::{FileTypes, WrittenType};
 use crate::vocab::{FileState, Flags, Form, Inline, InputRole, Language, LinkKind, Reason, TargetState};
 
@@ -132,7 +132,7 @@ impl GraphBuilder {
     pub fn file(&mut self, path: &str, language: Language, text: &str) -> NodeRef {
         let path = RepoPath::new(path).expect("a valid test path");
         let snapshot = Snapshot::from_text(path.clone(), text).expect("test text fits in a snapshot");
-        let lines = LineIndex::new(text);
+        let lines = LineIndex::new(text, LineBreaks::of(language));
         let keys = KeyBuilder::new(&path);
         let range = ByteRange {
             start: 0,
@@ -236,7 +236,7 @@ impl GraphBuilder {
             .push(parent.local_id, child)
             .expect("nodes are added in preorder");
         let name = match child {
-            Child::Definition(name) => Some(name.into()),
+            Child::Definition(names) => Some(names.join(".").into()),
             Child::Call { callee, .. } => Some(callee.text().into()),
             Child::Inline(_) | Child::Form(_) => None,
         };
@@ -267,7 +267,7 @@ impl GraphBuilder {
 
     /// Adds a named definition of `form` (a class, function, or type).
     pub fn def(&mut self, parent: NodeRef, form: Form, name: &str, range: ByteRange) -> NodeRef {
-        self.node(parent, Child::Definition(name), form, range)
+        self.node(parent, Child::Definition(&[name]), form, range)
     }
 
     /// Adds an unnamed function (`lambda`) written as `inline`.

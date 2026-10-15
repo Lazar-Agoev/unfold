@@ -15,7 +15,7 @@ text: kinds, parents, and files come from the records, and only `unfold-core`'s 
 | --- | --- | --- |
 | Tree | One file's nodes with their structure; blocks found by key across files | `tree.rs` |
 | Owner | A block belongs to the nearest definition above it (`unfold_core::owner`, the one implementation) | `tree.rs`, `index.rs` |
-| Catalog | Every module, class, function (inline ones too), and type can be a card. Labels: a definition's name, a module's path, an inline function's property name (`onSuccess`), else `callback to <callee>`, else `anonymous function`. Qualified names join enclosing named definitions with `.` (`OrderService.place`) | `catalog.rs` |
+| Catalog | Every module, class, function (inline ones too), and type can be a card. Labels: a definition's name, a module's path, an inline function's or class's property name (`onSuccess`), else `callback to <callee>`, else `anonymous function` or `anonymous class`. Qualified names join enclosing named definitions with `.` (`OrderService.place`) | `catalog.rs` |
 | Closure | What a definition reaches: its `calls`, `passes`, and `imports` links, plus the classes and inline functions written in it. A lower bound, never a runtime order | `closure.rs` |
 | Reached from | The entrances whose closures hold a definition, seeded from `code` targets that are `found` or `stale`. An app's own start is left out: it reaches nearly everything | `reader_index.rs` |
 | Relations | Callers (the `calls` and `passes` links that reach a definition, a page at a time from the store's reverse index) and a definition's outgoing calls in source order | `relations.rs` |

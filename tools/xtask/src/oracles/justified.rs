@@ -33,7 +33,8 @@ pub(crate) struct JustifiedEntry {
     pub site: String,
     /// The argument position, for a reference.
     pub position: Option<u32>,
-    /// The target Unfold resolves.
+    /// The target Unfold resolves: a key, or for a `library` or `builtin` call its outcome and
+    /// label (`library python:os`).
     pub target: String,
     /// Why Unfold's answer is right although the oracle does not give it.
     pub reason: Box<str>,

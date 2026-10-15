@@ -1,14 +1,14 @@
 //! The shown lines: cropping, dedenting, highlighting, each line's block and call names, and
 //! the marked range, all in UTF-16 columns of each line's shown text.
 //!
-//! Lines end at CR, LF, CRLF, U+2028, and U+2029, exactly as the stored line numbers count them
-//! (core's `LineIndex`), so line `n` of the view is line `n` of the file. A terminator at the
-//! very end of the file does not start an extra empty line. The view drops the indentation every
+//! Lines end where the stored line numbers end them (core's `LineIndex`, with the file's
+//! `LineBreaks`), so line `n` of the view is line `n` of the file. A terminator at the very end
+//! of the file does not start an extra empty line. The view drops the indentation every
 //! nonblank shown line shares: a method loses its class's indentation.
 
 use unfold_core::highlight::{HighlightSpan, Highlighter};
 use unfold_core::vocab::{Form, NodeKind};
-use unfold_core::{ByteRange, LineIndex, RepoPath, Utf16Index};
+use unfold_core::{ByteRange, LineBreaks, LineIndex, RepoPath, Utf16Index};
 
 use super::select::{MarkSpec, Span};
 use super::{CallName, CodeLine, DefinitionLine, LineRange, Mark, Token};
@@ -23,10 +23,10 @@ pub(super) struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
-    pub(super) fn new(text: &'a str) -> Self {
+    pub(super) fn new(text: &'a str, breaks: LineBreaks) -> Self {
         Self {
             text,
-            lines: LineIndex::new(text),
+            lines: LineIndex::new(text, breaks),
             utf16: Utf16Index::new(text),
         }
     }

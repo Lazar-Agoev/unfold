@@ -1,7 +1,7 @@
 //! Reading the syntactic forms the lowering decides by, without lowering anything: a call's
 //! normalized callee, what a value is through its wrappers, whether a call runs only after an
 //! optional link, which `yield` expressions are exits, and whether an expression reaches an
-//! inline function or contains a call.
+//! inline definition or contains a call.
 
 use oxc_allocator::{Address, UnstableAddress};
 use oxc_ast::ast::{
@@ -12,21 +12,45 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::scope::ScopeFlags;
 use unfold_core::key::Callee;
 
-/// A callee as the key and the node's name write it ([`Callee`]): `await`, parentheses, `!`,
-/// and type casts dropped; `?.` written `.`; arguments `()`; subscripts `[]`; a string literal
-/// `""`; any other expression `(…)`.
-pub(super) fn callee(expression: &Expression<'_>) -> Callee {
-    // The steps after the root, outermost first, gathered without recursion.
-    enum Step<'e> {
-        Member(&'e str),
-        Private(&'e str),
-        Call,
-        Index,
+/// How the callee normalization ([`Callee`]) reads an expression, through the wrappers it
+/// drops: the root a callee starts with, or what it writes after the callee of the expression
+/// inside.
+pub(crate) enum CalleeStep<'e, 'a> {
+    /// A name or keyword; `""` for a string literal; `(…)` for any other expression.
+    Root(Callee),
+    /// The callee of the expression inside, then this.
+    After(&'e Expression<'a>, Then<'e>),
+}
+
+/// What a callee writes after the callee of the expression inside.
+pub(crate) enum Then<'e> {
+    /// `.name`.
+    Member(&'e str),
+    /// `.#name`.
+    Private(&'e str),
+    /// Arguments: `()`.
+    Call,
+    /// A subscript: `[]`.
+    Index,
+}
+
+impl Then<'_> {
+    /// `callee` followed by this.
+    pub(crate) fn after(&self, callee: Callee) -> Callee {
+        match self {
+            Self::Member(name) => callee.member(name),
+            Self::Private(name) => callee.member(&format!("#{name}")),
+            Self::Call => callee.call(),
+            Self::Index => callee.index(),
+        }
     }
-    let mut steps: Vec<Step<'_>> = Vec::new();
-    let mut current = expression;
-    let root = loop {
-        current = match current {
+}
+
+/// One step of the callee normalization ([`Callee`]): `await`, parentheses, `!`, type casts,
+/// and instantiations are dropped, and `?.` is written `.`.
+pub(crate) fn callee_step<'e, 'a>(mut expression: &'e Expression<'a>) -> CalleeStep<'e, 'a> {
+    loop {
+        expression = match expression {
             Expression::ParenthesizedExpression(it) => &it.expression,
             Expression::AwaitExpression(it) => &it.argument,
             Expression::TSNonNullExpression(it) => &it.expression,
@@ -35,56 +59,60 @@ pub(super) fn callee(expression: &Expression<'_>) -> Callee {
             Expression::TSTypeAssertion(it) => &it.expression,
             Expression::TSInstantiationExpression(it) => &it.expression,
             Expression::StaticMemberExpression(it) => {
-                steps.push(Step::Member(it.property.name.as_str()));
-                &it.object
+                return CalleeStep::After(&it.object, Then::Member(it.property.name.as_str()));
             }
             Expression::PrivateFieldExpression(it) => {
-                steps.push(Step::Private(it.field.name.as_str()));
-                &it.object
+                return CalleeStep::After(&it.object, Then::Private(it.field.name.as_str()));
             }
-            Expression::ComputedMemberExpression(it) => {
-                steps.push(Step::Index);
-                &it.object
-            }
-            Expression::CallExpression(it) => {
-                steps.push(Step::Call);
-                &it.callee
-            }
+            Expression::ComputedMemberExpression(it) => return CalleeStep::After(&it.object, Then::Index),
+            Expression::CallExpression(it) => return CalleeStep::After(&it.callee, Then::Call),
             Expression::ChainExpression(chain) => match &chain.expression {
-                ChainElement::CallExpression(it) => {
-                    steps.push(Step::Call);
-                    &it.callee
-                }
                 ChainElement::TSNonNullExpression(it) => &it.expression,
+                ChainElement::CallExpression(it) => return CalleeStep::After(&it.callee, Then::Call),
                 ChainElement::StaticMemberExpression(it) => {
-                    steps.push(Step::Member(it.property.name.as_str()));
-                    &it.object
+                    return CalleeStep::After(&it.object, Then::Member(it.property.name.as_str()));
                 }
                 ChainElement::PrivateFieldExpression(it) => {
-                    steps.push(Step::Private(it.field.name.as_str()));
-                    &it.object
+                    return CalleeStep::After(&it.object, Then::Private(it.field.name.as_str()));
                 }
                 ChainElement::ComputedMemberExpression(it) => {
-                    steps.push(Step::Index);
-                    &it.object
+                    return CalleeStep::After(&it.object, Then::Index);
                 }
             },
-            Expression::Identifier(it) => break Callee::name(it.name.as_str()),
-            Expression::ThisExpression(_) => break Callee::name("this"),
-            Expression::Super(_) => break Callee::name("super"),
-            Expression::ImportMeta(_) => break Callee::name("import.meta"),
-            Expression::NewTarget(_) => break Callee::name("new.target"),
-            Expression::StringLiteral(_) => break Callee::string(),
-            Expression::TemplateLiteral(it) if it.expressions.is_empty() => break Callee::string(),
-            _ => break Callee::expression(),
+            Expression::Identifier(it) => return CalleeStep::Root(Callee::name(it.name.as_str())),
+            Expression::ThisExpression(_) => return CalleeStep::Root(Callee::name("this")),
+            Expression::Super(_) => return CalleeStep::Root(Callee::name("super")),
+            Expression::ImportMeta(_) => return CalleeStep::Root(Callee::name("import.meta")),
+            Expression::NewTarget(_) => return CalleeStep::Root(Callee::name("new.target")),
+            Expression::StringLiteral(_) => return CalleeStep::Root(Callee::string()),
+            Expression::TemplateLiteral(it) if it.expressions.is_empty() => {
+                return CalleeStep::Root(Callee::string());
+            }
+            _ => return CalleeStep::Root(Callee::expression()),
         };
+    }
+}
+
+/// A callee as the key and the node's name write it ([`Callee`]), step by step
+/// ([`callee_step`]): `await`, parentheses, `!`, and type casts dropped; `?.` written `.`;
+/// arguments `()`; subscripts `[]`; a string literal `""`; any other expression `(…)`.
+pub(super) fn callee(expression: &Expression<'_>) -> Callee {
+    // The steps after the root, outermost first, gathered without recursion.
+    let mut steps = Vec::new();
+    let mut current = expression;
+    let root = loop {
+        match callee_step(current) {
+            CalleeStep::Root(root) => break root,
+            CalleeStep::After(inner, then) => {
+                steps.push(then);
+                current = inner;
+            }
+        }
     };
-    steps.into_iter().rev().fold(root, |callee, step| match step {
-        Step::Member(name) => callee.member(name),
-        Step::Private(name) => callee.member(&format!("#{name}")),
-        Step::Call => callee.call(),
-        Step::Index => callee.index(),
-    })
+    steps
+        .into_iter()
+        .rev()
+        .fold(root, |callee, then| then.after(callee))
 }
 
 /// The decoded value of a call's first argument when it is a string literal (or a template
@@ -186,8 +214,8 @@ pub(super) fn chain_optional(expression: &Expression<'_>) -> bool {
     }
 }
 
-/// Whether a property key names a definition: a written name or literal with no `.` in it, so
-/// a qualified name built from it reads back as the same names.
+/// The name a property key gives a definition: a written name or literal; `None` for a
+/// computed key or an empty name.
 pub(super) fn property_name(key: &PropertyKey<'_>, computed: bool) -> Option<String> {
     let name = match key {
         PropertyKey::StaticIdentifier(it) if !computed => it.name.to_string(),
@@ -199,12 +227,13 @@ pub(super) fn property_name(key: &PropertyKey<'_>, computed: bool) -> Option<Str
         }
         _ => return None,
     };
-    (!name.is_empty() && !name.contains('.')).then_some(name)
+    (!name.is_empty()).then_some(name)
 }
 
-/// Whether an argument reaches an inline function before any expression that is a node of its
-/// own (a call, a construction, a tagged template, a dynamic import, a conditional expression
-/// that contains a call, or a class): that function is then a callback of the call.
+/// Whether an argument reaches an inline definition, a function or class, before any expression
+/// that is a node of its own (a call, a construction, a tagged template, a dynamic import, or a
+/// conditional expression that contains a call): that definition is then a callback of the
+/// call.
 pub(super) fn reaches_inline(argument: &Argument<'_>) -> bool {
     let mut finder = Inline(false);
     finder.visit_argument(argument);
@@ -244,7 +273,9 @@ impl<'a> Visit<'a> for Inline {
 
     fn visit_import_expression(&mut self, _it: &ImportExpression<'a>) {}
 
-    fn visit_class(&mut self, _it: &Class<'a>) {}
+    fn visit_class(&mut self, _it: &Class<'a>) {
+        self.0 = true;
+    }
 
     fn visit_conditional_expression(&mut self, it: &ConditionalExpression<'a>) {
         if !contains_call(it) {

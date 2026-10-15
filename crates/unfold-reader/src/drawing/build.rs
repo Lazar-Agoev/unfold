@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome, Reason};
-use unfold_core::{ByteRange, Key, LineSpan, LinkTarget, Node, RepoPath};
+use unfold_core::{ByteRange, Key, LineBreaks, LineSpan, LinkTarget, Node, RepoPath};
 
 use super::lines::{FileText, candidates, doc_text};
 use super::{
@@ -80,9 +80,14 @@ impl<'a> Drawer<'a> {
         self.texts
             .entry(tree.path().clone())
             .or_insert_with(|| {
-                verify_file(root, tree.path(), tree.file().hash)
-                    .into_source()
-                    .map(|source| Rc::new(FileText::new(source, tree.language())))
+                verify_file(
+                    root,
+                    tree.path(),
+                    tree.file().hash,
+                    LineBreaks::of(tree.language()),
+                )
+                .into_source()
+                .map(|source| Rc::new(FileText::new(source, tree.language())))
             })
             .clone()
     }

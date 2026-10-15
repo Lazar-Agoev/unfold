@@ -142,7 +142,7 @@ fn values_record_shapes_labels_receivers_and_passed_names() {
             ("...rest", None, Some(Expansion::Spread)),
             (
                 "items[\"key\"]",
-                Some((ValueShape::Member, "items[\"key\"]".to_owned())),
+                Some((ValueShape::Member, "items[]".to_owned())),
                 None
             ),
             ("items[key]", None, None),

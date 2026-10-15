@@ -15,8 +15,9 @@
 //!    `allowJs`, JSON only with `resolveJsonModule` and its extension written.
 //! 4. Under Node resolution (`node16`/`nodenext`), the mode is the file's module format for an
 //!    `import` or `export … from` (`.mts` is ESM, `.cts` CommonJS, a `.ts` file follows its
-//!    nearest `package.json` `"type"`), CommonJS for `import x = require(…)`, and ESM for a
-//!    dynamic `import()`. Package `exports` and `imports` use the conditions `types`, `node`,
+//!    nearest `package.json` `"type"`), and CommonJS for `import x = require(…)`. A dynamic
+//!    `import()` follows the extension rules of its file's static imports, with the conditions
+//!    of an ESM import. Package `exports` and `imports` use the conditions `types`, `node`,
 //!    and `import` or `require`, plus `customConditions`; bundler resolution uses `types` and
 //!    `import` or `require`; node10 ignores `exports`.
 //!
@@ -108,6 +109,9 @@ enum Mode {
     NodeImport,
     /// Node resolution of a CommonJS import.
     NodeRequire,
+    /// Node resolution of a dynamic `import()` in a CommonJS file: ECMAScript-module
+    /// conditions, with the extension and `index` probing of the file's static imports.
+    NodeDynamic,
     BundlerImport,
     BundlerRequire,
     /// node10 or classic: CommonJS without `exports`.
@@ -136,7 +140,7 @@ impl Flavor {
 
     fn modes(config: &Config) -> &'static [Mode] {
         match config.options.resolution() {
-            Resolution::NodeNext => &[Mode::NodeImport, Mode::NodeRequire],
+            Resolution::NodeNext => &[Mode::NodeImport, Mode::NodeRequire, Mode::NodeDynamic],
             Resolution::Bundler => &[Mode::BundlerImport, Mode::BundlerRequire],
             Resolution::Node10 => &[Mode::Node10],
         }
@@ -144,7 +148,7 @@ impl Flavor {
 
     fn options(&self) -> ResolveOptions {
         let mut conditions: Vec<String> = match self.mode {
-            Mode::NodeImport => vec!["types".into(), "node".into(), "import".into()],
+            Mode::NodeImport | Mode::NodeDynamic => vec!["types".into(), "node".into(), "import".into()],
             Mode::NodeRequire => vec!["types".into(), "node".into(), "require".into()],
             Mode::BundlerImport => vec!["types".into(), "import".into()],
             Mode::BundlerRequire => vec!["types".into(), "require".into()],
@@ -370,25 +374,22 @@ impl<'a> ModuleResolver<'a> {
                 SpecifierKind::Require => Mode::BundlerRequire,
                 SpecifierKind::Import | SpecifierKind::Dynamic => Mode::BundlerImport,
             },
-            Resolution::NodeNext => match kind {
-                SpecifierKind::Require => Mode::NodeRequire,
-                SpecifierKind::Dynamic => Mode::NodeImport,
-                SpecifierKind::Import => {
-                    let name = file.as_str();
-                    let module = name.ends_with(".mts")
-                        || (!name.ends_with(".cts")
-                            && self
-                                .configs
-                                .packages()
-                                .scope(paths::dir_of(name))
-                                .is_some_and(|package| package.module));
-                    if module {
-                        Mode::NodeImport
-                    } else {
-                        Mode::NodeRequire
-                    }
+            Resolution::NodeNext => {
+                let name = file.as_str();
+                let module = name.ends_with(".mts")
+                    || (!name.ends_with(".cts")
+                        && self
+                            .configs
+                            .packages()
+                            .scope(paths::dir_of(name))
+                            .is_some_and(|package| package.module));
+                match kind {
+                    SpecifierKind::Require => Mode::NodeRequire,
+                    _ if module => Mode::NodeImport,
+                    SpecifierKind::Import => Mode::NodeRequire,
+                    SpecifierKind::Dynamic => Mode::NodeDynamic,
                 }
-            },
+            }
         }
     }
 

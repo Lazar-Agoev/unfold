@@ -9,8 +9,8 @@
 //! | --- | --- |
 //! | the file | `module`; a leading file JSDoc is its `doc` |
 //! | function declarations; methods, constructors, accessors (class or object literal) | `function` (`function`, `method`, `constructor`, `getter`, `setter`) |
-//! | arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments; named by `const x = …`, a class property, a property of an object a declaration names, or `export default`; `lambda[n]` anywhere else |
-//! | `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`) |
+//! | arrow functions, function expressions | `function` (`lambda`): `callback[n]` in a call's arguments; named by `const x = …`, a class property, a property of an object literal that isn't an argument (after the names of what names the object), or `export default`; `lambda[n]` anywhere else |
+//! | `class`; `interface`, `type`, `enum` | `class`; `type` (`interface`, `type_alias`, `enum`); a class expression nothing names is an inline definition, `callback[n]` or `lambda[n]` with the form `class` |
 //! | decorators | calls in the enclosing body, role `decorator`, `for` the definition, with no `stmt`: the definition's statement runs from its first decorator |
 //! | a class's `extends` call | a call in the enclosing body, role `base`, `for` the class |
 //! | parameter defaults | calls at the start of the function's body, role `default` |
@@ -27,9 +27,8 @@
 //!
 //! What a front end can't place is marked `truncated` on the nearest node above it: nesting past
 //! [`MAX_DEPTH`] (the code below is left out, its range recorded as a cut that the census
-//! skips), a `break` out of a labeled plain block, and a class expression with no name to key it
-//! by. A `break` that leaves a `switch` before its case ends is an exit whose target is the
-//! `switch`.
+//! skips), and a `break` out of a labeled plain block. A `break` that leaves a `switch` before
+//! its case ends is an exit whose target is the `switch`.
 
 mod define;
 mod expressions;
@@ -37,6 +36,7 @@ mod forms;
 mod statements;
 
 pub(crate) use define::decorator_is_call;
+pub(crate) use forms::{CalleeStep, callee_step};
 
 use oxc_allocator::Address;
 use oxc_ast::ast::{
@@ -58,14 +58,14 @@ use oxc_span::GetSpan;
 use oxc_syntax::scope::ScopeFlags;
 use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::key::{Child, KeyBuilder, KeyError};
-use unfold_core::text::{ByteRange, LineIndex};
+use unfold_core::text::{ByteRange, LineBreaks, LineIndex};
 use unfold_core::vocab::{CallRole, Flag, Flags, Form, NodeKind};
 use unfold_core::{Node, Snapshot};
 use unfold_engine::facts::{CallFact, ImportFact, TypeFacts};
 
 use crate::payload::ImportKind;
 use crate::spans::{Tokens, range};
-use crate::typed::Typed;
+use crate::typed::{Owners, Typed};
 use crate::values::Values;
 
 /// The deepest a node may nest under the module. A node that would nest deeper is left out,
@@ -91,28 +91,10 @@ pub(crate) struct Lowered {
     pub(crate) types: TypeFacts,
     /// The written types whose names get `types` and `extends` links.
     pub(crate) linked: FxHashSet<ByteRange>,
-    /// The ranges of the syntax left out (past the depth limit, or a class expression with no
-    /// name), sorted and disjoint.
+    /// The node each of their type names, and each heritage clause's, links from.
+    pub(crate) owners: Owners,
+    /// The ranges of the syntax left out past the depth limit, sorted and disjoint.
     pub(crate) cuts: Vec<ByteRange>,
-    /// Each `catch` part with a binding, and its clause.
-    clauses: Vec<(ByteRange, u32)>,
-}
-
-impl Lowered {
-    /// The node a type name written at `range` is linked from: the `catch` part whose clause
-    /// holds it, or else the nearest definition whose range holds it.
-    pub(crate) fn owner(&self, range: ByteRange) -> u32 {
-        if let Some(&(_, part)) = self.clauses.iter().find(|(clause, _)| clause.contains(range)) {
-            return part;
-        }
-        // Nodes are in preorder, so the last definition that holds the range is the nearest.
-        self.nodes
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, node)| node.kind().is_definition() && node.range.contains(range))
-            .map_or(0, |(id, _)| id as u32)
-    }
 }
 
 /// Lowers one parsed file. `verbatim` is TypeScript's `verbatimModuleSyntax`, which decides
@@ -124,7 +106,7 @@ pub(crate) fn lower(
     verbatim: bool,
 ) -> Result<Lowered, KeyError> {
     let source = snapshot.text();
-    let lines = snapshot.line_index();
+    let lines = snapshot.line_index(LineBreaks::EcmaScript);
     let keys = KeyBuilder::new(snapshot.path());
     let module_range = ByteRange {
         start: 0,
@@ -165,17 +147,17 @@ pub(crate) fn lower(
         import_kinds: Vec::new(),
         typed: Typed::new(source, tokens),
         cuts: Vec::new(),
-        clauses: Vec::new(),
         claimed: FxHashSet::default(),
         error: None,
         at: At {
             parent: 0,
             within: Within::Body,
         },
+        definition: 0,
         conditional: false,
         statement: None,
         enclosing: None,
-        prefix: String::new(),
+        prefix: Vec::new(),
         export: None,
         breakables: Vec::new(),
         labels: Vec::new(),
@@ -190,7 +172,7 @@ pub(crate) fn lower(
     if let Some(error) = lowering.error {
         return Err(error);
     }
-    let (types, linked) = lowering.typed.finish();
+    let (types, linked, owners) = lowering.typed.finish();
     let mut cuts = lowering.cuts;
     cuts.sort_unstable_by_key(|cut| (cut.start, cut.end));
     Ok(Lowered {
@@ -202,8 +184,8 @@ pub(crate) fn lower(
         import_kinds: lowering.import_kinds,
         types,
         linked,
+        owners,
         cuts,
-        clauses: lowering.clauses,
     })
 }
 
@@ -216,7 +198,7 @@ enum Within {
     Test,
     /// A control block's header.
     Header,
-    /// A call's arguments: an inline function reached here is a callback.
+    /// A call's arguments: an inline definition reached here is a callback.
     Argument,
     /// Any other expression a node holds: a call's receiver, an exit's value.
     Value,
@@ -269,6 +251,7 @@ struct Breakable {
 /// The context a function or class body starts afresh, saved while it is lowered.
 struct Saved {
     at: At,
+    definition: u32,
     conditional: bool,
     statement: Option<ByteRange>,
     enclosing: Option<ByteRange>,
@@ -295,20 +278,21 @@ struct Lowering<'s> {
     import_kinds: Vec<ImportKind>,
     typed: Typed<'s>,
     cuts: Vec<ByteRange>,
-    clauses: Vec<(ByteRange, u32)>,
     /// The starts of the JSDoc comments definitions took as their docs.
     claimed: FxHashSet<u32>,
     /// A key that couldn't be derived, which stops the lowering.
     error: Option<KeyError>,
     at: At,
+    /// The definition whose code is being lowered.
+    definition: u32,
     /// Whether the code being lowered runs only sometimes inside its expression.
     conditional: bool,
     /// The statement whose first node is still to come.
     statement: Option<ByteRange>,
     /// The statement being lowered.
     enclosing: Option<ByteRange>,
-    /// The namespaces around the code being lowered, as a name prefix (`N.`).
-    prefix: String,
+    /// The names of the namespaces around the code being lowered, outermost first.
+    prefix: Vec<String>,
     /// The start of the `export` keyword of the declaration being lowered.
     export: Option<u32>,
     breakables: Vec<Breakable>,
@@ -419,9 +403,10 @@ impl Lowering<'_> {
         self.at = outer;
     }
 
-    /// Starts the body of a definition: nothing of the code around it carries in.
+    /// Starts the body of a definition (`at.parent`): nothing of the code around it carries in.
     fn enter(&mut self, at: At) -> Saved {
         Saved {
+            definition: std::mem::replace(&mut self.definition, at.parent),
             at: std::mem::replace(&mut self.at, at),
             conditional: std::mem::take(&mut self.conditional),
             statement: self.statement.take(),
@@ -434,6 +419,7 @@ impl Lowering<'_> {
 
     fn leave(&mut self, saved: Saved) {
         self.at = saved.at;
+        self.definition = saved.definition;
         self.conditional = saved.conditional;
         self.statement = saved.statement;
         self.enclosing = saved.enclosing;
@@ -442,20 +428,31 @@ impl Lowering<'_> {
         self.labels = saved.labels;
     }
 
-    /// The JSDoc comment written just before `offset` (whitespace between, but no blank
-    /// line), taken as a definition's doc.
+    /// The JSDoc comment written just before `offset`, taken as a definition's doc: the nearest
+    /// one, past line comments (`// eslint-disable-next-line`), as TypeScript reads it, with
+    /// only whitespace and no blank line between each comment and what follows it.
     fn doc_before(&mut self, offset: u32) -> Option<ByteRange> {
-        let index = self
+        let mut index = self
             .comments
             .partition_point(|comment| comment.span.end <= offset);
-        let comment = self.comments.get(index.checked_sub(1)?)?;
-        let between = self.source.get(comment.span.end as usize..offset as usize)?;
-        let adjacent = between.chars().all(char::is_whitespace) && between.matches('\n').count() <= 1;
-        if !adjacent || !comment.is_jsdoc() {
-            return None;
+        let mut end = offset;
+        loop {
+            index = index.checked_sub(1)?;
+            let comment = self.comments[index];
+            let between = self.source.get(comment.span.end as usize..end as usize)?;
+            let adjacent = between.chars().all(char::is_whitespace) && between.matches('\n').count() <= 1;
+            if !adjacent {
+                return None;
+            }
+            if comment.is_jsdoc() {
+                self.claimed.insert(comment.span.start);
+                return Some(range(comment.span));
+            }
+            if !comment.is_line() {
+                return None;
+            }
+            end = comment.span.start;
         }
-        self.claimed.insert(comment.span.start);
-        Some(range(comment.span))
     }
 
     /// The file's doc: its first comment, when it is a JSDoc with only whitespace (or a
@@ -484,6 +481,31 @@ impl Lowering<'_> {
             }
             self.visit_statement(statement);
         }
+    }
+
+    /// Links a declaration's or class field's annotation from the definition it names
+    /// (`defined`) when that definition begins the statement, which then holds the annotation;
+    /// else from the definition being lowered.
+    fn annotate(&mut self, annotation: Option<&TSTypeAnnotation<'_>>, defined: Option<u32>) {
+        let Some(annotation) = annotation else {
+            return;
+        };
+        let written = range(annotation.span);
+        let owner = defined
+            .filter(|&id| {
+                self.nodes[id as usize]
+                    .stmt
+                    .is_some_and(|stmt| stmt.contains(written))
+            })
+            .unwrap_or(self.definition);
+        self.typed.annotation(Some(annotation), owner);
+    }
+
+    /// The names of a definition named `name` here: after the namespaces around it (`N.f`).
+    fn qualified(&self, name: &str) -> Vec<String> {
+        let mut names = self.prefix.clone();
+        names.push(name.to_owned());
+        names
     }
 
     /// The written text at `range`.
@@ -578,11 +600,11 @@ impl<'a> Visit<'a> for Lowering<'_> {
     }
 
     fn visit_class(&mut self, it: &Class<'a>) {
-        self.class(it, None);
+        self.class(it, None, None);
     }
 
     fn visit_object_expression(&mut self, it: &ObjectExpression<'a>) {
-        self.object(it, None);
+        self.object(it, &[]);
     }
 
     fn visit_ts_interface_declaration(&mut self, it: &TSInterfaceDeclaration<'a>) {

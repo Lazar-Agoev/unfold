@@ -9,17 +9,23 @@
 //!   instance of its class, records an instance field (with its annotation, its value, and
 //!   whether the write is in `__init__`);
 //! - any other write to a class's attribute invalidates that member (and mutates its binding);
+//! - a write to an attribute of a standard-library class, or of an instance the stubs type,
+//!   invalidates that member of the class (an instance may be any instance of its class);
 //! - a proven `exec` or `eval` makes every identity in its module `unsupported`;
-//! - a proven `setattr`/`delattr` invalidates the literal member it names (or every member).
+//! - a proven `setattr`/`delattr` invalidates the literal member it names (or every member) of
+//!   any of these receivers.
 //!
 //! Each step resolves values with the state the earlier steps left, as the proof of concept did.
 
 use rustc_hash::FxHashMap;
 
 use super::binder::{Binder, Ctx, Field};
+use super::library::{self, Stub};
 use super::modules::ModuleValue;
 use super::program::{ExprRef, NodeRef, Sym};
+use super::value::Value;
 use crate::bind::ir::{Argument, Effect, ExprKind, MODULE_SCOPE, NodeKind, TargetKind};
+use crate::stubs::StubClass;
 
 /// The keys a module's invalid attributes are recorded under.
 pub(crate) fn module_keys(module: &ModuleValue) -> Vec<Box<str>> {
@@ -140,6 +146,10 @@ impl Binder<'_> {
             self.invalidate_module(&module, key);
             return;
         }
+        if let Some(class) = library_receiver(&receiver) {
+            self.invalidate_library(class, key);
+            return;
+        }
         let Some(class) = receiver.class else {
             return;
         };
@@ -211,6 +221,13 @@ impl Binder<'_> {
         }
     }
 
+    /// Invalidates `key` (or every member, for `*`) of a standard-library class.
+    fn invalidate_library(&mut self, class: &'static StubClass, key: Sym) {
+        if self.invalid_library.entry(class.name).or_default().insert(key) {
+            self.changed();
+        }
+    }
+
     /// `exec`, `eval`, `setattr`, and `delattr`, by proven identity.
     fn reflective_call(&mut self, call: ExprRef) {
         let Some(ExprKind::Call {
@@ -250,6 +267,9 @@ impl Binder<'_> {
                     let module = module.clone();
                     self.invalidate_module(&module, key);
                 }
+                if let Some(class) = library_receiver(&receiver) {
+                    self.invalidate_library(class, key);
+                }
                 if let Some(class) = receiver.class
                     && self.invalid_members.entry(class).or_default().insert(key)
                 {
@@ -279,6 +299,23 @@ impl Binder<'_> {
             ExprKind::Str(text) => Some(self.program.sym(file, text)),
             _ => None,
         }
+    }
+}
+
+/// The standard-library class whose members a write to `receiver`'s attributes changes: the
+/// class itself, or the class of an instance the stubs type.
+fn library_receiver(receiver: &Value) -> Option<&'static StubClass> {
+    if receiver.ambiguous || receiver.refusal.is_some() {
+        return None;
+    }
+    let stub = match receiver.stub {
+        Some(stub) => stub,
+        None => library::external(receiver.external.as_ref()?)?,
+    };
+    match stub {
+        Stub::Class(class) => Some(class),
+        Stub::Instance(instance) => Some(instance.class),
+        Stub::Module(_) | Stub::Function { .. } => None,
     }
 }
 

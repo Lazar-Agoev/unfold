@@ -25,5 +25,5 @@ pub use model::{
     App, Entrance, EntranceTarget, File, FileGraph, Graph, Input, Link, LinkTarget, ModuleLabel, Node, owner,
 };
 pub use path::RepoPath;
-pub use text::{ByteRange, ContentHash, LineIndex, LineSpan, Snapshot, Utf16Index};
+pub use text::{ByteRange, ContentHash, LineBreaks, LineIndex, LineSpan, Snapshot, Utf16Index};
 pub use typed::{Argument, FileTypes, Member, Pairing, Parameter, Signature, WrittenType};

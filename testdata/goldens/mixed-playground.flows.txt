@@ -198,7 +198,9 @@
 ( py-orders/src/orders_playground/features/decorators.py )   key=py-orders/src/orders_playground/features/decorators.py#
   imports · collections.abc, functools, typing
   ▸ @traced   key=py-orders/src/orders_playground/features/decorators.py#/call:traced
-  · @lru_cache, @cache, @overload, @overload, @final   5 calls   key=py-orders/src/orders_playground/features/decorators.py#/call:lru_cache py-orders/src/orders_playground/features/decorators.py#/call:cache py-orders/src/orders_playground/features/decorators.py#/call:overload py-orders/src/orders_playground/features/decorators.py#/call:overload[1] py-orders/src/orders_playground/features/decorators.py#/call:final
+  · @lru_cache, @cache   2 calls   key=py-orders/src/orders_playground/features/decorators.py#/call:lru_cache py-orders/src/orders_playground/features/decorators.py#/call:cache
+  ⋯ 4 lines
+  · @final   key=py-orders/src/orders_playground/features/decorators.py#/call:final
 ( End )
 
 === py-orders/src/orders_playground/features/decorators.py#traced
@@ -232,19 +234,7 @@
 
 === py-orders/src/orders_playground/features/decorators.py#stringify
 ( stringify )   key=py-orders/src/orders_playground/features/decorators.py#stringify
-  runs when defined · @overload   key=py-orders/src/orders_playground/features/decorators.py#/call:overload
-  ⋯ 1 line
-( End )
-
-=== py-orders/src/orders_playground/features/decorators.py#stringify[1]
-( stringify )   key=py-orders/src/orders_playground/features/decorators.py#stringify[1]
-  runs when defined · @overload   key=py-orders/src/orders_playground/features/decorators.py#/call:overload[1]
-  ⋯ 1 line
-( End )
-
-=== py-orders/src/orders_playground/features/decorators.py#stringify[2]
-( stringify )   key=py-orders/src/orders_playground/features/decorators.py#stringify[2]
-  RETURN str → End   key=py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]
+  RETURN str → End   key=py-orders/src/orders_playground/features/decorators.py#stringify/return[0]
 ( End )
 
 === py-orders/src/orders_playground/features/decorators.py#Named

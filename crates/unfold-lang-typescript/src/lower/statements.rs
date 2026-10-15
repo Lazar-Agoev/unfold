@@ -306,8 +306,7 @@ impl Lowering<'_> {
                 Some(body),
             ) {
                 if let Some(parameter) = &handler.param {
-                    self.typed.annotation(parameter.type_annotation.as_deref());
-                    self.clauses.push((clause, part));
+                    self.typed.annotation(parameter.type_annotation.as_deref(), part);
                 }
                 self.within(part, Within::Body, |lowering| {
                     if let Some(parameter) = &handler.param {
@@ -484,24 +483,25 @@ impl Lowering<'_> {
         }
     }
 
-    /// Each declarator's annotation (linked), its binding pattern's code, and its initializer:
-    /// a function, class, or object literal it names, or else code whose call or conditional
-    /// expression binds the written targets (`x = a` in `const x = a = f()`).
+    /// Each declarator's binding pattern's code, its initializer, and its annotation. The
+    /// initializer is a function, class, or object literal it names, or else code whose call or
+    /// conditional expression binds the written targets (`x = a` in `const x = a = f()`). The
+    /// annotation links from the definition it names ([`Lowering::annotate`]).
     pub(super) fn declarators(&mut self, it: &VariableDeclaration<'_>) {
         for declarator in &it.declarations {
-            self.typed.annotation(declarator.type_annotation.as_deref());
             self.visit_binding_pattern(&declarator.id);
-            let Some(init) = &declarator.init else {
-                continue;
-            };
-            let (targets, value) = self.chain(self.text(range(declarator.id.span())), init);
-            self.bind_value(value, &targets);
-            match &declarator.id {
-                BindingPattern::BindingIdentifier(id) => {
-                    self.named_value(init, id.name.as_str());
+            let defined = declarator.init.as_ref().and_then(|init| {
+                let (targets, value) = self.chain(self.text(range(declarator.id.span())), init);
+                self.bind_value(value, &targets);
+                match &declarator.id {
+                    BindingPattern::BindingIdentifier(id) => self.named_value(init, id.name.as_str()),
+                    _ => {
+                        self.visit_expression(init);
+                        None
+                    }
                 }
-                _ => self.visit_expression(init),
-            }
+            });
+            self.annotate(declarator.type_annotation.as_deref(), defined);
         }
     }
 }

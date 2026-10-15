@@ -57,7 +57,7 @@ a.ts#Service/call:methodName call
   range `methodName()`
   head `methodName`
   name `methodName`
-a.ts#Service/lambda[0] lambda
+a.ts#Service/lambda[0] method
   range `[methodName()]() { return body(); }`
   head `[methodName()]()`
   body `{ return body(); }`

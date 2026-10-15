@@ -18,10 +18,11 @@
 //! | Named definition | its name after `#` (in a module) or after its enclosing definition's key and `.`, wherever it sits; `[n]` for the n-th (n ≥ 1) repeat of that key |
 //! | Control block, exit | its form and its ordinal among the parent's children of that form: `if[0]`, `return[1]` |
 //! | Part | `then`, `else`, `default`, `body`, `catch`, `finally`; `elif[n]`, `case[n]`, `except[n]` |
-//! | Inline function | `callback[n]` in a call's arguments, `lambda[n]` anywhere else |
+//! | Inline definition (an unnamed function or class) | `callback[n]` in a call's arguments, `lambda[n]` anywhere else |
 //! | Call | `call:` and its normalized callee ([`Callee`]); its first argument as a double-quoted literal when it is a string and the call takes a callback; `[n]` for the n-th (n ≥ 1) repeat of that step under the same parent |
 //!
-//! Names and callees percent-encode `%`, `/`, `#`, `[`, and `]`. A literal is read up to its
+//! Names and callees percent-encode `%`, `/`, `#`, `[`, and `]`, and names also `.`, which
+//! separates them (`{ "order.created": … }` is `order%2Ecreated`). A literal is read up to its
 //! closing quote, so only `"` and `\` are escaped in it, with a backslash.
 //!
 //! This module is the only place keys are made ([`KeyBuilder`], [`Key::app`],
@@ -36,6 +37,8 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
 use crate::path::RepoPath;
 use crate::vocab::{Form, Inline, NodeKind};
@@ -192,13 +195,17 @@ const CALL_PREFIX: &str = "call:";
 #[error("name `{0}` has no letters or digits")]
 pub struct SlugError(pub Box<str>);
 
-/// The slug of an app or entrance name: lowercased, every run of characters other than letters
-/// and digits replaced by `-`, and leading and trailing `-` dropped.
+/// The slug of an app or entrance name: normalized to NFC and lowercased, every run of
+/// characters other than letters, digits, and the combining marks after them replaced by `-`,
+/// and leading and trailing `-` dropped. So a name slugs the same however its accents are
+/// typed, and `İstanbul` is `i̇stanbul`.
 pub fn slug(name: &str) -> Result<String, SlugError> {
     let mut slug = String::with_capacity(name.len());
     let mut gap = false;
-    for character in name.to_lowercase().chars() {
-        if !character.is_alphanumeric() {
+    let lowered: String = name.nfc().collect::<String>().to_lowercase();
+    for character in lowered.chars() {
+        let kept = character.is_alphanumeric() || (!gap && !slug.is_empty() && is_combining_mark(character));
+        if !kept {
             gap = true;
             continue;
         }
@@ -285,12 +292,14 @@ impl Callee {
 /// What a node contributes to its key, given to [`KeyBuilder::push`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Child<'a> {
-    /// A named definition: a class, a type, or a function with a name. A function bound by a
-    /// declaration or a simple assignment takes that name (`const handler = …` is `handler`),
-    /// an object-literal method or class property its property name qualified by its object
-    /// (`handlers.onCreate`), and an anonymous default export `default`.
-    Definition(&'a str),
-    /// An unnamed function, keyed by where it is written.
+    /// A named definition: a class, a type, or a function with a name, by its names, outermost
+    /// first. Usually one; more when what qualifies it isn't a node: a TypeScript namespace
+    /// (`["N", "f"]`), or the declaration that names an object literal
+    /// (`["handlers", "onCreate"]`). A function bound by a declaration or a simple assignment
+    /// takes that name (`const handler = …` is `handler`), an object-literal method or class
+    /// property its property name, and an anonymous default export `default`.
+    Definition(&'a [&'a str]),
+    /// An inline definition, an unnamed function or class, keyed by where it is written.
     Inline(Inline),
     /// A call.
     Call {
@@ -298,7 +307,7 @@ pub enum Child<'a> {
         callee: &'a Callee,
         /// The value of its first argument, when that argument is a string literal.
         first_literal: Option<&'a str>,
-        /// Whether any function is written in its arguments ([`Inline::Callback`]). Only then
+        /// Whether an inline definition is written in its arguments ([`Inline::Callback`]). Only then
         /// does the first literal join the key.
         takes_callback: bool,
     },
@@ -315,7 +324,7 @@ pub enum KeyError {
         /// The claimed parent's local ID.
         parent: u32,
     },
-    /// Definitions are keyed by name or as inline functions, and calls by their callee.
+    /// Definitions are keyed by name or as inline definitions, and calls by their callee.
     #[error("`{0}` is keyed by a name or a callee, not by its form")]
     NotAStep(Form),
     /// A part without an ordinal appears once under its parent.
@@ -348,7 +357,7 @@ enum Counter {
 /// use unfold_core::RepoPath;
 ///
 /// let mut keys = KeyBuilder::new(&RepoPath::new("shop/service.py").unwrap());
-/// keys.push(0, Child::Definition("place_order")).unwrap(); // 1
+/// keys.push(0, Child::Definition(&["place_order"])).unwrap(); // 1
 /// keys.push(1, Child::Form(Form::Try)).unwrap(); // 2
 /// keys.push(2, Child::Form(Form::Body)).unwrap(); // 3
 /// let charge = Callee::name("charge_card");
@@ -388,7 +397,7 @@ impl KeyBuilder {
         }
         let local_id = u32::try_from(self.keys.len()).unwrap_or(u32::MAX);
         let (key, scope) = match child {
-            Child::Definition(name) => (self.definition(parent_index, name)?, local_id),
+            Child::Definition(names) => (self.definition(parent_index, names)?, local_id),
             Child::Inline(inline) => {
                 let ordinal = self.next(parent, Counter::Inline(inline));
                 let step = Segment::Inline { inline, ordinal };
@@ -440,16 +449,18 @@ impl KeyBuilder {
         self.keys
     }
 
-    fn definition(&mut self, parent: usize, name: &str) -> Result<Key, KeyError> {
-        if name.is_empty() {
+    fn definition(&mut self, parent: usize, names: &[&str]) -> Result<Key, KeyError> {
+        if names.is_empty() || names.iter().any(|name| name.is_empty()) {
             return Err(KeyError::EmptyName);
         }
         let scope = self.scopes[parent];
         let mut text = self.keys[scope as usize].as_str().to_owned();
-        if scope != 0 {
-            text.push('.');
+        for (index, name) in names.iter().enumerate() {
+            if scope != 0 || index > 0 {
+                text.push('.');
+            }
+            escape(name, Escaped::Name, &mut text);
         }
-        escape(name, &mut text);
         if let Some(count) = self.names.get_mut(text.as_str()) {
             let _ = write!(text, "[{count}]");
             *count += 1;
@@ -525,7 +536,7 @@ pub enum Segment {
         /// The ordinal of a repeated step (n ≥ 1), absent for the first.
         repeat: Option<u32>,
     },
-    /// An unnamed function.
+    /// An inline definition.
     Inline {
         /// Where it is written.
         inline: Inline,
@@ -540,7 +551,7 @@ impl fmt::Display for Segment {
         let mut text = String::new();
         match self {
             Self::Name { name, repeat } => {
-                escape(name, &mut text);
+                escape(name, Escaped::Name, &mut text);
                 write_ordinal(&mut text, *repeat);
             }
             Self::Form { form, ordinal } => {
@@ -567,7 +578,7 @@ impl fmt::Display for Segment {
 /// Appends `call:`, the escaped callee, and the quoted literal, if any.
 fn write_call(out: &mut String, callee: &str, literal: Option<&str>) {
     out.push_str(CALL_PREFIX);
-    escape(callee, out);
+    escape(callee, Escaped::Callee, out);
     if let Some(literal) = literal {
         out.push_str("(\"");
         for character in literal.chars() {
@@ -587,9 +598,17 @@ fn write_ordinal(out: &mut String, ordinal: Option<u32>) {
     }
 }
 
-/// Appends `text` with the reserved characters (`%`, `/`, `#`, `[`, `]`) percent-encoded in
-/// uppercase hex.
-fn escape(text: &str, out: &mut String) {
+/// What is escaped: a name, which escapes the `.` that separates names, or a callee, which
+/// writes its members with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Escaped {
+    Name,
+    Callee,
+}
+
+/// Appends `text` with the reserved characters (`%`, `/`, `#`, `[`, `]`, and in a name `.`)
+/// percent-encoded in uppercase hex.
+fn escape(text: &str, escaped: Escaped, out: &mut String) {
     for character in text.chars() {
         match character {
             '%' => out.push_str("%25"),
@@ -597,24 +616,26 @@ fn escape(text: &str, out: &mut String) {
             '#' => out.push_str("%23"),
             '[' => out.push_str("%5B"),
             ']' => out.push_str("%5D"),
+            '.' if escaped == Escaped::Name => out.push_str("%2E"),
             _ => out.push(character),
         }
     }
 }
 
 /// Reverses [`escape`]; `None` for a reserved character written raw or an unknown escape.
-fn unescape(text: &str) -> Option<String> {
+fn unescape(text: &str, escaped: Escaped) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(index) = rest.find(['%', '/', '#', '[', ']']) {
         out.push_str(&rest[..index]);
-        let escaped = rest[index..].get(..3)?;
-        out.push(match escaped {
+        let code = rest[index..].get(..3)?;
+        out.push(match code {
             "%25" => '%',
             "%2F" => '/',
             "%23" => '#',
             "%5B" => '[',
             "%5D" => ']',
+            "%2E" if escaped == Escaped::Name => '.',
             _ => return None,
         });
         rest = &rest[index + 3..];
@@ -679,7 +700,7 @@ impl ParsedKey {
 }
 
 /// A block key's file and the segments after its `#`, in order: the names of a named
-/// definition, then steps, with an inline function's names following it.
+/// definition, then steps, with an inline definition's names following it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockKey {
     path: RepoPath,
@@ -773,7 +794,7 @@ impl<'a> Steps<'a> {
             if raw.is_empty() {
                 return Err("a name is empty");
             }
-            let name = unescape(raw).ok_or("a name has an unescaped reserved character")?;
+            let name = unescape(raw, Escaped::Name).ok_or("a name has an unescaped reserved character")?;
             self.rest = rest;
             let repeat = self.repeat()?;
             segments.push(Segment::Name {
@@ -796,7 +817,7 @@ impl<'a> Steps<'a> {
         let (word, rest) = self.rest.split_at(end);
         self.rest = rest;
         if let Ok(inline) = word.parse::<Inline>() {
-            let ordinal = self.ordinal()?.ok_or("an inline function has no ordinal")?;
+            let ordinal = self.ordinal()?.ok_or("an inline definition has no ordinal")?;
             return Ok(Segment::Inline { inline, ordinal });
         }
         let form = word.parse::<Form>().map_err(|_| "a step is not a known form")?;
@@ -819,7 +840,7 @@ impl<'a> Steps<'a> {
         if raw.is_empty() {
             return Err("a callee is empty");
         }
-        let callee = unescape(raw).ok_or("a callee has an unescaped reserved character")?;
+        let callee = unescape(raw, Escaped::Callee).ok_or("a callee has an unescaped reserved character")?;
         self.rest = rest;
         let literal = match self.rest.strip_prefix("(\"") {
             Some(rest) => {

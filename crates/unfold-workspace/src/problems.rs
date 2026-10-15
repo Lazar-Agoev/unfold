@@ -22,7 +22,7 @@ use std::path::Path;
 use serde::Serialize;
 use ts_rs::TS;
 use unfold_core::vocab::FileState;
-use unfold_core::{Graph, LineIndex};
+use unfold_core::{Graph, LineBreaks, LineIndex};
 use unfold_engine::settings::{SettingsError, SettingsFile};
 use unfold_engine::{Problem, ProblemKind};
 
@@ -128,7 +128,8 @@ pub(crate) fn graph_problems(root: &Path, graph: &Graph, standing: &[Problem]) -
         .map(|file| {
             let record = &file.file;
             let failure = record.failure.as_deref().unwrap_or("doesn't parse");
-            file_problem(root, record.path.as_str(), failure, record.state)
+            let breaks = LineBreaks::of(record.language);
+            file_problem(root, record.path.as_str(), failure, record.state, breaks)
         })
         .collect();
     items.extend(standing.iter().map(|problem| engine_problem(root, problem)));
@@ -147,7 +148,9 @@ fn split_offset(failure: &str) -> (&str, Option<u32>) {
     (failure, None)
 }
 
-fn file_problem(root: &Path, path: &str, failure: &str, state: FileState) -> ProblemItem {
+/// The problem of a source file that isn't current, placed in its text, whose lines end at
+/// `breaks`.
+fn file_problem(root: &Path, path: &str, failure: &str, state: FileState, breaks: LineBreaks) -> ProblemItem {
     let (message, offset) = split_offset(failure);
     let text = std::fs::read(root.join(path))
         .ok()
@@ -165,16 +168,17 @@ fn file_problem(root: &Path, path: &str, failure: &str, state: FileState) -> Pro
         )
     };
     if let (Some(text), Some(offset)) = (text, offset) {
-        let (line, column) = position(&text, offset);
+        let (line, column) = position(&text, offset, breaks);
         item.line = Some(line);
         item.column = Some(column);
     }
     item
 }
 
-/// The one-based line and character column of byte `offset` in `text`.
-fn position(text: &str, offset: u32) -> (u32, u32) {
-    let lines = LineIndex::new(text);
+/// The one-based line and character column of byte `offset` in `text`, whose lines end at
+/// `breaks`.
+fn position(text: &str, offset: u32, breaks: LineBreaks) -> (u32, u32) {
+    let lines = LineIndex::new(text, breaks);
     let line = lines.line_of(offset);
     let start = lines.line_start(line).unwrap_or(0) as usize;
     let end = (offset as usize).min(text.len());
@@ -226,10 +230,14 @@ mod tests {
     #[test]
     fn places_offsets_by_line_and_character() {
         let text = "ab\ncdé f\n";
-        assert_eq!(position(text, 0), (1, 1));
-        assert_eq!(position(text, 3), (2, 1));
+        assert_eq!(position(text, 0, LineBreaks::Newlines), (1, 1));
+        assert_eq!(position(text, 3, LineBreaks::Newlines), (2, 1));
         // `f` follows a two-byte character.
-        assert_eq!(position(text, 8), (2, 5));
+        assert_eq!(position(text, 8, LineBreaks::Newlines), (2, 5));
+        // U+2028 ends a TypeScript line, not a Python one.
+        let text = "s = \"\u{2028}\"\nx";
+        assert_eq!(position(text, 10, LineBreaks::Newlines), (2, 1));
+        assert_eq!(position(text, 10, LineBreaks::EcmaScript), (3, 1));
     }
 
     #[test]
@@ -242,11 +250,18 @@ mod tests {
             "bad.ts",
             "Unexpected token (at byte 8)",
             FileState::Failed,
+            LineBreaks::EcmaScript,
         );
         assert_eq!(parse.category, ProblemCategory::DoesntParse);
         assert_eq!((parse.line, parse.column), (Some(1), Some(9)));
         assert_eq!(parse.message, "Unexpected token");
-        let read = file_problem(dir.path(), "bin.ts", "invalid UTF-8 at byte 0", FileState::Failed);
+        let read = file_problem(
+            dir.path(),
+            "bin.ts",
+            "invalid UTF-8 at byte 0",
+            FileState::Failed,
+            LineBreaks::EcmaScript,
+        );
         assert_eq!(read.category, ProblemCategory::CantRead);
         assert_eq!(read.line, None);
     }

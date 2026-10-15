@@ -362,8 +362,9 @@ impl<'a> Lowering<'a> {
                 self.expr(default, place.with_role(CallRole::Default), Value::default())?;
             }
         }
-        let child = match name {
-            Some(name) => Child::Definition(name),
+        let names = name.map(|name| [name]);
+        let child = match &names {
+            Some(names) => Child::Definition(names),
             None if place.argument => Child::Inline(Inline::Callback),
             None => Child::Inline(Inline::Lambda),
         };

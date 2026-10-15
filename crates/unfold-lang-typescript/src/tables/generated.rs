@@ -963,8 +963,8 @@ pub(crate) static ECMASCRIPT_SUPERTYPES: &[(&str, &[&str])] = &[
 ];
 
 /// The method names of each ECMAScript interface (`Array`, `String`, `ObjectConstructor`), with
-/// those of the interfaces it extends, and the functions of each value namespace (`Reflect`).
-/// Sorted by name, each with its methods sorted by bytes.
+/// those of the interfaces it extends, and the values of each value namespace (`Reflect`'s
+/// functions, `Intl`'s `Collator`). Sorted by name, each with its names sorted by bytes.
 #[rustfmt::skip]
 pub(crate) static ECMASCRIPT_METHODS: &[(&str, &[&str])] = &[
     ("Array", &[
@@ -1120,7 +1120,9 @@ pub(crate) static ECMASCRIPT_METHODS: &[(&str, &[&str])] = &[
         "from", "of",
     ]),
     ("Intl", &[
-        "getCanonicalLocales", "supportedValuesOf",
+        "Collator", "DateTimeFormat", "DisplayNames", "DurationFormat", "ListFormat", "Locale",
+        "NumberFormat", "PluralRules", "RelativeTimeFormat", "Segmenter", "getCanonicalLocales",
+        "supportedValuesOf",
     ]),
     ("Intl.Collator", &[
         "compare", "resolvedOptions",

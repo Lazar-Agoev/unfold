@@ -21,6 +21,9 @@
 //! | imports, `importlib.import_module("x")` | `imports` links from the definition the import is written in (the module, a class, or a function); the call is also a call |
 //! | assignments, expression statements, `pass`, `assert`, `del`, `global`, `nonlocal` | code: only their calls are blocks, and the first block of a statement records it as `stmt` |
 //!
+//! A `def` a decorator proves a `typing.overload` stub is left out with everything written in
+//! it, so the implementation takes the plain key.
+//!
 //! Past [`MAX_DEPTH`] levels of nodes, a node is marked `truncated` and nothing below it is
 //! lowered (a truncated control block keeps its parts, themselves truncated and empty).
 //! Lowering recurses with the tree, on a stack that grows as needed, so deep syntax can't
@@ -35,7 +38,7 @@ use ruff_python_ast::{Alias, Arguments, Expr, ModModule, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::key::{Child, KeyBuilder};
-use unfold_core::text::{ByteRange, LineIndex};
+use unfold_core::text::{ByteRange, LineBreaks, LineIndex};
 use unfold_core::typed::{Member, Parameter, Signature};
 use unfold_core::vocab::{CallRole, Flag, Flags, Form, NodeKind};
 use unfold_core::{Key, Node, RepoPath};
@@ -104,6 +107,8 @@ pub(crate) struct Lowered<'a> {
     /// The node of every `def` and `class` statement and every `lambda`, by its address.
     pub(crate) definitions: FxHashMap<usize, u32>,
     pub(crate) truncated: Vec<Truncated>,
+    /// The statements of the `typing.overload` stubs, left out with everything written in them.
+    pub(crate) stubs: Vec<ByteRange>,
     pub(crate) signatures: Vec<Signature>,
     pub(crate) parameters: Vec<Parameter>,
     pub(crate) members: Vec<Member>,
@@ -200,7 +205,7 @@ pub(crate) fn lower<'a>(
     proofs: &'a Proofs,
 ) -> Result<Lowered<'a>, SourceFailure> {
     let (calling, generators) = expressions::shapes(module);
-    let lines = LineIndex::new(text);
+    let lines = LineIndex::new(text, LineBreaks::Newlines);
     let keys = KeyBuilder::new(path);
     let range = TextRange::up_to(TextSize::of(text));
     let mut lowering = Lowering {
@@ -235,6 +240,7 @@ pub(crate) fn lower<'a>(
             imports: Vec::new(),
             definitions: FxHashMap::default(),
             truncated: Vec::new(),
+            stubs: Vec::new(),
             signatures: Vec::new(),
             parameters: Vec::new(),
             members: Vec::new(),
@@ -287,7 +293,7 @@ impl<'a> Lowering<'a> {
         let id = u32::try_from(self.lowered.nodes.len())
             .map_err(|_| failure("the file has too many blocks", None))?;
         let name = match child {
-            Child::Definition(name) => Some(name.into()),
+            Child::Definition(names) => Some(names.join(".").into()),
             Child::Call { callee, .. } => Some(callee.text().into()),
             Child::Inline(_) | Child::Form(_) => None,
         };

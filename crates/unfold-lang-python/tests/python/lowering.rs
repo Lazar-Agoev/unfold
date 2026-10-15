@@ -838,6 +838,65 @@ fn the_range_corpus_keeps_unicode_and_crlf_ranges() {
     );
 }
 
+/// A `def` whose decorator is proven to be `typing.overload` is a stub: it is left out with
+/// everything written in it (its decorators, defaults, and annotations), so the implementation
+/// takes the plain key and calls link to it. A decorator named `overload` that isn't `typing`'s
+/// keeps every definition.
+#[test]
+fn overload_stubs_are_left_out() {
+    lowers(
+        "from typing import overload\n\n\n@overload\ndef parse(x: int) -> int: ...\n@overload\ndef parse(x: str, flag=make()) -> str: ...\ndef parse(x, flag=None):\n    return x\n\n\nparse(1)\n",
+        r#"
+pkg/main.py# module [imports typing → library python:typing]
+  parse function head=`def parse(x, flag=None)` stmt
+    return[0] return stmt value=`x`
+  call:parse call stmt [→ project pkg/main.py#parse]
+"#
+        .trim_start(),
+    );
+    lowers(
+        "import typing\n\n\nclass Reader:\n    @typing.overload\n    def read(self, key: int) -> int: ...\n    @typing.overload\n    def read(self, key: str) -> str: ...\n    def read(self, key):\n        return key\n\n\nReader().read(1)\n",
+        r#"
+pkg/main.py# module [imports typing → library python:typing]
+  Reader class head=`class Reader` stmt
+    read method head=`def read(self, key)` stmt
+      return[0] return stmt value=`key`
+  call:Reader().read call stmt [→ project pkg/main.py#Reader.read]
+    call:Reader new [→ project pkg/main.py#Reader]
+"#
+        .trim_start(),
+    );
+    lowers(
+        "def overload(function):\n    return function\n\n\n@overload\ndef parse(x: int) -> int: ...\ndef parse(x):\n    return x\n",
+        r#"
+pkg/main.py# module
+  overload function head=`def overload(function)` stmt
+    return[0] return stmt value=`function`
+  call:overload call role=decorator for=parse [→ project pkg/main.py#overload]
+  parse function head=`def parse(x: int) -> int` stmt=`@overload`+node [types int → builtin] [types int → builtin]
+  parse[1] function head=`def parse(x)` stmt
+    return[0] return stmt value=`x`
+"#
+        .trim_start(),
+    );
+}
+
+/// Python lines end only at CR, LF, and CRLF: U+2028 and U+2029 in a string or a comment don't
+/// end a line, so the lines agree with CPython's `ast`.
+#[test]
+fn lines_end_only_at_cr_lf_and_crlf() {
+    let text = "TEXT = \"a\u{2028}b\"\n\n\ndef f():\n    return 1\n\n\ndef g():  # \u{2029}\r\n    return 2\rdef h():\n    pass\n";
+    let compiled = compile(&[("ls.py", text)]);
+    let lines = |key: &str| {
+        let node = compiled.node(key);
+        [node.lines.start, node.lines.end]
+    };
+    assert_eq!(lines("ls.py#f"), [4, 5]);
+    assert_eq!(lines("ls.py#g"), [8, 9]);
+    assert_eq!(lines("ls.py#h"), [10, 11]);
+    assert_eq!(lines("ls.py#"), [1, 11]);
+}
+
 /// A `from` import's module and each named child import are written at their specifiers, the
 /// child's text normalized like the module's (no whitespace or line continuations).
 #[test]

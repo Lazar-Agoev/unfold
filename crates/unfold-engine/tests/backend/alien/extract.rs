@@ -20,7 +20,7 @@
 //! type, which is also a `types` link from the function).
 
 use unfold_core::key::{Callee, Child, KeyBuilder};
-use unfold_core::text::{ByteRange, LineIndex};
+use unfold_core::text::{ByteRange, LineBreaks, LineIndex};
 use unfold_core::typed::{Parameter, Signature, WrittenType};
 use unfold_core::vocab::{CallRole, Expansion, Flag, Flags, Form, Inline, NodeKind, ParameterKind};
 use unfold_core::{Node, Snapshot};
@@ -280,8 +280,9 @@ impl<'s> Lowering<'_, 's> {
             ("getter", Some(_)) => Form::Getter,
             _ => Form::Lambda,
         };
-        let child = match name {
-            Some(name) => Child::Definition(name),
+        let names = name.map(|name| [name]);
+        let child = match &names {
+            Some(names) => Child::Definition(names),
             None if place.argument => Child::Inline(Inline::Callback),
             None => Child::Inline(Inline::Lambda),
         };
@@ -296,7 +297,7 @@ impl<'s> Lowering<'_, 's> {
         let name = self
             .name_text(node)
             .ok_or_else(|| failure("a class needs a name"))?;
-        let id = self.push(node, place, Child::Definition(name), Form::Class, Some(name))?;
+        let id = self.push(node, place, Child::Definition(&[name]), Form::Class, Some(name))?;
         let (head, body) = self.header_and_body(node);
         self.node(id).head = Some(head);
         self.node(id).body = body;
@@ -463,7 +464,7 @@ pub fn extract(snapshot: &Snapshot) -> Result<FileFacts, SourceFailure> {
         offset: Some(error.offset),
     })?;
     let count = syntax.nodes.len();
-    let lines = snapshot.line_index();
+    let lines = snapshot.line_index(LineBreaks::EcmaScript);
     let keys = KeyBuilder::new(snapshot.path());
     let module = Node {
         key: keys.keys()[0].clone(),

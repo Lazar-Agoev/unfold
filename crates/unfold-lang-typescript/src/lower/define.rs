@@ -27,10 +27,24 @@ use crate::spans::range;
 use crate::typed::Callable;
 use crate::values;
 
-/// The name a definition is keyed by, and where a JSDoc before it would end.
+/// The names a definition is keyed by, and where a JSDoc before it would end.
 pub(super) struct Naming {
-    pub(super) name: String,
+    /// Its names, outermost first: its own name, after the namespaces around it or the names
+    /// of the object literal it is a property of (`["handlers", "onCreate"]`).
+    pub(super) names: Vec<String>,
     pub(super) doc: Option<u32>,
+}
+
+impl Naming {
+    /// Its node's name: its names joined with `.`.
+    fn name(&self) -> String {
+        self.names.join(".")
+    }
+
+    /// Its names, as its key takes them.
+    fn parts(&self) -> Vec<&str> {
+        self.names.iter().map(String::as_str).collect()
+    }
 }
 
 /// A function's code: a block, or an arrow function's expression.
@@ -58,21 +72,20 @@ struct Definition<'s, 'a> {
 
 impl Lowering<'_> {
     /// A function node: named, or else a callback in a call's arguments (with the name of the
-    /// property it is written as, if it is one) and a lambda anywhere else. Its parameter
-    /// defaults are its first code, then its body.
+    /// property it is written as, if it is one) and a lambda anywhere else. An unnamed method
+    /// (its name empty or computed) keeps its form. Its parameter defaults are its first code,
+    /// then its body.
     fn define(&mut self, definition: Definition<'_, '_>) -> Option<u32> {
-        let (child, form, name) = match &definition.naming {
-            Some(naming) => (
-                Child::Definition(&naming.name),
-                definition.form,
-                Some(&*naming.name),
-            ),
+        let name = definition.naming.as_ref().map(Naming::name);
+        let parts = definition.naming.as_ref().map(Naming::parts);
+        let (child, form, name) = match &parts {
+            Some(parts) => (Child::Definition(parts), definition.form, name.as_deref()),
             None if self.at.within == Within::Argument => (
                 Child::Inline(Inline::Callback),
                 Form::Lambda,
                 definition.property.as_deref(),
             ),
-            None => (Child::Inline(Inline::Lambda), Form::Lambda, None),
+            None => (Child::Inline(Inline::Lambda), definition.form, None),
         };
         let id = self.push(self.at.parent, child, form, name, definition.range)?;
         let body = match definition.code {
@@ -142,7 +155,7 @@ impl Lowering<'_> {
         let naming = match naming {
             Some(naming) => Some(naming),
             None if declaration => it.id.as_ref().map(|id| Naming {
-                name: format!("{}{}", self.prefix, id.name),
+                names: self.qualified(&id.name),
                 doc: Some(start),
             }),
             None => None,
@@ -260,7 +273,7 @@ impl Lowering<'_> {
             return None;
         }
         let naming = Naming {
-            name: format!("{}{name}", self.prefix),
+            names: self.qualified(name),
             doc: self.enclosing.map(|statement| statement.start),
         };
         self.named(value, naming)
@@ -271,9 +284,9 @@ impl Lowering<'_> {
         match values::unwrap(value) {
             Expression::FunctionExpression(it) => self.function(it, Some(naming), None),
             Expression::ArrowFunctionExpression(it) => self.arrow(it, Some(naming), None),
-            Expression::ClassExpression(it) => self.class(it, Some(naming)),
+            Expression::ClassExpression(it) => self.class(it, Some(naming), None),
             Expression::ObjectExpression(it) => {
-                self.object(it, Some(&naming.name));
+                self.object(it, &naming.names);
                 None
             }
             _ => {
@@ -283,37 +296,36 @@ impl Lowering<'_> {
         }
     }
 
-    /// An object literal. The members of one a declaration names (`name`) are named
-    /// definitions qualified by it (`handlers.onCreate`); in any other, a method is an inline
-    /// function written from its key, and in a call's arguments a function-valued property is a
-    /// callback labeled by its property name.
-    pub(super) fn object(&mut self, it: &ObjectExpression<'_>, name: Option<&str>) {
+    /// An object literal, whose names (`object`) are those of the declaration or property that
+    /// names it, if any. In a call's arguments, a function or class as a property's value is a
+    /// callback labeled by its property name; in any other object literal, it is a definition
+    /// named by it, after the object's names (`handlers.onCreate`).
+    pub(super) fn object(&mut self, it: &ObjectExpression<'_>, object: &[String]) {
         for property in &it.properties {
             match property {
                 ObjectPropertyKind::SpreadProperty(spread) => self.visit_expression(&spread.argument),
-                ObjectPropertyKind::ObjectProperty(property) => self.property(property, name),
+                ObjectPropertyKind::ObjectProperty(property) => self.property(property, object),
             }
         }
     }
 
-    fn property(&mut self, property: &ObjectProperty<'_>, object: Option<&str>) {
+    fn property(&mut self, property: &ObjectProperty<'_>, object: &[String]) {
         if property.computed
             && let Some(key) = property.key.as_expression()
         {
             self.visit_expression(key);
         }
-        let naming = object
-            .filter(|_| self.at.within == Within::Body)
-            .and_then(|object| {
-                forms::property_name(&property.key, property.computed).map(|key| (object, key))
-            })
-            .map(|(object, key)| Naming {
-                name: format!("{object}.{key}"),
+        let key = forms::property_name(&property.key, property.computed);
+        let argument = self.at.within == Within::Argument;
+        let naming = key.clone().filter(|_| !argument).map(|key| {
+            let mut names = object.to_vec();
+            names.push(key);
+            Naming {
+                names,
                 doc: Some(property.span.start),
-            });
-        let label = (naming.is_none() && self.at.within == Within::Argument)
-            .then(|| forms::property_name(&property.key, property.computed))
-            .flatten();
+            }
+        });
+        let label = key.filter(|_| argument);
         match &property.value {
             Expression::FunctionExpression(function)
                 if property.method || property.kind != PropertyKind::Init =>
@@ -342,6 +354,9 @@ impl Lowering<'_> {
                     }
                     Expression::ArrowFunctionExpression(it) => {
                         self.arrow(it, None, Some(label));
+                    }
+                    Expression::ClassExpression(it) => {
+                        self.class(it, None, Some(label));
                     }
                     _ => self.visit_expression(value),
                 },
@@ -409,7 +424,7 @@ impl Lowering<'_> {
         if decorator_is_call(expression) {
             self.visit_expression(expression);
         } else {
-            let value = self.values.value(expression, self.source);
+            let value = self.values.value(expression);
             let written = range(expression.span());
             let call = self.call_node(CallNode {
                 address: expression.address(),
@@ -434,11 +449,17 @@ impl Lowering<'_> {
     }
 
     /// A class, named by `naming`, or by its identifier when it is a declaration or a class
-    /// expression written in a body. Its decorators and its base, when that is a call, are calls
-    /// in the enclosing body before it; its members are its code. It is the first node of its
-    /// statement, which runs from its first decorator. A class expression with no name can't be
-    /// keyed: it is left out, and the node around it is truncated.
-    pub(super) fn class(&mut self, it: &Class<'_>, naming: Option<Naming>) -> Option<u32> {
+    /// expression written in a body. Any other class expression is an inline definition, keyed
+    /// like an inline function: a callback in a call's arguments (labeled by the `property` it
+    /// is written as, if any), and a lambda anywhere else. Its decorators and its base, when
+    /// that is a call, are calls in the enclosing body before it; its members are its code. It
+    /// is the first node of its statement, which runs from its first decorator.
+    pub(super) fn class(
+        &mut self,
+        it: &Class<'_>,
+        naming: Option<Naming>,
+        property: Option<String>,
+    ) -> Option<u32> {
         if it.declare {
             return None;
         }
@@ -454,22 +475,10 @@ impl Lowering<'_> {
         let naming = match naming {
             Some(naming) => Some(naming),
             None if declaration || self.at.within == Within::Body => it.id.as_ref().map(|id| Naming {
-                name: format!("{}{}", self.prefix, id.name),
+                names: self.qualified(&id.name),
                 doc: Some(doc),
             }),
             None => None,
-        };
-        let Some(naming) = naming.filter(|_| self.at.within == Within::Body) else {
-            let first = it
-                .decorators
-                .first()
-                .map_or(it.span.start, |decorator| decorator.span.start);
-            self.truncate(self.at.parent);
-            self.cuts.push(ByteRange {
-                start: first.min(it.span.start),
-                end: it.span.end,
-            });
-            return None;
         };
         let range_start = match (export, it.decorators.last()) {
             (Some(export), Some(last)) if export >= last.span.end => export,
@@ -503,24 +512,30 @@ impl Lowering<'_> {
             .tokens
             .before(body.start)
             .map_or(body.start, |token| token.end());
-        let id = self.push(
-            self.at.parent,
-            Child::Definition(&naming.name),
-            Form::Class,
-            Some(&naming.name),
-            span,
-        );
+        let name = naming.as_ref().map(Naming::name);
+        let parts = naming.as_ref().map(Naming::parts);
+        let (child, name) = match &parts {
+            Some(parts) => (Child::Definition(parts), name.as_deref()),
+            None if self.at.within == Within::Argument => {
+                (Child::Inline(Inline::Callback), property.as_deref())
+            }
+            None => (Child::Inline(Inline::Lambda), None),
+        };
+        let id = self.push(self.at.parent, child, Form::Class, name, span);
         self.belong(decorators, id);
         self.belong(bases, id);
         let id = id?;
-        let doc = naming.doc.and_then(|anchor| self.doc_before(anchor));
+        let doc = naming
+            .and_then(|naming| naming.doc)
+            .and_then(|anchor| self.doc_before(anchor));
+        let head = ByteRange { start, end: head_end };
         let node = self.node(id);
-        node.head = Some(ByteRange { start, end: head_end });
+        node.head = Some(head);
         node.body = Some(body);
         node.doc = doc;
         node.stmt = statement;
         self.definitions.insert(it.unstable_address(), id);
-        self.typed.class(id, &it.body.body);
+        self.typed.class(id, head, &it.body.body);
         let saved = self.enter(At {
             parent: id,
             within: Within::Body,
@@ -563,7 +578,7 @@ impl Lowering<'_> {
                     MethodDefinitionKind::Set => (Form::Setter, forms::property_name(&it.key, it.computed)),
                 };
                 let naming = name.map(|name| Naming {
-                    name,
+                    names: vec![name],
                     doc: Some(span.start),
                 });
                 let start = self.after_decorators(it.span, &it.decorators);
@@ -578,10 +593,19 @@ impl Lowering<'_> {
             }
             ClassElement::PropertyDefinition(it) => {
                 let value = it.value.as_ref().filter(|_| !it.declare);
-                self.class_property(span, &it.decorators, &it.key, it.computed, value);
+                let annotation = it.type_annotation.as_deref().filter(|_| !it.r#static);
+                self.class_property(span, &it.decorators, &it.key, it.computed, value, annotation);
             }
             ClassElement::AccessorProperty(it) => {
-                self.class_property(span, &it.decorators, &it.key, it.computed, it.value.as_ref());
+                let annotation = it.type_annotation.as_deref().filter(|_| !it.r#static);
+                self.class_property(
+                    span,
+                    &it.decorators,
+                    &it.key,
+                    it.computed,
+                    it.value.as_ref(),
+                    annotation,
+                );
             }
             ClassElement::StaticBlock(it) => self.statements(&it.body),
             ClassElement::TSIndexSignature(_) => {}
@@ -590,7 +614,9 @@ impl Lowering<'_> {
 
     /// A class field or `accessor` property: a function, class, or object literal as its value
     /// is named by its key (and its decorators belong to that definition); any other value is
-    /// class-level code whose call or conditional expression binds the key.
+    /// class-level code whose call or conditional expression binds the key. An instance
+    /// property's `annotation` links from the definition its value is, or else from the class
+    /// ([`Lowering::annotate`]).
     fn class_property(
         &mut self,
         span: ByteRange,
@@ -598,6 +624,7 @@ impl Lowering<'_> {
         key: &oxc_ast::ast::PropertyKey<'_>,
         computed: bool,
         value: Option<&Expression<'_>>,
+        annotation: Option<&TSTypeAnnotation<'_>>,
     ) {
         let name = forms::property_name(key, computed);
         let defines = name.is_some()
@@ -618,6 +645,7 @@ impl Lowering<'_> {
         }
         let Some(value) = value else {
             self.belong(decorators, None);
+            self.annotate(annotation, None);
             return;
         };
         let enclosing = self.enclosing.replace(span);
@@ -628,7 +656,7 @@ impl Lowering<'_> {
                 self.named(
                     value,
                     Naming {
-                        name,
+                        names: vec![name],
                         doc: Some(span.start),
                     },
                 )
@@ -641,6 +669,7 @@ impl Lowering<'_> {
         self.statement = None;
         self.enclosing = enclosing;
         self.belong(decorators, defined);
+        self.annotate(annotation, defined);
     }
 
     /// A type declaration of `form` named `name`, starting at its `export`, with its head and
@@ -655,13 +684,14 @@ impl Lowering<'_> {
         body: ByteRange,
     ) -> Option<u32> {
         let start = self.export.take().unwrap_or(span.start);
-        let name = format!("{}{name}", self.prefix);
+        let names = self.qualified(name);
+        let parts: Vec<&str> = names.iter().map(String::as_str).collect();
         let written = ByteRange { start, end: span.end };
         let id = self.push(
             self.at.parent,
-            Child::Definition(&name),
+            Child::Definition(&parts),
             form,
-            Some(&name),
+            Some(&names.join(".")),
             written,
         )?;
         let doc = self.doc_before(start);
@@ -739,14 +769,12 @@ impl Lowering<'_> {
             return;
         }
         self.export = None;
-        let outer = self.prefix.len();
-        self.prefix.push_str(&it.id.name);
-        self.prefix.push('.');
+        self.prefix.push(it.id.name.to_string());
         match &it.body {
             TSNamespaceDeclarationBody::TSModuleBlock(block) => self.statements(&block.body),
             TSNamespaceDeclarationBody::TSNamespaceDeclaration(inner) => self.namespace(inner),
         }
-        self.prefix.truncate(outer);
+        self.prefix.pop();
     }
 
     /// `export default`: a declaration starting at `export`, an anonymous one named
@@ -754,7 +782,7 @@ impl Lowering<'_> {
     pub(super) fn export_default(&mut self, it: &ExportDefaultDeclaration<'_>) {
         let start = it.span.start;
         let default = || Naming {
-            name: "default".to_owned(),
+            names: vec!["default".to_owned()],
             doc: Some(start),
         };
         self.export = Some(start);
@@ -763,7 +791,7 @@ impl Lowering<'_> {
                 self.function(function, function.id.is_none().then(default), None);
             }
             ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                self.class(class, class.id.is_none().then(default));
+                self.class(class, class.id.is_none().then(default), None);
             }
             ExportDefaultDeclarationKind::TSInterfaceDeclaration(interface) => self.interface(interface),
             other => {

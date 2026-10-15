@@ -1,0 +1,9 @@
+a.ts#useSaved/call:Map #0 calls `Map` → unknown dynamic
+a.ts#useSaved/return[0]/call:changedMap.get #0 calls `changedMap.get` → unknown dynamic
+a.ts#useArray/call:Array #0 calls `Array` → unknown dynamic
+a.ts#useArray/return[0]/call:rows.map #0 calls `rows.map` → unknown dynamic
+a.ts#chained/return[0]/call:(…).size.toFixed #0 calls `(…).size.toFixed` → unknown dynamic
+a.ts#chained/return[0]/call:(…).size.toFixed/call:Map #0 calls `Map` → unknown dynamic
+a.ts#untouched/call:(…).map #0 calls `(…).map` → builtin ecmascript
+a.ts#untouched/return[0]/call:(…).has #0 calls `(…).has` → builtin ecmascript
+a.ts#untouched/return[0]/call:(…).has/call:Set #0 calls `Set` → builtin ecmascript

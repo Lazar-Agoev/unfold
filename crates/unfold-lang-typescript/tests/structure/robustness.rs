@@ -57,6 +57,42 @@ fn deep_nesting_extracts_or_fails_cleanly() {
     }
 }
 
+/// Files over a megabyte are parsed after estimating how deeply they nest, and many sibling
+/// statements are flat, not deep: thousands of typed functions, and one function holding
+/// thousands of `if` statements, written with or without semicolons, all compile.
+#[test]
+fn large_flat_files_compile() {
+    let functions: String = (0..9_000)
+        .map(|index| {
+            format!(
+                "export function handler{index}(order: Order, count: number): Result {{ if (count > {index}) {{ return save(order); }} return skip(order); }}\n"
+            )
+        })
+        .collect();
+    let functions = format!(
+        "interface Order {{}}\ninterface Result {{}}\ndeclare function save(o: Order): Result;\ndeclare function skip(o: Order): Result;\n{functions}"
+    );
+    let branches: String = (0..20_000)
+        .map(|index| format!("  if (count > {index}) {{ work(count, {index}); }}\n"))
+        .collect();
+    let branches = format!(
+        "declare function work(a: number, b: number): void;\nexport function many(count: number) {{\n{branches}}}\n"
+    );
+    let unterminated: String = (0..30_000)
+        .map(|index| format!("export const value{index}: number = compute({index}, \"{index}\")\n"))
+        .collect();
+    let unterminated = format!("declare function compute(a: number, b: string): number;\n{unterminated}");
+    for (path, source) in [
+        ("functions.ts", &functions),
+        ("branches.ts", &branches),
+        ("unterminated.ts", &unterminated),
+    ] {
+        assert!(source.len() > 800_000, "{path} is {} bytes", source.len());
+        compile_source(path, source).valid();
+    }
+    assert!(functions.len() > 1 << 20);
+}
+
 /// Blocks nested past the depth limit are left out, and the block they would sit in is marked
 /// `truncated`: the graph stays valid, because the census leaves out the calls that were cut.
 #[test]

@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use unfold_core::vocab::{Form, Language, NodeKind};
-use unfold_core::{ByteRange, Input, Key, RepoPath};
+use unfold_core::{ByteRange, Input, Key, LineBreaks, RepoPath};
 
 use super::{CodeSources, PathStep, Target, settings_input};
 use crate::catalog::{self, Start};
@@ -29,6 +29,15 @@ impl Origin {
             Self::Source(tree) => tree.path(),
             Self::Input(input) => &input.path,
             Self::Outside(path) => path,
+        }
+    }
+
+    /// What ends the file's lines: its language's line breaks for a source, newlines for any
+    /// other file.
+    pub(super) fn line_breaks(&self) -> LineBreaks {
+        match self {
+            Self::Source(tree) => LineBreaks::of(tree.language()),
+            Self::Input(_) | Self::Outside(_) => LineBreaks::Newlines,
         }
     }
 }

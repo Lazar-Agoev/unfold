@@ -198,7 +198,9 @@
 ( src/orders_playground/features/decorators.py )   key=src/orders_playground/features/decorators.py#
   imports · collections.abc, functools, typing
   ▸ @traced   key=src/orders_playground/features/decorators.py#/call:traced
-  · @lru_cache, @cache, @overload, @overload, @final   5 calls   key=src/orders_playground/features/decorators.py#/call:lru_cache src/orders_playground/features/decorators.py#/call:cache src/orders_playground/features/decorators.py#/call:overload src/orders_playground/features/decorators.py#/call:overload[1] src/orders_playground/features/decorators.py#/call:final
+  · @lru_cache, @cache   2 calls   key=src/orders_playground/features/decorators.py#/call:lru_cache src/orders_playground/features/decorators.py#/call:cache
+  ⋯ 4 lines
+  · @final   key=src/orders_playground/features/decorators.py#/call:final
 ( End )
 
 === src/orders_playground/features/decorators.py#traced
@@ -232,19 +234,7 @@
 
 === src/orders_playground/features/decorators.py#stringify
 ( stringify )   key=src/orders_playground/features/decorators.py#stringify
-  runs when defined · @overload   key=src/orders_playground/features/decorators.py#/call:overload
-  ⋯ 1 line
-( End )
-
-=== src/orders_playground/features/decorators.py#stringify[1]
-( stringify )   key=src/orders_playground/features/decorators.py#stringify[1]
-  runs when defined · @overload   key=src/orders_playground/features/decorators.py#/call:overload[1]
-  ⋯ 1 line
-( End )
-
-=== src/orders_playground/features/decorators.py#stringify[2]
-( stringify )   key=src/orders_playground/features/decorators.py#stringify[2]
-  RETURN str → End   key=src/orders_playground/features/decorators.py#stringify[2]/return[0]
+  RETURN str → End   key=src/orders_playground/features/decorators.py#stringify/return[0]
 ( End )
 
 === src/orders_playground/features/decorators.py#Named

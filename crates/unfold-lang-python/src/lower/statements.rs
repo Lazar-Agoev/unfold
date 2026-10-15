@@ -256,13 +256,19 @@ impl<'a> Lowering<'a> {
 
     /// `def` and `async def`: its decorators, then what runs when it is defined (type parameter
     /// bounds, defaults, and annotations, role `default`), then the function and its body. The
-    /// function is its statement's first block: its `stmt` runs from its first decorator.
+    /// function is its statement's first block: its `stmt` runs from its first decorator. A
+    /// `typing.overload` stub is left out with everything written in it, as TypeScript leaves
+    /// out overload signatures, so the implementation takes the plain key.
     fn function(
         &mut self,
         stmt: &'a Stmt,
         function: &'a StmtFunctionDef,
         place: Place,
     ) -> Result<(), SourceFailure> {
+        if self.proofs.is_stub(function) {
+            self.lowered.stubs.push(bytes(stmt.range()));
+            return Ok(());
+        }
         let start = self.owned.len();
         self.decorators(&function.decorator_list, place)?;
         let header = place.with_role(CallRole::Default);
@@ -283,7 +289,7 @@ impl<'a> Lowering<'a> {
         let keyword = self.keyword(stmt.range(), &function.decorator_list);
         let name = self.slice(function.name.range);
         let form = self.proofs.function_form(function);
-        let id = self.push(place, Child::Definition(name), form, span(keyword, stmt.end()))?;
+        let id = self.push(place, Child::Definition(&[name]), form, span(keyword, stmt.end()))?;
         self.own(start, id);
         let body = suite(&function.body, stmt.end());
         let signature_end = function
@@ -331,7 +337,7 @@ impl<'a> Lowering<'a> {
         let name = self.slice(class.name.range);
         let id = self.push(
             place,
-            Child::Definition(name),
+            Child::Definition(&[name]),
             Form::Class,
             span(keyword, stmt.end()),
         )?;

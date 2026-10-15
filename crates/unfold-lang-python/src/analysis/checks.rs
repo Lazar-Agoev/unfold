@@ -4,8 +4,6 @@
 //!
 //! - `return` outside a function; `break` or `continue` outside a loop;
 //! - `return`, `break`, or `continue` leaving an `except*` handler;
-//! - with grammar 3.14, `return`, `break`, or `continue` leaving a `finally` block (PEP 765; the
-//!   proof of concept's grammar rejected these, though CPython 3.14 only warns);
 //! - a duplicate parameter name;
 //! - a bare `except:` that is not the last handler;
 //! - in `match`: an irrefutable case before the last one, an irrefutable alternative before
@@ -28,10 +26,6 @@ pub(crate) struct Flags {
     pub(crate) in_loop: bool,
     /// Inside an `except*` handler, not inside a loop or function nested in it.
     pub(crate) except_group: bool,
-    /// Inside a `finally` block of the current function.
-    pub(crate) finally_block: bool,
-    /// Inside a `finally` block whose nearest enclosing loop is outside it.
-    pub(crate) finally_loop: bool,
 }
 
 impl Flags {
@@ -40,8 +34,6 @@ impl Flags {
         function: true,
         in_loop: false,
         except_group: false,
-        finally_block: false,
-        finally_loop: false,
     };
 
     /// The flags inside a loop body.
@@ -49,16 +41,6 @@ impl Flags {
         Self {
             in_loop: true,
             except_group: false,
-            finally_loop: false,
-            ..self
-        }
-    }
-
-    /// The flags inside a `finally` block.
-    pub(crate) fn enter_finally(self) -> Self {
-        Self {
-            finally_block: true,
-            finally_loop: self.in_loop,
             ..self
         }
     }
@@ -73,12 +55,7 @@ pub(crate) enum Transfer {
 }
 
 /// Checks a `return`, `break`, or `continue` at `at` against its enclosing constructs.
-pub(crate) fn transfer(
-    flags: Flags,
-    transfer: Transfer,
-    at: TextSize,
-    pep765: bool,
-) -> Result<(), SourceFailure> {
+pub(crate) fn transfer(flags: Flags, transfer: Transfer, at: TextSize) -> Result<(), SourceFailure> {
     let word = match transfer {
         Transfer::Return => "return",
         Transfer::Break => "break",
@@ -88,12 +65,6 @@ pub(crate) fn transfer(
         Transfer::Return if !flags.function => Some(format!("'{word}' outside function")),
         Transfer::Break | Transfer::Continue if !flags.in_loop => Some(format!("'{word}' outside loop")),
         _ if flags.except_group => Some(format!("'{word}' cannot appear in an except* block")),
-        Transfer::Return if pep765 && flags.finally_block => {
-            Some(format!("'{word}' cannot exit a 'finally' block"))
-        }
-        Transfer::Break | Transfer::Continue if pep765 && flags.finally_loop => {
-            Some(format!("'{word}' cannot exit a 'finally' block"))
-        }
         _ => None,
     };
     message.map_or(Ok(()), |message| Err(failure(message, Some(at))))

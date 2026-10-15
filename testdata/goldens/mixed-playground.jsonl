@@ -344,13 +344,9 @@
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]","parent":"py-orders/src/orders_playground/features/decorators.py#normalize_sku","kind":"exit","form":"return","range":[544,572],"lines":[23,23],"stmt":[544,572],"value":[551,572]}
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper","parent":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]","kind":"call","form":"call","name":"value.strip().upper","range":[551,572],"lines":[23,23],"head":[551,570],"flags":["exit_value"]}
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper/call:value.strip","parent":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper","kind":"call","form":"call","name":"value.strip","range":[551,564],"lines":[23,23],"head":[551,562]}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#/call:overload","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"call","form":"call","name":"overload","range":[576,584],"lines":[26,26],"head":[576,584],"role":"decorator","for":"py-orders/src/orders_playground/features/decorators.py#stringify"}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"function","form":"function","name":"stringify","range":[585,622],"lines":[27,27],"head":[585,617],"body":[619,622],"stmt":[575,622]}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#/call:overload[1]","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"call","form":"call","name":"overload","range":[626,634],"lines":[30,30],"head":[626,634],"role":"decorator","for":"py-orders/src/orders_playground/features/decorators.py#stringify[1]"}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify[1]","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"function","form":"function","name":"stringify","range":[635,672],"lines":[31,31],"head":[635,667],"body":[669,672],"stmt":[625,672]}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"function","form":"function","name":"stringify","range":[675,736],"lines":[34,35],"head":[675,713],"body":[719,736],"stmt":[675,736]}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]","parent":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","kind":"exit","form":"return","range":[719,736],"lines":[35,35],"stmt":[719,736],"value":[726,736]}
-{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]/call:str","parent":"py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]","kind":"call","form":"call","name":"str","range":[726,736],"lines":[35,35],"head":[726,729],"flags":["exit_value"]}
+{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"function","form":"function","name":"stringify","range":[675,736],"lines":[34,35],"head":[675,713],"body":[719,736],"stmt":[675,736]}
+{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify/return[0]","parent":"py-orders/src/orders_playground/features/decorators.py#stringify","kind":"exit","form":"return","range":[719,736],"lines":[35,35],"stmt":[719,736],"value":[726,736]}
+{"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#stringify/return[0]/call:str","parent":"py-orders/src/orders_playground/features/decorators.py#stringify/return[0]","kind":"call","form":"call","name":"str","range":[726,736],"lines":[35,35],"head":[726,729],"flags":["exit_value"]}
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#Named","parent":"py-orders/src/orders_playground/features/decorators.py#","kind":"class","form":"class","name":"Named","range":[739,800],"lines":[38,40],"head":[739,750],"body":[756,800],"stmt":[739,800]}
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#Named.name","parent":"py-orders/src/orders_playground/features/decorators.py#Named","kind":"function","form":"method","name":"name","range":[756,800],"lines":[39,40],"head":[756,777],"body":[787,800],"stmt":[756,800]}
 {"t":"node","key":"py-orders/src/orders_playground/features/decorators.py#Named.name/return[0]","parent":"py-orders/src/orders_playground/features/decorators.py#Named.name","kind":"exit","form":"return","range":[787,800],"lines":[40,40],"stmt":[787,800],"value":[794,800]}
@@ -402,16 +398,10 @@
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#normalize_sku","seq":1,"kind":"types","range":[535,538],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper","seq":0,"kind":"calls","range":[551,570],"text":"value.strip().upper","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#normalize_sku/return[0]/call:value.strip().upper/call:value.strip","seq":0,"kind":"calls","range":[551,562],"text":"value.strip","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#/call:overload","seq":0,"kind":"calls","range":[576,584],"text":"overload","outcome":"library","to":"python:typing"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify","seq":0,"kind":"types","range":[606,609],"text":"int","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify","seq":1,"kind":"types","range":[614,617],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#/call:overload[1]","seq":0,"kind":"calls","range":[626,634],"text":"overload","outcome":"library","to":"python:typing"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[1]","seq":0,"kind":"types","range":[656,659],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[1]","seq":1,"kind":"types","range":[664,667],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","seq":0,"kind":"types","range":[696,699],"text":"int","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","seq":1,"kind":"types","range":[702,705],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","seq":2,"kind":"types","range":[710,713],"text":"str","outcome":"builtin","to":"python:builtins"}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]/call:str","seq":0,"kind":"calls","range":[726,729],"text":"str","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify","seq":0,"kind":"types","range":[696,699],"text":"int","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify","seq":1,"kind":"types","range":[702,705],"text":"str","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify","seq":2,"kind":"types","range":[710,713],"text":"str","outcome":"builtin","to":"python:builtins"}
+{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#stringify/return[0]/call:str","seq":0,"kind":"calls","range":[726,729],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#Named.name","seq":0,"kind":"types","range":[774,777],"text":"str","outcome":"builtin","to":"python:builtins"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#/call:final","seq":0,"kind":"calls","range":[804,809],"text":"final","outcome":"library","to":"python:typing"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#Labels","seq":0,"kind":"extends","range":[823,828],"text":"Named","outcome":"project","to":"py-orders/src/orders_playground/features/decorators.py#Named"}
@@ -438,15 +428,13 @@
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#examples/call:Labels.from_text","seq":0,"kind":"calls","range":[1385,1401],"text":"Labels.from_text","outcome":"project","to":"py-orders/src/orders_playground/features/decorators.py#Labels.from_text","bound":1}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label","seq":0,"kind":"calls","range":[1451,1464],"text":"invoice_label","outcome":"unknown","to":"wrapper"}
 {"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#examples/return[0]/call:invoice_label/call:labels.name","seq":0,"kind":"calls","range":[1465,1476],"text":"labels.name","outcome":"project","to":"py-orders/src/orders_playground/features/decorators.py#Labels.name","bound":1}
-{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#examples/return[0]/call:stringify","seq":0,"kind":"calls","range":[1481,1490],"text":"stringify","outcome":"project","to":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","bound":0}
+{"t":"link","from":"py-orders/src/orders_playground/features/decorators.py#examples/return[0]/call:stringify","seq":0,"kind":"calls","range":[1481,1490],"text":"stringify","outcome":"project","to":"py-orders/src/orders_playground/features/decorators.py#stringify","bound":0}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#traced","returns":"Callable","returns_range":[156,164]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#traced.decorate","returns":"Callable","returns_range":[200,208]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#traced.decorate.wrapped","returns":"object","returns_range":[285,291]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#invoice_label","returns":"str","returns_range":[455,458]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#normalize_sku","returns":"str","returns_range":[535,538]}
-{"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#stringify","returns":"str","returns_range":[614,617]}
-{"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#stringify[1]","returns":"str","returns_range":[664,667]}
-{"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","returns":"str","returns_range":[710,713]}
+{"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#stringify","returns":"str","returns_range":[710,713]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#Named.name","returns":"str","returns_range":[774,777]}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#Labels.__init__"}
 {"t":"signature","node":"py-orders/src/orders_playground/features/decorators.py#Labels.value","returns":"str","returns_range":[933,936]}
@@ -461,9 +449,7 @@
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#traced.decorate.wrapped","index":1,"range":[264,280],"kind":"keywords","name":"kwargs","type":"object","type_range":[274,280]}
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#invoice_label","index":0,"range":[437,450],"kind":"positional","name":"order_id","type":"str","type_range":[447,450]}
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#normalize_sku","index":0,"range":[520,530],"kind":"positional","name":"value","type":"str","type_range":[527,530]}
-{"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#stringify","index":0,"range":[599,609],"kind":"positional","name":"value","type":"int","type_range":[606,609]}
-{"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#stringify[1]","index":0,"range":[649,659],"kind":"positional","name":"value","type":"str","type_range":[656,659]}
-{"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#stringify[2]","index":0,"range":[689,705],"kind":"positional","name":"value","type":"int | str","type_range":[696,705]}
+{"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#stringify","index":0,"range":[689,705],"kind":"positional","name":"value","type":"int | str","type_range":[696,705]}
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#Named.name","index":0,"range":[765,769],"kind":"positional","name":"self"}
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#Labels.__init__","index":0,"range":[848,852],"kind":"positional","name":"self"}
 {"t":"parameter","node":"py-orders/src/orders_playground/features/decorators.py#Labels.__init__","index":1,"range":[854,864],"kind":"positional","name":"value","type":"str","type_range":[861,864]}
@@ -479,7 +465,7 @@
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#traced.decorate.wrapped/return[0]/call:fn","index":1,"range":[322,330],"expand":"keywords"}
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#/call:traced","index":0,"range":[385,394],"parameter":0}
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#/call:lru_cache","index":0,"range":[407,417],"keyword":"maxsize"}
-{"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#stringify[2]/return[0]/call:str","index":0,"range":[730,735]}
+{"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#stringify/return[0]/call:str","index":0,"range":[730,735]}
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#Labels.clean/return[0]/call:normalize_sku","index":0,"range":[1147,1152],"parameter":0}
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#Labels.from_text/return[0]/call:cls","index":0,"range":[1238,1253]}
 {"t":"argument","call":"py-orders/src/orders_playground/features/decorators.py#Labels.from_text/return[0]/call:cls/call:cls.clean","index":0,"range":[1248,1252],"parameter":0}
@@ -3014,7 +3000,7 @@
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:validateOrder","seq":0,"kind":"calls","range":[542,555],"text":"validateOrder","outcome":"project","to":"ts-orders/src/lib/validate.ts#validateOrder","bound":0}
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:this.payments.charge","seq":0,"kind":"calls","range":[568,588],"text":"this.payments.charge","outcome":"unknown","to":"overridden"}
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:randomUUID","seq":0,"kind":"calls","range":[650,660],"text":"randomUUID","outcome":"library","to":"node:crypto"}
-{"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:(…).toISOString","seq":0,"kind":"calls","range":[714,736],"text":"Date.toISOString","outcome":"builtin","to":"ecmascript"}
+{"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:(…).toISOString","seq":0,"kind":"calls","range":[714,736],"text":"(…).toISOString","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:(…).toISOString/call:Date","seq":0,"kind":"calls","range":[718,722],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:this.repo.insert","seq":0,"kind":"calls","range":[751,767],"text":"this.repo.insert","outcome":"project","to":"ts-orders/src/db/repository.ts#OrderRepository.insert","bound":0}
 {"t":"link","from":"ts-orders/src/services/order-service.ts#OrderService.place/call:events.emit","seq":0,"kind":"calls","range":[780,791],"text":"events.emit","outcome":"project","to":"ts-orders/src/services/events.ts#events.emit","bound":0}

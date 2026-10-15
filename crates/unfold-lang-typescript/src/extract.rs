@@ -171,7 +171,7 @@ fn extract_here(
                 .get(site.range.start as usize..site.range.end as usize)
                 .unwrap_or_default();
             TypeRefFact::new(
-                lowered.owner(site.range),
+                lowered.owners.owner(site.range),
                 site.range,
                 name,
                 site.qualified,

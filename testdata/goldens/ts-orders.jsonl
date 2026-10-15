@@ -1139,7 +1139,7 @@
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:validateOrder","seq":0,"kind":"calls","range":[542,555],"text":"validateOrder","outcome":"project","to":"src/lib/validate.ts#validateOrder","bound":0}
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:this.payments.charge","seq":0,"kind":"calls","range":[568,588],"text":"this.payments.charge","outcome":"unknown","to":"overridden"}
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:randomUUID","seq":0,"kind":"calls","range":[650,660],"text":"randomUUID","outcome":"library","to":"node:crypto"}
-{"t":"link","from":"src/services/order-service.ts#OrderService.place/call:(…).toISOString","seq":0,"kind":"calls","range":[714,736],"text":"Date.toISOString","outcome":"builtin","to":"ecmascript"}
+{"t":"link","from":"src/services/order-service.ts#OrderService.place/call:(…).toISOString","seq":0,"kind":"calls","range":[714,736],"text":"(…).toISOString","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:(…).toISOString/call:Date","seq":0,"kind":"calls","range":[718,722],"text":"Date","outcome":"builtin","to":"ecmascript"}
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:this.repo.insert","seq":0,"kind":"calls","range":[751,767],"text":"this.repo.insert","outcome":"project","to":"src/db/repository.ts#OrderRepository.insert","bound":0}
 {"t":"link","from":"src/services/order-service.ts#OrderService.place/call:events.emit","seq":0,"kind":"calls","range":[780,791],"text":"events.emit","outcome":"project","to":"src/services/events.ts#events.emit","bound":0}

@@ -38,7 +38,8 @@ export class UnfoldApp {
   static async launch(sandbox: Sandbox): Promise<UnfoldApp> {
     const electron = await _electron.launch({
       executablePath: electronExecutable(),
-      args: [desktopDir, `--user-data-dir=${sandbox.userData}`],
+      // A window another window covers, or on another Space, stops drawing frames; journeys wait for frames.
+      args: ["--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", desktopDir, `--user-data-dir=${sandbox.userData}`],
       env: appEnv(sandbox),
     });
     const logs: string[] = [];

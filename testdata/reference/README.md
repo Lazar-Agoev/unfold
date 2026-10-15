@@ -1,8 +1,9 @@
 # Oracles
 
 The precision and recall gates ([testing](../../docs/testing.md#precision-and-recall-gates)): every call,
-construction, and passed definition Unfold resolves must name the target an independent oracle names, and recall
-stays at or above a floor that only rises. The oracles' answers are cached here, keyed by a hash of each corpus, so
+construction, and passed definition Unfold resolves must name the target an independent oracle names, every
+`library` or `builtin` call must name the module the oracle finds it in, and recall stays at or above a floor that
+only rises. The oracles' answers are cached here, keyed by a hash of each corpus, so
 `cargo xtask oracles check` needs no Node.
 
 ```text
@@ -49,10 +50,12 @@ Only its saved Pyright rows and its corpus copies are read; nothing is written t
 
 ## Oracle files
 
-One JSON object per line: a header, then `call` rows (one per call site, with the oracle's `target` or an `outcome`
-without one, and an optional `refused` policy refusal beside a target) and `reference` rows (definitions passed as
-arguments, by `site` and `position`). Sites and targets are named by node key. The fields and the TypeScript rules
-are in [tools/oracles/README.md](../../tools/oracles/README.md#typescript-checker-oracle).
+One JSON object per line: a header (format version 2), then `call` rows (one per call site, with the oracle's
+`target` or an `outcome` without one, an optional `refused` policy refusal beside a target, and for an `external`
+outcome the `module` label of where the oracle finds the callee declared) and `reference` rows (definitions passed as
+arguments, by `site` and `position`). Sites and targets are named by node key, modules by Unfold's module labels
+(`ecmascript`, `global`, `python:logging`). The fields and the TypeScript rules are in
+[tools/oracles/README.md](../../tools/oracles/README.md#typescript-checker-oracle).
 
 - **`corpus_sha256`** hashes the corpus: a `sha256sum`-style listing of the language's sources and every
   configuration input of the graph. `check` recomputes it from its compile; when it differs the check fails with
@@ -64,17 +67,34 @@ are in [tools/oracles/README.md](../../tools/oracles/README.md#typescript-checke
   converted by `refresh`: paths through `corpora.toml`'s `paths`, UTF-16 offsets to UTF-8 bytes through each file's
   text, a site named by the call node with exactly its range, and a target by the definition node that ends where
   Pyright's does and starts between its statement's start (first decorator, or `async`) and its `def` or `class`
-  keyword. A row counts only when Pyright's targets are exactly one indexed declaration. Before converting, `refresh`
-  checks that the corpus's sources are the ones the rows describe (`poc_source_sha256` in `corpora.lock.toml`). No
-  Pyright runs, and no row is invented: a corpus without saved rows has no Python oracle.
+  keyword. A row counts only when Pyright's targets are exactly one indexed declaration. One target outside the
+  corpus is `external`, with the `module` its typeshed stub declares it in, labeled `python:<first part>` as Unfold
+  labels the standard library (`typeshed/stdlib/logging/config.pyi` gives `python:logging`, `builtins.pyi`
+  `python:builtins`). Before converting, `refresh` checks that the corpus's sources are the ones the rows describe
+  (`poc_source_sha256` in `corpora.lock.toml`). No Pyright runs, and no row is invented: a corpus without saved rows
+  has no Python oracle.
 
 ## The gates
 
 - **Precision (exact).** Every `calls` link of the language that reaches a project definition, and every `passes`
   link (at the argument whose range holds the passed name), must name the oracle's target for that call node and
-  position. Anything else (another target, no target, or no oracle site) is a disagreement and fails, unless
-  `justified.toml` lists it with a written reason. An entry names the corpus, language, call node, position, and
-  Unfold's target, and must match exactly one disagreement; an entry that matches nothing is stale and fails.
+  position. Anything else (another target, no target, or no oracle site) is a disagreement and fails.
+- **Library and builtin calls (exact, where the oracle answers).** A `calls` link that is `library` or `builtin`
+  fails when the oracle names a project target for its site, and when the oracle finds the callee outside the
+  corpus in another module than Unfold's label. Where the oracle has neither answer (`unknown`, `ambiguous`, a
+  policy refusal), the label isn't compared. These comparisons count in precision. What each oracle can check:
+  - **TypeScript:** whether the callee is declared in ECMAScript's standard editions (`ecmascript`) or the rest of
+    the default library (`global`). The corpora have no `node_modules`, so the checker can't see packages or
+    `@types/node`, and those labels (`express`, `node:fs`, Node's `process`) aren't compared.
+  - **Python:** the module of a callee Pyright's saved answer names as one standard-library declaration:
+    `ValueError(…)` is `python:builtins` and `json.load` `python:json`. Pyright's policy names no target for
+    overloaded or decorated stubs (`dict.get`, `datetime.now`, `os.environ.get`) or classes with a decorator
+    (`int`), so those labels aren't compared, and the saved rows were made without third-party packages installed,
+    so third-party labels (`fastapi`) never are.
+- **Justified disagreements.** A disagreement passes when `justified.toml` lists it with a written reason. An entry
+  names the corpus, language, call node, position, and Unfold's target (for a `library` or `builtin` call, its
+  outcome and label: `library python:os`), and must match exactly one disagreement; an entry that matches nothing is
+  stale and fails.
 - **Recall (floors).** The call sites the oracle resolves (one target, no policy refusal) that Unfold resolves to
   the same target, over the call sites the oracle resolves. Passed definitions are reported, not gated. Each floor
   in `floors.toml` records its counts; recall passes when it is at least that ratio, compared exactly, and the check

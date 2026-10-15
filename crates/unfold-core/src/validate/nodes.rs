@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 use super::{Census, Checker, Subject, links, records};
 use crate::key::{Callee, Child, KeyBuilder, ParsedKey, Segment};
 use crate::model::{FileGraph, Node};
-use crate::text::{ByteRange, Snapshot};
+use crate::text::{ByteRange, LineBreaks, Snapshot};
 use crate::vocab::{CallRole, FileState, Flag, Form, Inline, Language, NodeKind};
 
 pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph, census: Option<&dyn Census>) {
@@ -30,8 +30,8 @@ pub(super) fn check(checker: &mut Checker<'_>, file: &FileGraph, census: Option<
 pub(super) struct Tree {
     /// Each node's children in preorder (only children whose parent precedes them).
     children: Vec<Vec<u32>>,
-    /// Each node's last key segment (none for a module key), or why its key isn't a block key.
-    steps: Vec<Result<Option<Segment>, String>>,
+    /// Each node's key segments (none for a module key), or why its key isn't a block key.
+    segments: Vec<Result<Vec<Segment>, String>>,
 }
 
 impl Tree {
@@ -44,16 +44,31 @@ impl Tree {
                 children[parent as usize].push(u32::try_from(index).unwrap_or(u32::MAX));
             }
         }
-        let steps = file
+        let segments = file
             .nodes
             .iter()
             .map(|node| match node.key.parse() {
-                Ok(ParsedKey::Block(block)) => Ok(block.segments().last().cloned()),
+                Ok(ParsedKey::Block(block)) => Ok(block.segments().to_vec()),
                 Ok(_) => Err("the key is not a block key".to_owned()),
                 Err(error) => Err(error.to_string()),
             })
             .collect();
-        Self { children, steps }
+        Self { children, segments }
+    }
+
+    /// The names node `id`'s key writes after the key of `scope`, the definition it is named
+    /// in; `None` unless its key is `scope`'s followed by names only.
+    fn names_after(&self, id: u32, scope: u32) -> Option<Vec<&str>> {
+        let segments = self.segments.get(id as usize)?.as_ref().ok()?;
+        let outer = self.segments.get(scope as usize)?.as_ref().ok()?;
+        let names = segments.strip_prefix(outer.as_slice())?;
+        names
+            .iter()
+            .map(|segment| match segment {
+                Segment::Name { name, .. } => Some(&**name),
+                _ => None,
+            })
+            .collect()
     }
 
     /// The children of node `id`, in preorder.
@@ -63,22 +78,26 @@ impl Tree {
 
     /// Whether node `id`'s key ends in `callback[n]`.
     fn is_callback(&self, id: u32) -> bool {
+        let last = self
+            .segments
+            .get(id as usize)
+            .and_then(|segments| segments.as_ref().ok()?.last());
         matches!(
-            self.steps.get(id as usize),
-            Some(Ok(Some(Segment::Inline {
+            last,
+            Some(Segment::Inline {
                 inline: Inline::Callback,
                 ..
-            })))
+            })
         )
     }
 }
 
-/// Whether node `id` is an expression block: a call, a ternary, a comprehension, or an inline
-/// function (unnamed, or a callback labeled by the property it is written as).
-fn is_expression(tree: &Tree, id: u32, node: &Node) -> bool {
+/// Whether a node is an expression block: a call, a ternary, a comprehension, or a function or
+/// class written in an expression (an inline definition, or one an object literal's property
+/// names).
+fn is_expression(node: &Node) -> bool {
     match node.kind() {
-        NodeKind::Call => true,
-        NodeKind::Function => node.name.is_none() || tree.is_callback(id),
+        NodeKind::Call | NodeKind::Function | NodeKind::Class => true,
         _ => matches!(node.form, Form::Ternary | Form::Comprehension),
     }
 }
@@ -217,7 +236,7 @@ fn check_nodes(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
 
 /// The containment grammar: what a node may sit in.
 fn check_containment(checker: &mut Checker<'_>, tree: &Tree, id: u32, node: &Node, parent: &Node) {
-    let expression = is_expression(tree, id, node);
+    let expression = is_expression(node);
     let problem = match parent.kind() {
         NodeKind::Type => Some("a type contains nothing".to_owned()),
         kind if kind.is_control() => match node.kind() {
@@ -335,7 +354,7 @@ fn check_fields(checker: &mut Checker<'_>, file: &FileGraph, id: u32, node: &Nod
         (_, Some(name)) if name.is_empty() => {
             checker.report(subject(), "name is empty; an absent name is omitted");
         }
-        (NodeKind::Class | NodeKind::Type, None) => {
+        (NodeKind::Type, None) => {
             checker.report(subject(), format!("{} nodes need their name", node.form));
         }
         (NodeKind::Call, None) => checker.report(subject(), "a call needs its callee as its name"),
@@ -343,8 +362,8 @@ fn check_fields(checker: &mut Checker<'_>, file: &FileGraph, id: u32, node: &Nod
             subject(),
             format!("a callee is cut at {} characters", Callee::MAX_CHARS),
         ),
-        (NodeKind::Function, None) if node.form != Form::Lambda => {
-            checker.report(subject(), "an unnamed function is a lambda");
+        (NodeKind::Function, None) if matches!(node.form, Form::Function | Form::Constructor) => {
+            checker.report(subject(), "an unnamed function is a lambda or a method");
         }
         (
             NodeKind::Module
@@ -602,8 +621,8 @@ fn check_keys(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
             // Reported by the node checks; later keys can't be derived without the tree.
             return;
         };
-        let step = match tree.steps.get(index) {
-            Some(Ok(step)) => step.as_ref(),
+        let step = match tree.segments.get(index) {
+            Some(Ok(segments)) => segments.last(),
             Some(Err(problem)) => {
                 checker.report(subject(), problem.as_str());
                 return;
@@ -611,11 +630,12 @@ fn check_keys(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
             None => return,
         };
         let callee;
+        let names;
         let child = match (node.kind(), &node.name, step) {
             (NodeKind::Module, ..) => return,
             // A callback may carry the name of the property it is written as; its key is still
             // its position.
-            (NodeKind::Function, name, Some(Segment::Inline { inline, .. })) => {
+            (NodeKind::Function | NodeKind::Class, name, Some(Segment::Inline { inline, .. })) => {
                 if name.is_some() && *inline != Inline::Callback {
                     checker.report(
                         subject(),
@@ -624,13 +644,25 @@ fn check_keys(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
                 }
                 Child::Inline(*inline)
             }
-            (NodeKind::Class | NodeKind::Type | NodeKind::Function, Some(name), _) => Child::Definition(name),
+            // How a qualified name (`handlers.onCreate`) splits into names is read from the key,
+            // as a call's literal is, and must spell the node's name.
+            (NodeKind::Class | NodeKind::Type | NodeKind::Function, Some(name), _) => {
+                let scope = definition_above(file, parent);
+                names = tree
+                    .names_after(id, scope)
+                    .filter(|names| names.join(".") == **name)
+                    .unwrap_or_else(|| vec![&**name]);
+                Child::Definition(&names)
+            }
             // Reported by the node checks.
-            (NodeKind::Class | NodeKind::Type, None, _) => return,
-            (NodeKind::Function, None, _) => {
+            (NodeKind::Type, None, _) => return,
+            (NodeKind::Function | NodeKind::Class, None, _) => {
                 checker.report(
                     subject(),
-                    "an unnamed function's key does not end in callback[n] or lambda[n]",
+                    format!(
+                        "an unnamed {}'s key does not end in callback[n] or lambda[n]",
+                        node.kind()
+                    ),
                 );
                 return;
             }
@@ -671,14 +703,25 @@ fn check_keys(checker: &mut Checker<'_>, file: &FileGraph, tree: &Tree) {
     }
 }
 
+/// The nearest definition at or above node `id`: the module when there is none.
+fn definition_above(file: &FileGraph, mut id: u32) -> u32 {
+    while let Some(node) = file.nodes.get(id as usize) {
+        match node.parent {
+            Some(parent) if !node.kind().is_definition() => id = parent,
+            _ => break,
+        }
+    }
+    id
+}
+
 /// Checks a current file's ranges against its snapshot: the module's length, every node's
 /// lines, character boundaries, and surrounding trivia. Link and typed-record ranges are
 /// checked for character boundaries only: a Python string annotation's name lies inside its
 /// quotes.
 fn check_text(checker: &mut Checker<'_>, file: &FileGraph, snapshot: &Snapshot) {
     let text = snapshot.text();
-    let lines = snapshot.line_index();
     let language = file.file.language;
+    let lines = snapshot.line_index(LineBreaks::of(language));
     if let Some(module) = file.nodes.first()
         && module.range.end != snapshot.len()
     {

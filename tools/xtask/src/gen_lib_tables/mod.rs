@@ -445,8 +445,8 @@ fn render(
     lists(
         &mut out,
         "/// The method names of each ECMAScript interface (`Array`, `String`, `ObjectConstructor`), with\n\
-         /// those of the interfaces it extends, and the functions of each value namespace (`Reflect`).\n\
-         /// Sorted by name, each with its methods sorted by bytes.",
+         /// those of the interfaces it extends, and the values of each value namespace (`Reflect`'s\n\
+         /// functions, `Intl`'s `Collator`). Sorted by name, each with its names sorted by bytes.",
         "ECMASCRIPT_METHODS",
         &ecmascript.methods,
     );

@@ -2,12 +2,12 @@ a.ts#patched/call:JSON.parse #0 calls `JSON.parse` → unknown dynamic
 a.ts#patched/call:globalThis.JSON.parse #0 calls `globalThis.JSON.parse` → unknown dynamic
 a.ts#patched/call:rows.map #0 calls `rows.map` → unknown dynamic
 a.ts#patched/call:(…).map #0 calls `(…).map` → unknown dynamic
-a.ts#patched/call:"".trim #0 calls `(…).trim` → unknown dynamic
+a.ts#patched/call:"".trim #0 calls `"".trim` → unknown dynamic
 a.ts#patched/call:n.toFixed #0 calls `n.toFixed` → unknown dynamic
 a.ts#patched/call:Math.max #0 calls `Math.max` → unknown dynamic
 a.ts#untouched/call:JSON.stringify #0 calls `JSON.stringify` → builtin ecmascript
 a.ts#untouched/call:rows.filter #0 calls `rows.filter` → builtin ecmascript
-a.ts#untouched/call:"".toUpperCase #0 calls `(…).toUpperCase` → builtin ecmascript
+a.ts#untouched/call:"".toUpperCase #0 calls `"".toUpperCase` → builtin ecmascript
 a.ts#untouched/call:Object.keys #0 calls `Object.keys` → builtin ecmascript
 a.ts#untouched/call:Promise.resolve #0 calls `Promise.resolve` → builtin ecmascript
 a.ts#/call:Object.assign #0 calls `Object.assign` → builtin ecmascript
@@ -16,5 +16,9 @@ a.ts#objects/call:service.start #0 calls `service.start` → unknown mutable_bin
 a.ts#objects/call:service.stop #0 calls `service.stop` → unknown mutable_binding
 a.ts#objects/call:handlers.open #0 calls `handlers.open` → unknown mutable_binding
 a.ts#objects/call:handlers.close #0 calls `handlers.close` → project a.ts#handlers.close
+a.ts#Rows #0 extends `Array` → builtin ecmascript
+a.ts#Rows.doubled/return[0]/call:super.map #0 calls `super.map` → unknown dynamic
+a.ts#Rows.tripled/return[0]/call:this.map #0 calls `this.map` → unknown dynamic
+a.ts#Rows.kept/return[0]/call:this.filter #0 calls `this.filter` → builtin ecmascript
 patch.ts#/call:Object.defineProperty #0 calls `Object.defineProperty` → builtin ecmascript
 patch.ts#/call:Reflect.set #0 calls `Reflect.set` → builtin ecmascript

@@ -4,10 +4,11 @@
 //! - **Definitions** are every module, class, function (inline functions included), and type.
 //!   [`definitions`] lists one file's for the store, which indexes them for search; it needs only
 //!   that file, so a commit recomputes the files it changes.
-//! - A definition's **label** is its name. A module's is its path. An inline function written in
-//!   a call's arguments is labeled by the property it is written as when it is one (`onSuccess`
-//!   in `useMutation({ onSuccess: () => … })`), and is otherwise a `callback to <callee>`, after
-//!   that call's written callee; any other inline function is an `anonymous function`.
+//! - A definition's **label** is its name. A module's is its path. An inline function or class
+//!   written in a call's arguments is labeled by the property it is written as when it is one
+//!   (`onSuccess` in `useMutation({ onSuccess: () => … })`), and is otherwise a
+//!   `callback to <callee>`, after that call's written callee; any other inline function is an
+//!   `anonymous function`, and any other inline class an `anonymous class`.
 //! - The **qualified name** puts the names of the enclosing named definitions before the label,
 //!   joined with `.` (`OrderService.place`). A module's is its path.
 //! - An app's start and its entrances are [`Start`]s, found by key with [`start`]. A start's
@@ -20,9 +21,9 @@ use unfold_store::Definition;
 use crate::tree::to_u32;
 
 /// Node `id`'s label: a definition's name, a module's path, the property a callback is written
-/// as, `callback to <callee>` for any other inline function written in a call's arguments,
-/// `anonymous function` for any other inline function. Any other node is labeled by its name (a
-/// call's callee) or its form.
+/// as, `callback to <callee>` for any other inline function or class written in a call's
+/// arguments, `anonymous function` or `anonymous class` for any other. Any other node is labeled
+/// by its name (a call's callee) or its form.
 pub fn label(nodes: &[Node], path: &RepoPath, id: u32) -> String {
     let node = &nodes[id as usize];
     if let Some(name) = &node.name {
@@ -30,7 +31,7 @@ pub fn label(nodes: &[Node], path: &RepoPath, id: u32) -> String {
     }
     match node.kind() {
         NodeKind::Module => path.as_str().to_owned(),
-        NodeKind::Function => {
+        NodeKind::Function | NodeKind::Class => {
             let call = node
                 .parent
                 .map(|parent| &nodes[parent as usize])
@@ -39,7 +40,7 @@ pub fn label(nodes: &[Node], path: &RepoPath, id: u32) -> String {
                 .filter(|call| !call.head.is_some_and(|head| head.contains(node.range)));
             match call.and_then(|call| call.name.as_deref()) {
                 Some(callee) => format!("callback to {callee}"),
-                None => "anonymous function".to_owned(),
+                None => format!("anonymous {}", node.kind()),
             }
         }
         _ => node.form.as_str().to_owned(),

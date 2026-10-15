@@ -1,7 +1,9 @@
 //! The precision and recall gates ([docs/testing.md#choose-checks-for-a-local-change](../../../../docs/testing.md#choose-checks-for-a-local-change)):
 //! every resolved call, construction, and named reference in Unfold's graph must name the
-//! oracle's target, and recall is measured exactly as the proof of concept did (sites the oracle
-//! resolves that Unfold resolves to the same target, over sites the oracle resolves).
+//! oracle's target, every `library` or `builtin` call must not be one the oracle resolves in the
+//! project and must name the module the oracle finds it in, and recall is measured exactly as the
+//! proof of concept did (sites the oracle resolves that Unfold resolves to the same target, over
+//! sites the oracle resolves).
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -10,7 +12,7 @@ use rustc_hash::FxHashMap;
 use unfold_core::vocab::{Language, LinkKind};
 use unfold_core::{FileGraph, Graph, Link, LinkTarget};
 
-use super::file::OracleFile;
+use super::file::{CallRow, OracleFile};
 use super::justified::{Justified, JustifiedEntry};
 
 /// A count over a total, printed as `n/m (p%)`.
@@ -69,7 +71,7 @@ pub(crate) struct Disagreement {
     pub site: Box<str>,
     /// The argument position, for a reference.
     pub position: Option<u32>,
-    /// Unfold's target.
+    /// Unfold's target: a project key, or an outcome and its label (`library python:logging`).
     pub unfold: Box<str>,
     /// What the oracle says instead.
     pub oracle: Box<str>,
@@ -96,6 +98,9 @@ pub(crate) struct Comparison {
     pub calls: Ratio,
     /// Resolved references that agree, over all of them.
     pub references: Ratio,
+    /// `library` and `builtin` calls whose label the oracle confirms, over those the oracle
+    /// resolves in the project or labels outside it.
+    pub external: Ratio,
     /// Disagreements no justification covers.
     pub unjustified: Vec<Disagreement>,
     /// Disagreements a justification covers, with its reason.
@@ -109,18 +114,31 @@ pub(crate) struct Comparison {
 }
 
 impl Comparison {
-    /// Precision over calls, constructions, and references together, counting justified
-    /// disagreements as confirmed.
+    /// Precision over calls, constructions, references, and `library` and `builtin` calls
+    /// together, counting justified disagreements as confirmed.
     pub(crate) fn precision(&self) -> Ratio {
         Ratio {
-            part: self.calls.part + self.references.part + self.justified.len(),
-            total: self.calls.total + self.references.total,
+            part: self.calls.part + self.references.part + self.external.part + self.justified.len(),
+            total: self.calls.total + self.references.total + self.external.total,
         }
     }
 
     /// Whether precision holds: every disagreement is justified and no justification is stale.
     pub(crate) fn precise(&self) -> bool {
         self.unjustified.is_empty() && self.stale.is_empty()
+    }
+}
+
+/// What the oracle says about a call site, in words.
+fn oracle_answer(row: Option<&CallRow>) -> String {
+    let Some(row) = row else {
+        return "nothing (no call site there)".to_owned();
+    };
+    match (&row.target, &row.outcome, &row.module) {
+        (Some(target), _, _) => format!("target {target}"),
+        (None, Some(outcome), Some(module)) => format!("no target ({outcome} {module})"),
+        (None, Some(outcome), None) => format!("no target ({outcome})"),
+        (None, None, _) => "nothing".to_owned(),
     }
 }
 
@@ -135,7 +153,8 @@ fn argument_position(file: &FileGraph, link: &Link) -> Option<u32> {
 }
 
 /// Compares `graph`'s `language` links with `oracle`: each call's `calls` link and each
-/// `passes` link to a project definition.
+/// `passes` link to a project definition, and each `calls` link to a `library` or `builtin`
+/// label at a site the oracle resolves in the project or labels outside it.
 pub(crate) fn compare(
     corpus: &str,
     language: Language,
@@ -162,26 +181,41 @@ pub(crate) fn compare(
             match link.kind {
                 LinkKind::Calls => {
                     unfold_calls.insert(site, target);
-                    let Some(target) = target else { continue };
-                    comparison.calls.total += 1;
-                    let row = calls.get(site);
-                    if row.and_then(|row| row.target.as_deref()) == Some(target) {
-                        comparison.calls.part += 1;
-                    } else {
-                        let oracle = match row {
-                            Some(row) => match (&row.target, &row.outcome) {
-                                (Some(other), _) => format!("target {other}"),
-                                (None, Some(outcome)) => format!("no target ({outcome})"),
-                                (None, None) => "nothing".to_owned(),
-                            },
-                            None => "nothing (no call site there)".to_owned(),
-                        };
-                        disagreements.push(Disagreement {
-                            site: site.into(),
-                            position: None,
-                            unfold: target.into(),
-                            oracle: oracle.into(),
-                        });
+                    let row = calls.get(site).copied();
+                    match &link.to {
+                        LinkTarget::Project(key) => {
+                            comparison.calls.total += 1;
+                            if row.and_then(|row| row.target.as_deref()) == Some(key.as_str()) {
+                                comparison.calls.part += 1;
+                            } else {
+                                disagreements.push(Disagreement {
+                                    site: site.into(),
+                                    position: None,
+                                    unfold: key.as_str().into(),
+                                    oracle: oracle_answer(row).into(),
+                                });
+                            }
+                        }
+                        LinkTarget::Library(label) | LinkTarget::Builtin(label) => {
+                            // Only a project target or an outside module answers a label; the
+                            // oracle's other outcomes neither confirm nor contradict it.
+                            let Some(row) = row.filter(|row| row.target.is_some() || row.module.is_some())
+                            else {
+                                continue;
+                            };
+                            comparison.external.total += 1;
+                            if row.target.is_none() && row.module.as_deref() == Some(label.as_str()) {
+                                comparison.external.part += 1;
+                            } else {
+                                disagreements.push(Disagreement {
+                                    site: site.into(),
+                                    position: None,
+                                    unfold: format!("{} {}", link.to.outcome(), label.as_str()).into(),
+                                    oracle: oracle_answer(Some(row)).into(),
+                                });
+                            }
+                        }
+                        LinkTarget::Unknown(_) => {}
                     }
                 }
                 LinkKind::Passes => {

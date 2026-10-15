@@ -4,7 +4,7 @@
 //! | Expression | Target |
 //! | --- | --- |
 //! | Identifier | Its symbol's declarations; an import's target through the export tables; a script global of the configuration group; an ECMAScript global (a builtin) or another known library global (external); otherwise nothing |
-//! | Property or literal-key access | A private name's members; else a method of the receiver's ECMAScript type (a builtin); the receiver's class member (through bases); an external receiver's member; a `const` object literal's function member (C-2); else the receiver's namespace member |
+//! | Property or literal-key access | An ECMAScript global read from the global object (a builtin); a private name's members; nothing on what a replaced global constructs; else a method or namespace value of the receiver's ECMAScript type (a builtin); the receiver's class member (through bases, an ECMAScript base's method a builtin); an external receiver's member; a `const` object literal's function member (C-2); nothing on a default-library value with no receiver; else the receiver's namespace member |
 //! | `super` | The written base class |
 //! | `this` in a static member | The class |
 //! | Inline function or class | Itself |
@@ -17,6 +17,7 @@ use smallvec::SmallVec;
 use unfold_engine::evidence::ExternalLocation;
 use unfold_engine::{DeclRef, FileId};
 
+use super::receivers::is_default_library;
 use super::{GlobalSymbol, MergedNamespace, Namespace, Target, Walk};
 use crate::exports::ExportTarget;
 use crate::link::TypeScriptLinked;
@@ -517,6 +518,12 @@ impl TypeScriptLinked<'_> {
         let Some(expr) = self.expr(file, index) else {
             return Target::default();
         };
+        // An ECMAScript global read from the global object (`globalThis.JSON`) is that global.
+        if matches!(expr, Expr::Member { .. } | Expr::Element { .. })
+            && self.global_value(file, index).is_some()
+        {
+            return Target::external([ExternalLocation::Builtin]);
+        }
         match expr {
             Expr::Name { name, lookup } => self.name_target(walk, file, name, *lookup),
             Expr::Member {
@@ -555,7 +562,7 @@ impl TypeScriptLinked<'_> {
     fn access_target(&self, walk: &mut Walk, file: FileId, object: u32, name: &str, element: bool) -> Target {
         let base = self.target(walk, file, object);
         let receiver = self.class_receiver(walk, file, object);
-        if receiver.unbound_this || (receiver.array && element) {
+        if receiver.unbound_this || receiver.dynamic || (receiver.array && element) {
             return Target::default();
         }
         if receiver.excluded {
@@ -578,6 +585,11 @@ impl TypeScriptLinked<'_> {
         }
         if let Some(member) = self.object_member(&base, name) {
             return member;
+        }
+        // A default-library value with no receiver (a member of one, `e.message`, or one under
+        // an assertion, `(Error as any)`) has no members Unfold can name.
+        if !base.ambiguous && is_default_library(&base.external) {
+            return Target::default();
         }
         self.member(walk, &base, name, Meanings::VALUE)
     }

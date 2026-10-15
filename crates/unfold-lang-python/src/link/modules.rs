@@ -10,11 +10,15 @@
 //! package `a/b/__init__.py`, then `a/b.py`, then the namespace package folder `a/b` (a package
 //! comes before a same-named module). A relative one (`..m`) needs the importing file to lie in a
 //! source root deep enough for its dots, and is looked for from the file's folder. Finding more
-//! than one file or folder is `ambiguous`; nothing at all is `missing` for a relative specifier
-//! and external (labeled by its first part) for an absolute one. Existence comes from the
-//! program's files, discovery's unindexed and context files, and, for paths discovery never
-//! walked, the folder on disk. Every file resolves its imports through its own source roots;
-//! nothing about how the code is run changes that.
+//! than one file or folder is `ambiguous`. Finding nothing is `missing` for a relative specifier,
+//! and for an absolute one whose first part may name project code: a module or package the
+//! source roots reach, or, unless the standard library has a module of that name, a Python
+//! module or a folder of them anywhere in the program (code the source roots don't reach may
+//! still be imported, after a `sys.path` change). Any other absolute specifier that finds nothing
+//! is external, labeled by its first part. Existence comes from the program's files, discovery's
+//! unindexed and context files, and, for paths discovery never walked, the folder on disk. Every
+//! file resolves its imports through its own source roots; nothing about how the code is run
+//! changes that.
 
 use std::sync::Arc;
 
@@ -22,6 +26,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use unfold_core::RepoPath;
 use unfold_core::vocab::{InputRole, Language};
 use unfold_engine::{FactsSet, FileId, ProjectInputs};
+
+use crate::stdlib::is_stdlib_root;
 
 /// What an import names.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -34,7 +40,8 @@ pub(crate) struct ModuleValue {
     pub(crate) directories: Vec<Box<str>>,
     /// For a module outside the repository, the first part of its specifier.
     pub(crate) external: Option<Box<str>>,
-    /// A relative specifier that names nothing.
+    /// A specifier that names nothing, where it names project code: a relative one, or an
+    /// absolute one under a project name.
     pub(crate) missing: bool,
     /// More than one file or folder could be meant.
     pub(crate) ambiguous: bool,
@@ -54,6 +61,9 @@ pub(crate) struct Modules<'a> {
     folders: FxHashSet<String>,
     /// Folders that hold Python files.
     python_folders: FxHashSet<String>,
+    /// The names of the program's Python modules and of every folder above one: what an
+    /// absolute import's first part may name in the project, wherever it is.
+    python_names: FxHashSet<&'a str>,
     /// Folders that hold a `pyproject.toml`.
     pyprojects: FxHashSet<String>,
     /// Each distinct set of source roots.
@@ -87,6 +97,7 @@ impl<'a> Modules<'a> {
             files: FxHashSet::default(),
             folders: FxHashSet::default(),
             python_folders: FxHashSet::default(),
+            python_names: FxHashSet::default(),
             pyprojects: inputs
                 .inputs
                 .iter()
@@ -127,9 +138,20 @@ impl<'a> Modules<'a> {
             }
         }
         for (id, file) in program.iter() {
-            if file.language == Language::Python && file.facts.is_some() {
-                modules.indexed.insert(file.path.as_str(), id);
+            if file.language != Language::Python {
+                continue;
             }
+            let path = file.path.as_str();
+            if file.facts.is_some() {
+                modules.indexed.insert(path, id);
+            }
+            let (folder, name) = path.rsplit_once('/').unwrap_or(("", path));
+            modules
+                .python_names
+                .insert(name.strip_suffix(".py").unwrap_or(name));
+            modules
+                .python_names
+                .extend(folder.split('/').filter(|part| !part.is_empty()));
         }
         let mut sets: FxHashMap<Vec<String>, u32> = FxHashMap::default();
         for (_, file) in program.iter() {
@@ -224,7 +246,7 @@ impl<'a> Modules<'a> {
         let bases: Vec<String> = if dots > 0 {
             match package_folder(roots, path, dots) {
                 Some(package) => vec![join(&package, &suffix)],
-                None => return not_found(specifier),
+                None => return missing(specifier),
             }
         } else {
             roots.iter().map(|root| join(root, &suffix)).collect()
@@ -237,7 +259,25 @@ impl<'a> Modules<'a> {
         if !paths.is_empty() || !directories.is_empty() {
             return found(specifier.into(), paths, directories);
         }
-        not_found(specifier)
+        let first = suffix.split('/').next().unwrap_or_default();
+        if dots > 0 || self.project_name(roots, first) {
+            return missing(specifier);
+        }
+        external(specifier)
+    }
+
+    /// Whether `name`, an absolute specifier's first part, may name project code: a module or
+    /// package one of `roots` reaches, or, unless the standard library has a module of that
+    /// name, a Python module or a folder of them anywhere in the program.
+    fn project_name(&self, roots: &[String], name: &str) -> bool {
+        let mut paths = Vec::new();
+        let mut directories = Vec::new();
+        for root in roots {
+            self.look(&join(root, name), &mut paths, &mut directories);
+        }
+        !paths.is_empty()
+            || !directories.is_empty()
+            || (!is_stdlib_root(name) && self.python_names.contains(name))
     }
 
     /// Looks for the module at `base`: a package, a file, or a namespace folder.
@@ -297,16 +337,26 @@ fn package_folder(roots: &[String], path: &str, dots: usize) -> Option<String> {
     Some(base.to_owned())
 }
 
-/// Nothing found: `missing` for a relative specifier, external (labeled by its first part) for
-/// an absolute one.
-fn not_found(specifier: &str) -> ModuleValue {
-    let relative = specifier.starts_with('.');
+/// Nothing found, where the specifier names project code.
+fn missing(specifier: &str) -> ModuleValue {
     ModuleValue {
         specifier: specifier.into(),
         paths: Vec::new(),
         directories: Vec::new(),
-        external: (!relative).then(|| specifier.split('.').next().unwrap_or(specifier).into()),
-        missing: relative,
+        external: None,
+        missing: true,
+        ambiguous: false,
+    }
+}
+
+/// Nothing found, outside the project: external, labeled by the specifier's first part.
+fn external(specifier: &str) -> ModuleValue {
+    ModuleValue {
+        specifier: specifier.into(),
+        paths: Vec::new(),
+        directories: Vec::new(),
+        external: Some(specifier.split('.').next().unwrap_or(specifier).into()),
+        missing: false,
         ambiguous: false,
     }
 }

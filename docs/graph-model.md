@@ -84,10 +84,10 @@ including builtins, calls no one could resolve, and calls inside `assert` and `d
 opened where it is written, and an unresolved call is never dropped. Which calls are drawn is the reader's choice.
 
 A call **contains** what is written in its receiver chain and arguments: calls, ternaries, comprehensions, and
-inline functions. `save_all(map(convert, rows))` is a `save_all` block containing a `map` block. A function written
-in a call's arguments is a definition inside the call, `callback[n]` in written order, object properties included;
-one written as a property (`useMutation({ onSuccess: () => … })`) also records the property as its `name`. A
-function called where it is written, `(() => …)()`, is `lambda[0]` inside its call.
+inline definitions. `save_all(map(convert, rows))` is a `save_all` block containing a `map` block. A function or
+TypeScript class expression written in a call's arguments is a definition inside the call, `callback[n]` in written
+order, object properties included; one written as a property (`useMutation({ onSuccess: () => … })`) also records
+the property as its `name`. A function called where it is written, `(() => …)()`, is `lambda[0]` inside its call.
 
 ### Statements
 
@@ -146,10 +146,12 @@ call                      →  the expression blocks in its receiver and argumen
 exit                      →  the expression blocks in its value
 type                      →  nothing
 
-expression blocks         =  calls, ternaries, comprehensions, and inline functions
+expression blocks         =  calls, ternaries, comprehensions, and the functions and classes written in an expression
 ```
 
 A definition inside a part (a `def` under `except ImportError:`) sits in that part and is still keyed by its name.
+So does one written in an expression: an inline definition, or a TypeScript object literal's method in a
+`return` (`return { run() {…} }` holds `#make.run`).
 
 **A block belongs to the nearest definition above it.** That is the only ownership rule, implemented once as
 `unfold_core::owner` and used by the engine, validation, and the reader. Decorators, bases, and Python defaults sit
@@ -161,7 +163,7 @@ A fact is known, or it is `unknown` with a reason. Besides a link's [outcome](#l
 each drawn dashed and labeled, never omitted and never drawn as an end:
 
 - **A truncated block.** What a front end can't place is marked `truncated` on the nearest node above it: nesting
-  past the depth limit, a TypeScript labeled plain block, or a TypeScript class expression with no name to key it by.
+  past the depth limit, or a `break` out of a TypeScript labeled plain block.
 - **An entrance target that names nothing,** with its [state](engine.md#resolving-code).
 
 Routes are not stored. The reader derives them from the tree, so code after an early `return` is a route state
@@ -179,7 +181,15 @@ Routes are not stored. The reader derives them from the tree, so code after an e
 
 Every call has exactly one `calls` link, numbered first; a node's other links follow in written order. Each link
 keeps the range and text of the name it resolves, so a parameter's or field's type is found by its range. A
-`calls` link to a project function may record `bound`: how many leading parameters the call binds itself.
+`calls` link to a project function may record `bound`: how many leading parameters the call binds itself. A
+TypeScript link's text follows the callee normalization, so a call reads the same on its node and its link
+(`"".trim`, `a[]`).
+
+An annotation's `types` links come from the definition it types: a parameter's and return type's from its
+function, a heritage clause's from its class, and a TypeScript declaration's or class field's from the function or
+class it names, when that definition begins the statement (`export const handle: Handler = (r) => …` links
+`Handler` from `#handle`); any other from the definition it is written in. A link's range lies inside its node, or
+inside the statement a definition begins.
 
 | Outcome | Target |
 | --- | --- |
@@ -198,20 +208,29 @@ exactly these forms:
 
 - **Written return types on project definitions.** When a call resolves to one concrete project function that isn't
   overridden or wrapped, its value is an instance of the class written as that function's return type, if the
-  annotation is one of: a class (`-> Repo`); a class or nothing (`Repo | None`, `Optional[Repo]` from `typing`,
-  TypeScript `Repo | null | undefined`), read as `Repo`; a quoted name (`-> "Repo"`); or any of these on an
-  `async` function, read through `await` (TypeScript: `Promise<Repo>`, with the library `Promise`). Generics, unions
-  of classes, type variables, `Self`, `Union[Repo, None]`, and an `async` call without `await` leave the value
-  unknown.
+  annotation is one of: a class (`-> Repo`); a generic class, read by its class with its type arguments dropped as
+  written variable types are (`-> Repo[str]` and `Repo<string>` are `Repo`, `-> list[int]` is `list`, and
+  TypeScript's `number[]` is `Array`); a class or nothing
+  (`Repo | None`, `Optional[Repo]` from `typing`, TypeScript `Repo | null | undefined`), read as `Repo`; a quoted
+  name (`-> "Repo"`); or any of these on an `async` function, read through `await` (TypeScript: `Promise<Repo>`,
+  with the library `Promise`). Unions of classes, type variables, `Self`, `Union[Repo, None]`, and an `async` call
+  without `await` leave the value unknown. A Python annotation is read as its `types` link is, so an alias
+  (`Alias = Repo`) gives nothing, and a class that derives from `Generic[T]` stays unresolved.
 - **Stubs for eight Python standard modules:** `builtins`, `logging`, `os` (with `os.path`), `json`, `re`,
   `datetime`, `pathlib`, `asyncio`, generated from pinned typeshed stubs and read without generics. So
   `logging.getLogger(…)` gives a `logging.Logger`, and `logger.info` is a library call. Builtin methods resolve on
   written types (`row: dict[str, Any]` → `row.get`) and on literals. A written type may hold a project subclass: when
-  one defines the member, the call is `overridden`.
-- **ECMAScript globals by name:** `JSON.parse`, `Object.keys`, `String(…)`, `new Error(…)`. A built-in method
-  resolves only on a literal or a written class type no project class may override: `[1, 2].map`, or `rows.map`
-  where `rows: Row[]`. A project write to a global or its prototype (`Array.prototype.map = …`) makes those calls
-  `dynamic`.
+  one defines the member, the call is `overridden`. A project write that replaces a member of a stub class, a
+  builtin, or a member of an instance the stubs type (`logging.Logger.info = …`, `builtins.print = …`,
+  `logger.info = …`) makes the calls that may reach it `dynamic`.
+- **ECMAScript globals by name:** `JSON.parse`, `Object.keys`, `String(…)`, `new Error(…)`, `Intl.Collator(…)`. A
+  built-in method resolves only on a literal or a written class type no project class may override (`[1, 2].map`,
+  or `rows.map` where `rows: Row[]`), or as a member a project class inherits from an ECMAScript base (`super.map(…)`
+  in `class Rows extends Array<Row>`) that no subclass declares. A member's own value isn't read, so a call through
+  it is unknown: `s[0].toLowerCase()`, `e.message.trim()`, `process.argv.slice(2)`. A project write to a global,
+  its prototype, or an instance of one of its types (`Array.prototype.map = …`, `rows.map = …`) makes the calls that
+  may reach it `dynamic`, and so does replacing a global (`globalThis.Map = …`) for every member of what `new` of it
+  constructs.
 - **No third-party stubs.** A call into FastAPI or Express is `library` when an import proves the module, and
   `unknown` when it is a method on a value whose type isn't written.
 
@@ -273,8 +292,9 @@ excludes.
   bytes fail. Python rejects a declared non-UTF-8 encoding.
 - Offsets are zero-based UTF-8 bytes; ranges are half-open `[start, end)` on character boundaries. Ranges exclude
   leading comments, indentation, and trailing whitespace, and keep formatting inside them.
-- Lines are one-based. CR, LF, CRLF, U+2028, and U+2029 end lines; CRLF counts once. An empty file spans `[0, 0)` on
-  line 1.
+- Lines are one-based. CR, LF, and CRLF end lines, and CRLF counts once. In TypeScript U+2028 and U+2029 also end
+  lines, as in ECMAScript; in Python, as in CPython, they don't. Files that aren't sources, such as `unfold.toml`, end
+  lines at CR, LF, and CRLF. An empty file spans `[0, 0)` on line 1.
 - Rendered offsets are UTF-16, converted through core's text utilities. An offset inside a UTF-8 sequence or between
   surrogate halves is an error, never rounded.
 - Labels are cut without splitting surrogate pairs. Python identity uses NFKC; text keeps the written spelling.
@@ -317,21 +337,24 @@ src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0] an inlin
 - **Named definitions** are keyed by qualified name wherever they sit, so a guard added around a `def` doesn't move
   its key: `src/repo.ts#Repo.save`, `#place_order.helper`. A repeat of the same key gets `[n]`. A function bound by a
   declaration or a simple assignment takes that name (`const handler = …` is `#handler`); an object-literal method
-  or class property takes its property name (`#handlers.onCreate`); an anonymous default export is `#default`.
-- **Inline functions** are `callback[n]` in a call's arguments and `lambda[n]` anywhere else, numbered in written
-  order.
+  or class property takes its property name, after the names of the declaration that names its object
+  (`#handlers.onCreate`); an anonymous default export is `#default`.
+- **Inline definitions** (functions, and TypeScript class expressions with the form `class`) are `callback[n]` in a
+  call's arguments and `lambda[n]` anywhere else, numbered in written order. Named definitions inside them follow
+  their key and `.`: `#/call:define("x")/callback[0].connectedCallback`.
 - **Control blocks and exits** carry their form and an ordinal among siblings of that form: `if[0]`, `return[1]`.
   Parts are `then`, `else`, `default`, `body`, `catch`, `finally`, or `elif[n]`, `case[n]`, `except[n]`.
 - **Calls** are keyed by their normalized callee, with `[n]` only for a repeat under the same parent
   (`call:logger.info[1]`). Arguments become `()`, subscripts `[]` (escaped), a string literal `""`, any other
   expression `(…)`; `await`, parentheses, `!`, and type casts are dropped; `?.` is written `.`; a callee is cut at 80
   characters. So `res.status(500).json(…)` is `call:res.status().json`.
-- **A call that receives an inline function** is also keyed by its first argument when that is a string literal:
+- **A call that receives an inline definition** is also keyed by its first argument when that is a string literal:
   `call:ordersRouter.post("/orders/:id")`. Adding a route above it doesn't move its key, and editing its path makes
   the key missing instead of wrong. The literal is written double-quoted with only `"` and `\` escaped.
 - **Steps always follow `/` and names follow `#` or `.`,** so a module's own steps start with `#/`, and a function
   named `match` is never read as a `match` statement.
-- Names and callees percent-encode `%`, `/`, `#`, `[`, and `]` in uppercase.
+- Names and callees percent-encode `%`, `/`, `#`, `[`, and `]` in uppercase, and names also `.`, which separates
+  them: `{ "order.created": … }` in `const handlers` is `#handlers.order%2Ecreated`.
 
 App and entrance keys come from names ([Engine › Keys](engine.md#app-and-entrance-keys)).
 

@@ -18,7 +18,7 @@ use std::path::Path;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 use unfold_core::vocab::{CallRole, Flag, Form, Language, LinkKind, NodeKind, Outcome};
-use unfold_core::{ByteRange, Key, LinkTarget};
+use unfold_core::{ByteRange, Key, LineBreaks, LinkTarget};
 
 use super::lines::{FileText, candidates, doc_text};
 use super::{
@@ -643,9 +643,14 @@ struct Row {
 /// each block it owns (nested definitions as one line each), with what it calls, binds, or
 /// tests, and the lines of code that aren't blocks (`⋯`).
 pub fn code_text(tree: &FileTree, root: &Path, definition: u32) -> CodeText {
-    let text = verify_file(root, tree.path(), tree.file().hash)
-        .into_source()
-        .map(|source| FileText::new(source, tree.language()));
+    let text = verify_file(
+        root,
+        tree.path(),
+        tree.file().hash,
+        LineBreaks::of(tree.language()),
+    )
+    .into_source()
+    .map(|source| FileText::new(source, tree.language()));
     let text = text.as_ref();
     let node = tree.node(definition);
     let key = tree.key(definition);

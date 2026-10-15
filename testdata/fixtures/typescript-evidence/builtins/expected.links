@@ -5,7 +5,7 @@ a.ts#globals/call:Promise.all #0 calls `Promise.all` → builtin ecmascript
 a.ts#globals/call:String #0 calls `String` → builtin ecmascript
 a.ts#globals/call:parseInt #0 calls `parseInt` → builtin ecmascript
 a.ts#globals/call:Error #0 calls `Error` → builtin ecmascript
-a.ts#globals/call:(…).get #0 calls `Map.get` → builtin ecmascript
+a.ts#globals/call:(…).get #0 calls `(…).get` → builtin ecmascript
 a.ts#globals/call:(…).get/call:Map #0 calls `Map` → builtin ecmascript
 a.ts#globals/call:Array.isArray #0 calls `Array.isArray` → builtin ecmascript
 a.ts#hosts/call:console.log #0 calls `console.log` → library global
@@ -25,13 +25,13 @@ a.ts#written/call:n.toFixed #0 calls `n.toFixed` → builtin ecmascript
 a.ts#written/call:o.hasOwnProperty #0 calls `o.hasOwnProperty` → unknown unknown_receiver
 a.ts#written/call:rows2.filter #0 calls `rows2.filter` → builtin ecmascript
 a.ts#written/call:s.missing #0 calls `s.missing` → library global
-a.ts#literals/call:"".trim #0 calls `(…).trim` → builtin ecmascript
+a.ts#literals/call:"".trim #0 calls `"".trim` → builtin ecmascript
 a.ts#literals/call:(…).toUpperCase #0 calls `(…).toUpperCase` → builtin ecmascript
 a.ts#literals/call:(…).map #0 calls `(…).map` → builtin ecmascript
 a.ts#literals/call:(…).toFixed #0 calls `(…).toFixed` → builtin ecmascript
 a.ts#literals/call:(…).test #0 calls `(…).test` → builtin ecmascript
-a.ts#literals/call:"".join #0 calls `(…).join` → unknown unknown_receiver
-a.ts#literals/call:"".missing #0 calls `(…).missing` → unknown unknown_receiver
+a.ts#literals/call:"".join #0 calls `"".join` → unknown unknown_receiver
+a.ts#literals/call:"".missing #0 calls `"".missing` → unknown unknown_receiver
 a.ts#inferred/call:s.trim #0 calls `s.trim` → unknown unknown_receiver
 a.ts#inferred/call:rows.map #0 calls `rows.map` → unknown unknown_receiver
 a.ts#shadowed/call:JSON.parse #0 calls `JSON.parse` → unknown unknown_receiver

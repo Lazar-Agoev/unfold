@@ -10,7 +10,7 @@ mod utf16;
 
 pub use hash::{ContentHash, HashParseError};
 pub use label::{LABEL_MAX_UTF16, short_label, utf16_len};
-pub use lines::LineIndex;
+pub use lines::{LineBreaks, LineIndex};
 pub use range::{ByteRange, LineSpan, RangeError};
 pub use snapshot::{Snapshot, SnapshotError};
 pub use utf16::{OffsetError, Utf16Index, Utf16Range};

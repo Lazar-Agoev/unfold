@@ -6,7 +6,12 @@
 //! member chains through class members' declared types. Library receivers (`string`, arrays,
 //! `Map`, `NodeJS.Process`, …) come from the generated tables, and so does the ECMAScript type
 //! whose methods a receiver has: a primitive or array type, an ECMAScript class type written by
-//! name, an ECMAScript global (`JSON`, `Object`) or what `new` of one constructs, and a literal.
+//! name, an ECMAScript global (`JSON`, `Object`, or `globalThis.JSON` by its name) or what `new` of
+//! one constructs, and a literal. A library global by name (`console`) is a library receiver.
+//! What `new` of a global the project replaced constructs is `dynamic`, and so are its members.
+//! A member of a default-library value (`s[0]`, `e.message`, `Math.PI`, `Intl.Collator`) has a
+//! type Unfold doesn't read: it gives no receiver, and neither does what `new` of one constructs;
+//! a package's member keeps the package's location.
 //! A written library type is read nominally, so a project class may still be its value
 //! ([`builtins`](super::builtins)); an ECMAScript protocol (`Iterator`, `PromiseLike`,
 //! `ReadonlyArray`), `Object`, `object`, or `Function`, which values of any type implement, gives
@@ -91,13 +96,10 @@ impl TypeScriptLinked<'_> {
             Expr::Super(context) => self.super_receiver(walk, file, *context),
             Expr::Name { name, lookup } => {
                 if !self.has_symbol(file, name, *lookup) {
-                    if !is_ecmascript_global(name, *lookup) {
+                    if *lookup == Lookup::Dynamic || !tables::is_known_global(name) {
                         return Receiver::default();
                     }
-                    return Receiver {
-                        builtin: tables::ecmascript_value_type(name),
-                        ..Receiver::external([ExternalLocation::Library], false)
-                    };
+                    return library_global(name);
                 }
                 let target = self.symbol_lookup(walk, file, name, *lookup, Meanings::VALUE);
                 self.declared_receiver(walk, &target, true)
@@ -184,8 +186,14 @@ impl TypeScriptLinked<'_> {
     }
 
     /// The receiver `new callee` constructs. `new` of an ECMAScript global constructs the
-    /// interface of the same name (`new Map()` a `Map`).
+    /// interface of the same name (`new Map()` a `Map`), unless the project replaced the global.
     fn constructed(&self, walk: &mut Walk, file: FileId, callee: u32) -> Receiver {
+        if self
+            .global_value(file, callee)
+            .is_some_and(|global| self.global_replaced(global))
+        {
+            return Receiver::dynamic();
+        }
         let mut written = callee;
         while let Some(
             Expr::Paren(inner) | Expr::NonNull(inner) | Expr::Satisfies(inner) | Expr::Instantiation(inner),
@@ -193,13 +201,12 @@ impl TypeScriptLinked<'_> {
         {
             written = *inner;
         }
-        if let Some(Expr::Name { name, lookup }) = self.expr(file, written)
-            && !self.has_symbol(file, name, *lookup)
-            && is_ecmascript_global(name, *lookup)
+        if !matches!(self.expr(file, written), Some(Expr::Assert { .. }))
+            && let Some(global) = self.global_value(file, written)
         {
             return Receiver {
-                array: &**name == "Array",
-                builtin: tables::ecmascript_type(name),
+                array: global == "Array",
+                builtin: tables::ecmascript_class(global),
                 ..Receiver::external([ExternalLocation::Library], false)
             };
         }
@@ -230,7 +237,9 @@ impl TypeScriptLinked<'_> {
                     )
             })
         });
-        if annotated {
+        // What `new` of a member of a default-library value constructs (`new Intl.Collator()`)
+        // isn't read.
+        if annotated || is_default_library(&target.external) {
             return Receiver::default();
         }
         self.target_receiver(&target, false)
@@ -239,6 +248,9 @@ impl TypeScriptLinked<'_> {
     /// The receiver of a member access: its own target's class or declared types, else the
     /// declared types of the receiver class's member.
     fn member_receiver(&self, walk: &mut Walk, file: FileId, index: u32, access: &Access<'_>) -> Receiver {
+        if let Some(global) = self.global_value(file, index) {
+            return library_global(global);
+        }
         let object = access.object;
         if access.element && self.receiver(walk, file, object).array {
             return Receiver::default();
@@ -251,7 +263,7 @@ impl TypeScriptLinked<'_> {
             return Receiver::excluded(direct.excluded.iter().cloned());
         }
         if !direct.external.is_empty() {
-            return Receiver::external(direct.external.iter().cloned(), false);
+            return outside_member(direct.external.iter().cloned());
         }
         if let Some(class) = self.class_for_target(&direct) {
             return Receiver::class(class, true);
@@ -265,11 +277,11 @@ impl TypeScriptLinked<'_> {
             return consensus(receivers);
         }
         let base = self.receiver(walk, file, object);
-        if base.excluded {
+        if base.excluded || base.dynamic {
             return base;
         }
         if base.external {
-            return Receiver::external(base.locations, false);
+            return outside_member(base.locations);
         }
         let Some(class) = base.class.filter(|_| !base.unbound_this) else {
             return Receiver::default();
@@ -288,7 +300,7 @@ impl TypeScriptLinked<'_> {
             return Receiver::excluded(target.excluded.iter().cloned());
         }
         if !target.external.is_empty() {
-            return Receiver::external(target.external.iter().cloned(), false);
+            return outside_member(target.external.iter().cloned());
         }
         let receivers: SmallVec<[Receiver; 2]> = target
             .declarations
@@ -576,9 +588,32 @@ impl TypeScriptLinked<'_> {
     }
 }
 
-/// Whether a name with no symbol denotes an ECMAScript global.
-fn is_ecmascript_global(name: &str, lookup: Lookup) -> bool {
-    lookup != Lookup::Dynamic && tables::is_ecmascript_global(name)
+/// The value of the library global `name` (`console`, or `globalThis.JSON` by its name): outside
+/// the project, with the methods of its type when it is ECMAScript's (`JSON`, `Object`).
+fn library_global(name: &str) -> Receiver {
+    Receiver {
+        builtin: tables::ecmascript_value_type(name),
+        ..Receiver::external([ExternalLocation::Library], false)
+    }
+}
+
+/// Whether any of `locations` is the default library (labeled `global` or `ecmascript`). Its
+/// values are typed only by name, a written type, or a literal, never through a member.
+pub(super) fn is_default_library(locations: &[ExternalLocation]) -> bool {
+    locations
+        .iter()
+        .any(|location| matches!(location, ExternalLocation::Library | ExternalLocation::Builtin))
+}
+
+/// The receiver a member of an outside value at `locations` is: a package's or file's member
+/// keeps its location (`fs.promises`), but a member of a default-library value (`s[0]`,
+/// `e.message`, `Math.PI`, `Function.prototype`, `Intl.Collator`) has a type Unfold doesn't read.
+fn outside_member(locations: impl IntoIterator<Item = ExternalLocation>) -> Receiver {
+    let locations: SmallVec<[ExternalLocation; 1]> = locations.into_iter().collect();
+    if is_default_library(&locations) {
+        return Receiver::default();
+    }
+    Receiver::external(locations, false)
 }
 
 /// The one receiver every declaration agrees on; anything unknown or disagreeing gives none.
@@ -586,7 +621,7 @@ fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
     let Some(first) = receivers.first() else {
         return Receiver::default();
     };
-    let known = first.class.is_some() || first.external || first.excluded;
+    let known = first.class.is_some() || first.external || first.excluded || first.dynamic;
     let agree = receivers.iter().all(|item| {
         item.class == first.class
             && item.external == first.external
@@ -595,6 +630,7 @@ fn consensus(receivers: SmallVec<[Receiver; 2]>) -> Receiver {
             && item.builtin == first.builtin
             && item.nominal == first.nominal
             && item.is_static == first.is_static
+            && item.dynamic == first.dynamic
             && !item.unbound_this
     });
     if !known || !agree {

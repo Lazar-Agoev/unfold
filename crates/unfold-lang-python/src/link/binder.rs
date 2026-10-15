@@ -168,6 +168,9 @@ pub(crate) struct Binder<'a> {
     pub(crate) invalid_members: FxHashMap<NodeRef, Invalid>,
     /// Attributes written on a module from anywhere.
     pub(crate) invalid_modules: FxHashMap<ModuleKey, Invalid>,
+    /// Members written on a standard-library class, or on an instance of one, by the class's
+    /// qualified name.
+    pub(crate) invalid_library: FxHashMap<&'static str, Invalid>,
     /// Further negative facts, used only to prove a child module absent from its package.
     pub(crate) invalid_children: FxHashMap<ModuleKey, Invalid>,
     /// Instance fields of each class, by name.
@@ -192,6 +195,7 @@ impl<'a> Binder<'a> {
             modules,
             invalid_members: FxHashMap::default(),
             invalid_modules: FxHashMap::default(),
+            invalid_library: FxHashMap::default(),
             invalid_children: FxHashMap::default(),
             fields: FxHashMap::default(),
             classes: ClassTables::default(),

@@ -1,5 +1,5 @@
 //! The structural proofs: which identities a resolved per-file census proves, and the function
-//! forms, erased imports, and dynamic imports that follow from them.
+//! forms, erased imports, overload stubs, and dynamic imports that follow from them.
 
 use ruff_python_ast::{Expr, ExprCall, StmtFunctionDef};
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -17,6 +17,8 @@ pub(crate) struct Proofs {
     /// The starts of `import` and `from … import` statements a proven `TYPE_CHECKING` guard
     /// erases.
     pub(super) erased: FxHashSet<TextSize>,
+    /// The starts of the `def`s a decorator proves `typing.overload` stubs, by their first `@`.
+    pub(super) stubs: FxHashSet<TextSize>,
     /// Calls proven to be `importlib.import_module` with a literal module name, by range, with
     /// the decoded name and the literal's range.
     pub(super) dynamic: FxHashMap<TextRange, (Box<str>, TextRange)>,
@@ -29,6 +31,11 @@ impl Proofs {
             .get(&function.range.start())
             .copied()
             .unwrap_or(Form::Function)
+    }
+
+    /// Whether a `def` is a `typing.overload` stub.
+    pub(crate) fn is_stub(&self, function: &StmtFunctionDef) -> bool {
+        self.stubs.contains(&function.range.start())
     }
 
     /// Whether an import statement starting at `start` is erased.

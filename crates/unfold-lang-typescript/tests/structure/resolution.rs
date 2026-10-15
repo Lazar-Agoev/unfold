@@ -2,10 +2,10 @@
 //! Node built-ins, `paths` and `baseUrl`, in-repository packages and their `exports`, and the
 //! choice between `not_found`, `not_indexed`, and a path label.
 
-use unfold_core::vocab::{Outcome, Reason};
+use unfold_core::vocab::{LinkKind, Outcome, Reason};
 use unfold_core::{LinkTarget, ModuleLabel};
 
-use crate::support::Project;
+use crate::support::{Project, outcome};
 
 const MODULE: &str = r#"{"type": "module"}"#;
 
@@ -95,6 +95,69 @@ fn import_kinds_pick_the_resolution_mode() {
     );
     // A `.cts` file is CommonJS whatever the package says.
     assert_resolved(&project, "lib/c.cts", "./d", "lib/d.ts");
+}
+
+#[test]
+fn dynamic_imports_follow_the_extension_rules_of_static_ones() {
+    let project = Project::new()
+        .source(
+            "src/a.ts",
+            "import { hello } from './names';\nimport 'dual';\nexport async function main() {\n  const { hello: again } = await import('./names');\n  again();\n  await import('./names.ts');\n  await import('./names.js');\n  await import('./dir');\n  await import('dual');\n}\n",
+        )
+        .source("src/names.ts", "export function hello() {}")
+        .source("src/dir/index.ts", "export {};")
+        .input(
+            "packages/dual/package.json",
+            r#"{"name": "dual", "exports": {"import": "./esm.ts", "require": "./cjs.ts"}}"#,
+        )
+        .source("packages/dual/esm.ts", "export {};")
+        .source("packages/dual/cjs.ts", "export {};");
+    let imports = |project: &Project| -> Vec<String> {
+        let compiled = project.compile();
+        compiled
+            .file("src/a.ts")
+            .links
+            .iter()
+            .filter(|link| link.kind == LinkKind::Imports)
+            .map(|link| format!("{} {}", link.text, outcome(&link.to)))
+            .collect()
+    };
+    // Without a configuration the file is CommonJS: a dynamic import probes extensions and
+    // `index` as its static imports do, with the conditions of an ESM import, and a binding
+    // destructured from it reads the module.
+    assert_eq!(
+        imports(&project),
+        [
+            "./names project src/names.ts#",
+            "dual project packages/dual/cjs.ts#",
+            "./names project src/names.ts#",
+            "./names.ts project src/names.ts#",
+            "./names.js project src/names.ts#",
+            "./dir project src/dir/index.ts#",
+            "dual project packages/dual/esm.ts#",
+        ]
+    );
+    let compiled = project.compile();
+    let again = compiled
+        .file("src/a.ts")
+        .links
+        .iter()
+        .find(|link| link.kind == LinkKind::Calls && &*link.text == "again")
+        .expect("the call to `again`");
+    assert_eq!(outcome(&again.to), "project src/names.ts#hello");
+    // In an ESM package both need the extension.
+    assert_eq!(
+        imports(&project.input("package.json", MODULE)),
+        [
+            "./names unknown not_found",
+            "dual project packages/dual/esm.ts#",
+            "./names unknown not_found",
+            "./names.ts project src/names.ts#",
+            "./names.js project src/names.ts#",
+            "./dir unknown not_found",
+            "dual project packages/dual/esm.ts#",
+        ]
+    );
 }
 
 #[test]

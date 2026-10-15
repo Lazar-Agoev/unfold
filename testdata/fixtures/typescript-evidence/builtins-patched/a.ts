@@ -34,3 +34,17 @@ export function objects(): void {
   handlers.open();
   handlers.close();
 }
+
+export class Rows extends Array<number> {
+  doubled(): number[] {
+    return super.map((row) => row * 2);
+  }
+
+  tripled(): number[] {
+    return this.map((row) => row * 3);
+  }
+
+  kept(): number[] {
+    return this.filter((row) => row > 0);
+  }
+}

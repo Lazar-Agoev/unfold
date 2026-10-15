@@ -1053,8 +1053,9 @@ fn default_source_roots_follow_pyproject_folders_and_src_layouts() {
     );
     assert_eq!(imports(&compiled, "svc/tools/run.py")[0].3, "svc/src/app/util.py");
     assert!(resolved(&compiled, "helper"));
-    // Without a pyproject.toml or a src folder above it, the open folder is the root.
-    assert_eq!(imports(&compiled, "loose/main.py")[0].1, Outcome::Library);
+    // Without a pyproject.toml or a src folder above it, the open folder is the root, which
+    // doesn't reach `svc/src/app`: the project package is not found, never a library.
+    assert_eq!(imports(&compiled, "loose/main.py")[0].2, Some(Reason::NotFound));
 }
 
 #[test]
@@ -1152,9 +1153,10 @@ fn written_return_types_give_a_call_its_class() {
     assert_eq!(reason(&compiled, "a.missing"), Some(Reason::UnknownReceiver));
 }
 
-/// Any other annotation leaves the value unknown, as no annotation does: generics, unions of
-/// classes, type variables, `Self`, an `Optional` that isn't `typing`'s, an `async def` called
-/// without `await`, a plain `def` awaited, and a target that isn't exactly one function.
+/// Any other annotation leaves the value unknown, as no annotation does: unions of classes,
+/// type variables, `Self`, an `Optional` that isn't `typing`'s, an `async def` called without
+/// `await`, a plain `def` awaited, and a target that isn't exactly one function. A generic is
+/// read by its class, and `list` has no `save`.
 #[test]
 fn other_return_types_leave_the_value_unknown() {
     let compiled = graph(&[(
@@ -1248,14 +1250,14 @@ fn stubs_give_standard_library_values_their_class() {
 
 /// Anything the stubs don't write stays unknown with its reason: a member the class doesn't
 /// have, a return type the overloads disagree on, a stub function read through the wrong
-/// `await`, a generic project return type, an unannotated parameter, a rebound name, a
-/// third-party value, and a member of an attribute read on a class (whose stub types its
-/// instances). A class with `__getattr__` makes a member it doesn't declare dynamic.
+/// `await`, an unannotated parameter, a rebound name, a third-party value, and a member of an
+/// attribute read on a class (whose stub types its instances). A class with `__getattr__` makes
+/// a member it doesn't declare dynamic.
 #[test]
 fn values_the_stubs_dont_write_stay_unknown() {
     let compiled = graph(&[(
         "m.py",
-        "import asyncio\nimport datetime\nimport logging\nimport os\nimport re\n\nimport fastapi\n\nlogger = logging.getLogger(__name__)\n\n\ndef names() -> list[str]:\n    ...\n\n\nasync def main(row):\n    \"x\".missing()\n    logger.missing()\n    os.path.join(\"a\", \"b\").upper()\n    awaited = await re.compile(\"a\")\n    awaited.match(\"a\")\n    pending = asyncio.sleep(1)\n    pending.done()\n    names().append(\"x\")\n    row.get(\"k\")\n    rebound = logging.getLogger()\n    rebound = None\n    rebound.info(\"x\")\n    app = fastapi.FastAPI()\n    app.get(\"/\")\n    datetime.datetime.min.isoformat().upper()\n    list.__class_getitem__(int).anything()\n",
+        "import asyncio\nimport datetime\nimport logging\nimport os\nimport re\n\nimport fastapi\n\nlogger = logging.getLogger(__name__)\n\n\nasync def main(row):\n    \"x\".missing()\n    logger.missing()\n    os.path.join(\"a\", \"b\").upper()\n    awaited = await re.compile(\"a\")\n    awaited.match(\"a\")\n    pending = asyncio.sleep(1)\n    pending.done()\n    row.get(\"k\")\n    rebound = logging.getLogger()\n    rebound = None\n    rebound.info(\"x\")\n    app = fastapi.FastAPI()\n    app.get(\"/\")\n    datetime.datetime.min.isoformat().upper()\n    list.__class_getitem__(int).anything()\n",
     )]);
     for label in [
         "\"x\".missing",
@@ -1263,7 +1265,6 @@ fn values_the_stubs_dont_write_stay_unknown() {
         "os.path.join(\"a\", \"b\").upper",
         "awaited.match",
         "pending.done",
-        "names().append",
         "row.get",
         "rebound.info",
         "app.get",
@@ -1414,4 +1415,218 @@ fn builtins_are_named_by_the_stubs() {
         Some(Reason::UnknownName),
         "a stub-only class"
     );
+}
+
+/// A write that replaces a standard-library member makes every call it may reach `dynamic`:
+/// an assignment, `setattr`, or `delattr` on a stub class, on `builtins`, or on an instance the
+/// stubs type (which may be any instance of its class). A replaced member reaches the classes
+/// that inherit it, and the written types that may hold one of them. A patched module function
+/// stays `dynamic`, and members nothing writes keep their proof.
+#[test]
+fn replaced_standard_library_members_are_dynamic() {
+    let cases: [(&str, &[&str]); 7] = [
+        (
+            "import logging\n\ndef custom(*args): pass\n\nlogging.Logger.info = custom\n\ndef f(log: logging.Logger):\n    logging.getLogger().info(\"x\")\n    log.info(\"x\")\n    logging.Logger.info(log, \"x\")\n",
+            &["logging.getLogger().info", "log.info", "logging.Logger.info"],
+        ),
+        (
+            "import builtins\n\ndef custom(*args): pass\n\nbuiltins.print = custom\nprint(\"x\")\n",
+            &["print"],
+        ),
+        (
+            "import logging\n\ndef custom(*args): pass\n\nlogger = logging.getLogger(__name__)\nlogger.info = custom\nlogger.info(\"x\")\nlogging.getLogger(\"other\").info(\"y\")\n",
+            &["logger.info", "logging.getLogger(\"other\").info"],
+        ),
+        (
+            "import builtins\nimport logging\n\ndef custom(*args): pass\n\nlogger = logging.getLogger()\nsetattr(logging.Logger, \"debug\", custom)\nsetattr(logger, \"warning\", custom)\ndelattr(builtins, \"len\")\nlogger.debug(\"x\")\nlogger.warning(\"x\")\nlen(\"x\")\n",
+            &["logger.debug", "logger.warning", "len"],
+        ),
+        (
+            "import logging\n\ndef custom(*args): pass\n\nlogging.Filterer.filter = custom\nlogging.RootLogger.error = custom\nlogger = logging.getLogger()\nlogger.filter(None)\nlogger.error(\"x\")\n",
+            &["logger.filter", "logger.error"],
+        ),
+        (
+            "def custom(*args): pass\n\nstr.upper = custom\n\"x\".upper()\nname: str = \"\"\nname.upper()\n",
+            &["\"x\".upper", "name.upper"],
+        ),
+        (
+            "import json\n\ndef custom(*args): pass\n\njson.dumps = custom\njson.dumps(1)\n",
+            &["json.dumps"],
+        ),
+    ];
+    for (source, replaced) in cases {
+        let compiled = graph(&[("m.py", source)]);
+        for label in replaced {
+            assert_eq!(
+                reason(&compiled, label),
+                Some(Reason::Dynamic),
+                "{label} in {source}"
+            );
+        }
+    }
+    // Members and classes nothing writes keep their proof.
+    let compiled = graph(&[(
+        "m.py",
+        "import logging\n\ndef custom(*args): pass\n\nlogging.Logger.info = custom\nlogger = logging.getLogger()\nlogger.warning(\"x\")\nlogging.Formatter().format(None)\nprint(\"x\")\n\"x\".upper()\n",
+    )]);
+    let library = (Outcome::Library, Some("python:logging".to_owned()));
+    let builtin = (Outcome::Builtin, Some("python:builtins".to_owned()));
+    assert_eq!(library_call(&compiled, "logger.warning"), library);
+    assert_eq!(library_call(&compiled, "logging.Formatter().format"), library);
+    assert_eq!(library_call(&compiled, "print"), builtin);
+    assert_eq!(library_call(&compiled, "\"x\".upper"), builtin);
+    // A replaced builtin class is no builtin type name either.
+    let compiled = graph(&[(
+        "m.py",
+        "import builtins\n\nclass Text:\n    pass\n\nbuiltins.str = Text\n\ndef f(name: str, count: int): pass\n",
+    )]);
+    let types: Vec<(String, Outcome, Option<Reason>)> = compiled
+        .file("m.py")
+        .links
+        .iter()
+        .filter(|link| link.kind == LinkKind::Types)
+        .map(|link| (link.text.to_string(), link.to.outcome(), reason_of(link)))
+        .collect();
+    assert_eq!(
+        types,
+        [
+            ("str".to_owned(), Outcome::Unknown, Some(Reason::Dynamic)),
+            ("int".to_owned(), Outcome::Builtin, None),
+        ]
+    );
+}
+
+/// An absolute import that finds nothing is a library only when nothing says it may be project
+/// code. When its first part is a module or package the source roots reach, or a Python module
+/// or folder of them anywhere in the project (a standard-library name aside), it is
+/// `not_found`, and so are the calls through it.
+#[test]
+fn absolute_misses_under_project_names_are_not_found() {
+    let compiled = graph_with(
+        &[
+            (
+                "app/main.py",
+                "from pkg.missing import mi\nimport inference\nimport fastapi\nimport io\nimport pkg.real\n\nmi()\ninference.predict()\nfastapi.FastAPI()\nio.StringIO()\npkg.real.run()\n\n\ndef typed(model: inference.Model): pass\n",
+            ),
+            ("app/pkg/__init__.py", ""),
+            ("app/pkg/real.py", "def run(): pass\n"),
+            ("ml/inference.py", "def predict(): pass\n"),
+            ("tools/io.py", "def helper(): pass\n"),
+        ],
+        "[[python.project]]\nroot = \"app\"\nsource_roots = [\".\"]\n",
+    );
+    assert_eq!(
+        imports(&compiled, "app/main.py"),
+        [
+            (
+                "pkg.missing".to_owned(),
+                Outcome::Unknown,
+                Some(Reason::NotFound),
+                String::new()
+            ),
+            (
+                "inference".to_owned(),
+                Outcome::Unknown,
+                Some(Reason::NotFound),
+                String::new()
+            ),
+            ("fastapi".to_owned(), Outcome::Library, None, String::new()),
+            ("io".to_owned(), Outcome::Library, None, String::new()),
+            (
+                "pkg.real".to_owned(),
+                Outcome::Project,
+                None,
+                "app/pkg/real.py".to_owned()
+            ),
+        ]
+    );
+    assert_eq!(reason(&compiled, "mi"), Some(Reason::NotFound));
+    assert_eq!(reason(&compiled, "inference.predict"), Some(Reason::NotFound));
+    assert_eq!(
+        library_call(&compiled, "fastapi.FastAPI"),
+        (Outcome::Library, Some("fastapi".to_owned()))
+    );
+    assert_eq!(
+        library_call(&compiled, "io.StringIO"),
+        (Outcome::Library, Some("python:io".to_owned()))
+    );
+    assert!(resolved(&compiled, "pkg.real.run"));
+    let model = compiled
+        .file("app/main.py")
+        .links
+        .iter()
+        .find(|link| link.kind == LinkKind::Types && &*link.text == "inference.Model")
+        .expect("the annotation");
+    assert_eq!(reason_of(model), Some(Reason::NotFound));
+}
+
+/// A written annotation gives a value only as its `types` link reads it: a name an assignment
+/// binds (`Alias = Repo`) is its own declaration, never followed, so neither the link nor the
+/// value reaches the class. A class the annotation names directly, or through an import, does;
+/// a wrapped class's members stay `wrapper`.
+#[test]
+fn annotations_read_aliases_as_their_types_links_do() {
+    let compiled = graph(&[
+        (
+            "m.py",
+            &format!(
+                "{REPO}Alias = Repo\n\n\ndef aliased() -> Alias:\n    ...\n\n\ndef direct() -> Repo:\n    ...\n\n\ndef wrap(cls):\n    return cls\n\n\n@wrap\nclass Wrapped:\n    def save(self):\n        return 2\n\n\ndef wrapped() -> Wrapped:\n    ...\n\n\ndef use(param: Alias, imported: Imported):\n    aliased().save()\n    direct().save()\n    wrapped().save()\n    param.save()\n    imported.save()\n    imported_alias().save()\n\n\nfrom other import Imported, imported_alias\n"
+            ),
+        ),
+        (
+            "other.py",
+            "from m import Repo, Alias\n\nImported = Repo\n\n\ndef imported_alias() -> Alias:\n    ...\n",
+        ),
+    ]);
+    for label in [
+        "aliased().save",
+        "param.save",
+        "imported.save",
+        "imported_alias().save",
+    ] {
+        assert_eq!(reason(&compiled, label), Some(Reason::UnknownReceiver), "{label}");
+    }
+    assert!(saves(&compiled, "direct().save"));
+    assert_eq!(reason(&compiled, "wrapped().save"), Some(Reason::Wrapper));
+    let types: Vec<(String, Option<Reason>)> = compiled
+        .file("m.py")
+        .links
+        .iter()
+        .filter(|link| link.kind == LinkKind::Types && matches!(&*link.text, "Alias" | "Repo"))
+        .map(|link| (link.text.to_string(), reason_of(link)))
+        .collect();
+    assert!(
+        types.contains(&("Alias".to_owned(), Some(Reason::NotConcrete))),
+        "{types:?}"
+    );
+    assert!(types.contains(&("Repo".to_owned(), None)), "{types:?}");
+}
+
+/// A generic return type is read by its class, its type arguments dropped, as written variable
+/// types are: `-> Repo[str]` gives `Repo`, `-> list[int]` gives `list`, in every form a class
+/// is read in. A class that derives from `Generic[T]` stays unresolved, and `type[Repo]` is a
+/// class, not an instance.
+#[test]
+fn generic_return_types_are_read_by_their_class() {
+    let compiled = graph(&[(
+        "m.py",
+        "from typing import Generic, Optional, TypeVar\n\nT = TypeVar(\"T\")\n\n\nclass Repo[T]:\n    def save(self):\n        return 1\n\n\nclass Box(Generic[T]):\n    def open(self):\n        return 2\n\n\ndef make() -> Repo[str]:\n    ...\n\n\ndef maybe() -> Optional[Repo[str]]:\n    ...\n\n\ndef either() -> Repo[str] | None:\n    ...\n\n\nasync def fetch() -> Repo[int]:\n    ...\n\n\ndef rows() -> list[int]:\n    ...\n\n\ndef table() -> dict[str, Repo[str]]:\n    ...\n\n\ndef boxed() -> Box[int]:\n    ...\n\n\ndef kind() -> type[Repo]:\n    ...\n\n\nasync def use():\n    make().save()\n    maybe().save()\n    either().save()\n    (await fetch()).save()\n    rows().append(1)\n    table().get(\"k\")\n    boxed().open()\n    kind().save()\n",
+    )]);
+    for label in [
+        "make().save",
+        "maybe().save",
+        "either().save",
+        "(await fetch()).save",
+    ] {
+        assert!(
+            project(call(&compiled, label)).is_some_and(|key| key.as_str() == "m.py#Repo.save"),
+            "{label}: {:?}",
+            call(&compiled, label)
+        );
+    }
+    let builtin = (Outcome::Builtin, Some("python:builtins".to_owned()));
+    assert_eq!(library_call(&compiled, "rows().append"), builtin);
+    assert_eq!(library_call(&compiled, "table().get"), builtin);
+    assert_eq!(call(&compiled, "boxed().open").to.outcome(), Outcome::Unknown);
+    assert_eq!(call(&compiled, "kind().save").to.outcome(), Outcome::Unknown);
 }

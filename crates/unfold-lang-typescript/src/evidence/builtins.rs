@@ -11,10 +11,15 @@
 //! the library member of the same name: the call is `overridden`.
 //!
 //! The project patches an ECMAScript global when it writes to it (`JSON.parse = …`), to its
-//! prototype (`Array.prototype.map = …`), or reflectively (`Object.defineProperty(String.prototype,
-//! "trim", …)`), or replaces it (`globalThis.JSON = …`, `JSON = …`). A call that may reach a
-//! patched member is `dynamic`. An alias of a global or prototype (`const p = Array.prototype`) is
-//! not followed.
+//! prototype (`Array.prototype.map = …`), to an instance of one of its types (`rows.map = …` where
+//! `rows: Row[]`, or `this.get = …` in a class extending `Map`), or reflectively
+//! (`Object.defineProperty(String.prototype, "trim", …)`), or replaces it (`globalThis.JSON = …`,
+//! `JSON = …`). A write to an instance counts for its whole type, since any other value of that
+//! type may be the same object; a computed key on an array writes an element. A call that may
+//! reach a patched member is `dynamic`, and so is every member of what `new` of a replaced global
+//! constructs. An alias of a global or prototype (`const p = Array.prototype`) is not followed. A
+//! project class whose bases end at an ECMAScript class inherits its members: a call reaching one
+//! is `dynamic` when the project patched it there or replaced the class.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
@@ -22,7 +27,7 @@ use unfold_engine::{DeclRef, FileId};
 
 use super::{Receiver, Walk, WrittenMembers};
 use crate::link::TypeScriptLinked;
-use crate::payload::binding::{DeclFlags, DeclKind, Expr, Lookup, Meanings, TypeRef};
+use crate::payload::binding::{DeclKind, Expr, Lookup, Meanings, TypeRef};
 use crate::tables;
 
 /// The names the global object goes by when nothing declares them.
@@ -75,7 +80,7 @@ impl Lineage {
 #[derive(Debug, Default)]
 pub(crate) struct Patches {
     /// By type (an ECMAScript global's value type for its own members, the class type for its
-    /// prototype's members): the members written.
+    /// prototype's members, an instance's type for its own): the members written.
     members: FxHashMap<&'static str, WrittenMembers>,
     /// The ECMAScript globals replaced.
     replaced: FxHashSet<&'static str>,
@@ -148,8 +153,35 @@ impl TypeScriptLinked<'_> {
         self.global_value(file, object)
     }
 
-    /// Every write of the program to an ECMAScript global, its members, or its prototype's
-    /// members.
+    /// The ECMAScript types whose members a write to the value of expression `index` of `file`
+    /// may change, reading the value as written and under any assertion: its written type, a
+    /// literal's type, what `new` of a global constructs, or for a project class, the type its
+    /// ECMAScript base gives its instances (or, for the class itself, the base's own type). A
+    /// write with a computed key (`named` false) to an array writes an element, so it changes
+    /// none.
+    fn instance_types(&self, file: FileId, index: u32, named: bool) -> SmallVec<[&'static str; 2]> {
+        let mut walk = Walk::default();
+        let mut found = SmallVec::new();
+        for expression in [index, self.unwrap_expr(file, index)] {
+            let receiver = self.class_receiver(&mut walk, file, expression);
+            let (owner, array) = match receiver.class {
+                Some(class) => {
+                    let global = self.ecmascript_base(&mut walk, class);
+                    let owner =
+                        global.and_then(|global| tables::ecmascript_member_type(global, receiver.is_static));
+                    (owner, global == Some("Array") && !receiver.is_static)
+                }
+                None => (receiver.builtin, receiver.array),
+            };
+            if let Some(owner) = owner.filter(|owner| (named || !array) && !found.contains(owner)) {
+                found.push(owner);
+            }
+        }
+        found
+    }
+
+    /// Every write of the program to an ECMAScript global, its members, its prototype's
+    /// members, or an instance's members.
     pub(crate) fn find_patches(&self) -> Patches {
         let mut patches = Patches::default();
         for index in 0..self.program().files().len() {
@@ -169,11 +201,14 @@ impl TypeScriptLinked<'_> {
                     }
                     continue;
                 }
-                let owner = match self.global_value(file, write.object) {
-                    Some(global) => tables::ecmascript_value_type(global),
-                    None => self.global_prototype(file, write.object),
+                let owners = match self.global_value(file, write.object) {
+                    Some(global) => tables::ecmascript_value_type(global).into_iter().collect(),
+                    None => match self.global_prototype(file, write.object) {
+                        Some(owner) => SmallVec::from_elem(owner, 1),
+                        None => self.instance_types(file, write.object, write.name.is_some()),
+                    },
                 };
-                if let Some(owner) = owner {
+                for owner in owners {
                     let members = patches.members.entry(owner).or_default();
                     match &write.name {
                         Some(name) => {
@@ -202,34 +237,46 @@ impl TypeScriptLinked<'_> {
     }
 
     /// Whether the project may have written member `name` of a value of the ECMAScript type
-    /// `type_name`: an ECMAScript global's value type, or an instance type, whose prototype (and
-    /// those of the types it extends) count.
-    fn member_patched(&self, type_name: &str, name: &str) -> bool {
-        std::iter::once(type_name)
-            .chain(tables::ecmascript_supertypes(type_name).iter().copied())
-            .filter_map(|owner| self.tables.patches.members.get(owner))
-            .any(|written| written.any || written.names.contains(name))
+    /// `type_name` (an ECMAScript global's value type, or an instance type): on that type or a
+    /// type it extends, and for a written type (`nominal`), whose values may be of a type that
+    /// extends it, on such a type too.
+    fn member_patched(&self, type_name: &str, name: &str, nominal: bool) -> bool {
+        let supertypes = tables::ecmascript_supertypes(type_name);
+        self.tables.patches.members.iter().any(|(&owner, written)| {
+            (written.any || written.names.contains(name))
+                && (owner == type_name
+                    || supertypes.contains(&owner)
+                    || (nominal && tables::ecmascript_supertypes(owner).contains(&type_name)))
+        })
     }
 
     /// How member `name` of the library receiver `receiver` (written as expression `object` of
     /// `file`) may dispatch.
     pub(crate) fn library_dispatch(
         &self,
+        walk: &mut Walk,
         file: FileId,
         object: u32,
         receiver: &Receiver,
         name: &str,
     ) -> Dispatch {
+        if let Some(class) = receiver.class {
+            return if self.inherited_patched(walk, class, receiver.is_static, name) {
+                Dispatch::Patched
+            } else {
+                Dispatch::Library
+            };
+        }
         let patched = match self.global_value(file, object) {
             Some(global) => {
                 self.global_replaced(global)
                     || tables::ecmascript_value_type(global)
-                        .is_some_and(|value_type| self.member_patched(value_type, name))
+                        .is_some_and(|value_type| self.member_patched(value_type, name, false))
             }
             None => false,
         } || receiver
             .builtin
-            .is_some_and(|type_name| self.member_patched(type_name, name));
+            .is_some_and(|type_name| self.member_patched(type_name, name, receiver.nominal));
         if patched {
             return Dispatch::Patched;
         }
@@ -237,6 +284,17 @@ impl TypeScriptLinked<'_> {
             return Dispatch::Overridden;
         }
         Dispatch::Library
+    }
+
+    /// Whether member `name`, which project class `class` inherits from a base outside the
+    /// project, may be one the project wrote into its ECMAScript base (through the class itself
+    /// when `is_static`, else through an instance), or come from what replaced that base.
+    fn inherited_patched(&self, walk: &mut Walk, class: DeclRef, is_static: bool, name: &str) -> bool {
+        self.ecmascript_base(walk, class).is_some_and(|global| {
+            self.global_replaced(global)
+                || tables::ecmascript_member_type(global, is_static)
+                    .is_some_and(|type_name| self.member_patched(type_name, name, false))
+        })
     }
 
     /// Whether a project class that may be an instance of the written library type (the
@@ -286,25 +344,8 @@ impl TypeScriptLinked<'_> {
                 if !visited.insert(owner) {
                     break;
                 }
-                for &member in self
-                    .tables
-                    .classes
-                    .get(&owner)
-                    .map_or(&[][..], |tables| tables.members.as_slice())
-                {
-                    let Some(decl) = self.decl(member) else {
-                        continue;
-                    };
-                    let overriding = !decl.flags.has(DeclFlags::STATIC)
-                        && !decl.flags.has(DeclFlags::AMBIENT)
-                        && !decl.flags.has(DeclFlags::PRIVATE)
-                        && decl.kind != DeclKind::Constructor
-                        && (decl.flags.has(DeclFlags::HAS_BODY)
-                            || matches!(decl.kind, DeclKind::Property | DeclKind::Parameter));
-                    if overriding {
-                        let name: Box<str> = decl.name.clone().unwrap_or_else(|| "*".into());
-                        overrides.entry(name).or_default().merge(&lineage);
-                    }
+                for name in self.overriding_names(owner) {
+                    overrides.entry(name).or_default().merge(&lineage);
                 }
                 current = self.tables.bases.get(&owner).and_then(|base| base.class);
             }
@@ -327,13 +368,7 @@ impl TypeScriptLinked<'_> {
         } else if base.unknown || base.excluded {
             lineage.any = true;
         } else if base.external {
-            let builtin = self
-                .tables
-                .classes
-                .get(&class)
-                .and_then(|tables| tables.heritage)
-                .and_then(|heritage| self.global_value(class.file, heritage));
-            match builtin {
+            match base.ecmascript {
                 Some(global) => lineage.add_ecmascript(global),
                 None => lineage.any = true,
             }

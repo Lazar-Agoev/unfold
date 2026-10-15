@@ -204,8 +204,8 @@ impl OlderPayloads {
     fn age(bytes: &[u8]) -> Vec<u8> {
         let mut facts = FileFacts::from_bytes(bytes).expect("cached facts decode");
         // The payload starts with its version, one byte in postcard's varint encoding.
-        assert_eq!(facts.payload[0], 12, "the payload's version comes first");
-        facts.payload[0] = 11;
+        assert_eq!(facts.payload[0], 13, "the payload's version comes first");
+        facts.payload[0] = 12;
         facts.to_bytes().expect("facts encode")
     }
 }
