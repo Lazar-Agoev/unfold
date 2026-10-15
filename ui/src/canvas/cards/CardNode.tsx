@@ -9,8 +9,9 @@
 
 import { cardShape } from "@unfold/desktop/drawing";
 import type { Node, NodeProps } from "@xyflow/react";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { Card, View } from "../../ipc/generated";
+import type { CardPort } from "../arrows";
 import { cardView, findPage, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import { useCard } from "../../state/cards";
 import { BlockCard } from "./BlockCard";
@@ -20,8 +21,8 @@ import "./cards.css";
 
 interface CardNodeData extends Record<string, unknown> {
   readonly target: PageTarget;
-  /** The handle ids with an arrow or a connection leaving the card, sorted. */
-  readonly ports: readonly string[];
+  /** The ports with an arrow or a connection leaving the card, sorted by id, with their lines' looks. */
+  readonly ports: readonly CardPort[];
 }
 
 export type CardNodeType = Node<CardNodeData, "card">;
@@ -30,7 +31,7 @@ interface DrawnCardProps {
   readonly target: PageTarget;
   readonly card: Card;
   readonly view: View;
-  readonly ports: readonly string[];
+  readonly ports: readonly CardPort[];
   readonly selected: boolean;
 }
 
@@ -38,11 +39,12 @@ interface DrawnCardProps {
 function DrawnCard({ target, card, view, ports, selected }: DrawnCardProps) {
   const query = useCard(target, card);
   const drawn = query.data;
+  const ids = useMemo(() => ports.map((port) => port.id), [ports]);
   if (drawn?.type === "start") {
-    return <EntranceCard target={target} card={card} start={drawn} shape={cardShape(drawn, view)} ports={ports} selected={selected} />;
+    return <EntranceCard target={target} card={card} start={drawn} shape={cardShape(drawn, view)} ports={ids} selected={selected} />;
   }
   if (drawn && cardShape(drawn, view) === "fields") {
-    return <TypeCard target={target} card={card} drawn={drawn} ports={ports} selected={selected} />;
+    return <TypeCard target={target} card={card} drawn={drawn} ports={ids} selected={selected} />;
   }
   return <BlockCard target={target} card={card} expanded={view === "expanded"} query={query} ports={ports} selected={selected} />;
 }

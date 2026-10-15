@@ -10,9 +10,11 @@
  * Compact, that is all: its arrows leave from its edge. Expanded, it says what it has from its code
  * (the signature, the doc as a description from code, a module's imports, and what runs when it is
  * defined: decorators, bases, Python defaults), then its drawn flow (`FlowView`, laid out by
- * `layoutFlow`): a class's flow is its class-level code. Each arrow leaves the card's edge level with
- * the call that makes it (`CallAnchor`), in the calls it opens in place too, and so does a connection
- * from its step. The body never scrolls: the card sizes itself to its content.
+ * `layoutFlow`): a class's flow is its class-level code. Each arrow starts at the call that makes it
+ * (`CallAnchor`), in the calls it opens in place too, and so does a connection from its step: the card
+ * draws the line from the box's right side across itself to its edge, where the line goes on (under a
+ * box beside the row, it steps down and leaves below that box). The body never scrolls: the card
+ * sizes itself to its content.
  *
  * Its header's `</>` opens its code in the code panel, and so does a block's, or View code in a block's
  * menu (right-click), which also opens calls in place, names, describes, combines, and proposes steps as
@@ -34,14 +36,16 @@ import { useContextMenu } from "../../components";
 import { CombineSteps, ProposeStep } from "../../explain";
 import { flowActions, flowSelection, selectForMenu } from "../../flow/actions";
 import { FlowView, type FlowOutline } from "../../flow/FlowView";
-import { layoutFlow, type FlowGeometry } from "../../flow/layout";
+import { layoutFlow, type FlowGeometry, type Point as FlowPoint } from "../../flow/layout";
 import type { Card, CardView, DrawnFlow, FlowState, Header, Key, LinkEnd } from "../../ipc/generated";
 import type { UnfoldError } from "../../ipc/unfold";
 import { cardKey, clickItem, usePageView, type PageTarget, type Selection } from "../../state/boards";
 import { heldBlocks, isMissing } from "../../state/cards";
 import { openGap, useCodeHover, useCodePanel } from "../../state/codePanel";
 import { useMeasure } from "../measure";
-import { compactCardWidth, expandedCardWidth, flowPortSpots, headerText, nameFit } from "../sizing";
+import type { CardPort } from "../arrows";
+import { roundedPath } from "../lines/paths";
+import { bodyRight, compactCardWidth, expandedCardWidth, flowPortSpots, headerText, nameFit } from "../sizing";
 import { useItemWriting } from "../writing";
 import { blockMenuEntries, type CombineRequest, type ProposeRequest } from "./blockMenu";
 import { useCardMenu } from "./cardMenu";
@@ -54,7 +58,7 @@ export interface BlockCardProps {
   readonly expanded: boolean;
   /** What the reader drew for it (an app's or entrance's start card draws as `EntranceCard` once loaded). */
   readonly query: UseQueryResult<CardView, UnfoldError>;
-  readonly ports: readonly string[];
+  readonly ports: readonly CardPort[];
   readonly selected: boolean;
 }
 
@@ -117,24 +121,65 @@ function FromCode({ header }: { readonly header: Header }) {
   );
 }
 
+/** The part of a line inside an expanded card: its port's look, and its path from its box to the card's edge. */
+interface PortLine {
+  readonly port: CardPort;
+  readonly path: readonly FlowPoint[];
+}
+
+/** Where a card's ports go: at the card's edge where their lines leave its body, or at the header. */
+interface PortPlacement {
+  readonly placed: Map<string, number>;
+  readonly header: string[];
+  readonly lines: readonly PortLine[];
+}
+
 /**
- * Where an expanded card's body places each of `ports` (its calls', and connections' steps): level
- * with the call's box, else (a connection's step that isn't a call) the block's (`flowPortSpots`).
- * Ports it can't place stay at the header.
+ * Where an expanded card's body places each of `ports` (its calls', and connections' steps), and the
+ * part of each line inside the card, up to `right` (`flowPortSpots`): a line starts at its box (its
+ * call's, else its step's), and its port is where it leaves the card. Ports it can't place stay at the
+ * header.
  */
-function placePorts(geometry: FlowGeometry, ports: readonly string[]): { readonly placed: Map<string, number>; readonly header: string[] } {
-  const spots = flowPortSpots(geometry);
+function placePorts(geometry: FlowGeometry, ports: readonly CardPort[], right: number): PortPlacement {
+  const spots = flowPortSpots(geometry, right);
   const placed = new Map<string, number>();
   const header: string[] = [];
+  const lines: PortLine[] = [];
   for (const port of ports) {
-    const y = spots.get(port);
-    if (y === undefined) {
-      header.push(port);
+    const spot = spots.get(port.id);
+    if (spot === undefined) {
+      header.push(port.id);
     } else {
-      placed.set(port, y);
+      placed.set(port.id, spot.y);
+      lines.push({ port, path: spot.path });
     }
   }
-  return { placed, header };
+  return { placed, header, lines };
+}
+
+const ARROW_LINES: ReadonlySet<CardPort["line"]> = new Set(["call", "start", "type"]);
+
+/** The part of each line inside the card, drawn as the line is: an arrow's color and dash, or a connection's kind; heavier while selected. */
+function PortLines({ lines }: { readonly lines: readonly PortLine[] }) {
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <svg className="card-port-lines" aria-hidden="true">
+      {lines.map(({ port, path }) => {
+        const d = roundedPath(path);
+        return ARROW_LINES.has(port.line) ? (
+          <g key={port.id} className={`board-arrow${port.line === "start" ? " start" : ""}${port.selected ? " selected" : ""}`}>
+            <path d={d} className={`board-arrow-line${port.dashed ? " dashed" : ""}`} />
+          </g>
+        ) : (
+          <g key={port.id} className={`board-connection kind-${port.line}${port.selected ? " open" : ""}`}>
+            <path d={d} className="connection-line" />
+          </g>
+        );
+      })}
+    </svg>
+  );
 }
 
 /**
@@ -165,13 +210,14 @@ function useOutline(cardId: string, selection: Selection, geometry: FlowGeometry
 /** A popover a block's menu opened, beside the block it was opened on. */
 type Explaining = { readonly anchor: HTMLElement } & ({ readonly kind: "combine"; readonly request: CombineRequest } | { readonly kind: "propose"; readonly request: ProposeRequest });
 
-/** An expanded card's drawn flow, with its ports where its calls are, and a block's menu (`blockMenuEntries`). */
+/** An expanded card's drawn flow, with its lines from their calls to its edge and its ports there, and a block's menu (`blockMenuEntries`). */
 function ExpandedBody({
   target,
   card,
   view,
   geometry,
   ports,
+  lines,
   onToggleRow,
 }: {
   readonly target: PageTarget;
@@ -179,6 +225,7 @@ function ExpandedBody({
   readonly view: CardView;
   readonly geometry: FlowGeometry;
   readonly ports: ReadonlyMap<string, number>;
+  readonly lines: readonly PortLine[];
   readonly onToggleRow: (key: Key) => void;
 }) {
   const selection = usePageView(target, (page) => page.selection);
@@ -231,6 +278,7 @@ function ExpandedBody({
           );
         }}
       />
+      <PortLines lines={lines} />
       {renderPorts([...ports.keys()], ports)}
       {/* Like the card's menu: a choice never also clicks the card it was opened on, and typing never reaches the canvas. */}
       {menu.element || popover ? (
@@ -270,10 +318,13 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
   }, [flow, text, geometry, measure]);
   const fit = useMemo(() => (text && width !== undefined ? nameFit(text, width, measure) : undefined), [text, width, measure]);
   const writing = useItemWriting(target, card.id);
-  const placement = useMemo(() => (geometry ? placePorts(geometry, ports) : { placed: new Map<string, number>(), header: [...ports] }), [geometry, ports]);
+  const placement = useMemo(
+    (): PortPlacement => (geometry && width !== undefined ? placePorts(geometry, ports, bodyRight(width)) : { placed: new Map(), header: ports.map((port) => port.id), lines: [] }),
+    [geometry, ports, width],
+  );
   const lit = useHoverHeld(flow, expanded);
 
-  const portsKey = ports.join("\u0000");
+  const portsKey = ports.map((port) => port.id).join("\u0000");
   useLayoutEffect(() => {
     updateNodeInternals(card.id);
   }, [updateNodeInternals, card.id, portsKey, width, geometry]);
@@ -297,7 +348,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
   } else if (geometry) {
     body = (
       <div className="card-body nodrag nopan">
-        <ExpandedBody target={target} card={card} view={query.data} geometry={geometry} ports={placement.placed} onToggleRow={toggleRow} />
+        <ExpandedBody target={target} card={card} view={query.data} geometry={geometry} ports={placement.placed} lines={placement.lines} onToggleRow={toggleRow} />
       </div>
     );
   }

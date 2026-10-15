@@ -36,7 +36,7 @@ describe("where a connection leaves and enters", () => {
 
 describe("the ports and columns connections need", () => {
   it("give a card a step port only where it draws the step expanded, as itself, and never for a relationship", () => {
-    expect([...stepPorts([queue], new Map(), draws(true))]).toEqual([["create-order", [`step:${STEP}`]]]);
+    expect([...stepPorts([queue], new Map(), draws(true))].map(([card, ports]) => [card, ports.map((port) => port.id)])).toEqual([["create-order", [`step:${STEP}`]]]);
     expect([...stepPorts([queue], new Map(), draws(false))]).toEqual([]);
     expect([...stepPorts([queue], new Map([["create-order", "server"]]), draws(true))]).toEqual([]);
     expect([...stepPorts([{ ...relates, from: "create-order", step: STEP }], new Map(), draws(true))]).toEqual([]);

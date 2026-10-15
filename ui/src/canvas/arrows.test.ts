@@ -83,7 +83,7 @@ describe("arrows from call blocks", () => {
       [callPort(CHARGE_CALL), "charge", [CHARGE_CALL]],
     ]);
     expect(arrows.every((arrow) => arrow.kind === "call" && !arrow.dashed)).toBe(true);
-    expect(portsByCard(arrows).get("place")).toEqual([callPort(CHARGE_CALL), callPort(LOAD_CALL)].sort());
+    expect(portsByCard(arrows).get("place")?.map((port) => port.id)).toEqual([callPort(CHARGE_CALL), callPort(LOAD_CALL)].sort());
   });
 
   it("leave a compact card from its edge, one arrow per card standing for every call to it in the order they run", () => {

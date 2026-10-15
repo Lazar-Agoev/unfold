@@ -13,7 +13,7 @@
 
 import { cardShape, fieldRows, type CardShape } from "@unfold/desktop/drawing";
 import type { CardView, Description, Frame, Header, ResourceKind, StartCard, TypeDefinition, View } from "../ipc/generated";
-import { layoutFlow, type FlowGeometry, type Measure } from "../flow/layout";
+import { layoutFlow, type FlowGeometry, type Measure, type Point as FlowPoint, type Rect as FlowRect } from "../flow/layout";
 import { memberName, memberValue } from "../code/typeKinds";
 import { callPort, stepPort } from "./arrows";
 import { headerLocation, headerMark, startRowName, startRowPlace, startRows, unfoundCode, type HeaderMark } from "./cardText";
@@ -209,32 +209,84 @@ export function expandedCardSize(header: Header, geometry: FlowGeometry, descrip
   return { width, height: expandedBodyTop(header, width, description, measure) + Math.ceil(geometry.height) + RULE };
 }
 
+/** The right edge of an expanded card `width` wide's body, from its left: its lines leave the card there. */
+export function bodyRight(width: number): number {
+  return width - BORDER;
+}
+
+/** Where a line leaves an expanded card's drawn flow, and its part inside the card. */
+export interface FlowPortSpot {
+  /** Its height below the flow's top where it leaves the card. */
+  readonly y: number;
+  /** Its path inside the card, in the flow's coordinates: from the right side of its box to the body's right edge. */
+  readonly path: readonly FlowPoint[];
+}
+
+/** How far left of a box beside a row a line turns down, and how far it keeps from the boxes it passes. */
+const PORT_TURN = 12;
+const PORT_CLEAR = 4;
+
+function holds(outer: FlowRect, inner: FlowRect): boolean {
+  return outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height;
+}
+
 /**
- * Where an expanded card's drawn flow places its ports, below the flow's top: a call's (`callPort`)
- * and a connection's from that call (`stepPort`) level with the call's box, and a connection's from a
- * step that isn't a call level with the block's first line.
+ * A line's path inside a card from `start` (the right side of `box`, its row's height) to `right`:
+ * straight along its row; under a box beside the row (a try's handlers beside the try), it turns down
+ * just before that box, runs in the gap under it, and leaves the card there.
  */
-export function flowPortSpots(geometry: FlowGeometry): Map<string, number> {
-  const spots = new Map<string, number>();
+function portPath(start: FlowPoint, box: FlowRect, geometry: FlowGeometry, right: number): FlowPoint[] {
+  const boxes = geometry.pieces.filter((piece) => piece.kind !== "note" && !holds(piece.rect, box) && !holds(box, piece.rect)).map((piece) => piece.rect);
+  const across = (y: number, from: number) => boxes.filter((rect) => rect.x + rect.width > from && rect.y - PORT_CLEAR < y && y < rect.y + rect.height + PORT_CLEAR);
+  let hits = across(start.y, start.x);
+  if (hits.length === 0) {
+    return [start, { x: right, y: start.y }];
+  }
+  const beside = Math.min(...hits.map((rect) => rect.x));
+  const turn = beside - Math.min(PORT_TURN, Math.max(0, beside - start.x) / 2);
+  let y = start.y;
+  for (let tries = 0; hits.length > 0 && tries < geometry.pieces.length; tries += 1) {
+    const bottom = Math.max(...hits.map((rect) => rect.y + rect.height));
+    const next = Math.min(...boxes.filter((rect) => rect.x + rect.width > turn && rect.y >= bottom).map((rect) => rect.y), bottom + 4 * PORT_CLEAR);
+    y = (bottom + next) / 2;
+    hits = across(y, turn);
+  }
+  return [start, { x: turn, y: start.y }, { x: turn, y }, { x: right, y }];
+}
+
+/**
+ * Where an expanded card's drawn flow places its ports, and the part of each line inside the card,
+ * up to `right` (`bodyRight`): a call's (`callPort`) and a connection's from that call (`stepPort`)
+ * leave the right side of the call's box (or of the collapsed combined step holding it) at its row;
+ * a connection's from a step that isn't a call leaves the block's right side at its first line. A line
+ * leaves the card at its row, or under a box beside the row (`portPath`).
+ */
+export function flowPortSpots(geometry: FlowGeometry, right: number): Map<string, FlowPortSpot> {
+  const spots = new Map<string, FlowPortSpot>();
+  const spot = (box: FlowRect, start: FlowPoint): FlowPortSpot => {
+    const path = portPath(start, box, geometry, right);
+    return { y: path[path.length - 1]?.y ?? start.y, path };
+  };
   for (const anchor of geometry.anchors) {
     for (const port of [callPort(anchor.call), stepPort(anchor.call)]) {
       if (!spots.has(port)) {
-        spots.set(port, anchor.at.y);
+        spots.set(port, spot(anchor.rect, anchor.at));
       }
     }
   }
   for (const [key, rect] of geometry.blocks) {
     if (!spots.has(stepPort(key))) {
-      spots.set(stepPort(key), rect.y + Math.min(rect.height / 2, 13));
+      spots.set(stepPort(key), spot(rect, { x: rect.x + rect.width, y: rect.y + Math.min(rect.height / 2, 13) }));
     }
   }
   return spots;
 }
 
-/** Each port of an expanded card below its top, before it is drawn: its spot in the flow (`flowPortSpots`), under the flow's top. */
+/** Each port of an expanded card below its top, before it is drawn: where it leaves the card (`flowPortSpots`), under the flow's top. */
 export function estimatedPortOffsets(header: Header, geometry: FlowGeometry, description: Description | undefined, measure: Measure): Map<string, number> {
-  const top = expandedBodyTop(header, expandedCardWidth(header, geometry, measure), description, measure);
-  return new Map([...flowPortSpots(geometry)].map(([port, y]) => [port, top + y]));
+  const width = expandedCardWidth(header, geometry, measure);
+  const top = expandedBodyTop(header, width, description, measure);
+  return new Map([...flowPortSpots(geometry, bodyRight(width))].map(([port, { y }]) => [port, top + y]));
 }
 
 // ---------------------------------------------------------------------------------------------

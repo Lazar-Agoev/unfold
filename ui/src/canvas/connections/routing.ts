@@ -7,7 +7,7 @@
  */
 
 import type { Connection, Key } from "../../ipc/generated";
-import { stepPort } from "../arrows";
+import { stepPort, type CardPort } from "../arrows";
 import type { Rect } from "../layout";
 import { linkEnds } from "../linkSides";
 import { columnHandle } from "../resources/columns";
@@ -50,15 +50,21 @@ export function lineHandles(link: Connection | undefined, ends: DrawnEnds, from:
   return { source, target };
 }
 
-/** The step ports each card shows a connection leaving from (drawn as itself, expanded, drawing the step). */
-export function stepPorts(links: readonly Connection[], shownAs: ReadonlyMap<string, string>, drawsStep: DrawsStep): Map<string, string[]> {
-  const ports = new Map<string, string[]>();
+/**
+ * The step ports each card shows a connection leaving from (drawn as itself, expanded, drawing the
+ * step), each with its connection's look (`selected`: the selected connection's id).
+ */
+export function stepPorts(links: readonly Connection[], shownAs: ReadonlyMap<string, string>, drawsStep: DrawsStep, selected: string | null = null): Map<string, CardPort[]> {
+  const ports = new Map<string, CardPort[]>();
   for (const link of links) {
     if (link.kind !== "relates" && link.step !== undefined && !shownAs.has(link.from) && drawsStep(link.from, link.step)) {
       const port = stepPort(link.step);
       const list = ports.get(link.from) ?? [];
-      if (!list.includes(port)) {
-        list.push(port);
+      const known = list.findIndex((item) => item.id === port);
+      if (known < 0) {
+        list.push({ id: port, line: link.kind, dashed: false, selected: link.id === selected });
+      } else if (link.id === selected) {
+        list[known] = { id: port, line: link.kind, dashed: false, selected: true };
       }
       ports.set(link.from, list);
     }

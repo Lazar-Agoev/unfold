@@ -56,7 +56,7 @@ import {
 } from "../state/boards";
 import { findBlock } from "../state/cards";
 import { ArrowEdge, type ArrowEdgeType } from "./ArrowEdge";
-import { portsByCard, type Arrow } from "./arrows";
+import { portsByCard, type Arrow, type CardPort } from "./arrows";
 import type { BoardArrows } from "./useBoardArrows";
 import { CardNode, type CardNodeType } from "./cards/CardNode";
 import { TARGET_HANDLE } from "./cards/parts";
@@ -83,7 +83,13 @@ type CanvasEdge = ArrowEdgeType | ConnectionEdgeType;
 
 const nodeTypes = { card: CardNode, frame: FrameNode, resource: ResourceNode, note: NoteNode };
 const edgeTypes = { arrow: ArrowEdge, connection: ConnectionEdge };
-const NO_PORTS: readonly string[] = [];
+const NO_PORTS: readonly CardPort[] = [];
+const NO_COLUMNS: readonly string[] = [];
+
+/** Everything about a card's ports its node draws, as one string. */
+function portsSignature(ports: readonly CardPort[]): string {
+  return ports.map((port) => [port.id, port.line, port.dashed, port.selected].join("\u0001")).join("\u0000");
+}
 const NO_LINKS: readonly Connection[] = [];
 const NO_FRAMES: readonly Frame[] = [];
 const NO_RESOURCES: readonly Resource[] = [];
@@ -200,14 +206,14 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   // What a collapsed frame hides is drawn as the frame: its arrows and links attach there.
   const shownAs = useMemo(() => collapsedPlaces(framed), [framed]);
   const arrows = useMemo(() => routeArrows(boardArrows.arrows, shownAs), [boardArrows.arrows, shownAs]);
-  // A card's ports: its arrows', and the steps its connections leave from (on an expanded card).
+  // A card's ports, each with its line's look: its arrows', and the steps its connections leave from (on an expanded card).
   const ports = useMemo(() => {
-    const merged = portsByCard(arrows);
-    for (const [card, steps] of stepPorts(links, shownAs, drawsStep)) {
-      merged.set(card, [...(merged.get(card) ?? []), ...steps].sort());
+    const merged = portsByCard(arrows, selectedArrow);
+    for (const [card, steps] of stepPorts(links, shownAs, drawsStep, selectedLink)) {
+      merged.set(card, [...(merged.get(card) ?? []), ...steps].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
     }
     return merged;
-  }, [arrows, links, shownAs, drawsStep]);
+  }, [arrows, links, shownAs, drawsStep, selectedArrow, selectedLink]);
   const columns = useMemo(() => relatedColumns(links, shownAs), [links, shownAs]);
   const paneMenu = useContextMenu("Board actions");
   // Add resource… from the canvas's menu: where the menu opened, on the screen and on the canvas.
@@ -239,7 +245,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     const live = new Set<string>();
     const deepest = geometry.frames.reduce((most, drawn) => Math.max(most, drawn.depth), 0);
     const list = geometry.frames.map(({ frame, rect, depth, collapsed }) => {
-      const framePorts = ports.get(frame.id) ?? NO_PORTS;
+      const framePorts = (ports.get(frame.id) ?? NO_PORTS).map((port) => port.id);
       const cached = frameCache.get(frame.id);
       const box = collapsed ? undefined : { width: rect.width, height: rect.height };
       const inZone = !collapsed && zoned.has(frame.id);
@@ -288,7 +294,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
       }
       const cardPorts = ports.get(card.id) ?? NO_PORTS;
       const cached = nodeCache.get(card.id);
-      const keptPorts = cached?.data.ports.join("\u0000") === cardPorts.join("\u0000") ? cached.data.ports : undefined;
+      const keptPorts = cached && portsSignature(cached.data.ports) === portsSignature(cardPorts) ? cached.data.ports : undefined;
       const node: CardNodeType =
         cached && keptPorts && cached.position.x === at.x && cached.position.y === at.y
           ? cached
@@ -328,7 +334,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
     const list = [
       ...resources.flatMap((resource) => {
         const spot = placed(resource.id);
-        const used = columns.get(resource.id) ?? NO_PORTS;
+        const used = columns.get(resource.id) ?? NO_COLUMNS;
         return spot
           ? [cached(resource.id, `${spot.signature}\u0001${used.join("\u0000")}`, (): ResourceNodeType => ({ id: resource.id, type: "resource", position: spot.at, dragHandle: ".resource-drag", data: { target, columns: used } }))]
           : [];

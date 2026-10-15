@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { layoutFlow } from "../flow/layout";
 import type { CardView, Description, DrawnFlow, StartCard, TypeDefinition, TypeMember } from "../ipc/generated";
 import { fixture } from "../test/engine";
+import { callPort, stepPort } from "./arrows";
 import { CARD_MAX_WIDTH, fallbackSize } from "./layout";
 import { AUTHORED_TITLE_FONT, CODE_NAME_FONT, LOCATION_FONT, TITLE_FONT, TYPE_KIND_FONT, estimateText } from "./measure";
 import {
@@ -9,13 +10,16 @@ import {
   COMPACT_MIN_WIDTH,
   FIELDS_FOLDED,
   TYPE_MAX_WIDTH,
+  bodyRight,
   compactCardWidth,
   descriptionHeight,
   estimatedCardSize,
   estimatedFieldOffset,
+  estimatedPortOffsets,
   expandedCardSize,
   expandedCardWidth,
   fieldTexts,
+  flowPortSpots,
   headerText,
   listedFields,
   nameFit,
@@ -149,6 +153,31 @@ describe("definition cards", () => {
     expect(estimatedCardSize({ model, view: "expanded" }, measure)).toEqual(expandedCardSize(place.header, layoutFlow(place, { measure }), undefined, measure));
     expect(estimatedCardSize({ model: createOrder, view: "expanded" }, measure).height).toBeGreaterThan(200);
     expect(estimatedCardSize({ model: undefined, view: "expanded" }, measure)).toEqual(fallbackSize("expanded"));
+  });
+
+  it("start each line at its call's box and leave the card at its row, or under a box beside the row", () => {
+    const geometry = layoutFlow(place, { measure });
+    const width = expandedCardWidth(place.header, geometry, measure);
+    const spots = flowPortSpots(geometry, bodyRight(width));
+    const anchor = (callee: string) => geometry.anchors.find((item) => item.call.endsWith(`call:${callee}`));
+    // load_order: straight from its box's right side to the card's edge, at its row.
+    const load = anchor("load_order");
+    expect(spots.get(callPort(load?.call ?? ""))?.path).toEqual([load?.at, { x: bodyRight(width), y: load?.at.y }]);
+    // charge_card, in the try: its handler sits beside its row, so the line turns down before it and leaves under it.
+    const charge = anchor("charge_card");
+    const handler = geometry.pieces.find((piece) => piece.kind === "section" && piece.look === "handler")?.rect;
+    const spot = spots.get(callPort(charge?.call ?? ""));
+    const [start, turn, down, out] = spot?.path ?? [];
+    expect(start).toEqual(charge?.at);
+    expect(turn?.y).toBe(charge?.at.y);
+    expect(turn?.x).toBeLessThan(handler?.x ?? 0);
+    expect(down?.x).toBe(turn?.x);
+    expect(spot?.y).toBeGreaterThan((handler?.y ?? 0) + (handler?.height ?? 0));
+    expect(out).toEqual({ x: bodyRight(width), y: spot?.y });
+    // A connection from that call leaves the same way; before the card is drawn, its port is estimated there.
+    expect(spots.get(stepPort(charge?.call ?? ""))).toEqual(spot);
+    const offsets = estimatedPortOffsets(place.header, geometry, undefined, measure);
+    expect((offsets.get(callPort(charge?.call ?? "")) ?? 0) - (offsets.get(callPort(load?.call ?? "")) ?? 0)).toBe((spot?.y ?? 0) - (load?.at.y ?? 0));
   });
 });
 

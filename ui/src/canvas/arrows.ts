@@ -8,7 +8,7 @@
  */
 
 import { pageArrows, type ArrowPort, type DrawnCard } from "@unfold/desktop/drawing";
-import type { CardView, Key, ProjectId, TypeDefinition, View } from "../ipc/generated";
+import type { CardView, ConnectionKind, Key, ProjectId, TypeDefinition, View } from "../ipc/generated";
 import { cardRefKey } from "../state/boards/keys";
 
 export interface ArrowCard {
@@ -105,18 +105,35 @@ export function computeArrows(cards: readonly ArrowCard[], models: ReadonlyMap<s
   });
 }
 
-/** Each card's ports (handle ids with an arrow), sorted, for the cards to draw. */
-export function portsByCard(arrows: readonly Arrow[]): Map<string, string[]> {
-  const ports = new Map<string, string[]>();
+/**
+ * A port a line leaves a card from, and how that line looks: an expanded card draws the part of the
+ * line inside itself, from its box to its edge.
+ */
+export interface CardPort {
+  readonly id: string;
+  /** What leaves it: an arrow (a call's, a start's, a type field's) or a connection of a kind. */
+  readonly line: Arrow["kind"] | ConnectionKind;
+  readonly dashed: boolean;
+  /** Whether the line is selected. */
+  readonly selected: boolean;
+}
+
+/** Each card's ports (handle ids with an arrow, and the arrow's look), sorted by id, for the cards to draw. `selected` is the selected arrow's id. */
+export function portsByCard(arrows: readonly Arrow[], selected: string | null = null): Map<string, CardPort[]> {
+  const ports = new Map<string, CardPort[]>();
   for (const arrow of arrows) {
     const list = ports.get(arrow.source) ?? [];
-    if (!list.includes(arrow.sourceHandle)) {
-      list.push(arrow.sourceHandle);
+    const port: CardPort = { id: arrow.sourceHandle, line: arrow.kind, dashed: arrow.dashed, selected: arrow.id === selected };
+    const known = list.findIndex((item) => item.id === port.id);
+    if (known < 0) {
+      list.push(port);
+    } else if (port.selected) {
+      list[known] = port;
     }
     ports.set(arrow.source, list);
   }
   for (const list of ports.values()) {
-    list.sort();
+    list.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   return ports;
 }

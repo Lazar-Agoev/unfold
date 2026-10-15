@@ -299,8 +299,21 @@
 .card-link-handles.left > .react-flow__handle,
 .card-link-handles.right > .react-flow__handle { top: 21px; }
 
-/* An expanded card's arrows leave its edge level with their calls (BlockCard places each). */
+/* An expanded card's lines start at their calls and leave its edge where BlockCard places each port;
+   the card draws the part inside itself, over its flow, as the line is drawn (canvas.css,
+   connections.css). */
 .card-body > .react-flow__handle.card-port { right: 0; }
+
+.card-port-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.card-port-lines .board-connection { cursor: default; }
 
 /*
  * An app's or entrance's card: it
