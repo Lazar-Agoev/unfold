@@ -2,16 +2,16 @@
  * `frame_cards`: gathers items of a page into frames, or updates frames by id: title,
  * description, members, look, icon, parent, direction, and whether it is collapsed. An item is in one
  * frame, so members come from no frame, from the frame itself, or from the parent it is nested in;
- * frames nest at most three deep and never in a cycle. A frame's title and description are a person's
- * words when a person wrote them, also when moving a frame out leaves theirs empty (it would go). The
- * result names each frame and what it holds, and notes shared code that is in no frame though code in
- * several frames calls it.
+ * frames never nest in a cycle, and how deep they nest is the save's to check. A frame's title and
+ * description are a person's words when a person wrote them, also when moving a frame out leaves
+ * theirs empty (it would go). The result names each frame and what it holds, and notes shared code
+ * that is in no frame though code in several frames calls it.
  */
 
 import type { AgentFrameMember, AgentFrameResult, AgentFrameSpec, AgentItemResult, AgentItemStatus, FrameCardsOp } from "@unfold/desktop/agent-api";
 import type { Frame, Page } from "../../../ipc/generated";
-import { findCard, findCombined, isFreeId } from "../document";
-import { MAX_FRAME_DEPTH, addFrame, findFrame, frameChain, frameItems, frameOf, nestFrame, nestingRemoval, setFrameMembers, updateFrame } from "../frames";
+import { findCard, findCombined } from "../document";
+import { addFrame, findFrame, frameChain, frameItems, frameOf, nestFrame, nestingRemoval, setFrameMembers, updateFrame } from "../frames";
 import { cardName, guardPeopleText, guardRemoval, invalid, noteName, pageArrows, type OpContext } from "./context";
 
 /** What an item of the page is, for frames' rules and results. */
@@ -117,18 +117,6 @@ function checkParent(page: Page, spec: AgentFrameSpec, title: string, self: Fram
   }
 }
 
-/** Refuses a page whose frames would nest more than three deep. */
-function checkDepth(page: Page, title: string): void {
-  for (const frame of page.frames ?? []) {
-    const depth = frameChain(page, frame.id).length + 1;
-    if (depth > MAX_FRAME_DEPTH) {
-      throw invalid(
-        `Can't make the frame “${title}” as asked: ${quoted(frame)} would be ${depth} frames deep, and frames nest at most ${MAX_FRAME_DEPTH} deep (a zone, a box in it, and a box in that). Nest it in a frame higher up, or take a level out.`,
-      );
-    }
-  }
-}
-
 /** Creates or updates one frame; returns its id and what happened to it. */
 function applyFrameSpec(ctx: OpContext, page: Page, spec: AgentFrameSpec, replacePeopleText: boolean | undefined): { id: string; status: AgentItemStatus } {
   const title = spec.title.trim();
@@ -136,14 +124,6 @@ function applyFrameSpec(ctx: OpContext, page: Page, spec: AgentFrameSpec, replac
     throw invalid("A frame needs a title: a noun of 1 to 4 words, such as “Request checks” or “Order API”.");
   }
   const self = spec.id !== undefined ? findFrame(page, spec.id) : undefined;
-  if (!self && spec.id !== undefined && !isFreeId(page, spec.id)) {
-    const kind = itemKind(page, spec.id);
-    throw invalid(
-      kind !== null
-        ? `“${spec.id}” is the id of a ${kind === "combined" ? "combined step" : kind} on this page. Give the frame another id, or leave id out.`
-        : `“${spec.id}” can't name a frame: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
-    );
-  }
   const members = [...new Set(spec.members)];
   checkMembers(ctx, page, { ...spec, members }, title, self);
   checkParent(page, spec, title, self);
@@ -189,7 +169,6 @@ function applyFrameSpec(ctx: OpContext, page: Page, spec: AgentFrameSpec, replac
     updateFrame(page, id, description);
     result = { id, status: "created" };
   }
-  checkDepth(page, title);
   return result;
 }
 

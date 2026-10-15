@@ -170,7 +170,8 @@ export const addNotes = defineTool({
       .array(
         z.strictObject({
           id: z.string().min(1).optional().describe("An existing note's id updates it"),
-          text: z.string().trim().min(1).max(400),
+          // How long a note may be is the board's to check: its save's refusal is the answer.
+          text: z.string().trim().min(1),
           attach: z.string().min(1).optional().describe("The id of the card, frame, resource card, or connection it moves with"),
           near: z.string().min(1).optional().describe("An item's id to place a free note beside"),
         }),
@@ -237,8 +238,9 @@ const proposalArg = z
     id: z.string().min(1).optional().describe("An existing proposed step's id updates it; absent: a new one (or the page's one with the same spot and title)"),
     after: z.string().min(1).optional().describe("The key of the block it goes after (read_code lists the keys)"),
     start: z.string().min(1).optional().describe("The key of a definition or a part: it goes at the start of its body"),
-    title: z.string().trim().min(1).max(120).optional().describe("What it would do, 1 to 120 characters; needed for a new one"),
-    reason: z.string().trim().min(1).max(400).nullable().optional().describe("Why it's wanted, 1 to 400 characters; null clears it"),
+    // How long its words may be is the board's to check: its save's refusal is the answer.
+    title: z.string().trim().min(1).optional().describe("What it would do, 1 to 120 characters; needed for a new one"),
+    reason: z.string().trim().min(1).nullable().optional().describe("Why it's wanted, 1 to 400 characters; null clears it"),
   })
   .refine((spec) => spec.after === undefined || spec.start === undefined, "A proposed step goes after a block or at the start of a body: pass after or start, not both.");
 

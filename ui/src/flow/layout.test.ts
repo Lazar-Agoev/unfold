@@ -430,20 +430,20 @@ describe("try", () => {
   it("draws a with block titled by its header, with its header call as a chip", () => {
     const geometry = lay(drawn("03-sync-inbox"));
     const frame = pieces(geometry, "frame").find((piece) => piece.look === "with");
-    expect(frame?.frame.header).toBe("mailbox_lock(account)");
+    expect(frame?.frame.header).toBe("with mailbox_lock(account)");
     expect(frame?.frame.headerCalls.map((box) => box.callee)).toEqual(["mailbox_lock"]);
     expect(geometry.anchors.some((anchor) => anchor.call === "inbox/sync.py#sync_inbox/with[0]/call:mailbox_lock")).toBe(true);
   });
 });
 
 describe("exits", () => {
-  it("labels exits by their value and says where they go, unless a wire into End shows it", () => {
+  it("labels exits by their value and says where they go, the last return too, before its wire into End", () => {
     const flow = drawn("01-place-order");
     const geometry = lay(flow);
     expect(exitOf(geometry, "shop/service.py#place_order/if[0]/then/raise[0]").destination).toBe("raises to the caller");
     expect(exitOf(geometry, "shop/service.py#place_order/if[0]/elif[0]/return[0]").destination).toBe("End");
     expect(exitOf(geometry, "shop/service.py#place_order/try[0]/except[0]/return[0]").destination).toBe("End");
-    expect(exitOf(geometry, "shop/service.py#place_order/return[0]").destination).toBeNull();
+    expect(exitOf(geometry, "shop/service.py#place_order/return[0]").destination).toBe("End");
     const end = pieces(geometry, "end")[0];
     const wire = wireOf(geometry, 17, "return", "end");
     expect(wire?.points.at(-1)?.y).toBe(end?.rect.y);

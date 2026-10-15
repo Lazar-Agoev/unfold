@@ -97,7 +97,7 @@ export function EntranceCard({ target, card, start, shape, ports, selected }: En
           <HeaderPorts ids={ports.filter((id) => id === NODE_PORT)} />
         </header>
         <ReviewBanner target={target} cardId={card.id} view={start} />
-        <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap={!expanded} />
+        <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap />
         {rows.length > 0 ? (
           <ul className="start-codes">
             {rows.map(({ code, index }) => {

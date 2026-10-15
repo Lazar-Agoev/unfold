@@ -31,6 +31,7 @@ use super::{
     CallContract, ContractParameter, ContractRaise, ContractReturn, ContractSend, Landing, SentArgument,
     TypeText, UnpairedArgument,
 };
+use crate::drawing::one_line;
 use crate::error::Result;
 use crate::notes::{LinkEnd, pairing_text};
 use crate::tree::FileTree;
@@ -301,10 +302,15 @@ pub fn call_contract(facts: &mut Facts<'_>, key: &str) -> Result<Option<CallCont
         }
     }
 
+    // The call as written, on one line; just its callee when the caller's file changed since the compile.
+    let text = caller_text
+        .as_ref()
+        .and_then(|source| source.slice(node.range).ok())
+        .map_or_else(|| link.text.clone(), |written| one_line(written).into());
     Ok(Some(CallContract {
         call: node.key.clone(),
         line: node.lines.start,
-        text: link.text.clone(),
+        text,
         callee: LinkEnd::of(&link.to),
         sends,
         returns,

@@ -6,7 +6,7 @@
       "kind": "function",
       "form": "function",
       "label": "createOrder",
-      "signature": "async function createOrder(req: Request, res: Response): Promise<void>",
+      "signature": "(req: Request, res: Response): Promise<void>",
       "path": "ts-orders/src/routes/orders.ts",
       "state": "current",
       "line": 25,
@@ -66,6 +66,7 @@
               },
               "types": [],
               "fallsThrough": false,
+              "group": false,
               "combinable": [
                 "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add",
                 "ts-orders/src/routes/orders.ts#createOrder/if[0]/then/call:res.status().json",

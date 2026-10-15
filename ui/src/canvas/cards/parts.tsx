@@ -7,8 +7,6 @@
 
 import { Handle, Position } from "@xyflow/react";
 import { useState, type ReactNode } from "react";
-import { AgentMark } from "../../agent";
-import { authorOf } from "../../code/text";
 import { Icon } from "../../icons";
 import type { Description } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
@@ -93,10 +91,11 @@ export function CardNote({ warn = false, children }: { readonly warn?: boolean; 
 }
 
 /**
- * The card's description: one line with **more**, in the authored color, and the agent mark when an
- * agent wrote it; a compact card's or a resource card's (`wrap`) shows all of it, wrapped. Double-click
- * edits it in place (Enter saves, Shift+Enter breaks the line, Escape keeps the old text), which makes
- * it yours; clearing it removes it. `onSave` writes it for an item that isn't a card.
+ * The card's description, in the authored color and without a mark, whoever wrote it (Selected says who):
+ * all of it, wrapped (`wrap`, as a definition's, an entrance's, or a resource card's), or one line with
+ * **more** (a type card's). Double-click edits it in place (Enter saves, Shift+Enter breaks the line,
+ * Escape keeps the old text), which makes it yours; clearing it removes it. `onSave` writes it for an
+ * item that isn't a card.
  */
 export function DescriptionStrip({
   target,
@@ -117,7 +116,6 @@ export function DescriptionStrip({
   if (!description) {
     return null;
   }
-  const writer = authorOf(description.author);
   if (editing && author !== null) {
     const finish = (text: string | null) => {
       setEditing(false);
@@ -167,7 +165,6 @@ export function DescriptionStrip({
       }}
     >
       <p title={shown ? undefined : description.text}>{description.text}</p>
-      {writer.agent ? <AgentMark name={writer.name} /> : null}
       {wrap ? null : (
         <button
           type="button"

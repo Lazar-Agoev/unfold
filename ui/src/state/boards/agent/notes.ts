@@ -10,9 +10,9 @@ import { attachPoint } from "../../../canvas/frames/geometry";
 import { noteSize } from "../../../canvas/sizing";
 import { measureText } from "../../../canvas/measure";
 import type { Note, Page } from "../../../ipc/generated";
-import { findCard, findCombined, isFreeId, isItemId } from "../document";
+import { findCard, findCombined } from "../document";
 import { findFrame } from "../frames";
-import { NOTE_MAX, addNote, findNote, noteText, placeNote, setNoteText } from "../notes";
+import { addNote, findNote, placeNote, setNoteText } from "../notes";
 import { findResource } from "../resources";
 import { guardPeopleText, invalid, noteName, pageRects, type OpContext } from "./context";
 import { freeNoteSpot, noteSpot } from "./place";
@@ -46,15 +46,7 @@ function existingFor(page: Page, spec: AgentNoteSpec, text: string): Note | unde
   if (spec.id === undefined) {
     return (page.notes ?? []).find((note) => note.text === text && note.attach === spec.attach);
   }
-  const note = findNote(page, spec.id);
-  if (!note && !isFreeId(page, spec.id)) {
-    throw invalid(
-      isItemId(spec.id)
-        ? `“${spec.id}” is the id of another item on this page (not a note). Give the note another id, or leave id out.`
-        : `“${spec.id}” can't name a note: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
-    );
-  }
-  return note;
+  return findNote(page, spec.id);
 }
 
 /**
@@ -73,10 +65,7 @@ function notePlace(ctx: OpContext, page: Page, spec: AgentNoteSpec, text: string
 
 /** Adds or updates one note; returns its result. */
 function applyNoteSpec(ctx: OpContext, page: Page, spec: AgentNoteSpec, replacePeopleText: boolean | undefined): AgentNoteResult {
-  const text = noteText(spec.text);
-  if (text === null) {
-    throw invalid(`A note is plain text of 1 to ${NOTE_MAX} characters: two sentences at most, for what a reader would otherwise miss.`);
-  }
+  const text = spec.text.trim();
   if (spec.attach !== undefined) {
     checkAttach(page, spec.attach);
   }

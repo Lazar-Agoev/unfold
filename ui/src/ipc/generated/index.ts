@@ -460,7 +460,8 @@ call: Key,
  */
 line: number, 
 /**
- * The callee as written.
+ * The call as written, on one line (`charge_card(order["card"], total)`), cut at 80
+ * characters; just its callee as written when the caller's file changed since the compile.
  */
 text: string, 
 /**
@@ -2148,6 +2149,10 @@ types: Array<LinkEnd>,
  * A `switch` case that runs into the next one.
  */
 fallsThrough: boolean, 
+/**
+ * A Python `except*` handler, which catches from an exception group.
+ */
+group: boolean, 
 /**
  * Its body's steps that can be combined, in written order (drawn or not).
  */

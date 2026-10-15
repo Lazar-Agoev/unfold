@@ -33,7 +33,7 @@ beforeEach(() => {
       save_board: (args: SaveBoardArgs) => boardState(P, ID, boardDocument(args.board.pages as never), { revision: "r2" }),
     },
   });
-  store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])])));
+  store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [{ id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }])])));
   installAgentChannel();
 });
 

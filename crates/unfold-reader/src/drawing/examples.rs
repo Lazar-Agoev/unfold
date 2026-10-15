@@ -385,7 +385,7 @@ def sync_inbox(account):
         function,
         Form::With,
         c.lines(10, 19),
-        Some(c.at(10, "mailbox_lock(account)")),
+        Some(c.at(10, "with mailbox_lock(account)")),
         None,
     );
     c.call(

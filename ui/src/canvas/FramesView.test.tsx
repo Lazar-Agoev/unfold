@@ -118,7 +118,7 @@ describe("frames on the canvas", () => {
     expect(zone.querySelector(".frame-description")?.textContent).toBe("Everything that takes orders.");
     expect(box.querySelector(".frame-icon")?.getAttribute("data-icon")).toBe("frame-api");
     expect(zone.querySelector(".frame-icon")?.getAttribute("data-icon")).toBe("frame");
-    expect(within(box).getByText("agent")).not.toBeNull();
+    expect(box.querySelector(".frame-title .agent-mark")?.textContent).toBe("Claude");
     // Behind the lines and cards, the zone behind the box it holds; the zone is larger than the box.
     const layer = (element: HTMLElement) => Number(element.closest<HTMLElement>(".react-flow__node")?.style.zIndex);
     expect(layer(zone)).toBeLessThan(layer(box));

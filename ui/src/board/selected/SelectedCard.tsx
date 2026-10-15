@@ -2,11 +2,13 @@
  * Selected for a card: its name and where it is, its description (edited here or on the card), then for
  * a module or definition Called by and Reached from (up to 3 each, then "N more · Show callers"). A
  * class or type says where it is used ("Used in N places", a popover of the places). An app's or
- * entrance's card lists the code it starts at.
+ * entrance's card lists the code it starts at. A card whose code is missing shows its key, and says so
+ * once, in its banner's words.
  */
 
 import { showCallers } from "../../canvas";
 import { CARD_DESCRIPTION_FIELD } from "../../canvas/cards/blockMenu";
+import { cardProblem } from "../../canvas/cards/ReviewBanner";
 import { UsedIn } from "../../code/UsedIn";
 import { shortPath } from "../../code/text";
 import { TextButton } from "../../components";
@@ -14,7 +16,7 @@ import { useEngineQuery } from "../../ipc";
 import type { Card, CardView, ProjectId, StartCard, TargetState } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
 import { addBlock, addRef, cardKey, describeCard, itemsFor, useOpenBoard, type PageTarget } from "../../state/boards";
-import { cardName, useCard } from "../../state/cards";
+import { cardName, isMissing, useCard } from "../../state/cards";
 import { AuthoredField } from "./AuthoredField";
 import { RelationRow } from "./Relations";
 
@@ -145,7 +147,9 @@ export function SelectedCard({ target, card }: { readonly target: PageTarget; re
   const author = useAuthor();
   const query = useCard(target, card);
   const health = useOpenBoard(target.board, (board) => board.health);
-  const issues = itemsFor(health, target.page, { card: card.id });
+  const missing = query.isError && isMissing(query.error);
+  // What the identity says isn't said again under the description.
+  const issues = itemsFor(health, target.page, { card: card.id }).filter((item) => !(missing && item.kind === "missing"));
   const held = issues.some((item) => item.kind === "review");
   const view = query.data;
   const kind = view?.type === "definition" ? view.flow.header.kind : undefined;
@@ -153,8 +157,9 @@ export function SelectedCard({ target, card }: { readonly target: PageTarget; re
   return (
     <>
       <div className="selected-identity">
-        <h3 className="selected-name">{view ? cardName(view) : query.isError ? query.error.message : "Loading…"}</h3>
+        <h3 className="selected-name">{view ? cardName(view) : missing ? key : query.isError ? query.error.message : "Loading…"}</h3>
         {view ? <p className="selected-location">{location(view)}</p> : null}
+        {missing ? <p className="selected-location ui">{cardProblem("missing")}</p> : null}
       </div>
       <AuthoredField
         label="Description"

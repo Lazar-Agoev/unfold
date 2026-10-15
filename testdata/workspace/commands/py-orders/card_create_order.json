@@ -6,7 +6,7 @@
       "kind": "function",
       "form": "function",
       "label": "create_order",
-      "signature": "async def create_order(request: Request) -> JSONResponse",
+      "signature": "(request: Request) -> JSONResponse",
       "path": "src/orders_playground/routes/orders.py",
       "state": "current",
       "line": 24,
@@ -114,6 +114,7 @@
               },
               "types": [],
               "fallsThrough": false,
+              "group": false,
               "combinable": [
                 "src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay",
                 "src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]"

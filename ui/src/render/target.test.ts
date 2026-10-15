@@ -5,8 +5,8 @@ import { page } from "../test/workspace";
 import { imageBounds } from "./target";
 
 const cards = [
-  { id: "a", ref: { block: "k#function:a" }, at: [0, 0] as [number, number] },
-  { id: "b", ref: { block: "k#function:b" }, at: [500, 300] as [number, number] },
+  { id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] as [number, number] },
+  { id: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [500, 300] as [number, number] },
 ];
 
 function drawn(boxes: Record<string, Box>): PageGeometry {
@@ -31,7 +31,7 @@ describe("imageBounds", () => {
   });
 
   it("refuses an item that isn't the page's, a combined step, or one a collapsed frame hides", () => {
-    const combined = [{ id: "checks", title: "Checks", members: ["k#function:a/if[0]"], collapsed: false, author: "agent:claude", signature: "" }];
+    const combined = [{ id: "checks", title: "Checks", members: ["src/routes/orders.ts#createOrder/if[0]"], collapsed: false, author: "agent:claude", signature: "" }];
     expect(imageBounds(page("p", cards, { combined }), drawn(boxes), "checks")).toEqual({
       ok: false,
       code: "item_not_found",

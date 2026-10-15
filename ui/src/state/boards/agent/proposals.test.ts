@@ -29,6 +29,14 @@ const createCard: Card = { id: "create-order", ref: { block: CREATE }, at: [0, 0
 
 let engine: FakeEngine;
 let saved: SaveBoardArgs[];
+/** What the save refuses, as the reader would: null while it saves. */
+let refuseSave: { code: string; message: string } | null;
+
+/** The page as the last save was asked to write it. */
+function asked(): Page | undefined {
+  const args = engine.callsOf("save_board").at(-1) as SaveBoardArgs | undefined;
+  return args?.board.pages[0] as Page | undefined;
+}
 
 function open(overrides: Partial<Page> = {}, cards: Card[] = [createCard]): void {
   store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", cards, overrides)])));
@@ -70,6 +78,7 @@ beforeEach(() => {
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
   useShownBoardStore.setState({ board: null });
   saved = [];
+  refuseSave = null;
   engine = installFakeEngine({
     handlers: {
       card: ({ key }) => {
@@ -80,6 +89,10 @@ beforeEach(() => {
         return fixture("card", "card_create_order");
       },
       save_board: (args) => {
+        if (refuseSave) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw refuseSave;
+        }
         saved.push(args);
         return boardState(P, ID, boardDocument(structuredClone(args.board.pages) as BoardDocument["pages"], { title: args.board.title }), { revision: "r2" });
       },
@@ -119,9 +132,17 @@ describe("propose", () => {
     expect(await refusal([{ op: "propose", proposals: [{ after: "key-elsewhere", title: "X" }] }])).toMatchObject({ code: "code_unavailable" });
     expect((await refusal([{ op: "propose", proposals: [{ title: "X" }] }])).message).toContain("A new proposed step needs after");
     expect((await refusal([{ op: "propose", proposals: [{ after: PLACE }] }])).message).toContain("A new proposed step needs after");
-    expect((await refusal([{ op: "propose", proposals: [{ after: PLACE, title: "x".repeat(121) }] }])).message).toContain("1 to 120 characters");
-    expect((await refusal([{ op: "propose", proposals: [{ after: PLACE, title: "  " }] }])).message).toContain("1 to 120 characters");
-    expect((await refusal([{ op: "propose", proposals: [{ id: "create-order", after: PLACE, title: "X" }] }])).message).toContain("can't name a new proposed step");
+  });
+
+  it("leaves its words and ids to the board's save, whose refusal is the answer", async () => {
+    open();
+    const long = "😀".repeat(121);
+    refuseSave = { code: "board_invalid", message: "A proposed step's title holds at most 120 characters; this one has 121." };
+    expect(await refusal([{ op: "propose", proposals: [{ after: PLACE, title: long }] }])).toEqual({ ok: false, ...refuseSave });
+    expect(asked()?.proposals).toMatchObject([{ title: long }]);
+    refuseSave = { code: "board_invalid", message: "invalid board at /pages/0/proposals/0/id: duplicate id `create-order`" };
+    expect(await refusal([{ op: "propose", proposals: [{ id: "create-order", after: PLACE, title: "X" }] }])).toEqual({ ok: false, ...refuseSave });
+    expect(asked()?.proposals).toMatchObject([{ id: "create-order" }]);
   });
 
   it("keeps a person's words unless asked, and makes new words the agent's; moving it keeps its author", async () => {

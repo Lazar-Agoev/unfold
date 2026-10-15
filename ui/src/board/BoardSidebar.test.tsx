@@ -16,7 +16,7 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const PAGE = { board: REF, page: "page-1" };
-const KEY = "src/routes/orders.ts#function:createOrder";
+const KEY = "src/routes/orders.ts#createOrder";
 
 const summary: BoardSummary = {
   project: P,
@@ -35,7 +35,7 @@ let engine: FakeEngine;
 
 const cards: Card[] = [
   { id: "create-order", ref: { block: KEY }, at: [0, 0] },
-  { id: "pay", ref: { block: "src/pay.ts#function:pay" }, at: [600, 0] },
+  { id: "pay", ref: { block: "src/services/payment.ts#PaymentProvider.charge" }, at: [600, 0] },
 ];
 
 function open(items: HealthItem[] = []) {

@@ -5,7 +5,7 @@ import { estimateText } from "../measure";
 import { frameNodeSize } from "../sizing";
 import { NOTE_GAP, attachPoint, collapsedPlaces, fallbackItemSize, framePadding, pageGeometry, type FramedPage } from "./geometry";
 
-const card = (id: string, at: [number, number]): Card => ({ id, ref: { block: `src/a.ts#function:${id}` }, at });
+const card = (id: string, at: [number, number]): Card => ({ id, ref: { block: `src/a.ts#${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
 
 const SIZE = { width: 200, height: 100 };

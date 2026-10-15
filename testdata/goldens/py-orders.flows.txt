@@ -152,7 +152,7 @@
       · first.lower ?   key=src/orders_playground/features/control.py#scan/try[0]/else/call:cleaned.append/call:first.lower
   FINALLY   key=src/orders_playground/features/control.py#scan/try[0]/finally
       ⋯ 1 line
-  WITH with StringIO("a\nb") as source   key=src/orders_playground/features/control.py#scan/with[0] src/orders_playground/features/control.py#scan/with[0]/body
+  WITH StringIO("a\nb") as source   key=src/orders_playground/features/control.py#scan/with[0] src/orders_playground/features/control.py#scan/with[0]/body
       · source.readline().strip ? → names["first"]   key=src/orders_playground/features/control.py#scan/with[0]/body/call:source.readline().strip
   RETURN cleaned, names, unique, streamed → End   key=src/orders_playground/features/control.py#scan/return[0]
 ( End )
@@ -485,7 +485,7 @@
 
 === src/orders_playground/jobs/import_orders.py#import_orders
 ( import_orders )   key=src/orders_playground/jobs/import_orders.py#import_orders
-  WITH with Path(path).open(encoding="utf-8") as source   key=src/orders_playground/jobs/import_orders.py#import_orders/with[0] src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body
+  WITH Path(path).open(encoding="utf-8") as source   key=src/orders_playground/jobs/import_orders.py#import_orders/with[0] src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body
       · json.load → values   key=src/orders_playground/jobs/import_orders.py#import_orders/with[0]/body/call:json.load
   IF not isinstance(values, list)   key=src/orders_playground/jobs/import_orders.py#import_orders/if[0] src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then
       RAISE ValueError → the caller   key=src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then/raise[0] src/orders_playground/jobs/import_orders.py#import_orders/if[0]/then/raise[0]/call:ValueError

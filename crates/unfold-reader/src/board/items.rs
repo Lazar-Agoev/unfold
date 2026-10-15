@@ -20,7 +20,7 @@ use unfold_core::Key;
 
 use super::BoardError;
 use super::model::{CardRef, ConnectionKind, MAX_FRAME_DEPTH, Page, ResourceKind};
-use super::parse::Path;
+use super::parse::{Path, limit};
 
 /// What an id names on a page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,8 +244,10 @@ fn check_frames(page: &Page, kinds: &FxHashMap<&str, Kind>, path: &Path) -> Resu
             at = up;
         }
         if seen.len() >= MAX_FRAME_DEPTH {
-            return Err(path.join("frames").join(index).fail(format!(
-                "is nested {} frames deep; frames nest at most {MAX_FRAME_DEPTH} deep",
+            return Err(limit(format!(
+                "Frames nest at most {MAX_FRAME_DEPTH} deep (a zone, a box in it, and a box in that); \
+                 the frame \"{}\" is {} deep.",
+                frame.title,
                 seen.len() + 1
             )));
         }

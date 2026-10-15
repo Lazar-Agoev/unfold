@@ -63,13 +63,17 @@ button:disabled {
   outline: none;
 }
 
-/* Code never ligates: `===` and `=>` show the characters that are in the file. */
+/* Nothing ligates: `===`, `=>` and `->` show the characters that are in the file, wherever code shows.
+   On every element, and `!important`, because a rule's `font` shorthand resets it. */
+*,
+*::before,
+*::after {
+  font-variant-ligatures: none !important;
+}
+
 code,
 pre {
   font-family: var(--font-code);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
 }
 
 ::selection {

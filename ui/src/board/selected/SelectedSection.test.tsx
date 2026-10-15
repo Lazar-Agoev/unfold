@@ -4,12 +4,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../ipc/client";
-import type { CallContract, Card, CardView, Page, TypeDefinition } from "../../ipc/generated";
+import type { CallContract, Card, CardView, HealthItem, Page, TypeDefinition } from "../../ipc/generated";
 import { engineKey } from "../../ipc/queries";
 import * as store from "../../state/boards/store";
 import { closeCode, getCodeOpen } from "../../state/codePanel";
 import { installFakeEngine, fixture, type FakeEngine } from "../../test/engine";
-import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
+import { boardDocument, boardState, HEALTHY, page, projectRow, workspaceView } from "../../test/workspace";
 import { SelectedSection } from "./SelectedSection";
 
 const P = "p-orders0000";
@@ -184,6 +184,26 @@ describe("Selected · a card", () => {
     expect(await within(popover).findByText("createOrder")).not.toBeNull();
     expect(engine.callsOf("relations")).toHaveLength(0);
   });
+
+  it("says a card's code is missing in its banner's words, once, under its key", async () => {
+    const GONE = "src/routes/orders.ts#gone";
+    const missing: HealthItem = { page: "page-1", kind: "missing", target: { card: "gone" }, message: `Code reference is missing: ${GONE}`, repairs: ["reconnect", "remove"] };
+    store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [{ id: "gone", ref: { block: GONE }, at: [0, 0] }])]), { health: { ...HEALTHY, items: [missing], missing: 1 } }));
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: () => {
+          // Rejections are plain {code, message} data, as from the real preload.
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw { code: "not_found", message: `no module, definition, or type \`${GONE}\`` };
+        },
+      },
+    });
+    selectNow({ kind: "card", cardId: "gone", key: null });
+    renderSelected();
+    expect(await screen.findByRole("heading", { name: GONE })).not.toBeNull();
+    expect(screen.getAllByText(/missing/i).map((element) => element.textContent)).toEqual(["Missing from the graph"]);
+  });
 });
 
 describe("Selected · a block", () => {
@@ -323,7 +343,7 @@ describe("Selected · what the page says", () => {
     openPage({ combined: [{ id: "checks", title: "Checks", members: [BRANCH], collapsed: false, author: "agent:claude", signature: "" }] });
     selectNow({ kind: "combined", combinedId: "checks" });
     renderSelected();
-    expect(screen.getByText(/^COMBINED/).textContent).toBe("COMBINED · 1 block · titled by Claude · agent");
+    expect(screen.getByText(/^COMBINED/).textContent).toBe("COMBINED · 1 block · titled by Claude");
     fireEvent.change(screen.getByRole("textbox", { name: "Combined step title" }), { target: { value: "Guard" } });
     expect(currentPage()?.combined[0]).toMatchObject({ title: "Guard", author: "person:lazar" });
     fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
@@ -390,7 +410,7 @@ describe("Selected · what the page says", () => {
     selectNow({ kind: "frame", frameId: "server" });
     renderSelected();
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Frame title" }).value).toBe("Order API");
-    expect(screen.getByText(/Box frame/).textContent).toContain("Box frame in Order system · drawn by Claude · agent");
+    expect(screen.getByText(/Box frame/).textContent).toContain("Box frame in Order system · drawn by Claude");
     fireEvent.change(screen.getByRole("textbox", { name: "Frame description" }), { target: { value: "Takes orders." } });
     expect(currentPage()?.frames?.[1]?.description).toEqual({ text: "Takes orders.", author: "person:lazar", signature: "" });
     await waitFor(() => {

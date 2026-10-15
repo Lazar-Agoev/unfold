@@ -78,7 +78,7 @@ describe("opening and closing", () => {
     store.adoptBoardState(boardState(Q, ID));
     showBoard(REF);
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     store.setCamera(PAGE, { x: 1, y: 2, zoom: 1 });
     await closeBoardsOfProject(P);
     expect(engine.call.mock.calls.map(([command]) => command as string).sort()).toEqual(["close_board", "save_board"]);
@@ -94,7 +94,7 @@ describe("opening and closing", () => {
     store.adoptBoardState(state());
     showBoard(REF);
     engine.call.mockRejectedValue(new UnfoldError({ code: "io", message: "Disk full." }));
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     await expect(closeBoardsOfProject(P)).rejects.toMatchObject({ code: "unsaved_edits", message: "Disk full." });
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id)).toEqual(["a"]);
@@ -106,9 +106,9 @@ describe("editing and autosave", () => {
   it("autosaves once, after the last of several edits, as a BoardEdit of the title and pages only", async () => {
     store.adoptBoardState(state(boardDocument([page("page-1")], { folder: "Checkout" })));
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     vi.advanceTimersByTime(store.AUTOSAVE_MS - 100);
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] }));
     vi.advanceTimersByTime(store.AUTOSAVE_MS - 100);
     expect(engine.call).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(200);
@@ -136,10 +136,10 @@ describe("editing and autosave", () => {
           };
         }),
     );
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     const first = store.saveBoard(REF);
     await vi.advanceTimersByTimeAsync(0);
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] }));
     const waiting = [store.saveBoard(REF), store.flushBoard(REF), store.saveBoard(REF)];
     expect(engine.call).toHaveBeenCalledTimes(1);
     release?.();
@@ -155,8 +155,8 @@ describe("editing and autosave", () => {
   });
 
   it("keeps the identity of everything a save didn't change, so unchanged cards don't redraw", async () => {
-    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }])));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] }));
     const before = store.getOpenBoard(REF);
     // The engine answers with an equal copy, one card signed.
     engine.call.mockImplementation((_command: string, args: SaveBoardArgs) => {
@@ -178,7 +178,7 @@ describe("editing and autosave", () => {
   it("keeps a failed save's edit and why it failed until a save succeeds; a disconnected one isn't a failure", async () => {
     store.adoptBoardState(state());
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "board_problem", message: "missing reference" }));
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBe("missing reference");
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(true);
@@ -186,7 +186,7 @@ describe("editing and autosave", () => {
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBeNull();
     expect(store.isDirty(store.getOpenBoard(REF) as never)).toBe(false);
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] }));
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "disconnected", message: "gone" }));
     await store.saveBoard(REF);
     expect(store.getOpenBoard(REF)?.saveError).toBeNull();
@@ -196,7 +196,7 @@ describe("editing and autosave", () => {
   it("sends every unsaved board at once when the page goes away", () => {
     store.adoptBoardState(state());
     engine.call.mockReturnValue(new Promise(() => undefined));
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     store.setCamera(PAGE, { x: 0, y: 0, zoom: 2 });
     store.saveAllNow();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["save_board"]);
@@ -207,7 +207,7 @@ describe("editing and autosave", () => {
 });
 
 describe("a step saved at once (an agent's edit)", () => {
-  const A = { block: "src/a.ts#function:a" } as const;
+  const A = { block: "src/routes/orders.ts#createOrder" } as const;
   const addA = (document: BoardDocument) => ({
     document: produce(document, (draft) => {
       const target = draft.pages[0];
@@ -251,14 +251,14 @@ describe("a step saved at once (an agent's edit)", () => {
   it("saves the person's pending edit first, and refuses while their edits can't be saved", async () => {
     store.adoptBoardState(state());
     engine.call.mockImplementation(savesAs("r2"));
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] }));
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] }));
     await store.saveStep(REF, "page-1", "Claude · Add cards", addA);
     const saves = engine.call.mock.calls.map(([, args]) => (args as SaveBoardArgs).board.pages[0]?.cards.map((card) => card.id));
     expect(saves).toEqual([["b"], ["b", "a"]]);
     expect(store.getOpenBoard(REF)?.history.past.map((entry) => entry.name)).toEqual([undefined, "Claude · Add cards"]);
 
     engine.call.mockRejectedValueOnce(new UnfoldError({ code: "io", message: "Disk full." }));
-    edit((draft) => addCard(draft, { name: "c", ref: { block: "src/c.ts#function:c" }, at: [900, 0] }));
+    edit((draft) => addCard(draft, { name: "c", ref: { block: "src/db/repository.ts#OrderRepository.insert" }, at: [900, 0] }));
     expect(await store.saveStep(REF, "page-1", "Claude · Add cards", addA)).toMatchObject({ ok: false, error: { code: "unsaved_edits", message: "Disk full." } });
   });
 
@@ -354,7 +354,7 @@ describe("a step saved at once (an agent's edit)", () => {
       document: produce(document, (draft) => {
         const target = draft.pages[0];
         if (target) {
-          addCard(target, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [600, 0] });
+          addCard(target, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [600, 0] });
         }
       }),
       value: "b",
@@ -369,7 +369,7 @@ describe("a step saved at once (an agent's edit)", () => {
 describe("undo and redo", () => {
   it("undoes one edit at a time, merges a coalesced burst, and keeps at most 200 steps", () => {
     store.adoptBoardState(state());
-    const id = edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] })) ?? "";
+    const id = edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] })) ?? "";
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [10, 0] }); }, { coalesce: "drag" });
     store.editPage(PAGE, (draft) => { moveItems(draft, { [id]: [20, 0] }); }, { coalesce: "drag" });
     edit((draft) => { setCardView(draft, id, "expanded"); });
@@ -394,9 +394,9 @@ describe("undo and redo", () => {
   it("keeps one history across the board's pages, and undo or redo shows the page each step changed", () => {
     store.adoptBoardState(state(boardDocument([page("page-1"), page("page-2")])));
     const second = { board: REF, page: "page-2" };
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     store.setActivePage(REF, "page-2");
-    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/b.ts#function:b" }, at: [0, 0] }), second);
+    edit((draft) => addCard(draft, { name: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [0, 0] }), second);
     store.setActivePage(REF, "page-1");
 
     store.undo(REF);
@@ -423,7 +423,7 @@ describe("undo and redo", () => {
   });
 
   it("makes a repair one undo step, after saving the edits waiting for the autosave", async () => {
-    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
+    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }])));
     engine.call.mockImplementation(savesAs("r2"));
     edit((draft) => { moveItems(draft, { a: [10, 0] }); });
     const beforeRepair = store.getOpenBoard(REF)?.document;
@@ -439,7 +439,7 @@ describe("undo and redo", () => {
 });
 
 describe("a step the engine writes (a repair)", () => {
-  const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
+  const CARD = { id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] as [number, number] };
   const repaired = () => Promise.resolve(state(doc([]), "r3"));
 
   it("refuses while the board's edits can't be saved, without asking the engine", async () => {
@@ -499,7 +499,7 @@ describe("card views and open calls", () => {
     expect(cardView({}, "compact")).toBe("compact");
     expect(cardView({ view: "expanded" }, "compact")).toBe("expanded");
     expect(cardView({}, "expanded")).toBe("expanded");
-    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }])));
+    store.adoptBoardState(state(doc([{ id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }])));
     edit((draft) => {
       setCardView(draft, "a", "expanded");
     });
@@ -527,8 +527,8 @@ describe("card views and open calls", () => {
 });
 
 describe("outside changes", () => {
-  const theirs = doc([{ id: "x", ref: { block: "src/x.ts#function:x" }, at: [0, 0] }]);
-  const A = { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
+  const theirs = doc([{ id: "x", ref: { block: 'src/queues/email-worker.ts#/call:Worker("emails")/callback[0]' }, at: [0, 0] }]);
+  const A = { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] as [number, number] };
   const changed = (document = theirs, revision = "r9") => ({ kind: "board" as const, state: state(document, revision) });
   const conflict = { kind: "invalid" as const, message: "board file is not valid JSON at line 1, column 1: expected value" };
   const cardIds = () => store.getOpenBoard(REF)?.document.pages[0]?.cards.map((card) => card.id);
@@ -727,7 +727,7 @@ describe("outside changes", () => {
 describe("engine-host restarts", () => {
   it("opens each board again before writing its unsaved edits", async () => {
     store.adoptBoardState(state());
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state()) : savesAs("r2")(command, args)));
     await reopenBoards();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["open_board", "save_board"]);
@@ -735,13 +735,13 @@ describe("engine-host restarts", () => {
   });
 
   it("takes the file's version when it changed meanwhile, and asks when the board has edits that couldn't be saved", async () => {
-    const theirs = doc([{ id: "x", ref: { block: "src/x.ts#function:x" }, at: [0, 0] }]);
+    const theirs = doc([{ id: "x", ref: { block: 'src/queues/email-worker.ts#/call:Worker("emails")/callback[0]' }, at: [0, 0] }]);
     store.adoptBoardState(state());
     engine.call.mockImplementation((command: string) => Promise.resolve(command === "open_board" ? state(theirs, "r7") : null));
     await reopenBoards();
     expect(store.getOpenBoard(REF)?.revision).toBe("r7");
 
-    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }));
+    edit((draft) => addCard(draft, { name: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] }));
     engine.call.mockImplementation((command: string, args: SaveBoardArgs) => (command === "open_board" ? Promise.resolve(state(doc(), "r8")) : savesAs("r9")(command, args)));
     await reopenBoards();
     expect(engine.call.mock.calls.map(([command]) => command as string)).toEqual(["open_board", "open_board"]);

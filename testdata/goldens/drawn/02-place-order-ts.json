@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "placeOrder",
-    "signature": "async function placeOrder(id: string)",
+    "signature": "(id: string)",
     "path": "src/service.ts",
     "state": "current",
     "line": 3,
@@ -84,6 +84,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "src/service.ts#placeOrder/switch[0]/case[0]/return[0]"
             ],
@@ -134,6 +135,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "src/service.ts#placeOrder/switch[0]/case[1]/throw[0]"
             ],

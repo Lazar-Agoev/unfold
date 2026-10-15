@@ -29,9 +29,11 @@ import {
   START_APP_FONT,
   START_NAME_FONT,
   START_ON_FONT,
+  TAG_FONT,
   TITLE_FONT,
   TYPE_KIND_FONT,
 } from "./measure";
+import { agentName } from "../code/text";
 import { columnTypeText, listedColumns, markText, type TableColumn } from "./resources/columns";
 
 /** The card's border, left and right. */
@@ -54,23 +56,30 @@ const RULE = 1;
 /** A header's line. */
 const TITLE_LINE = 16;
 
-/** The text of a definition card's header: its mark, name, location, and whether it has the chevron. */
+/** The text of a definition card's header: its mark, name, `ASYNC` tag, location, and whether it has the chevron. */
 export interface HeaderText {
   readonly mark: HeaderMark;
   readonly name: string;
+  readonly async: boolean;
   readonly location: string;
   readonly chevron: boolean;
 }
 
 /** A definition card's header text from its drawn flow's header. */
 export function headerText(header: Header, chevron: boolean): HeaderText {
-  return { mark: headerMark(header), name: header.name ?? header.label, location: headerLocation(header), chevron };
+  return { mark: headerMark(header), name: header.name ?? header.label, async: header.async, location: headerLocation(header), chevron };
 }
 
-/** The width a header needs: padding, border, chevron, mark, name, location, and `</>`. */
+/** A header's tag (cards.css `.card-tag`): its small caps with 0.06em of letter spacing, its padding, and its border. */
+function tagWidth(word: string, measure: Measure): number {
+  return measure(word.toUpperCase(), TAG_FONT) + word.length * 0.06 * 9 + 4 * 2 + 2;
+}
+
+/** The width a header needs: padding, border, chevron, mark, name, `ASYNC`, location, and `</>`. */
 function headerWidth(header: HeaderText, measure: Measure): number {
   const mark = header.mark.word ? measure(header.mark.text, TYPE_KIND_FONT) : GLYPH;
-  const text = mark + GAP + measure(header.name, TITLE_FONT) + GAP + measure(header.location, LOCATION_FONT) + GAP + CODE_BUTTON;
+  const tag = header.async ? GAP + tagWidth("async", measure) : 0;
+  const text = mark + GAP + measure(header.name, TITLE_FONT) + tag + GAP + measure(header.location, LOCATION_FONT) + GAP + CODE_BUTTON;
   return Math.ceil(PADDING * 2 + BORDER + (header.chevron ? CHEVRON + GAP : 0) + text);
 }
 
@@ -99,8 +108,8 @@ export function compactCardWidth(header: HeaderText, measure: Measure): number {
 }
 
 /**
- * The height a description strip takes: one line (an expanded card's, a type card's), or, in a card
- * `wrapWidth` wide, all of its text wrapped (a compact card's, a resource card's).
+ * The height a description strip takes: one line (a type card's), or, in a card `wrapWidth` wide, all
+ * of its text wrapped (a definition's or a resource card's).
  */
 export function descriptionHeight(description: Description | undefined, wrapWidth: number | null, measure: Measure): number {
   if (!description) {
@@ -152,12 +161,12 @@ export function expandedCardWidth(header: Header, geometry: FlowGeometry, measur
   return Math.max(head, signature, Math.ceil(geometry.width + BORDER));
 }
 
-/** An expanded card's size: its header, one line of description, what it says from its code, and its drawn flow. */
+/** An expanded card's size: its header, its description, what it says from its code, and its drawn flow. */
 export function expandedCardSize(header: Header, geometry: FlowGeometry, description: Description | undefined, measure: Measure): Size {
   const width = expandedCardWidth(header, geometry, measure);
   return {
     width,
-    height: BLOCK_HEADER + descriptionHeight(description, null, measure) + codeSectionHeight(header, width, measure) + Math.ceil(geometry.height) + RULE,
+    height: BLOCK_HEADER + descriptionHeight(description, width, measure) + codeSectionHeight(header, width, measure) + Math.ceil(geometry.height) + RULE,
   };
 }
 
@@ -393,25 +402,25 @@ export function estimatedCardSize(input: EstimateInput, measure: Measure): Size 
 /** A collapsed frame's node sizes to its header between these widths; its description wraps inside. */
 const FRAME_NODE_MIN_WIDTH = 240;
 const FRAME_NODE_MAX_WIDTH = 400;
-/** Its header's chevron, icon, and the agent mark's glyph with its gap (frames.css). */
+/** Its header's chevron, icon, and the agent mark's glyph with its gap (frames.css, agent.css). */
 const TOGGLE = 12;
 const ICON = 16;
-const MARK_GLYPH = 12;
+const MARK_GLYPH = 13;
 /** Its body's block padding, the gap before what it holds, and that line. */
 const FRAME_BODY_PADDING = 18;
 const HOLDS_GAP = 4;
 const HOLDS_LINE = 16;
 
-/** A collapsed frame's node width: its chevron, icon, title, and agent mark, clamped to 240–400. */
-export function frameNodeWidth(title: string, agent: boolean, measure: Measure): number {
-  const mark = agent ? GAP + MARK_GLYPH + measure("agent", MARK_FONT) : 0;
+/** A collapsed frame's node width: its chevron, icon, title, and the mark of the agent that drew it (`agent`, its name), clamped to 240–400. */
+export function frameNodeWidth(title: string, agent: string | null, measure: Measure): number {
+  const mark = agent !== null ? GAP + MARK_GLYPH + measure(agent, MARK_FONT) : 0;
   const header = PADDING * 2 + BORDER + TOGGLE + GAP + ICON + GAP + measure(title, FRAME_TITLE_FONT) + mark;
   return clampCardWidth(header, FRAME_NODE_MIN_WIDTH, FRAME_NODE_MAX_WIDTH);
 }
 
 /** A collapsed frame's node: its width, and its header, wrapped description, and what it holds. */
 export function frameNodeSize(frame: Pick<Frame, "title" | "author" | "description">, measure: Measure): Size {
-  const width = frameNodeWidth(frame.title, frame.author.startsWith("agent:"), measure);
+  const width = frameNodeWidth(frame.title, agentName(frame.author), measure);
   const room = Math.max(1, width - BORDER - PADDING * 2);
   const lines = (frame.description?.text.split("\n") ?? []).reduce((count, paragraph) => count + Math.max(1, Math.ceil(measure(paragraph, DESCRIPTION_FONT) / room)), 0);
   const header = HEADER_PADDING * 2 + TITLE_LINE + RULE;
@@ -433,11 +442,11 @@ const COLUMN_ROW = 20;
 const COLUMN_GAP = 8;
 const COLUMN_NAME_MIN = 64;
 
-/** What sizing a resource card reads: its kind's word, its name, who drew it, its description, and a table's columns. */
+/** What sizing a resource card reads: its kind's word, its name, the agent that drew it (its name; null for a person), its description, and a table's columns. */
 export interface ResourceSizeInput {
   readonly word: string;
   readonly name: string;
-  readonly agent: boolean;
+  readonly agent: string | null;
   readonly description?: Description;
   /** A table's columns (`tableColumns`); none for any other kind. */
   readonly columns: readonly TableColumn[];
@@ -445,7 +454,7 @@ export interface ResourceSizeInput {
 
 /** A resource card's width: its header (glyph, kind's word, name, agent mark) and a table's widest column. */
 export function resourceCardWidth(input: ResourceSizeInput, measure: Measure): number {
-  const mark = input.agent ? GAP + MARK_GLYPH + measure("agent", MARK_FONT) : 0;
+  const mark = input.agent !== null ? GAP + MARK_GLYPH + measure(input.agent, MARK_FONT) : 0;
   const header = PADDING * 2 + BORDER + ICON + GAP + measure(input.word, MARK_FONT) + GAP + measure(input.name, TITLE_FONT) + mark;
   if (input.columns.length === 0) {
     return clampCardWidth(header, RESOURCE_MIN_WIDTH, RESOURCE_MAX_WIDTH);

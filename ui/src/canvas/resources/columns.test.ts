@@ -15,7 +15,7 @@ const member = (name: string, type: string, extra: Partial<TypeMember> = {}): Ty
 
 /** `interface Order extends OrderDraft`: its own fields, a method (not a column), and the draft's fields. */
 const order: TypeDefinition = {
-  key: "src/types.ts#interface:Order",
+  key: "src/types.ts#Order",
   kind: "interface",
   name: "Order",
   path: "src/types.ts",

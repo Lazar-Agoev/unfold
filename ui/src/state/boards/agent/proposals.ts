@@ -13,8 +13,8 @@ import type { AgentItemStatus, AgentProposalResult, AgentProposalSpec, AgentProp
 import type { DrawnBlock } from "@unfold/desktop/drawing";
 import type { Page, Proposal } from "../../../ipc/generated";
 import { findBlock } from "../../cards";
-import { cardKey, isFreeId } from "../document";
-import { addProposal, findProposal, moveProposal, proposalReason, proposalTitle, PROPOSAL_REASON_MAX, PROPOSAL_TITLE_MAX, updateProposal, type ProposalChange } from "../proposals";
+import { cardKey } from "../document";
+import { addProposal, findProposal, moveProposal, updateProposal, type ProposalChange } from "../proposals";
 import { AgentRefusal, guardPeopleText, invalid, type OpContext } from "./context";
 
 /** Where a proposal goes, as the board and the result say it. */
@@ -34,27 +34,6 @@ export function proposalResult(proposal: Proposal, status: AgentItemStatus): Age
   };
 }
 
-/** A proposal's title as the file holds it, or a refusal that says what fits. */
-function titleOf(text: string): string {
-  const title = proposalTitle(text);
-  if (title === null) {
-    throw invalid(`A proposed step's title is one line of 1 to ${PROPOSAL_TITLE_MAX} characters that says what it would do ("Email a confirmation").`);
-  }
-  return title;
-}
-
-/** A proposal's reason as the file holds it (null clears it), or a refusal that says what fits. */
-function reasonOf(text: string | null): string | null {
-  if (text === null) {
-    return null;
-  }
-  const reason = proposalReason(text);
-  if (reason === null) {
-    throw invalid(`A proposed step's reason is 1 to ${PROPOSAL_REASON_MAX} characters on why it's wanted; pass null to clear it.`);
-  }
-  return reason;
-}
-
 /** The spot a spec names, if it names one. */
 function specSpot(spec: AgentProposalSpec): AgentProposalSpot | undefined {
   if ("after" in spec) {
@@ -70,7 +49,7 @@ function sameSpot(a: AgentProposalSpot, b: AgentProposalSpot): boolean {
 /** The proposal a spec without an id means: the page's proposal with the same spot and title, so the same call again changes nothing. */
 function sameProposal(page: Page, spec: AgentProposalSpec): Proposal | undefined {
   const spot = specSpot(spec);
-  const title = spec.title === undefined ? null : proposalTitle(spec.title);
+  const title = spec.title?.trim();
   return spot ? (page.proposals ?? []).find((proposal) => sameSpot(proposal, spot) && proposal.title === title) : undefined;
 }
 
@@ -111,20 +90,17 @@ export function applyPropose(page: Page, op: ProposeOp, ctx: OpContext): AgentPr
     const existing = spec.id !== undefined ? findProposal(page, spec.id) : sameProposal(page, spec);
     const spot = specSpot(spec);
     if (!existing) {
-      if (spec.id !== undefined && !isFreeId(page, spec.id)) {
-        throw invalid(`“${spec.id}” can't name a new proposed step: another item has it, or it isn't letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`);
-      }
       if (spot === undefined || spec.title === undefined) {
         throw invalid("A new proposed step needs after (the key of the block it goes after) or start (the key of the definition or part whose body it begins), and title; pass id to change an existing one.");
       }
       const place = checkedSpot(ctx, page, spot);
-      const title = titleOf(spec.title);
-      const reason = spec.reason === undefined ? null : reasonOf(spec.reason);
+      const title = spec.title.trim();
+      const reason = spec.reason?.trim() ?? "";
       const id = addProposal(page, {
         ...(spec.id !== undefined ? { id: spec.id } : {}),
         ...place,
         title,
-        ...(reason !== null ? { reason } : {}),
+        ...(reason.length > 0 ? { reason } : {}),
         author: ctx.agent.author,
       });
       const added = findProposal(page, id);
@@ -135,15 +111,15 @@ export function applyPropose(page: Page, op: ProposeOp, ctx: OpContext): AgentPr
     }
     const change: { -readonly [K in keyof ProposalChange]: ProposalChange[K] } = {};
     if (spec.title !== undefined) {
-      const title = titleOf(spec.title);
+      const title = spec.title.trim();
       if (title !== existing.title) {
         guardPeopleText(`the title of the proposed step “${existing.title}”`, existing.author, op.replacePeopleText);
       }
       change.title = title;
     }
     if (spec.reason !== undefined) {
-      const reason = reasonOf(spec.reason);
-      if ((reason ?? undefined) !== existing.reason) {
+      const reason = spec.reason?.trim() ?? "";
+      if (reason !== (existing.reason ?? "")) {
         guardPeopleText(`the reason of the proposed step “${existing.title}”`, existing.author, op.replacePeopleText);
       }
       change.reason = reason;

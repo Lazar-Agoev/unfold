@@ -131,9 +131,6 @@
   text-overflow: ellipsis;
   white-space: pre;
   font-family: var(--font-code);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
 }
 
 .add-row-name.ui {
@@ -158,7 +155,4 @@
 .add-row-meta.code {
   font-family: var(--font-code);
   font-size: var(--text-11);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
 }

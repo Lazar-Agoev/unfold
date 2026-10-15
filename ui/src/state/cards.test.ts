@@ -9,8 +9,8 @@ import type { Card, CardView, DrawnFlow, Page } from "../ipc/generated";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page } from "../test/workspace";
 import { adoptBoardState, editPage, getOpenBoard, resetBoards } from "./boards/store";
-import { toggleOpen } from "./boards/document";
-import { cardArgs, cardArgsOf, cardName, combinableSteps, eachSequence, fetchCard, findBlock, heldBlocks, openPathOf, overlayIds, pageOverlay, useCard } from "./cards";
+import { setName, toggleOpen } from "./boards/document";
+import { cardArgs, cardArgsOf, cardName, combinableSteps, eachSequence, fetchCard, findBlock, heldBlocks, openPathOf, overlayIds, pageOverlay, useCard, usePageCards } from "./cards";
 import { setShowAllCalls } from "./showAllCalls";
 
 const P = "p-orders0000";
@@ -236,5 +236,68 @@ describe("where a block opens and combines", () => {
     }
     expect(heldBlocks(shaped)).toContain("shop/service.py#place_order/if[0]/then/raise[0]/call:ValueError");
     expect(heldBlocks(cli)).toEqual([]);
+  });
+});
+
+describe("a page's cards as a name is typed", () => {
+  const DRAWN = import.meta.glob<DrawnFlow>("../../../testdata/goldens/drawn/*.json", { eager: true, import: "default" });
+  const FLOWS = ["01-place-order", "02-place-order-ts", "03-sync-inbox", "04-reserve-first-free", "05-route-message", "06-checkout"].map((name) => {
+    const flow = DRAWN[`../../../testdata/goldens/drawn/${name}.json`];
+    if (!flow) {
+      throw new Error(`no golden ${name}`);
+    }
+    return flow;
+  });
+  const PLACE = "shop/service.py#place_order";
+  /** A block only place_order's card draws. */
+  const MISSING = `${PLACE}/if[0]/then`;
+  const AUTHOR = "person:maya";
+
+  function cardKeys(): unknown[] {
+    return engine.callsOf("card").map((args) => args["key"]);
+  }
+
+  it("are drawn again only where the name shows: each letter asks only for the card that draws its block", async () => {
+    engine.uninstall();
+    engine = installFakeEngine({
+      handlers: {
+        card: ({ key }): CardView => {
+          const flow = FLOWS.find((item) => item.header.key === key);
+          if (!flow) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw { code: "not_found", message: "no such key" };
+          }
+          return { type: "definition", flow };
+        },
+      },
+    });
+    const cards = FLOWS.map((flow, index): Card => ({ id: `card-${index}`, ref: { block: flow.header.key }, at: [index * 500, 0] }));
+    adoptBoardState(boardState(P, ID, boardDocument([page("page-1", cards)])));
+    const { result } = renderHook(() => usePageCards(PAGE), { wrapper });
+    await waitFor(() => {
+      expect(result.current.size).toBe(6);
+    });
+    expect(engine.callsOf("card")).toHaveLength(6);
+
+    // The first letter puts a name where there was none, which can change what any card draws.
+    const type = async (text: string, calls: number) => {
+      act(() => {
+        editPage(PAGE, (draft) => {
+          setName(draft, MISSING, text, AUTHOR);
+        });
+      });
+      await waitFor(() => {
+        expect(engine.callsOf("card")).toHaveLength(calls);
+      });
+    };
+    await type("N", 12);
+    for (const [index, text] of ["No", "No o", "No or", "No ord"].entries()) {
+      await type(text, 13 + index);
+    }
+    expect(cardKeys().slice(12)).toEqual([PLACE, PLACE, PLACE, PLACE]);
+    expect(engine.callsOf("card").at(-1)).toMatchObject({ key: PLACE, overlay: { names: [{ key: MISSING, text: "No ord" }] } });
+    // Nothing else is asked for: the other cards keep their drawings.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(engine.callsOf("card")).toHaveLength(16);
   });
 });

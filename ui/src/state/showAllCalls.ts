@@ -2,7 +2,8 @@
  * The Show all calls switch in the board's top bar: whether cards draw builtin calls too. It is one
  * switch for the window, not part of any board. The main process saves it with the window: it comes
  * back from `window_info` at launch (`restoreShowAllCalls`), and every change is reported
- * (`report_show_all_calls`).
+ * (`report_show_all_calls`). The render window draws each page with the switch as it was reported
+ * (`RenderJob.showAllCalls`), so images and checks show what the person sees.
  */
 
 import { create } from "zustand";

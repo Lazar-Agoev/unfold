@@ -9,7 +9,7 @@ import { resetBoards } from "../state/boards/store";
 import { closeCode, getCodeOpen } from "../state/codePanel";
 import { closeAdd, openAdd } from "../state/overlays";
 import { showBoard, useShownBoardStore } from "../state/shownBoard";
-import { installFakeEngine, type FakeEngine } from "../test/engine";
+import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { renderWithClient } from "../test/render";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
 import { AddBox } from "./AddBox";
@@ -26,11 +26,22 @@ function hit(key: string, name: string, kind: string, score: number, extra: Part
   return { project: ORDERS, key, name, qualifiedName: name, path: "shop/store.py", kind, line: 12, app: null, score, ...extra };
 }
 
+/** The entrance as the engine finds it (`search_place`): its app and what starts it, joined with ` · `. */
+function placeHit(): SearchHit {
+  const found = fixture("search", "search_place").entrances.hits[0];
+  if (!found) {
+    throw new Error("search_place finds no entrance");
+  }
+  return { ...found, project: ORDERS, score: 700 };
+}
+
+const PLACE = placeHit();
+
 /** `order`: an entrance, and three definitions (one a class). */
 const RESULTS: SearchResults = {
   query: "order",
   entrances: {
-    hits: [hit("place-key", "Place an order", "entrance", 700, { qualifiedName: "Shop API · POST /orders/{order_id}", app: "Shop API", path: "", line: null })],
+    hits: [PLACE],
     total: 1,
     truncated: false,
   },
@@ -128,7 +139,7 @@ describe("the Add box", () => {
     const rows = within(list).getAllByRole("option");
     expect(rows.map((row) => row.querySelector(".add-row-kind")?.textContent)).toEqual(["entrance", "function", "function", "class", "file"]);
     expect(rows.map((row) => row.querySelector(".add-row-name")?.textContent)).toEqual(["Place an order", "place_order", "load_order", "Order", "tests/test_orders.py"]);
-    expect(rows.map((row) => row.querySelector(".add-row-meta")?.textContent ?? null)).toEqual(["Shop API · POST /orders/{order_id}", "shop/service.py:9", "shop/store.py:12", "shop/types.py:4", null]);
+    expect(rows.map((row) => row.querySelector(".add-row-meta")?.textContent ?? null)).toEqual(["Server · POST /orders", "shop/service.py:9", "shop/store.py:12", "shop/types.py:4", null]);
     expect(rows[0]?.getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByRole("tab")).toBeNull();
   });
@@ -199,7 +210,7 @@ describe("the Add box", () => {
     await screen.findByRole("listbox", { name: "Results" });
     press("Enter");
     await waitFor(() => {
-      expect(adds.addRef).toHaveBeenCalledWith(PAGE, { entrance: "place-key" }, "Place an order");
+      expect(adds.addRef).toHaveBeenCalledWith(PAGE, { entrance: PLACE.key }, "Place an order");
     });
   });
 });

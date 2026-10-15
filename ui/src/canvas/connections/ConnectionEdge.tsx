@@ -56,7 +56,7 @@ const HEAD_WIDTH = 8;
 /** The chip: its height, padding and border, and what the agent mark and the review dot add. */
 const CHIP_HEIGHT = 20;
 const CHIP_FRAME = 8 * 2 + 2;
-const MARK_ROOM = 4 + 10 + 2;
+const MARK_ROOM = 4 + 10 + 3;
 const DOT_ROOM = 6 + 6;
 
 const PART_FONTS: Readonly<Record<ChipPart["tone"], string>> = {
@@ -67,9 +67,9 @@ const PART_FONTS: Readonly<Record<ChipPart["tone"], string>> = {
 };
 
 /** A chip form's width, as connections.css draws it. */
-function chipWidth(parts: readonly ChipPart[], agent: boolean, problem: boolean, measure: Measure): number {
+function chipWidth(parts: readonly ChipPart[], agent: string | null, problem: boolean, measure: Measure): number {
   const text = parts.reduce((sum, part) => sum + measure(part.text, PART_FONTS[part.tone]), 0);
-  const mark = agent ? MARK_ROOM + measure("agent", CHIP_TEXT_FONT) : 0;
+  const mark = agent !== null ? MARK_ROOM + measure(agent, CHIP_TEXT_FONT) : 0;
   return Math.ceil(CHIP_FRAME + text + mark + (problem ? DOT_ROOM : 0));
 }
 
@@ -86,7 +86,7 @@ function ConnectionChip({ id, curve, data }: ChipProps) {
   const author = useAuthor();
   const menu = useContextMenu("Connection actions", 220);
   const { target, linkId, forms, full, agent, problem, selected } = data;
-  const widths = useMemo(() => forms.map((form) => chipWidth(form, agent !== null, problem !== null, measure)), [forms, agent, problem, measure]);
+  const widths = useMemo(() => forms.map((form) => chipWidth(form, agent, problem !== null, measure)), [forms, agent, problem, measure]);
   useLayoutEffect(() => {
     layout.report(id, { curve, widths, height: CHIP_HEIGHT });
   }, [layout, id, curve, widths]);

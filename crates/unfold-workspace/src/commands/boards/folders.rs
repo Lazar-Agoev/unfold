@@ -30,10 +30,8 @@ pub(super) fn folder_arg(name: String) -> CommandResult<String> {
     } else {
         Err(CommandError::new(
             "invalid_folder",
-            format!(
-                "`{name}` is not a folder name: 1 to 64 characters, without `/`, `\\`, control \
-                 characters, or surrounding spaces, and not `.` or `..` (folders are one level deep)"
-            ),
+            "A folder's name is 1 to 64 characters, without “/”, “\\”, control characters, or \
+             spaces at either end, and isn't “.” or “..”: folders hold boards, not other folders.",
         ))
     }
 }
@@ -201,7 +199,7 @@ pub fn rename_folder(ctx: &Ctx<'_>, args: RenameFolderArgs) -> CommandResult<Ren
     if exists(&boards, &empty, &to) {
         return Err(CommandError::new(
             "folder_exists",
-            format!("a folder `{to}` already exists"),
+            format!("A folder named “{to}” is already there."),
         ));
     }
     let mut moved = Vec::new();
@@ -271,5 +269,16 @@ mod tests {
                 "{bad}"
             );
         }
+        // A name's length is in characters: 33 emoji fit.
+        assert!(folder_arg("📦".repeat(33)).is_ok());
+        // The folder dialogs show the refusal as it is, under the name.
+        let refused = folder_arg("Checkout/Refunds".into()).expect_err("a path");
+        assert!(
+            refused
+                .message
+                .starts_with("A folder's name is 1 to 64 characters"),
+            "{}",
+            refused.message
+        );
     }
 }

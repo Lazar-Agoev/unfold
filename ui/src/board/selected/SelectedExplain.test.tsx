@@ -301,3 +301,26 @@ describe("a card's review", () => {
     expect(currentPage()?.cards.map((item) => item.id)).toEqual(["refund"]);
   });
 });
+
+describe("Selected · words the board refuses", () => {
+  it("keeps a note as typed, however long, and shows what the save refuses under it while you type", async () => {
+    openPage({ notes: [{ id: "n", text: "Read the worker next.", at: [0, 0], author: AUTHOR }] });
+    renderSelected({ kind: "note", noteId: "n" });
+    refusal = "A note holds at most 400 characters; this one has 401.";
+    const long = "x".repeat(401);
+    fireEvent.change(screen.getByRole("textbox", { name: "Note" }), { target: { value: long } });
+    expect(currentPage()?.notes?.[0]?.text).toBe(long);
+    await act(() => store.saveBoard(REF));
+    expect(screen.getByText(refusal)).toBeTruthy();
+  });
+
+  it("keeps a proposed step's title as typed, and shows what the save refuses under it while you type", async () => {
+    openPage({ proposals: [{ id: "p", after: REFUND_CALL, title: "Email them", author: AUTHOR }] });
+    renderSelected({ kind: "proposal", proposalId: "p" });
+    refusal = "A proposed step's title is one line, without tabs or other control characters.";
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposed step title" }), { target: { value: "Email\u0085them" } });
+    expect(currentPage()?.proposals?.[0]?.title).toBe("Email\u0085them");
+    await act(() => store.saveBoard(REF));
+    expect(screen.getByText(refusal)).toBeTruthy();
+  });
+});

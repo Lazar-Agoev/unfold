@@ -106,7 +106,9 @@ impl From<unfold_store::StoreError> for CommandError {
 impl From<BoardError> for CommandError {
     fn from(error: BoardError) -> Self {
         let code = match &error {
-            BoardError::Syntax { .. } | BoardError::Invalid { .. } => "board_invalid",
+            BoardError::Syntax { .. } | BoardError::Invalid { .. } | BoardError::Limit { .. } => {
+                "board_invalid"
+            }
             BoardError::Problem { .. } | BoardError::Unverified { .. } => "board_problem",
             BoardError::InvalidName { .. } => "invalid_args",
             BoardError::NameTaken { .. } => "name_taken",

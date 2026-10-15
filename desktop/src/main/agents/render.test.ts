@@ -45,7 +45,7 @@ class FakeEngine {
   }
 }
 
-function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number } = {}) {
+function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number; showAllCalls?: () => boolean } = {}) {
   const engine = new FakeEngine();
   const views = new ViewTracker();
   if (options.held === true) {
@@ -67,6 +67,7 @@ function setup(options: { held?: boolean; timeoutMs?: number; idleMs?: number } 
     bridge,
     engine,
     reserveId: () => ids++,
+    showAllCalls: options.showAllCalls ?? (() => false),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     idleMs: options.idleMs ?? 60_000,
   });
@@ -144,6 +145,7 @@ describe("screenshot", () => {
       title: "Orders",
       page: { ...PAGE, title: "Page page-1" },
       health: HEALTH.health,
+      showAllCalls: false,
       requestId: expect.any(Number) as number,
     });
     expect(bridge.read).toHaveBeenCalledWith({ board: BOARD, page: "page-1" });
@@ -160,6 +162,19 @@ describe("screenshot", () => {
     expect(window.captures).toEqual([{ rect: { x: 0, y: 0, width: 848, height: 448 }, options: { stayHidden: true } }]);
     expect(renderer.owns(window.webContents as never)).toBe(true);
     expect(renderer.entries().map((entry) => entry.id)).toEqual([40]);
+  });
+
+  it("draws with Show all calls as the person's window shows it, the switch read at each request", async () => {
+    let on = true;
+    const { renderer } = setup({ held: true, showAllCalls: () => on });
+    void renderer.screenshot({ board: BOARD, page: "page-1" });
+    const window = await loaded();
+    const image = await request(window, 1);
+    expect(image).toMatchObject({ type: "render_page", purpose: "image", showAllCalls: true });
+    renderer.settle(image.requestId, { ok: false, code: "empty_page", message: "Nothing to draw." });
+    on = false;
+    void renderer.check({ board: BOARD, page: "page-1" });
+    expect(await request(window, 2)).toMatchObject({ type: "render_page", purpose: "check", showAllCalls: false });
   });
 
   it("reads a board no window holds from its file, with the health of its file", async () => {
@@ -331,7 +346,7 @@ describe("check", () => {
     // The app's window is closed: nothing is current, and no board is held.
     const closed = { get: () => undefined, current: () => undefined, deliver: () => undefined, focus: () => undefined };
     const bridge = new AgentBridge({ window: closed, openWindow, views: new ViewTracker() });
-    const renderer = new PageRenderer({ ui: { kind: "app", dir: "/ui" }, bridge, engine, reserveId: () => 40 });
+    const renderer = new PageRenderer({ ui: { kind: "app", dir: "/ui" }, bridge, engine, reserveId: () => 40, showAllCalls: () => false });
     const page = renderer.check({ board: BOARD, page: "page-1" });
     const board = renderer.checkBoard({ board: BOARD });
     const window = await loaded();

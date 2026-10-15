@@ -9,8 +9,9 @@
 :root {
   color-scheme: light;
 
-  /* Grounds: window, Home, sidebar, top bar, floating surfaces, controls */
+  /* Grounds: window, Home, sidebar, top bar, floating surfaces, controls; the canvas's dot grid */
   --color-canvas: #f7f8fa;
+  --color-dotgrid: #dfe2e8;
   --color-home: #ffffff;
   --color-sidebar: #f7f8fa;
   --color-chrome: #ffffff;

@@ -29,6 +29,7 @@ describe("jobState", () => {
     title: "Order placement",
     page: page("page-2", [{ id: "a", ref: { block: "k" }, at: [0, 0] }]),
     health: null,
+    showAllCalls: false,
   };
 
   it("is a board of the one page, with no health", () => {

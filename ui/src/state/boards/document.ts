@@ -64,16 +64,6 @@ export function uniqueId(page: Page, base: string): string {
   return firstFree(slug(base, "card"), takenIds(page));
 }
 
-/** Whether `id` is a well-formed item id: letters, digits, `_`, `.`, and `-`, starting with a letter or digit, at most 100. */
-export function isItemId(id: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(id);
-}
-
-/** Whether `id` is a well-formed item id that no item of the page has. */
-export function isFreeId(page: Page, id: string): boolean {
-  return isItemId(id) && !takenIds(page).has(id);
-}
-
 export interface NewCard {
   readonly ref: CardRef;
   /** What the card shows as its name (from the graph's records), which its id is made from. */

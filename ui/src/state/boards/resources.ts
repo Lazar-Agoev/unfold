@@ -31,7 +31,7 @@ export interface ResourceClaim {
 
 /** What a new resource card is: its claim, where it goes, and who drew it. */
 export interface NewResource extends ResourceClaim {
-  /** A free id (`isFreeId`); absent: one from the name. */
+  /** An id of its own choosing (the save refuses one the page has); absent: one from the name. */
   readonly id?: string;
   readonly at: readonly [number, number];
   readonly author: string;

@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "place_order",
-    "signature": "def place_order(order_id)",
+    "signature": "(order_id)",
     "description": "Charge an order and save it.",
     "path": "shop/service.py",
     "state": "current",
@@ -86,6 +86,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "shop/service.py#place_order/if[0]/then/raise[0]"
             ],
@@ -152,6 +153,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "shop/service.py#place_order/if[0]/elif[0]/return[0]"
             ],
@@ -225,6 +227,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "shop/service.py#place_order/try[0]/body/call:charge_card"
             ],
@@ -286,6 +289,7 @@
               }
             ],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "shop/service.py#place_order/try[0]/except[0]/call:logger.warning",
               "shop/service.py#place_order/try[0]/except[0]/return[0]"
@@ -435,6 +439,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "shop/service.py#place_order/for[0]/body/call:reserve_stock"
             ],

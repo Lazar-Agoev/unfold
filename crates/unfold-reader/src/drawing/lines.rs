@@ -206,7 +206,7 @@ pub(super) fn candidates(tree: &FileTree, text: &FileText, definition: u32, cont
 }
 
 /// `text` on one line: every run of whitespace becomes one space, cut to [`MAX_CHARS`].
-pub(super) fn one_line(text: &str) -> String {
+pub(crate) fn one_line(text: &str) -> String {
     cut(&text.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 

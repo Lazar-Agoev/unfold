@@ -26,7 +26,7 @@ use rustc_hash::FxHashMap;
 use unfold_core::vocab::{CallRole, Flag, Form, LinkKind, NodeKind, Outcome, Reason};
 use unfold_core::{ByteRange, Key, LineSpan, LinkTarget, Node, RepoPath};
 
-use super::lines::{FileText, candidates, doc_text, file_text};
+use super::lines::{FileText, candidates, doc_text, file_text, one_line};
 use super::{
     Actions, CallBox, CallRef, Callback, Combine, CombineWith, CombinedStep, DrawnFlow, ExitStep, ExitTarget,
     ExitValue, FlowState, Frame, GapTick, Header, HeldCall, HiddenBlock, Import, Lane, OtherCall, Overlay,
@@ -238,6 +238,22 @@ impl<'a> Builder<'_, 'a> {
         self.text.as_ref()?.one_line(range?)
     }
 
+    /// Definition `id`'s signature row: its head after the name the card's title says, on one
+    /// line (`def place_order(order_id)` → `(order_id)`, `class Labels(Named)` → `(Named)`); the
+    /// whole head when it doesn't write the name (an inline function's); none when nothing
+    /// follows the name (`class Order`).
+    fn signature(&self, id: u32) -> Option<String> {
+        let node = self.node(id);
+        let head = self.text.as_ref()?.slice(node.head?)?;
+        let rest = node
+            .name
+            .as_deref()
+            .and_then(|name| after_name(head, name))
+            .unwrap_or(head);
+        let line = one_line(rest);
+        (!line.is_empty()).then_some(line)
+    }
+
     /// The lines node `id`'s statement (or, when it begins none, the node) covers.
     fn span(&self, id: u32) -> Option<LineSpan> {
         let node = self.node(id);
@@ -404,7 +420,7 @@ impl<'a> Builder<'_, 'a> {
             label: self.tree.label(id),
             name: self.name(id),
             signature: (node.kind() != NodeKind::Module)
-                .then(|| self.one_line(node.head))
+                .then(|| self.signature(id))
                 .flatten(),
             description,
             path: self.tree.path().clone(),
@@ -798,6 +814,7 @@ impl<'a> Builder<'_, 'a> {
             test,
             types,
             falls_through: node.flags.contains(Flag::FallsThrough),
+            group: node.flags.contains(Flag::Group),
             combinable: self.combinable(part),
             steps: self.body(part),
             actions: self.actions(part),
@@ -1094,4 +1111,13 @@ impl Summary {
             to: to.clone(),
         });
     }
+}
+
+/// What `head` says after the first `name` written in it as a whole word, if it writes it.
+fn after_name<'h>(head: &'h str, name: &str) -> Option<&'h str> {
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    head.match_indices(name).find_map(|(at, _)| {
+        let end = at + name.len();
+        (!head[..at].ends_with(word) && !head[end..].starts_with(word)).then(|| &head[end..])
+    })
 }

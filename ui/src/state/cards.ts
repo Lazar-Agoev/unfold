@@ -1,16 +1,20 @@
 /**
  * Cards from Rust (`card`), cached with TanStack Query under the engine key. A card is asked for with
  * its key, the page's overlay (its names, combined steps, and proposed steps, which apply page-wide), the
- * calls it opens in place, and the Show all calls switch, so changing any of them draws it again. What
- * comes back is a definition's drawn flow, or an app's or entrance's start card; the canvas lays it out
- * and applies no rules of its own. Engine events refresh a card when a file it draws changes
- * (ipc/queries).
+ * calls it opens in place, and the Show all calls switch. What comes back is a definition's drawn flow,
+ * or an app's or entrance's start card; the canvas lays it out and applies no rules of its own. Engine
+ * events refresh a card when a file it draws changes (ipc/queries).
+ *
+ * A card is drawn again only when what it draws can change (`cardQuery`): where the overlay's entries
+ * go (which blocks are named, what each combined step holds and whether it is collapsed, where each
+ * proposed step goes) changes what any card draws, but an entry's words show only on the cards that
+ * draw it. So typing a name redraws the cards that draw its block, not the whole page.
  *
  * A drawn flow is read through the one walk the window and the MCP server share
  * (`@unfold/desktop/drawing`), never from keys.
  */
 
-import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { hashKey, keepPreviousData, useQueries, useQuery, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { flowBlocks, visitFlow, type DrawnBlock } from "@unfold/desktop/drawing";
 import { useCallback, useMemo } from "react";
 import { queryClient } from "../ipc/client";
@@ -51,11 +55,70 @@ export function cardArgs(project: ProjectId, card: Pick<Card, "ref" | "open">, o
   };
 }
 
-/** The query for one card. */
-export function cardQuery(args: CardArgs) {
+/**
+ * What a card's drawing shows the words of: the blocks it draws (in the calls it opens in place too, and
+ * those a collapsed combined step holds) and the page's combined and proposed steps it draws.
+ */
+function shownWords(view: CardView): ReadonlySet<string> {
+  return view.type === "definition" ? new Set([...flowBlocks(view.flow).map((block) => block.key), ...heldBlocks(view.flow), ...overlayIds(view)]) : new Set();
+}
+
+const NO_WORDS: ReadonlySet<string> = new Set();
+
+/** The overlay with the words of every entry whose block or step `shown` doesn't name left blank. */
+function wordsShown(overlay: OverlayArgs, shown: ReadonlySet<string>): OverlayArgs {
+  const words = (id: string, text: string) => (shown.has(id) ? text : "");
+  const { names, combined, proposed } = overlay;
   return {
-    queryKey: engineKey("card", args),
-    queryFn: () => call("card", args),
+    ...(names ? { names: names.map(({ key, text }) => ({ key, text: words(key, text) })) } : {}),
+    ...(combined ? { combined: combined.map((step) => ({ ...step, title: words(step.id, step.title) })) } : {}),
+    ...(proposed ? { proposed: proposed.map((step) => ({ ...step, title: words(step.id, step.title) })) } : {}),
+  };
+}
+
+/** A card as the engine last drew it: where its page's overlay entries went then, and whose words it showed. */
+interface Drawn {
+  readonly places: string;
+  readonly shown: ReadonlySet<string>;
+}
+
+/** Each card's last drawing, by the card (its key, open calls, and Show all calls). */
+const lastDrawn = new Map<string, Drawn>();
+
+/** Which card `args` asks for, its page's overlay aside. */
+function cardIdentity({ project, key, open, showAllCalls }: CardArgs): string {
+  return JSON.stringify([project, key, open ?? [], showAllCalls === true]);
+}
+
+/** Where the overlay's entries go, without their words. */
+function placesOf(args: CardArgs): string {
+  return JSON.stringify(args.overlay ? wordsShown(args.overlay, NO_WORDS) : null);
+}
+
+/**
+ * The arguments a card is cached under: its own, with the words of the overlay entries it doesn't show
+ * left blank once its drawing with the same places says which those are (until then, all of them).
+ */
+function cachedArgs(args: CardArgs): CardArgs {
+  const drawn = lastDrawn.get(cardIdentity(args));
+  return args.overlay && drawn?.places === placesOf(args) ? { ...args, overlay: wordsShown(args.overlay, drawn.shown) } : args;
+}
+
+/** The query for one card: asked for with `args`, cached under the words it shows (`cachedArgs`). */
+export function cardQuery(args: CardArgs) {
+  const queryKey = engineKey("card", cachedArgs(args));
+  return {
+    queryKey,
+    queryFn: async ({ client }: { readonly client: QueryClient }) => {
+      const view = await call("card", args);
+      // Now that the drawing says whose words it shows, the card is cached under those alone too.
+      lastDrawn.set(cardIdentity(args), { places: placesOf(args), shown: shownWords(view) });
+      const shownKey = engineKey("card", cachedArgs(args));
+      if (hashKey(shownKey) !== hashKey(queryKey)) {
+        client.setQueryData(shownKey, view);
+      }
+      return view;
+    },
     // A missing key is an answer, not a hiccup; engine events say when to ask again.
     retry: false,
     staleTime: Infinity,

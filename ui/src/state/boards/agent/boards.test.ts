@@ -11,7 +11,7 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/b.json";
 const REF = { project: P, id: ID };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
-const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
+const CARD = { id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] as [number, number] };
 
 let engine: FakeEngine;
 const saved: SaveBoardArgs[] = [];

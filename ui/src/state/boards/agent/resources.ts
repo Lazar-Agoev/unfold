@@ -13,7 +13,7 @@ import { RESOURCE_WORDS } from "../../../canvas/resources/kinds";
 import { columnTypeText, type TableColumn } from "../../../canvas/resources/columns";
 import type { Anchor, Column, Page, Resource } from "../../../ipc/generated";
 import { estimatedResourceSize } from "../../../canvas/frames/geometry";
-import { isFreeId, isItemId, moveItems } from "../document";
+import { moveItems } from "../document";
 import { addToFrame, findFrame, frameOf } from "../frames";
 import { addResource, findResource, saysClaim, setResourceClaim, setResourceDescription, type ResourceClaim } from "../resources";
 import { guardPeopleText, invalid, itemSize, resourceColumns, resourceName, type ApplyOp, type OpContext } from "./context";
@@ -112,15 +112,7 @@ function existingFor(page: Page, spec: AgentResourceSpec, name: string): Resourc
   if (spec.id === undefined) {
     return (page.resources ?? []).find((resource) => resource.kind === spec.kind && resource.name === name);
   }
-  const resource = findResource(page, spec.id);
-  if (!resource && !isFreeId(page, spec.id)) {
-    throw invalid(
-      isItemId(spec.id)
-        ? `“${spec.id}” is the id of another item on this page (not a resource card). Give the resource card another id, or leave id out.`
-        : `“${spec.id}” can't name a resource card: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
-    );
-  }
-  return resource;
+  return findResource(page, spec.id);
 }
 
 /**

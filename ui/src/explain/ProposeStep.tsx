@@ -2,14 +2,14 @@
  * Add proposed step…: a small popover beside the block
  * that asks for the intended step's title (required) and why (optional). It goes after the block, or at
  * the start of its body, as the block's actions allow; it is drawn dashed as PROPOSED, and Selected edits
- * or removes it. Proposing saves at once as one undo step and selects it; what the board refuses shows
- * here and changes nothing.
+ * or removes it. Proposing saves at once as one undo step and selects it; the board's save is the only
+ * check of its words, and what it refuses shows here and changes nothing.
  */
 
 import { useRef, useState, type SyntheticEvent } from "react";
 import { Button, Popover } from "../components";
 import { useAuthor } from "../state/author";
-import { PROPOSAL_REASON_MAX, PROPOSAL_TITLE_MAX, proposalReason, proposalTitle, proposeStep, select, type PageTarget, type ProposalPlace } from "../state/boards";
+import { proposeStep, select, type PageTarget, type ProposalPlace } from "../state/boards";
 import "./explain.css";
 
 export interface ProposeStepProps {
@@ -28,18 +28,18 @@ export function ProposeStep({ target, anchor, place, label, onClose }: ProposeSt
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const written = proposalTitle(title);
-  const ready = written !== null && author !== null && !busy;
+  const written = title.trim();
+  const ready = written.length > 0 && author !== null && !busy;
 
   const submit = async (event: SyntheticEvent) => {
     event.preventDefault();
-    if (written === null || author === null || busy) {
+    if (!ready) {
       return;
     }
     setBusy(true);
     setError(null);
-    const why = proposalReason(reason);
-    const outcome = await proposeStep(target, { ...place, title: written, ...(why !== null ? { reason: why } : {}), author });
+    const why = reason.trim();
+    const outcome = await proposeStep(target, { ...place, title: written, ...(why.length > 0 ? { reason: why } : {}), author });
     if (outcome.ok) {
       select(target, { kind: "proposal", proposalId: outcome.value });
       onClose();
@@ -66,7 +66,6 @@ export function ProposeStep({ target, anchor, place, label, onClose }: ProposeSt
               ref={titleField}
               className="explain-input"
               value={title}
-              maxLength={PROPOSAL_TITLE_MAX}
               placeholder="What it would do"
               autoComplete="off"
               onChange={(event) => {
@@ -80,7 +79,6 @@ export function ProposeStep({ target, anchor, place, label, onClose }: ProposeSt
             <textarea
               className="explain-input"
               value={reason}
-              maxLength={PROPOSAL_REASON_MAX}
               placeholder="Why it's wanted (optional)"
               rows={2}
               onChange={(event) => {

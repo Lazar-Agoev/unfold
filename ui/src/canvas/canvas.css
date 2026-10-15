@@ -1,7 +1,8 @@
-/* The page's canvas: the stage ground and the arrows between cards (connections: connections.css). */
+/* The page's canvas: the stage ground with its dot grid, and the arrows between cards (connections: connections.css). */
 
 .board-canvas {
   --xy-background-color: var(--color-canvas);
+  --xy-background-pattern-color: var(--color-dotgrid);
 }
 
 /* While a link is being drawn, what it can end at takes a crosshair. */

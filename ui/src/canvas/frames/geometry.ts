@@ -8,6 +8,7 @@
  * DOM.
  */
 
+import { agentName } from "../../code/text";
 import type { Card, Connection, Frame, Note, Resource, View } from "../../ipc/generated";
 import { boundsOf, fallbackSize, reflow, type Point, type Rect, type Size } from "../layout";
 import { measureText } from "../measure";
@@ -21,7 +22,7 @@ export function estimatedResourceSize(resource: Resource, columns = tableColumns
     {
       word: RESOURCE_WORDS[resource.kind],
       name: resource.name,
-      agent: resource.author.startsWith("agent:"),
+      agent: agentName(resource.author),
       columns,
       ...(resource.description ? { description: resource.description } : {}),
     },

@@ -12,6 +12,7 @@ import { fixture, installFakeEngine, type EngineHandlers, type FakeEngine, type 
 import { renderWithClient } from "../../test/render";
 import { boardState, projectRow, workspaceView } from "../../test/workspace";
 import { HomeMain } from "./HomeMain";
+import mainCss from "./main.css?raw";
 
 const P = "p-orders0000";
 
@@ -103,7 +104,9 @@ describe("Home's header and state line", () => {
     renderWithClient(<HomeMain />);
     expect(await screen.findByRole("heading", { name: "shop" })).toBeTruthy();
     expect(screen.getByText("~/code/shop")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Project menu" })).toBeTruthy();
+    // The project menu's `⋯` is boxed, as tall as New board beside it.
+    expect(screen.getByRole("button", { name: "Project menu" }).closest(".home-header-actions")).not.toBeNull();
+    expect(mainCss).toMatch(/\.home-header-actions \.icon-button \{[^}]*height: 30px;[^}]*border: 1px solid var\(--color-border\);/);
     expect(screen.getByRole("button", { name: "New board" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
     const state = await line();

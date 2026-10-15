@@ -223,7 +223,8 @@ pub struct CallContract {
     pub call: Key,
     /// Its first line.
     pub line: u32,
-    /// The callee as written.
+    /// The call as written, on one line (`charge_card(order["card"], total)`), cut at 80
+    /// characters; just its callee as written when the caller's file changed since the compile.
     pub text: Box<str>,
     /// What the call runs.
     pub callee: LinkEnd,

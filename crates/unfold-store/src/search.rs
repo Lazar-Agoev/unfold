@@ -10,7 +10,7 @@
 //! | --- | --- | --- | --- | --- |
 //! | Definition | Its label | Its qualified name | Its file | Node kind |
 //! | App | Its name | Its `run` command | Empty | `app` |
-//! | Entrance | Its name | Its app's name and its `on` | Empty | `entrance` |
+//! | Entrance | Its name | Its app's name and its `on` (`Shop API · POST /orders`) | Empty | `entrance` |
 //! | File | File name | Empty | Path | `module` |
 //!
 //! Queries never match `kind`, so typing `function` does not match every function's kind. A

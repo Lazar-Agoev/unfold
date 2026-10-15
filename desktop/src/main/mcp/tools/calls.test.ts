@@ -12,7 +12,7 @@ const BOARD = { project: PROJECT, id: ".unfold/boards/typed.json" };
 const CONTRACT: CallContract = {
   call: CALL,
   line: 27,
-  text: "chargePayment",
+  text: "chargePayment(cart, req.user, ...options)",
   callee: { outcome: "project", key: "payments.ts#chargePayment" },
   sends: [
     { argument: { index: 0, text: "cart" }, parameter: { index: 0, name: "cart", kind: "positional", optional: false, default: false, type: { text: "Cart", spans: [{ start: 0, end: 4, to: { outcome: "project", key: "cart.ts#Cart" } }] } } },
@@ -37,7 +37,7 @@ describe("read_call", () => {
     const { text } = await app.call(readCall, { call: CALL, project: "ts-orders" });
     expect(app.engineCalls.at(-1)).toEqual(["call_contract", { project: PROJECT, key: CALL }]);
     expect(text.split("\n").slice(1)).toEqual([
-      `The call chargePayment at line 27 (key ${CALL}) → the project definition payments.ts#chargePayment.`,
+      `The call chargePayment(cart, req.user, ...options) at line 27 (key ${CALL}) → the project definition payments.ts#chargePayment.`,
       "Sends (4):",
       "- cart → cart: Cart (Cart: cart.ts#Cart)",
       "- req.user → user: User (User: user.ts#User)",

@@ -15,7 +15,7 @@ const store = await import("./store");
 const { getShownBoard, showBoard, useShownBoardStore } = await import("../shownBoard");
 
 const P = "p-orders0000";
-const KEY = "src/routes/orders.ts#function:createOrder";
+const KEY = "src/routes/orders.ts#createOrder";
 const PAGE: Page = page("page-2", [{ id: "create-order", ref: { block: KEY }, at: [0, 0] }], {
   combined: [{ id: "queue", title: "Queue it", members: [`${KEY}/if[0]`], collapsed: false, author: "agent:claude", signature: "" }],
   names: [{ key: `${KEY}/if[0]`, text: "Is it paid?", author: "person:lazar", signature: "" }],
@@ -45,11 +45,11 @@ describe("repairs", () => {
   it("builds the request for each repair, on the item's page", () => {
     expect(repairSpec("remove", missing, PAGE)).toEqual({ page: "page-2", kind: "remove", target: { card: "create-order" } });
     expect(repairSpec("reconnect", missing, PAGE)).toBeNull();
-    expect(repairSpec("reconnect", missing, PAGE, "src/routes/orders.ts#function:placeOrder")).toEqual({
+    expect(repairSpec("reconnect", missing, PAGE, "src/services/order-service.ts#OrderService.place")).toEqual({
       page: "page-2",
       kind: "reconnect",
       from: KEY,
-      to: "src/routes/orders.ts#function:placeOrder",
+      to: "src/services/order-service.ts#OrderService.place",
     });
     expect(repairSpec("accept", member, PAGE)).toEqual({ page: "page-2", kind: "accept", key: `${KEY}/if[0]` });
     expect(repairSpec("remove", member, PAGE)).toEqual({ page: "page-2", kind: "remove", target: { combined: "queue" } });

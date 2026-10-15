@@ -3,7 +3,8 @@
  * Its header is the chevron that makes it compact or expanded, its
  * mark (`ƒ`, `λ`, `M`, or `class`), its name (the page's, else its code name: `callback to …` for an
  * inline function), and where it is; a line saying its file changed since the last compile (or doesn't
- * parse), whose words are then the last compile's, the review banner, and the description follow.
+ * parse), whose words are then the last compile's, the review banner (which alone says when its code is
+ * missing from the graph), and the description, all of it, follow.
  *
  * Compact, that is all: its arrows leave from its edge. Expanded, it says what it has from its code
  * (the signature, the doc as a description from code, a module's imports, and what runs when it is
@@ -299,7 +300,8 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
   if (query.isPending) {
     body = <CardNote>Loading…</CardNote>;
   } else if (query.isError) {
-    body = <CardNote warn>{missing ? `This ${"entrance" in card.ref ? "entrance" : "reference"} is missing from the graph.` : query.error.message}</CardNote>;
+    // Missing code is said once, by the review banner ("Missing from the graph").
+    body = missing ? null : <CardNote warn>{query.error.message}</CardNote>;
   } else if (geometry) {
     body = (
       <div className="card-body nodrag nopan">
@@ -328,6 +330,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
         <h3 className="card-title" title={name}>
           {name}
         </h3>
+        {text?.async === true ? <span className="card-tag">async</span> : null}
         {text ? (
           <span className="card-location" title={flow ? `${flow.header.path}:${flow.header.line}` : undefined}>
             {text.location}
@@ -347,7 +350,7 @@ export function BlockCard({ target, card, expanded, query, ports, selected }: Bl
         </p>
       ) : null}
       <ReviewBanner target={target} cardId={card.id} view={query.data} />
-      <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap={!expanded} />
+      <DescriptionStrip target={target} cardId={card.id} description={card.description} wrap />
       {expanded && flow ? <FromCode header={flow.header} /> : null}
       {body}
       {menu.element}

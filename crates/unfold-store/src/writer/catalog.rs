@@ -58,7 +58,7 @@ impl Apply<'_, '_> {
                 ))?;
                 self.write_targets(conn, id, &entrance.code)?;
                 let qualified = match &entrance.on {
-                    Some(on) => format!("{} {on}", app.name),
+                    Some(on) => format!("{} · {on}", app.name),
                     None => app.name.to_string(),
                 };
                 self.st.insert_search.execute((

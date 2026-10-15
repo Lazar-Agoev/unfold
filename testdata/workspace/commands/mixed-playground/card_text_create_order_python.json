@@ -6,7 +6,7 @@
       "kind": "function",
       "form": "function",
       "label": "create_order",
-      "signature": "async def create_order(request: Request) -> JSONResponse",
+      "signature": "(request: Request) -> JSONResponse",
       "path": "py-orders/src/orders_playground/routes/orders.py",
       "state": "current",
       "line": 24,
@@ -114,6 +114,7 @@
               },
               "types": [],
               "fallsThrough": false,
+              "group": false,
               "combinable": [
                 "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/call:celery_app.signature().delay",
                 "py-orders/src/orders_playground/routes/orders.py#create_order/if[0]/then/return[0]"
@@ -232,7 +233,7 @@
               "kind": "function",
               "form": "method",
               "label": "place",
-              "signature": "def place(self, value: object) -> Order",
+              "signature": "(self, value: object) -> Order",
               "path": "py-orders/src/orders_playground/services/order_service.py",
               "state": "current",
               "line": 20,

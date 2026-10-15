@@ -1,18 +1,24 @@
 /**
  * Board folder prompts, 400 wide over the content area: a folder's Rename…, and the board menu's Move
- * to folder › New folder…. Folders are one level deep, so each names one folder. Failures are toasts;
- * the sidebar follows by `boards_changed`.
+ * to folder › New folder…. Folders are one level deep, so each names one folder. The engine's folder
+ * commands are the only check of a name: what they refuse shows on the field, and the dialog stays
+ * open. The sidebar follows by `boards_changed`.
  */
 
-import { PromptDialog, showToast } from "../components";
+import { PromptDialog } from "../components";
 import { toUnfoldError, type ProjectId } from "../ipc";
 import { renameFolder, setBoardFolder } from "../state/boards";
-import { folderProblem } from "./folders";
 import type { MoveToFolderRequest } from "./moveToFolder";
 
-function fail(title: string, error: unknown): void {
-  const failure = toUnfoldError(error);
-  showToast({ title, body: failure.code === "folder_exists" ? "A folder with that name is already there." : failure.message, tone: "danger" });
+/** Closes the dialog once `work` is done; why the engine refused it otherwise. */
+async function refusal(work: Promise<unknown>, onClose: () => void): Promise<string | null> {
+  try {
+    await work;
+  } catch (error) {
+    return toUnfoldError(error).message;
+  }
+  onClose();
+  return null;
 }
 
 export function RenameFolderDialog({ project, folder, onClose }: { readonly project: ProjectId; readonly folder: string; readonly onClose: () => void }) {
@@ -25,16 +31,13 @@ export function RenameFolderDialog({ project, folder, onClose }: { readonly proj
       defaultValue={folder}
       confirmLabel="Rename"
       placement="canvas"
-      validate={folderProblem}
       onCancel={onClose}
       onSubmit={(value) => {
-        onClose();
         if (value === folder) {
-          return;
+          onClose();
+          return null;
         }
-        renameFolder(project, folder, value).catch((error: unknown) => {
-          fail("Couldn't rename the folder", error);
-        });
+        return refusal(renameFolder(project, folder, value), onClose);
       }}
     />
   );
@@ -49,15 +52,13 @@ export function MoveToFolderDialog({ request, onClose }: { readonly request: Mov
       label="Name"
       confirmLabel="Move"
       placement="canvas"
-      validate={folderProblem}
       onCancel={onClose}
       onSubmit={(value) => {
-        onClose();
-        if (value !== request.folder) {
-          setBoardFolder(request.board, value).catch((error: unknown) => {
-            fail("Couldn't move the board", error);
-          });
+        if (value === request.folder) {
+          onClose();
+          return null;
         }
+        return refusal(setBoardFolder(request.board, value), onClose);
       }}
     />
   );

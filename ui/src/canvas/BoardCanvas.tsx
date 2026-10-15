@@ -2,7 +2,7 @@
  * A page's canvas (React Flow): cards as custom nodes at their reflowed positions, frames as nodes
  * behind what they hold (`pageGeometry`), resource cards and notes as nodes of their own, one memoized
  * arrow per call (`computeArrows`), the page's connections, and a camera that pans and zooms without
- * changing what any card shows. No minimap. Large pages render only the cards in view. A selected
+ * changing what any card shows, over the pages' dot grid. No minimap. Large pages render only the cards in view. A selected
  * arrow shows its call's contract in Selected; Escape or a click on the canvas clears it. An expanded
  * card sends an arrow from each call to the callee's card; a compact card, one from its edge to each
  * card it calls; a type card, one from each field to each type it names on the page. A connection
@@ -15,6 +15,7 @@
  */
 
 import {
+  Background,
   ReactFlow,
   getViewportForBounds,
   useReactFlow,
@@ -33,7 +34,6 @@ import { engineQueryOptions } from "../ipc/queries";
 import { isTyping } from "../lib/typing";
 import { useAuthor } from "../state/author";
 import {
-  MAX_FRAME_DEPTH,
   cancelLink,
   displayedRects,
   editPage,
@@ -92,6 +92,9 @@ const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 1.5;
 /** Above this many cards, only the cards in view render. */
 const VISIBLE_ONLY_ABOVE = 40;
+/** The dot grid (canvas.css colors it): a 2px dot every 18px, as the design pages draw the canvas. */
+const DOT_GAP = 18;
+const DOT_SIZE = 2;
 
 /** Everything about an arrow its edge draws, as one string. */
 function arrowSignature(arrow: Arrow): string {
@@ -224,14 +227,18 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
   const [frameCache] = useState(() => new Map<string, FrameNodeType>());
   const frameNodes = useMemo(() => {
     const live = new Set<string>();
+    const deepest = geometry.frames.reduce((most, drawn) => Math.max(most, drawn.depth), 0);
     const list = geometry.frames.map(({ frame, rect, depth, collapsed }) => {
       const framePorts = ports.get(frame.id) ?? NO_PORTS;
       const cached = frameCache.get(frame.id);
       const className = working.has(frame.id) ? "agent-working" : undefined;
       const box = collapsed ? undefined : { width: rect.width, height: rect.height };
+      // Behind the lines and cards, outer frames behind inner ones; a collapsed frame is a node like a card.
+      const zIndex = collapsed ? 0 : depth - deepest - 1;
       const node: FrameNodeType =
         cached?.position.x === rect.x &&
         cached.position.y === rect.y &&
+        cached.zIndex === zIndex &&
         cached.className === className &&
         cached.data.box?.width === box?.width &&
         cached.data.box?.height === box?.height &&
@@ -242,8 +249,7 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
               type: "frame",
               position: { x: rect.x, y: rect.y },
               dragHandle: ".frame-drag",
-              // Behind the lines and cards, outer frames behind inner ones; a collapsed frame is a node like a card.
-              zIndex: collapsed ? 0 : depth - MAX_FRAME_DEPTH,
+              zIndex,
               ...(className !== undefined ? { className } : {}),
               data: { target, ports: framePorts, ...(box ? { box } : {}) },
             };
@@ -605,7 +611,9 @@ export function BoardCanvas({ target, cards, frames = NO_FRAMES, resources = NO_
         proOptions={{ hideAttribution: true }}
         aria-label="Board canvas"
         className={`board-canvas${linking ? " linking" : ""}`}
-      />
+      >
+        <Background gap={DOT_GAP} size={DOT_SIZE} />
+      </ReactFlow>
       {paneMenu.element}
       {addingResource ? (
         <>

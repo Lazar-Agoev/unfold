@@ -75,6 +75,14 @@
   gap: 8px;
 }
 
+/* The project menu's `⋯`: boxed, and as tall as New board beside it. */
+.home-header-actions .icon-button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
 /* State line */
 .home-state-line {
   display: flex;

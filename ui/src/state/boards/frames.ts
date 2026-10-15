@@ -12,9 +12,6 @@
 import type { Frame, FrameDirection, FrameIcon, FrameLook, Page } from "../../ipc/generated";
 import { description, removalCascade, removeItems, uniqueId } from "./document";
 
-/** How deep frames nest: a zone, a box in it, and a box in that. */
-export const MAX_FRAME_DEPTH = 3;
-
 /** A page's frames, as the queries read them. */
 interface Framed {
   readonly frames?: readonly Frame[] | undefined;
@@ -85,7 +82,7 @@ export function addToFrame(page: Page, frameId: string, ids: readonly string[]):
 
 /** What a new frame is. Its members are items of the page; each leaves the frame that held it. */
 interface NewFrame {
-  /** A free id (`isFreeId`); absent: one from the title. */
+  /** An id of its own choosing (the save refuses one the page has); absent: one from the title. */
   readonly id?: string;
   readonly title: string;
   readonly members: readonly string[];

@@ -1,16 +1,18 @@
 /**
  * A block's menu in an expanded card: View code, Open in place, then
- * Name…, Describe…, Combine…, and Add proposed step after… (or at the start of a body). What each item
- * offers comes from the block's overlay actions in the drawn flow, never from a rule of our own: Open
- * in place when it opens, Combine… with the steps of the body it can be combined in (or by itself), a
- * proposed step after it or at the start of its body where it allows one. Any block can be named. Name…
- * and Describe… go to their fields in Selected; a name applies page-wide, and Describe… describes the
- * card. A combined step's menu opens or collapses it, names and describes it, and uncombines it.
+ * Name…, Describe…, Combine…, Add proposed step after… (or at the start of a body), and, on a call, Draw
+ * link…. What each item offers comes from the block's overlay actions in the drawn flow, never from a
+ * rule of our own: Open in place when it opens, Combine… with the steps of the body it can be combined in
+ * (or by itself), a proposed step after it or at the start of its body where it allows one. Any block can
+ * be named. Name… and Describe… go to their fields in Selected; a name applies page-wide, and Describe…
+ * describes the card. Draw link… from a call starts a link from the card that leaves from that call (its
+ * step), so Kind ▸ can make it a `calls` connection when the call is unknown; the board's save decides.
+ * A combined step's menu opens or collapses it, names and describes it, and uncombines it.
  */
 
 import type { MenuEntry } from "../../components";
 import type { Card, DrawnFlow, Key } from "../../ipc/generated";
-import { editCombined, findCombined, findPage, getOpenBoard, isOpen, select, uncombine, type PageTarget, type ProposalPlace } from "../../state/boards";
+import { editCombined, findCombined, findPage, getOpenBoard, isOpen, select, startLink, uncombine, type PageTarget, type ProposalPlace } from "../../state/boards";
 import { combinableSteps, findBlock, openPathOf } from "../../state/cards";
 import type { FlowSelection } from "../../flow/FlowView";
 import { showInSelected } from "./cardMenu";
@@ -88,6 +90,8 @@ function blockEntries(target: PageTarget, card: Card, flow: DrawnFlow, key: Key,
     ...(combine ? [{ id: "combine", label: "Combine…", onSelect: () => { actions.onCombine(combine); } }] : []),
     ...(allows?.after === true ? [{ id: "propose-after", label: "Add proposed step after…", onSelect: () => { actions.onPropose({ place: { after: key }, label }); } }] : []),
     ...(allows?.start === true ? [{ id: "propose-start", label: "Add proposed step at the start…", onSelect: () => { actions.onPropose({ place: { start: key }, label }); } }] : []),
+    // A call: the drawn flow says where it goes.
+    ...(block?.to !== undefined ? [{ id: "draw-link", label: "Draw link…", onSelect: () => { startLink(target, card.id, key); } }] : []),
   ];
 }
 

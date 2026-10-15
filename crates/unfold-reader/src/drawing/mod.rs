@@ -45,6 +45,7 @@ use unfold_core::highlight::Highlighter;
 use unfold_core::vocab::{CallRole, Form, Language, NodeKind};
 use unfold_core::{Key, LineSpan, RepoPath};
 
+pub(crate) use lines::one_line;
 pub use text::{CodeLabel, CodeText, code_text, flow_text, labels};
 
 use crate::notes::LinkEnd;
@@ -476,6 +477,8 @@ pub struct Lane {
     pub types: Vec<LinkEnd>,
     /// A `switch` case that runs into the next one.
     pub falls_through: bool,
+    /// A Python `except*` handler, which catches from an exception group.
+    pub group: bool,
     /// Its body's steps that can be combined, in written order (drawn or not).
     pub combinable: Vec<Key>,
     /// Its body.

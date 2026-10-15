@@ -7,7 +7,7 @@
  */
 
 import { produce, type Draft } from "immer";
-import type { Cardinality, ConnectionKind, Page } from "../../ipc/generated";
+import type { Cardinality, ConnectionKind, Key, Page } from "../../ipc/generated";
 import { addConnection, claimOf, setConnectionClaim, setConnectionKind } from "./connections";
 import { addCombined, type NewCombined } from "./document";
 import { addProposal, type NewProposal } from "./proposals";
@@ -49,13 +49,20 @@ export function addResourceCard(target: PageTarget, resource: NewResource): Prom
   return handStep(target, "Add resource", (page) => addResource(page, resource));
 }
 
-/** Draws an `other` connection from one item to another, saying what it is in `label`; returns its id. A person's needs no step and no citation. */
-export function drawLink(target: PageTarget, link: { readonly from: string; readonly to: string; readonly label: string; readonly author: string }): Promise<HandOutcome<string>> {
+/**
+ * Draws an `other` connection from one item to another, saying what it is in `label`; returns its id. It
+ * leaves from `step`, a call of the from card, when it was drawn from one. A person's needs no citation.
+ */
+export function drawLink(
+  target: PageTarget,
+  link: { readonly from: string; readonly step?: Key; readonly to: string; readonly label: string; readonly author: string },
+): Promise<HandOutcome<string>> {
   return handStep(target, "Draw link", (page) => {
-    const id = addConnection(page, { kind: "other", from: link.from, to: link.to, anchors: [], author: link.author });
+    const { from, step, to, author } = link;
+    const id = addConnection(page, { kind: "other", from, to, ...(step !== undefined ? { step } : {}), anchors: [], author });
     const drawn = page.links.find((item) => item.id === id);
     if (drawn) {
-      drawn.label = { text: link.label, author: link.author, signature: "" };
+      drawn.label = { text: link.label, author, signature: "" };
     }
     return id;
   });

@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { queryClient } from "../../ipc/client";
 import type { BoardDocument, Connection } from "../../ipc/generated";
+import { engineKey } from "../../ipc/queries";
+import { useFocusTarget } from "../../lib/focus-targets";
 import * as store from "../../state/boards/store";
+import { useLayout } from "../../state/layout";
 import { installFakeEngine, type FakeEngine } from "../../test/engine";
-import { boardDocument, boardState, page } from "../../test/workspace";
-import { kindEntries } from "./linkMenu";
+import { boardDocument, boardState, page, projectRow, workspaceView } from "../../test/workspace";
+import { LINK_DESCRIPTION_FIELD, LINK_LABEL_FIELD, kindEntries, linkMenuEntries } from "./linkMenu";
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock("../../components/Toast", () => toast);
@@ -102,5 +107,71 @@ describe("Kind ▸", () => {
     expect(board && store.isDirty(board)).toBe(false);
     expect(board?.saveError).toBeNull();
     expect(board?.history.past).toEqual([]);
+  });
+});
+
+describe("a connection's menu", () => {
+  /** Picks entry `label` of connection `linkId`'s menu. */
+  function pick(linkId: string, label: string): void {
+    const entry = linkMenuEntries(PAGE, linkId, AUTHOR).find((item) => (item.kind === undefined || item.kind === "item") && item.label === label);
+    if (!entry || (entry.kind !== undefined && entry.kind !== "item") || !entry.onSelect) {
+      throw new Error(`no ${label} entry`);
+    }
+    entry.onSelect();
+  }
+
+  /** A field Selected shows under `key`, as its focus target. */
+  function field(key: string): HTMLTextAreaElement {
+    const element = document.createElement("textarea");
+    document.body.append(element);
+    onTestFinished(() => {
+      element.remove();
+    });
+    renderHook(() => {
+      useFocusTarget(key, { current: element });
+    });
+    return element;
+  }
+
+  const drawn: Connection = { id: "drawn", kind: "other", from: "place", to: "save", label: { text: "Posts", author: AUTHOR, signature: "" }, author: AUTHOR };
+
+  it("lists Kind, Edit label, Describe…, Copy link, and Remove connection", () => {
+    open([drawn]);
+    expect(linkMenuEntries(PAGE, "drawn", AUTHOR).flatMap((entry) => (entry.kind === undefined || entry.kind === "item" ? [entry.label] : []))).toEqual(["Kind", "Edit label", "Describe…", "Copy link", "Remove connection"]);
+  });
+
+  it("Edit label selects it and focuses its label in Selected", () => {
+    open([drawn]);
+    useLayout.setState({ selectedCollapsed: true });
+    const label = field(LINK_LABEL_FIELD);
+    pick("drawn", "Edit label");
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "link", linkId: "drawn" });
+    expect(useLayout.getState().selectedCollapsed).toBe(false);
+    expect(document.activeElement).toBe(label);
+  });
+
+  it("Describe… selects it and focuses its description in Selected", () => {
+    open([drawn]);
+    const description = field(LINK_DESCRIPTION_FIELD);
+    pick("drawn", "Describe…");
+    expect(store.getPageView(PAGE).selection).toEqual({ kind: "link", linkId: "drawn" });
+    expect(document.activeElement).toBe(description);
+  });
+
+  it("Copy link copies a link to it", async () => {
+    open([drawn]);
+    queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "shop")]));
+    pick("drawn", "Copy link");
+    await vi.waitFor(() => {
+      expect(engine.windowCalls).toEqual([{ command: "copy_to_clipboard", args: { text: "unfold://shop/.unfold/boards/b.json?page=page-1&item=drawn" } }]);
+    });
+  });
+
+  it("Remove connection takes it off the page, as one undo step", () => {
+    open([drawn]);
+    pick("drawn", "Remove connection");
+    expect(store.getOpenBoard(REF)?.document.pages[0]?.links).toEqual([]);
+    store.undo(REF);
+    expect(link()).toEqual(drawn);
   });
 });

@@ -58,7 +58,7 @@
 
 .connection-chip > span { white-space: pre; }
 .chip-word { font-weight: 600; }
-.chip-code { font-family: var(--font-code); font-feature-settings: "calt" 0, "liga" 0; }
+.chip-code { font-family: var(--font-code); }
 .chip-sep { color: var(--color-muted); }
 
 .connection-chip .agent-mark { margin-left: 4px; }

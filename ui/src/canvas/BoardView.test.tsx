@@ -4,11 +4,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../ipc/client";
-import type { Card, Connection } from "../ipc/generated";
+import type { Card, Connection, HealthItem } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import * as store from "../state/boards/store";
 import { installFakeEngine, fixture, type FakeEngine } from "../test/engine";
-import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
+import { boardDocument, boardState, HEALTHY, page, projectRow, workspaceView } from "../test/workspace";
+import canvasCss from "./canvas.css?raw";
 import { markWorking, resetWorking } from "../state/boards/agent/working";
 import { BoardView } from "../board/BoardView";
 
@@ -117,7 +118,7 @@ describe("cards on the board view", () => {
     expect(card()).toBe(before);
   });
 
-  it("shows an agent at work: the top bar says so, the cards it changed are outlined, and its words carry the mark", async () => {
+  it("shows an agent at work: the top bar says so, and the cards it changed are outlined; a card's description carries no mark", async () => {
     const description = { text: "Takes an order.", author: "agent:claude", signature: "" };
     store.adoptBoardState(
       state([
@@ -127,7 +128,7 @@ describe("cards on the board view", () => {
     );
     const { container } = renderBoard();
     await screen.findByText("Takes an order.");
-    expect(container.querySelector(".card-description .agent-mark")?.getAttribute("title")).toBe("Written by Claude, an agent");
+    expect(container.querySelector(".card-description .agent-mark")).toBeNull();
     expect(screen.queryByText(/is working…/)).toBeNull();
 
     act(() => {
@@ -140,11 +141,28 @@ describe("cards on the board view", () => {
     expect(container.querySelector('.react-flow__node.agent-working [data-card-id="gone"]')).toBeNull();
   });
 
-  it("shows a card whose key is gone as a missing card", async () => {
-    store.adoptBoardState(state([{ id: "gone", ref: { block: GONE }, at: [0, 0] }]));
+  it("shows a card whose key is gone as a missing card, and says so once: in its banner", async () => {
+    const missing: HealthItem = { page: "page-1", kind: "missing", target: { card: "gone" }, message: `Code reference is missing: ${GONE}`, repairs: ["reconnect", "remove"] };
+    store.adoptBoardState({ ...state([{ id: "gone", ref: { block: GONE }, at: [0, 0] }]), health: { ...HEALTHY, items: [missing], missing: 1 } });
     const { container } = renderBoard();
-    await screen.findByText("This reference is missing from the graph.");
-    expect(container.querySelector('[data-card-id="gone"]')).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('[data-card-id="gone"]:not([data-loading])')).not.toBeNull();
+    });
+    const card = container.querySelector('[data-card-id="gone"]');
+    expect(card?.classList.contains("missing")).toBe(true);
+    expect(within(card as HTMLElement).getAllByText(/missing/i).map((element) => element.textContent)).toEqual(["Missing from the graph"]);
+  });
+
+  it("draws the page's dot grid: a dot every 18 px, moving with the camera", async () => {
+    store.adoptBoardState(state([{ id: "create-order", ref: { block: KEY }, at: [0, 0] }]));
+    const { container } = renderBoard();
+    await waitFor(() => {
+      expect(container.querySelector(".react-flow__background pattern")).not.toBeNull();
+    });
+    const pattern = container.querySelector(".react-flow__background pattern");
+    expect([pattern?.getAttribute("width"), pattern?.getAttribute("height")]).toEqual(["18", "18"]);
+    expect(pattern?.querySelector("circle")?.getAttribute("r")).toBe("1");
+    expect(canvasCss).toMatch(/--xy-background-pattern-color:\s*var\(--color-dotgrid\)/);
   });
 
   it("keeps each page's camera when switching pages", async () => {

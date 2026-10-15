@@ -186,7 +186,7 @@ describe("an agent's edit", () => {
 
   it("leaves the board as it was and answers with the engine's code and message when the save is refused", async () => {
     open();
-    refuseSave = { code: "board_problem", message: "The key src/x.ts#function:x is not in the graph." };
+    refuseSave = { code: "board_problem", message: 'The key src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0] is not in the graph.' };
     expect(await refusal([{ op: "shape_card", card: "create-order", description: "Takes an order." }])).toEqual({ ok: false, ...refuseSave });
     expect(store.getOpenBoard(REF)?.history).toMatchObject({ past: [], future: [] });
   });

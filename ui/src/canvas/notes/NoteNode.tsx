@@ -1,6 +1,6 @@
 /**
- * A note on the canvas: short plain text in the authored style, with who wrote it (the
- * agent mark for an agent). Free, it stays where it is put; attached, it moves with its card, frame,
+ * A note on the canvas: short plain text in the authored style, with who wrote it: an agent's mark
+ * (`✦ Claude`), or "by you". Free, it stays where it is put; attached, it moves with its card, frame,
  * resource card, or connection. A click selects it; dragging moves it (an attached note keeps its
  * attachment, at a new offset); double-clicking edits it in place (Enter keeps, Shift+Enter breaks the
  * line, Escape cancels), which makes it yours; its menu has Edit, Copy link, and Remove note.
@@ -9,9 +9,10 @@
 import type { Node, NodeProps } from "@xyflow/react";
 import { memo, useState } from "react";
 import { Author, copyLink } from "../../agent";
+import { authorOf } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { useAuthor } from "../../state/author";
-import { NOTE_MAX, editNote, findNote, findPage, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
+import { editNote, findNote, findPage, removeItem, select, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
 import "./notes.css";
 
 interface NoteNodeData extends Record<string, unknown> {
@@ -31,7 +32,6 @@ function NoteText({ text, editing, onDone }: { readonly text: string; readonly e
       className="note-input nodrag nopan"
       aria-label="Note"
       defaultValue={text}
-      maxLength={NOTE_MAX}
       rows={Math.min(8, Math.max(2, text.split("\n").length + 1))}
       onClick={(event) => {
         event.stopPropagation();
@@ -111,6 +111,7 @@ export const NoteNode = memo(function NoteNode({ id, data }: NodeProps<NoteNodeT
     >
       <NoteText text={note.text} editing={editing} onDone={finish} />
       <span className="note-byline">
+        {authorOf(note.author).agent ? null : "by "}
         <Author author={note.author} />
       </span>
       {menu.element}

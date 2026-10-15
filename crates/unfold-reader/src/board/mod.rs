@@ -60,6 +60,14 @@ pub enum BoardError {
         /// What is wrong.
         message: String,
     },
+    /// Words or items past what the format holds (a note's or a proposed step's words, a page's
+    /// proposed steps, a card's calls opened in place), or frames nested too deep: said in words,
+    /// for the person or the agent who wrote them, as the window shows it.
+    #[error("{message}")]
+    Limit {
+        /// What the format holds, and what this one has.
+        message: String,
+    },
     /// A reference, overlay item, or claim breaks a rule against the current graph.
     #[error("page `{page}`, {target}: {message}")]
     Problem {

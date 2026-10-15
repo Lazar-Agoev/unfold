@@ -21,8 +21,8 @@ const REF = { project: P, id: ID };
 const TARGET = { board: REF, page: "page-1" };
 
 const cards: Card[] = [
-  { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] },
-  { id: "b", ref: { block: "src/b.ts#function:b" }, at: [2000, 0] },
+  { id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] },
+  { id: "b", ref: { block: "src/services/order-service.ts#OrderService.place" }, at: [2000, 0] },
 ];
 const PAGE: Page = page("page-1", cards, {
   combined: [{ id: "a-checks", title: "Checks", members: ["key-a-if"], collapsed: true, author: "agent:claude", signature: "" }],
@@ -51,8 +51,8 @@ function drawnCard(key: string, step: "combined" | "proposed"): CardView {
 }
 
 const DRAWN: ReadonlyMap<string, CardView> = new Map([
-  ["a", drawnCard("src/a.ts#function:a", "combined")],
-  ["b", drawnCard("src/b.ts#function:b", "proposed")],
+  ["a", drawnCard("src/routes/orders.ts#createOrder", "combined")],
+  ["b", drawnCard("src/services/order-service.ts#OrderService.place", "proposed")],
 ]);
 const drawn = (cardId: string) => DRAWN.get(cardId);
 
@@ -121,7 +121,7 @@ describe("currentView", () => {
     });
     for (const [selection, reported] of [
       [{ kind: "card", cardId: "a", key: null }, { kind: "card", id: "a" }],
-      [{ kind: "card", cardId: "a", key: "src/a.ts#function:a" }, { kind: "card", id: "a" }],
+      [{ kind: "card", cardId: "a", key: "src/routes/orders.ts#createOrder" }, { kind: "card", id: "a" }],
       [{ kind: "field", cardId: "a", key: "src/a.ts#Order", index: 1 }, { kind: "card", id: "a" }],
       [{ kind: "combined", combinedId: "a-checks" }, { kind: "combined", id: "a-checks" }],
       [{ kind: "link", linkId: "a-to-b" }, { kind: "link", id: "a-to-b" }],

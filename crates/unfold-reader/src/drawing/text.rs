@@ -310,7 +310,11 @@ impl<'f> Printer<'f> {
                     named(&[
                         frame.name.as_deref(),
                         body.and_then(|lane| lane.name.as_deref()),
-                        frame.header.as_deref()
+                        // After its keyword, which `WITH` says: `with open(p) as f` → `open(p) as f`.
+                        frame
+                            .header
+                            .as_deref()
+                            .map(|header| header.strip_prefix("with ").unwrap_or(header))
                     ]),
                     chips(&frame.header_calls, &frame.header_unknown)
                 );

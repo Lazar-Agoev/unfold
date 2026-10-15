@@ -8,9 +8,6 @@
 import type { Note, Page } from "../../ipc/generated";
 import { uniqueId } from "./document";
 
-/** The most characters a note holds (Unicode scalar values, as the file counts them). */
-export const NOTE_MAX = 400;
-
 /** A page's notes, as the queries read them. */
 interface Noted {
   readonly notes?: readonly Note[] | undefined;
@@ -20,20 +17,9 @@ export function findNote(page: Noted, noteId: string): Note | undefined {
   return (page.notes ?? []).find((note) => note.id === noteId);
 }
 
-/** How long a note is, as the file counts it: in Unicode scalar values (a surrogate pair is one). */
-export function noteLength(text: string): number {
-  return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "_").length;
-}
-
-/** A note's text as the file holds it: trimmed, or null when it is blank or longer than `NOTE_MAX`. */
-export function noteText(text: string): string | null {
-  const trimmed = text.trim();
-  return trimmed.length > 0 && noteLength(trimmed) <= NOTE_MAX ? trimmed : null;
-}
-
 /** What a new note is: its text, its place (an offset from `attach`, else a canvas position), and who wrote it. */
 export interface NewNote {
-  /** A free id (`isFreeId`); absent: one of its own. */
+  /** An id of its own choosing (the save refuses one the page has); absent: one of its own. */
   readonly id?: string;
   readonly text: string;
   readonly at: readonly [number, number];
@@ -55,11 +41,11 @@ export function addNote(page: Page, note: NewNote): string {
   return id;
 }
 
-/** Rewrites a note's text, which makes `author` its writer; blank or too long text changes nothing. */
+/** Rewrites a note's text, trimmed, which makes `author` its writer; blank text changes nothing. The board's save checks it. */
 export function setNoteText(page: Page, noteId: string, text: string, author: string): void {
   const note = findNote(page, noteId);
-  const written = noteText(text);
-  if (note && written !== null && written !== note.text) {
+  const written = text.trim();
+  if (note && written.length > 0 && written !== note.text) {
     note.text = written;
     note.author = author;
   }

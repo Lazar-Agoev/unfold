@@ -75,6 +75,15 @@ export function frameWord(form: Form): string {
   return FRAME_WORDS.get(form) ?? form;
 }
 
+/**
+ * A frame's header after its keyword, which the frame word already says: `with open(p) as f` → `open(p) as f`,
+ * as a handler's clause drops its `except` (`sectionWords`). Any other header is shown whole.
+ */
+export function frameHeader(frame: { readonly form: Form; readonly header?: string }): string | undefined {
+  const keyword = `${frameWord(frame.form).toLowerCase()} `;
+  return frame.header?.startsWith(keyword) === true ? frame.header.slice(keyword.length).trim() : frame.header;
+}
+
 const EXIT_WORDS = new Map<Form, string>([
   ["return", "Return"],
   ["raise", "Raise"],
@@ -131,7 +140,7 @@ function routeWords(route: Route, inset: boolean, lanes: ReadonlyMap<number, Lan
 }
 
 /**
- * Where an exit goes, in words (its routes' words, each once), or null when its routes are drawn as wires. `lanes`
+ * Where an exit goes, in words (its routes' words, each once), or null when none of them says where. `lanes`
  * are the flow's lanes by id, for the transfers that land in one.
  */
 export function exitDestination(routes: readonly Route[], form: Form, inset: boolean, lanes: ReadonlyMap<number, Lane>): string | null {
@@ -226,12 +235,11 @@ export function sectionWords(lane: Lane, loop: boolean): SectionWords {
     case "catch": {
       const written = lane.test?.text;
       let clause = written?.startsWith(lane.form) ? written.slice(lane.form.length).trim() : written;
-      // An `except*` handler (`except* Group`, `except *Group`) keeps its star in the title.
-      const group = lane.form === "except" && clause?.startsWith("*") === true;
-      if (group) {
-        clause = clause?.slice(1).trim();
+      // An `except*` handler (`except* Group`, `except *Group`) keeps its star in the title, not the clause.
+      if (lane.group && clause?.startsWith("*") === true) {
+        clause = clause.slice(1).trim();
       }
-      const title = lane.form === "catch" ? "Catch" : group ? "Except*" : "Except";
+      const title = lane.form === "catch" ? "Catch" : lane.group ? "Except*" : "Except";
       return { title, clause: clause !== undefined && clause.length > 0 ? clause : null, note: null };
     }
     case "else":

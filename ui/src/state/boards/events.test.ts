@@ -48,7 +48,7 @@ afterEach(() => {
 
 describe("board events", () => {
   it("refreshes a board's health once, after a burst of graph updates of its project", async () => {
-    const updated = { type: "graph_updated", changedFiles: [], removedFiles: [], changedKeys: [], changedEntrances: [], inputsChanged: false, everything: false, complete: true } as const;
+    const updated = { type: "graph_updated", changedFiles: [], removedFiles: [], changedKeys: [], inputsChanged: false, everything: false, complete: true } as const;
     engine.emit({ ...updated, project: Q });
     await vi.advanceTimersByTimeAsync(HEALTH_DELAY_MS * 2);
     expect(engine.callsOf("board_health")).toEqual([]);

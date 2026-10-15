@@ -99,22 +99,30 @@ and Selected pinned to the bottom. The content area holds the top bar (the page'
 agent works, and the Show all calls switch), the canvas with its banners and the dock (Add, Arrange, zoom, Fit), and
 the code panel beside both when open.
 
-**Selected** (`board/selected/`) shows what is selected: a card (description, Called by, Reached from), a block (its
-name, its part's lines), a combined step, a connection (kind, label, a relationship's columns and cardinality), a
-frame, a resource card, a note, a proposed step, or an arrow (the call's contract: what it sends, returns, and
-raises, with "caught" when a handler around it catches). A type name opens its definition in the code panel.
+**Selected** (`board/selected/`) shows what is selected: a card (description, Called by, Reached from; a card whose
+code is missing shows its key and "Missing from the graph", its banner's words, once), a block (its name, its part's
+lines), a combined step, a connection (kind, label, a relationship's columns and cardinality), a frame, a resource
+card, a note, a proposed step, or an arrow (titled by the call as written, then its contract: what it sends, returns,
+and raises, with "caught" when a handler around it catches). A type name opens its definition in the code panel.
+Bylines say who wrote what: "by you" for the person at the window, another person's name, or an agent's mark.
 
 ## The canvas
 
-`canvas/` draws a page with React Flow. Cards come from `card` (`state/cards.ts`), asked for with the page's overlay,
-the card's open paths, and the Show all calls switch.
+`canvas/` draws a page with React Flow, over the design pages' dot grid (a 2 px dot every 18 px, `--color-dotgrid`).
+Cards come from `card` (`state/cards.ts`), asked for with the page's overlay,
+the card's open paths, and the Show all calls switch. A card is cached under where the overlay's entries go and the
+words of those its drawing shows, so typing a name redraws the cards that draw its block, not the whole page.
 
 - **The canvas computes geometry only.** `flow/layout.ts` turns a drawn flow into `FlowGeometry` (pieces, wires,
   every block's rect, page items, call anchors), pure and deterministic; `FlowView` renders it and decides nothing.
   What a block allows comes from its drawn-flow `actions`; there is no TypeScript copy of the overlay rules, and no
   UI code reads keys.
 - **Cards**: modules, classes, functions, and inline functions (compact, or expanded to their drawn flow), type cards
-  (fields and inherited fields from `type_definition`), and app and entrance cards in the authored style. Code a
+  (fields and inherited fields from `type_definition`), and app and entrance cards in the authored style. A card's
+  title is its name, with `ASYNC` after it for an async function; an expanded card's signature row says what follows
+  the name (`(order_id)`), and an inline function's, its whole head. A card's description shows all of it, wrapped
+  (a type card's: one line, with "more"), in the authored color with no mark. A card whose code is missing is dashed,
+  and its review banner alone says so. Code a
   start names that isn't found is its own dashed card with its fix. A card whose file changed since the last compile,
   or doesn't parse, says so in a line under its header, in the code panel's words and banner look ("Changed since
   the last compile", "Doesn't parse"), and keeps the words its facts' text gives (`header.state`); an editor's save
@@ -136,14 +144,21 @@ People make what agents make, under the same rules (`state/boards/explain.ts`), 
 agents create and people rename, describe, move, collapse, and remove.
 
 - **A block's menu** (`canvas/cards/blockMenu.ts`): View code, Open/Close in place, Name…, Describe…, Combine…, Add
-  proposed step after… or at the start…. Each item shows only when the block's actions allow it.
+  proposed step after… or at the start…, and Draw link… on a call. Each of the overlay's items shows only when the
+  block's actions allow it.
 - **Combine…** lists the body's drawn steps and ticks a consecutive run; a title is required; it starts collapsed.
 - **Add resource…** (the canvas menu), **Draw link…** (card, resource, and frame menus; an `other` connection with a
-  label), **Kind ▸** on a connection, and the relationship editor in Selected.
+  label), **Kind ▸** on a connection, and the relationship editor in Selected. Draw link… on a call starts the link at
+  that call, which becomes its step, so Kind ▸ offers `calls` for it; the save refuses a `calls` connection that
+  doesn't start at an unknown call.
 - **Review** (`ReviewBanner.tsx`): Accept, Reconnect… (a name search), and Remove from page.
 
 Each structural edit saves at once as one undo step (`saveStep`); the board's save decides, and a refusal comes back
-inline or as a toast with the page unchanged.
+inline or as a toast with the page unchanged. No TypeScript copy of the board's rules checks first: ids, how long a
+note or a proposed step may be, and how deep frames nest are the save's to refuse. Text edited in place (a note, a
+proposed step) is an edit on each keystroke, so a save that refuses it shows its message under the field while you
+type ("A note holds at most 400 characters; this one has 412."), and the folder dialogs show the folder commands'
+refusals on their field.
 
 ## The code panel
 
@@ -175,7 +190,8 @@ inline or as a toast with the page unchanged.
 ## Add
 
 `add/` is one box over the board: a name search in the board's project (modules, definitions, types, apps, and
-entrances as one ranked list, then files), each row with its kind. Enter adds a card (or focuses the one already
+entrances as one ranked list, then files), each row with its kind and where it is (an entrance's app and what starts
+it: `Shop API · POST /orders`). Enter adds a card (or focuses the one already
 there) or opens a file in the code panel, once the list answers what was typed. Home has no Add.
 
 ## Agents in the window
@@ -185,8 +201,9 @@ them with the same pure edits people's actions use, as one undo step named "<age
 with the agent's identity, saved at once through the normal board path. A refused edit leaves the document and its
 undo history unchanged.
 
-- The window checks shapes and refusal texts; for example, `connect` refuses a connection that repeats a compiled
-  call. The save checks keys, the overlay rules, and grounding.
+- The window checks only what it draws: that a connection's step is drawn on its from card, that a connection
+  doesn't repeat a compiled call, and where a proposed step can go (the block's actions). The save checks the board's
+  rules (ids, ends, kinds, lengths, frames), keys, the overlay rules, and grounding, and its refusal is the answer.
 - People's words stay theirs unless the request says the person asked (`replacePeopleText`); unchanged text keeps
   its author. A repair that removes an item, a name, or a description is held to the same rule, what goes with the
   item included.
@@ -197,12 +214,15 @@ undo history unchanged.
   They are never saved and never undo steps.
 - **View reports** (`agent/viewReport.ts`): the shown board and page, the selection, the code panel's block and
   lines, the items in view, and the held boards, about 150 ms after a change and at once on focus.
-- The agent mark (a spark and the word "agent"; bylines read "Claude · agent") shows wherever an agent's words show.
+- The agent mark (a spark and the agent's name, `✦ Claude`, from its author id) is on a frame's title, a note, a
+  resource card's header, a connection's chip, and in Selected's bylines ("by ✦ Claude"). A card's description
+  carries none, as the design pages draw it.
 
 ## The render window
 
 `render/` is a separate entry the desktop's hidden render window loads. It draws one page read-only, exactly as the
-board view does, adopting it as a session that is never saved. Once every card is measured, every query has loaded,
+board view does, adopting it as a session that is never saved, with Show all calls as the person's window has it
+(each `RenderJob` carries the switch). Once every card is measured, every query has loaded,
 the fonts are in, and nothing moves, it answers with the image's bounds or the page checks (`board/checks/`:
 overlap, crossings, density, missing descriptions, connections and resources that cite nothing, and strays).
 
@@ -218,8 +238,9 @@ or return focus, close on Escape and outside clicks, and a field that took Escap
 ### Theme
 
 `theme/tokens.css` holds the tokens; Unfold is light only. Components use the tokens, never new hard-coded values.
-Inter and JetBrains Mono ship with the app (`@fontsource-variable`), so text measures the same everywhere; code turns
-ligatures off. Reduced motion is respected everywhere. `theme/contrast.test.ts` checks contrast; keep any exception
+Inter and JetBrains Mono ship with the app (`@fontsource-variable`), so text measures the same everywhere. Nothing
+ligates: `theme/base.css` turns ligatures off on every element (`!important`, because the `font` shorthand resets
+them), so `===`, `=>` and `->` show the characters in the file. Reduced motion is respected everywhere. `theme/contrast.test.ts` checks contrast; keep any exception
 explicit.
 
 ### Components

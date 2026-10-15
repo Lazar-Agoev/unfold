@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "sync_inbox",
-    "signature": "def sync_inbox(account)",
+    "signature": "(account)",
     "description": "Pull new mail for one account and store it.",
     "path": "inbox/sync.py",
     "state": "current",
@@ -36,7 +36,7 @@
         "kind": "with",
         "key": "inbox/sync.py#sync_inbox/with[0]",
         "form": "with",
-        "header": "mailbox_lock(account)",
+        "header": "with mailbox_lock(account)",
         "headerCalls": [
           {
             "key": "inbox/sync.py#sync_inbox/with[0]/call:mailbox_lock",
@@ -71,6 +71,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "inbox/sync.py#sync_inbox/with[0]/body/try[0]"
             ],
@@ -97,6 +98,7 @@
                       "state": "reached",
                       "types": [],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "inbox/sync.py#sync_inbox/with[0]/body/try[0]/body/call:fetch_messages"
                       ],
@@ -158,6 +160,7 @@
                         }
                       ],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/call:schedule_retry",
                         "inbox/sync.py#sync_inbox/with[0]/body/try[0]/except[0]/return[0]"
@@ -229,6 +232,7 @@
                       "state": "reached",
                       "types": [],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "inbox/sync.py#sync_inbox/with[0]/body/try[0]/else/call:store_messages"
                       ],
@@ -279,6 +283,7 @@
                       "state": "reached",
                       "types": [],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "inbox/sync.py#sync_inbox/with[0]/body/try[0]/finally/call:record_attempt"
                       ],

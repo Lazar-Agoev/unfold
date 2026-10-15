@@ -10,11 +10,6 @@
 import type { Key, Page, Proposal } from "../../ipc/generated";
 import { removeItems, uniqueId } from "./document";
 
-/** The most characters a proposed step's title holds (one line). */
-export const PROPOSAL_TITLE_MAX = 120;
-/** The most characters a proposed step's reason holds. */
-export const PROPOSAL_REASON_MAX = 400;
-
 /** A page's proposed steps, as the queries read them. */
 interface Proposed {
   readonly proposals?: readonly Proposal[] | undefined | null;
@@ -24,37 +19,19 @@ export function findProposal(page: Proposed, proposalId: string): Proposal | und
   return (page.proposals ?? []).find((proposal) => proposal.id === proposalId);
 }
 
-/** How long a text is, as the file counts it: in Unicode scalar values (a surrogate pair is one). */
-function scalarLength(text: string): number {
-  return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "_").length;
-}
-
-/** A title as the file holds it: trimmed, one line, or null when it is blank, too long, or holds a control character. */
-export function proposalTitle(text: string): string | null {
-  const trimmed = text.trim();
-  // eslint-disable-next-line no-control-regex -- control characters are what the format refuses.
-  return trimmed.length > 0 && scalarLength(trimmed) <= PROPOSAL_TITLE_MAX && !/[\u0000-\u001f\u007f]/.test(trimmed) ? trimmed : null;
-}
-
-/** A reason as the file holds it: trimmed, or null when it is blank or too long. */
-export function proposalReason(text: string): string | null {
-  const trimmed = text.trim();
-  return trimmed.length > 0 && scalarLength(trimmed) <= PROPOSAL_REASON_MAX ? trimmed : null;
-}
-
 /** Where a proposed step goes: after a block, or at the start of a definition's or a part's body. */
 export type ProposalPlace = { readonly after: Key } | { readonly start: Key };
 
 /** What a new proposed step is: where it goes, its words, and who proposed it. */
 export type NewProposal = ProposalPlace & {
-  /** A free id (`isFreeId`); absent: one of its own. */
+  /** An id of its own choosing (the save refuses one the page has); absent: one of its own. */
   readonly id?: string;
   readonly title: string;
   readonly reason?: string;
   readonly author: string;
 };
 
-/** Adds a proposed step and returns its id. The title and reason must already be valid (`proposalTitle`, `proposalReason`). */
+/** Adds a proposed step and returns its id. The board's save checks its words. */
 export function addProposal(page: Page, proposal: NewProposal): string {
   const id = proposal.id ?? uniqueId(page, "proposal");
   page.proposals ??= [];
@@ -74,26 +51,25 @@ export interface ProposalChange {
   readonly reason?: string | null;
 }
 
-/** Rewords a proposed step, which makes `author` its author. Invalid words change nothing. */
+/**
+ * Rewords a proposed step, trimmed, which makes `author` its author; the board's save checks the words. A
+ * blank title changes nothing (a proposed step says what it would do), and a blank reason clears it.
+ */
 export function updateProposal(page: Page, proposalId: string, change: ProposalChange, author: string): void {
   const proposal = (page.proposals ?? []).find((item) => item.id === proposalId);
   if (!proposal) {
     return;
   }
   let reworded = false;
-  if (change.title !== undefined) {
-    const title = proposalTitle(change.title);
-    if (title !== null && title !== proposal.title) {
-      proposal.title = title;
-      reworded = true;
-    }
+  const title = change.title?.trim() ?? "";
+  if (title.length > 0 && title !== proposal.title) {
+    proposal.title = title;
+    reworded = true;
   }
   if (change.reason !== undefined) {
-    const reason = change.reason === null ? null : proposalReason(change.reason);
-    if (reason === null && change.reason !== null && change.reason.trim().length > 0) {
-      // Too long: keep the old reason.
-    } else if ((reason ?? undefined) !== proposal.reason) {
-      if (reason === null) {
+    const reason = change.reason?.trim() ?? "";
+    if (reason !== (proposal.reason ?? "")) {
+      if (reason.length === 0) {
         delete proposal.reason;
       } else {
         proposal.reason = reason;

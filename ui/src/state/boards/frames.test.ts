@@ -5,7 +5,7 @@ import { page } from "../../test/workspace";
 import { removeCard, removeItems, removeLink } from "./document";
 import { addFrame, addToFrame, frameChain, frameItems, frameOf, frameRemoval, moveFrame, nestFrame, nestingRemoval, removeFrame, setFrameMembers, updateFrame } from "./frames";
 
-const card = (id: string, at: [number, number] = [0, 0]): Card => ({ id, ref: { block: `src/a.ts#function:${id}` }, at });
+const card = (id: string, at: [number, number] = [0, 0]): Card => ({ id, ref: { block: `src/a.ts#${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
 
 /** A page with cards a–e, and these frames, links, and notes. */

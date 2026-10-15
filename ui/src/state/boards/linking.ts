@@ -1,17 +1,19 @@
 /**
  * Drawing a link by hand (docs/ui-shell.md#explaining-by-hand): Draw link… on a card, a
- * resource card, or a frame starts it; the next of those clicked ends it, and the page asks for the
+ * resource card, or a frame starts it, and on a call in a card it starts at that call, which becomes
+ * the link's step; the next card, resource card, or frame clicked ends it, and the page asks for the
  * label an `other` connection says what it is with. Escape, or a click on the canvas, lets go. While a
  * link is being drawn, a click selects nothing. View state only: nothing is saved until the label is.
  */
 
+import type { Key } from "../../ipc/generated";
 import { getPageView, select, updatePageView } from "./store";
 import type { PageTarget, Selection } from "./types";
 
-/** Starts drawing a link from item `from`. */
-export function startLink(target: PageTarget, from: string): void {
+/** Starts drawing a link from item `from`, leaving from call `step` of it when given. */
+export function startLink(target: PageTarget, from: string, step?: Key): void {
   updatePageView(target, (view) => {
-    view.linking = { from, to: null };
+    view.linking = { from, ...(step !== undefined ? { step } : {}), to: null };
   });
 }
 
@@ -34,7 +36,7 @@ export function clickItem(target: PageTarget, id: string, selection: Selection):
   }
   if (linking.from !== id && linking.to === null) {
     updatePageView(target, (view) => {
-      view.linking = { from: linking.from, to: id };
+      view.linking = { ...linking, to: id };
     });
   }
 }

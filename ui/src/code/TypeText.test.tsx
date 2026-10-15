@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { TypeText as TypeTextModel } from "../ipc/generated";
 import { TypeText, typeSegments } from "./TypeText";
 
-const CHARGE = "src/payments.ts#interface:Charge";
+const CHARGE = "ts/src/payments.ts#Charge";
 
 /** `Promise<Charge>`: a builtin and a project name. */
 const promise: TypeTextModel = {

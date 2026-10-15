@@ -200,10 +200,7 @@ fn place_order_draws_as_the_design_shows() {
         flow.header.description.as_deref(),
         Some("Charge an order and save it.")
     );
-    assert_eq!(
-        flow.header.signature.as_deref(),
-        Some("def place_order(order_id)")
-    );
+    assert_eq!(flow.header.signature.as_deref(), Some("(order_id)"));
     assert_eq!(
         (flow.header.path.as_str(), flow.header.line),
         ("shop/service.py", 9)
@@ -221,6 +218,25 @@ fn place_order_draws_as_the_design_shows() {
         gaps,
         [LineSpan { start: 17, end: 17 }, LineSpan { start: 24, end: 24 }]
     );
+}
+
+/// A card's signature row says what follows the name its title already says: the parameters and
+/// return type; an inline function, whose head names nothing, keeps its head whole.
+#[test]
+fn a_signature_row_follows_the_name() {
+    let typescript = drawn(&examples::place_order_ts(), "src/service.ts#placeOrder");
+    assert_eq!(typescript.header.signature.as_deref(), Some("(id: string)"));
+    assert!(typescript.header.is_async, "the title says async");
+    let api = drawn(&examples::api(), "shop/api.py#create_order");
+    assert_eq!(
+        api.header.signature.as_deref(),
+        Some("(order_id: str, user=Depends(current_user))")
+    );
+    let callback = drawn(
+        &examples::orders_route(),
+        r#"src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0]"#,
+    );
+    assert_eq!(callback.header.signature.as_deref(), Some("async (req, res) =>"));
 }
 
 /// While its file changes on disk or stops parsing, a card keeps the words of the text its facts
@@ -394,6 +410,50 @@ fn a_try_routes_through_its_parts_and_finally() {
             "return 0 -Return-> End via finally",
             "record_attempt -On-> notify_synced",
         ],
+    );
+}
+
+/// An `except*` handler's lane says so (`group`), from the compiled flag, not its clause.
+#[test]
+fn an_except_star_handler_lane_catches_from_a_group() {
+    const CODE: &str = r#"from pay.charge import charge, log
+
+
+def settle(batch):
+    try:
+        charge(batch)
+    except* ValueError as group:
+        log(group)
+    except KeyError:
+        log(batch)
+"#;
+    let mut g = GraphBuilder::new();
+    let mut c = Code::new(&mut g, "pay/settle.py", Language::Python, CODE);
+    let module = c.module;
+    let function = c.function(module, "settle", 4, 10, "def settle(batch)");
+    let attempt = c.block(function, Form::Try, c.lines(5, 10), None, None);
+    let body = c.suite(attempt, Form::Body, 6, 6);
+    let charge = project(&key("pay/charge.py#charge"));
+    let log = project(&key("pay/charge.py#log"));
+    c.call(body, "charge", 6, "charge(batch)", charge);
+    let group = c.part(attempt, Form::Except, 7, 8, Some("except* ValueError as group"));
+    c.flag(group, Flag::Group);
+    c.call(group, "log", 8, "log(group)", log.clone());
+    let single = c.part(attempt, Form::Except, 9, 10, Some("except KeyError"));
+    c.call(single, "log", 10, "log(batch)", log);
+    let flow = drawn(&g, "pay/settle.py#settle");
+    let Shape::Try(attempt) = &flow.steps.steps[0].shape else {
+        panic!("the try is a frame");
+    };
+    let handlers: Vec<(&str, bool)> = attempt
+        .lanes
+        .iter()
+        .filter(|lane| lane.form == Form::Except)
+        .map(|lane| (lane.label.as_str(), lane.group))
+        .collect();
+    assert_eq!(
+        handlers,
+        [("except* ValueError as group", true), ("except KeyError", false)]
     );
 }
 
@@ -1160,7 +1220,8 @@ fn checks() -> GraphBuilder {
     );
     let body = c.suite(loop_block, Form::Body, 9, 9);
     c.call(body, "a", 9, "a()", a());
-    let header = c.at(10, "thing.resource() as r");
+    // The header as the lowering writes it, keyword first.
+    let header = c.at(10, "with thing.resource() as r");
     let with = c.block(function, Form::With, c.lines(10, 11), Some(header), None);
     c.call(
         with,

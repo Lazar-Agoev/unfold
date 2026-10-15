@@ -9,6 +9,7 @@ import type { Card, Page } from "../ipc/generated";
 import { engineKey } from "../ipc/queries";
 import { getOpenBoard, getPageView } from "../state/boards";
 import { resetBoards } from "../state/boards/store";
+import { getShowAllCalls, setShowAllCalls } from "../state/showAllCalls";
 import { fixture, installFakeEngine, type FakeEngine } from "../test/engine";
 import { page as pageOf, projectRow, workspaceView } from "../test/workspace";
 import { installRenderJobs, useRenderJob } from "./jobs";
@@ -16,8 +17,8 @@ import { RenderApp } from "./RenderApp";
 
 const P = "p-orders0000";
 const BOARD = { project: P, id: ".unfold/boards/b.json" };
-const KEY = "src/routes/orders.ts#function:createOrder";
-const GONE = "src/routes/orders.ts#function:gone";
+const KEY = "src/routes/orders.ts#createOrder";
+const GONE = 'src/routes/orders.ts#/call:ordersRouter.post("/orders/:id")/callback[0]';
 
 if (!("DOMMatrixReadOnly" in globalThis)) {
   // React Flow reads the viewport transform through DOMMatrixReadOnly; jsdom lacks it.
@@ -90,7 +91,7 @@ function cards(): Card[] {
 
 function job(purpose: RenderJob["purpose"], extra: Partial<RenderJob> = {}, pageExtra: Partial<Page> = {}): RenderJob {
   const page = pageOf("page-1", cards(), pageExtra);
-  return { requestId: nextRequest++, purpose, board: BOARD, title: "Order placement", page: page, health: null, ...extra };
+  return { requestId: nextRequest++, purpose, board: BOARD, title: "Order placement", page: page, health: null, showAllCalls: false, ...extra };
 }
 
 /** Sends a job the way the main process does, and draws the render window. */
@@ -119,6 +120,18 @@ function answerTo(requestId: number): Promise<RenderAnswer> {
 }
 
 describe("the render window", () => {
+  it("draws with Show all calls as the person's window shows it: builtin calls too when it is on", async () => {
+    setShowAllCalls(false);
+    const sent = job("image", { showAllCalls: true });
+    draw(sent);
+    expect(getShowAllCalls()).toBe(true);
+    await answerTo(sent.requestId);
+    expect(engine.callsOf("card").every((args) => args["showAllCalls"] === true)).toBe(true);
+    const off = job("check", { showAllCalls: false });
+    engine.emit({ type: "render_page", ...off });
+    expect(getShowAllCalls()).toBe(false);
+  });
+
   it("draws the page it is handed, read-only, and answers with its bounds once measured", async () => {
     const sent = job("image");
     const { container } = draw(sent);

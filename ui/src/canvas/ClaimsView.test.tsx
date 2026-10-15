@@ -195,7 +195,7 @@ describe("resource cards", () => {
     expect(card.querySelector(".rcard-kind")?.textContent).toBe("table");
     expect(card.querySelector(".rcard-glyph")?.getAttribute("data-icon")).toBe("resource-table");
     expect(card.querySelector(".card-title")?.textContent).toBe("orders");
-    expect(within(card).getByText("agent")).not.toBeNull();
+    expect(card.querySelector(".agent-mark")?.textContent).toBe("Claude");
     const cells = [...(card.querySelector(".rcard-columns")?.children ?? [])].map((cell) => cell.textContent);
     expect(cells.slice(0, 12)).toEqual(["id", "string", "PK", "status", "string", "", "note?", "string", "", "customerId", "string", "FK → customers.id"]);
     // Three own fields and eleven inherited: twelve listed, two behind "N more".
@@ -215,11 +215,12 @@ describe("resource cards", () => {
     const { container } = renderBoard();
     const items = await waitFor(() => present(resourceCard(container, "items")));
     expect([...(items.querySelector(".rcard-columns")?.children ?? [])].map((cell) => cell.textContent)).toEqual(["sku", "text", "unique", "qty?", "int", ""]);
-    expect(within(items).queryByText("agent")).toBeNull();
+    expect(items.querySelector(".agent-mark")).toBeNull();
     const emails = present(resourceCard(container, "emails"));
     expect(emails.querySelector(".rcard-glyph")?.getAttribute("data-icon")).toBe("resource-queue");
     expect(emails.querySelector(".rcard-columns")).toBeNull();
-    expect(emails.querySelector(".card-description")?.textContent).toContain("Confirmation emails, sent in turn.");
+    // Its header carries the agent's mark; its description, like every card's, none.
+    expect(emails.querySelector(".card-description")?.textContent).toBe("Confirmation emails, sent in turn.");
   });
 
   it("show what needs review about them with the repairs it offers, applied through repair_board", async () => {
@@ -290,7 +291,7 @@ describe("connections", () => {
       expect(found.getAttribute("aria-label")).toBe("Connection queue · orders · OrderJob · place-order job");
       return found;
     });
-    expect(within(chip).getByText("agent")).not.toBeNull();
+    expect(chip.querySelector(".agent-mark")?.textContent).toBe("Claude");
     expect(container.querySelector('.board-connection[data-link="enqueue"]')?.classList.contains("kind-queue")).toBe(true);
     expect(container.querySelector('.board-connection[data-link="enqueue"] .connection-head')).not.toBeNull();
     // Writes: the chip names the table; a relationship has crow's-foot ends and no head, and joins columns.
@@ -377,7 +378,9 @@ describe("notes", () => {
     const { container } = renderBoard();
     const note = await waitFor(() => present(container.querySelector<HTMLElement>('[data-note-id="note"]')));
     expect(note.textContent).toContain("Queued orders are placed by the worker.");
-    expect(within(note).getByText("agent")).not.toBeNull();
+    // Its byline is the agent's mark and name, as the pages draw it.
+    expect(note.querySelector(".note-byline")?.textContent).toBe("Claude");
+    expect(note.querySelector(".note-byline .agent-mark")).not.toBeNull();
     expect(note.closest<HTMLElement>(".react-flow__node")?.style.transform).toContain("translate(0px,300px)");
     act(() => {
       removeCard(PAGE, "create-order");

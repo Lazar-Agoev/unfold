@@ -162,7 +162,14 @@ group("add_notes and describe", () => {
     const { text } = await test.call(addNotes, { notes: [{ text: "The client gets a job id, not the order.", attach: "create-order" }] });
     expect(sentOps(test)).toEqual([{ op: "add_notes", notes: [{ text: "The client gets a job id, not the order.", attach: "create-order" }] }]);
     expect(text).toContain("- note “The client gets a job id, not the order.” (note id note-1; created), attached to create-order");
-    expect((await test.call(addNotes, { notes: [{ text: "x".repeat(401) }] })).isError).toBe(true);
+  });
+
+  it("leave how long a note may be to the board: the save's refusal is the answer", async () => {
+    const refused = { ok: false, code: "board_invalid", message: "A note holds at most 400 characters; this one has 401." } as const;
+    const test = app(refused);
+    const long = "📦".repeat(401);
+    expect(await test.call(addNotes, { notes: [{ text: long }] })).toMatchObject({ isError: true, text: refused.message });
+    expect(sentOps(test)).toEqual([{ op: "add_notes", notes: [{ text: long }] }]);
   });
 
   it("describe items by id or link, replacing people's words only when asked", async () => {
@@ -211,11 +218,18 @@ group("propose", () => {
     expect(propose.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: true });
   });
 
-  it("refuses both after and start, and a title past 120 characters, before it reaches the window", async () => {
+  it("refuses both after and start before it reaches the window", async () => {
     const test = app({ items: [] });
     expect((await test.call(propose, { proposals: [{ after: AFTER, start: START, title: "x" }] })).isError).toBe(true);
-    expect((await test.call(propose, { proposals: [{ after: AFTER, title: "x".repeat(121) }] })).isError).toBe(true);
     expect(sentOps(test)).toBeUndefined();
+  });
+
+  it("leaves how long its words may be to the board: the save's refusal is the answer", async () => {
+    const refused = { ok: false, code: "board_invalid", message: "A proposed step's title holds at most 120 characters; this one has 121." } as const;
+    const test = app(refused);
+    const long = "📦".repeat(121);
+    expect(await test.call(propose, { proposals: [{ after: AFTER, title: long }] })).toMatchObject({ isError: true, text: refused.message });
+    expect(sentOps(test)).toEqual([{ op: "propose", proposals: [{ after: AFTER, title: long }] }]);
   });
 
   it("passes on the window's refusal to change a person's words, with replacePeopleText to pass", async () => {

@@ -13,6 +13,8 @@
  *   shows) at the image's scale, and attached to the engine for the cards' data. It holds no board
  *   session, and may send only `render_ready`. Requests run one at a time; it closes after a minute without
  *   one, and at once when it stops answering.
+ * - **Show all calls** is as the person's window shows it, read at each request, so an image or a check
+ *   draws builtin calls when the person sees them.
  * - **An image** is drawn at zoom 1 when it fits, else smaller, to keep the long side at 4,096 pixels
  *   or less (the note says so): the window measures the page, the main process sizes the window and
  *   chooses the camera, the window draws it, and the main process captures it.
@@ -108,6 +110,8 @@ export interface PageRendererOptions {
   readonly engine: RenderEngine;
   /** A window id from the app window's sequence (`AppWindow.reserveId`). */
   readonly reserveId: () => number;
+  /** The Show all calls switch of the person's window (`Workspace.showAllCalls`). */
+  readonly showAllCalls: () => boolean;
   /** How long a page may take to load and be measured. */
   readonly timeoutMs?: number;
   /** How long the render window stays open without a request. */
@@ -328,7 +332,16 @@ export class PageRenderer {
     const window = this.window(scale);
     const drawn = await this.ask(
       window,
-      { type: "render_page", purpose: "image", board, title: source.title, page: source.page, health: health.ok ? health.view.health : null, ...(item !== undefined ? { item } : {}) },
+      {
+        type: "render_page",
+        purpose: "image",
+        board,
+        title: source.title,
+        page: source.page,
+        health: health.ok ? health.view.health : null,
+        showAllCalls: this.options.showAllCalls(),
+        ...(item !== undefined ? { item } : {}),
+      },
       this.options.timeoutMs ?? RENDER_TIMEOUT_MS,
     );
     if (!drawn.ok) {
@@ -362,7 +375,7 @@ export class PageRenderer {
   private async checkPage(board: AgentBoardRef, source: PageSource, health: BoardHealthView): Promise<({ readonly ok: true } & PageChecks) | AgentFailure> {
     const answer = await this.ask(
       this.window(),
-      { type: "render_page", purpose: "check", board, title: source.title, page: source.page, health: health.health },
+      { type: "render_page", purpose: "check", board, title: source.title, page: source.page, health: health.health, showAllCalls: this.options.showAllCalls() },
       this.options.timeoutMs ?? RENDER_TIMEOUT_MS,
     );
     if (!answer.ok) {

@@ -10,7 +10,7 @@ const AGENT = "agent:claude";
 const PERSON = "person:ana";
 
 function card(id: string, extra: Partial<Card> = {}): Card {
-  return { id, ref: { block: `src/app.ts#function:${id}` }, at: [0, 0], ...extra };
+  return { id, ref: { block: `src/app.ts#${id}` }, at: [0, 0], ...extra };
 }
 
 function frame(id: string, members: string[], extra: Partial<Frame> = {}): Frame {
@@ -18,12 +18,12 @@ function frame(id: string, members: string[], extra: Partial<Frame> = {}): Frame
 }
 
 function resource(id: string, extra: Partial<Resource> = {}): Resource {
-  return { id, kind: "table", name: id, anchors: [{ key: "src/db.ts#function:schema" }], at: [0, 0], author: AGENT, description: { text: "Rows.", author: AGENT, signature: "" }, ...extra };
+  return { id, kind: "table", name: id, anchors: [{ key: "src/db/repository.ts#OrderRepository" }], at: [0, 0], author: AGENT, description: { text: "Rows.", author: AGENT, signature: "" }, ...extra };
 }
 
 /** A connection: an `other` one a person drew, with its label, unless `extra` says otherwise. */
 function link(id: string, from: string, to: string, extra: Partial<Connection> = {}): Connection {
-  return { id, from, to, kind: "other", label: { text: "talks to", author: PERSON, signature: "" }, author: PERSON, anchors: [{ key: "src/app.ts#function:schema" }], ...extra };
+  return { id, from, to, kind: "other", label: { text: "talks to", author: PERSON, signature: "" }, author: PERSON, anchors: [{ key: "src/db/connection.ts#connect" }], ...extra };
 }
 
 function note(id: string, extra: Partial<Note> = {}): Note {
@@ -210,7 +210,7 @@ describe("crossings", () => {
 
   it("names a drawn link or a connection by its kind", () => {
     const cards = [card("alpha"), card("beta"), card("gamma")];
-    const links = [link("call-api", "alpha", "gamma", { kind: "http", author: AGENT, anchors: [{ key: "src/app.ts#function:alpha" }] })];
+    const links = [link("call-api", "alpha", "gamma", { kind: "http", author: AGENT, anchors: [{ key: "src/app.ts#alpha" }] })];
     const frames = [frame("api", ["beta"])];
     const geometry = drawn({ alpha: box(0, 0), beta: box(400, 100), gamma: box(800, 0), api: box(376, 56, 248, 148) }, [line("call-api", "alpha", "gamma", [[200, 70], [800, 70]])]);
     const [check] = run(page(cards, { frames, links }), geometry);
@@ -328,10 +328,10 @@ describe("evidence", () => {
     const resources = [resource("orders", { anchors: [] }), resource("customer", { kind: "actor", name: "Customer", anchors: [] }), resource("jobs", { kind: "queue" })];
     const links = [
       link("drawn", "alpha", "beta"),
-      link("post", "alpha", "beta", { kind: "http", author: PERSON, step: "src/app.ts#function:alpha/call[0]", anchors: [] }),
-      link("save", "alpha", "orders", { kind: "writes", author: PERSON, step: "src/app.ts#function:alpha/call[1]", anchors: [] }),
+      link("post", "alpha", "beta", { kind: "http", author: PERSON, step: "src/app.ts#alpha/call:fetch", anchors: [] }),
+      link("save", "alpha", "orders", { kind: "writes", author: PERSON, step: "src/app.ts#alpha/call:repo.insert", anchors: [] }),
       link("read", "beta", "orders", { kind: "reads", author: PERSON, anchors: [] }),
-      link("enqueue", "alpha", "jobs", { kind: "queue", author: AGENT, anchors: [{ key: "src/app.ts#function:alpha" }] }),
+      link("enqueue", "alpha", "jobs", { kind: "queue", author: AGENT, anchors: [{ key: "src/queues/queues.ts#/call:Queue" }] }),
     ];
     const boxes = { alpha: box(0, 0), beta: box(400, 0), orders: box(0, 400), customer: box(400, 400), jobs: box(800, 400) };
     const lines = [...links.map((item) => line(item.id, item.from, item.to)), line("c", "customer", "alpha")];

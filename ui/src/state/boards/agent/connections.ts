@@ -1,18 +1,19 @@
 /**
  * `connect`: draws connections between cards, resource cards, and frames of a page, or
  * updates them by id: a kind, the step the line leaves from, the columns a relationship joins and its
- * cardinality, the channel and the type that travel, a label, a description, and anchors. The window
- * checks the connection's shape; the save checks what it cites, fills in the channel when `to` is an
- * entrance, and grounds an agent's connection, refusing with what to do instead. What a person drew
- * and wrote is theirs unless the call says the person asked.
+ * cardinality, the channel and the type that travel, a label, a description, and anchors. The save
+ * checks the connection against the board's rules (its ends, kind, step, columns, and label) and what it
+ * cites, fills in the channel when `to` is an entrance, and grounds an agent's connection, refusing with
+ * what to do instead. The window checks only what it draws: that a step is drawn on the from card, and
+ * that the connection doesn't repeat a compiled call. What a person drew and wrote is theirs unless the
+ * call says the person asked.
  */
 
 import type { AgentConnectionSpec, AgentItemResult, AgentItemStatus, AgentLinkResult, ConnectOp } from "@unfold/desktop/agent-api";
 import { projectCalls } from "@unfold/desktop/drawing";
-import { tableColumns } from "../../../canvas/resources/columns";
 import type { Connection, Page } from "../../../ipc/generated";
 import { findBlock } from "../../cards";
-import { cardKey, findCard, findCombined, isFreeId, isItemId } from "../document";
+import { cardKey, findCard } from "../document";
 import { findFrame } from "../frames";
 import { findResource } from "../resources";
 import { addConnection, saysConnection, setConnectionClaim, setLinkDescription, setLinkLabel, type ConnectionClaim } from "../connections";
@@ -35,53 +36,18 @@ export function linkResult(link: Connection, status: AgentItemStatus): AgentLink
   };
 }
 
-/** An end's name for a refusal: a card's, a resource card's, or a frame's. */
+/** An end's name for a refusal: a card's, a resource card's, a frame's, or else its id. */
 function endName(ctx: OpContext, page: Page, id: string): string {
   const card = findCard(page, id);
   if (card) {
     return cardName(ctx, card);
   }
   const resource = findResource(page, id);
-  return resource ? resourceName(resource) : `the frame “${findFrame(page, id)?.title ?? id}”`;
-}
-
-/** Refuses an end that isn't a card, a resource card, or a frame of the page. */
-function checkEnd(page: Page, id: string, side: "from" | "to"): void {
-  if (findCard(page, id) || findResource(page, id) || findFrame(page, id)) {
-    return;
+  if (resource) {
+    return resourceName(resource);
   }
-  const other = findCombined(page, id) ? "a combined step" : page.links.some((item) => item.id === id) ? "a connection" : (page.notes ?? []).some((item) => item.id === id) ? "a note" : null;
-  throw invalid(
-    other !== null
-      ? `“${id}” (${side}) is ${other}: a connection joins cards, resource cards, and frames.`
-      : `There is no card, resource card, or frame with id “${id}” (${side}) on this page. read_page lists the page's ids; add_cards and add_resources put them there.`,
-  );
-}
-
-/** The columns a table end has, when they are known (its own, or its type's once loaded); null when they aren't. */
-function knownColumns(ctx: OpContext, page: Page, id: string): readonly string[] | null {
-  const resource = findResource(page, id);
-  if (!resource) {
-    return null;
-  }
-  const definition = resource.type !== undefined ? ctx.data.definition(ctx.board.project, resource.type) : undefined;
-  return resource.type !== undefined && !definition ? null : tableColumns(resource, definition).map((column) => column.name);
-}
-
-/** Refuses a relationship that doesn't join two tables, or names a column its table doesn't have. */
-function checkRelates(ctx: OpContext, page: Page, spec: AgentConnectionSpec): void {
-  for (const [id, column] of [
-    [spec.from, spec.fromColumn],
-    [spec.to, spec.toColumn],
-  ] as const) {
-    if (findResource(page, id)?.kind !== "table") {
-      throw invalid(`A relates connection joins two tables, and ${endName(ctx, page, id)} isn't one. Use writes or reads between code and a table.`);
-    }
-    const columns = knownColumns(ctx, page, id);
-    if (column !== undefined && columns !== null && !columns.includes(column)) {
-      throw invalid(`“${column}” isn't a column of ${endName(ctx, page, id)}. Its columns: ${columns.join(", ") || "none listed"}.`);
-    }
-  }
+  const frame = findFrame(page, id);
+  return frame ? `the frame “${frame.title}”` : `“${id}”`;
 }
 
 /**
@@ -106,36 +72,17 @@ function checkNotCompiled(ctx: OpContext, page: Page, spec: AgentConnectionSpec,
   }
 }
 
-/** What a spec says, checked against the page: its ends, step, columns, channel, carried type, and anchors. */
+/** What a spec says, with its step checked against what the from card draws and the connection against the compiled calls. */
 function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): ConnectionClaim {
-  checkEnd(page, spec.from, "from");
-  checkEnd(page, spec.to, "to");
-  if (spec.from === spec.to) {
-    throw invalid(`A connection joins two different items; “${spec.from}” is both ends.`);
-  }
   const what = `the ${spec.kind} connection from ${endName(ctx, page, spec.from)} to ${endName(ctx, page, spec.to)}`;
-  if (spec.step !== undefined) {
-    const card = findCard(page, spec.from);
-    if (!card || !("block" in card.ref)) {
-      throw invalid(`${what} has a step, but its from end isn't a definition's card: a step is a call inside the from card's block.`);
-    }
-    // The call must be one the from card draws; a card not loaded is checked by the save.
-    const model = ctx.data.model(ctx.board.project, cardKey(card));
-    const call = model?.type === "definition" ? findBlock(model.flow, spec.step) : undefined;
-    if (model?.type === "definition" && (call === undefined || (call.form !== "call" && call.form !== "new"))) {
-      throw invalid(`The step “${spec.step}” isn't a call of ${cardName(ctx, card)}: a step is a call of the from card's block (read_code lists them with their keys).`);
-    }
+  const card = findCard(page, spec.from);
+  const model = card ? ctx.data.model(ctx.board.project, cardKey(card)) : undefined;
+  // The step must be drawn on the from card; that it is a call is the save's to check, as is a card not loaded.
+  if (card && spec.step !== undefined && model?.type === "definition" && findBlock(model.flow, spec.step) === undefined) {
+    throw invalid(`The step “${spec.step}” isn't drawn on ${cardName(ctx, card)}: a step is a call of the from card's block (read_code lists them with their keys).`);
   }
   checkNotCompiled(ctx, page, spec, what);
-  if (spec.kind === "relates") {
-    checkRelates(ctx, page, spec);
-  } else if (spec.fromColumn !== undefined || spec.toColumn !== undefined || spec.cardinality !== undefined) {
-    throw invalid(`Columns and cardinality are for a relates connection between two tables; ${what} is ${spec.kind}. Leave them out.`);
-  }
   const channel = spec.channel?.trim();
-  if (channel?.length === 0) {
-    throw invalid(`The channel of ${what} is blank: name what travels (the route, the queue, the event), or leave channel out.`);
-  }
   return {
     kind: spec.kind,
     from: spec.from,
@@ -152,26 +99,18 @@ function claimOf(ctx: OpContext, page: Page, spec: AgentConnectionSpec): Connect
 
 /** The connection a spec updates: by id, else the one of the same kind, ends, step, and columns; undefined for a new one. */
 function existingFor(page: Page, spec: AgentConnectionSpec): Connection | undefined {
-  if (spec.id === undefined) {
-    return page.links.find(
-      (link) =>
-        link.kind === spec.kind &&
-        link.from === spec.from &&
-        link.to === spec.to &&
-        link.step === spec.step &&
-        link.fromColumn === spec.fromColumn &&
-        link.toColumn === spec.toColumn,
-    );
+  if (spec.id !== undefined) {
+    return page.links.find((item) => item.id === spec.id);
   }
-  const link = page.links.find((item) => item.id === spec.id);
-  if (!link && !isFreeId(page, spec.id)) {
-    throw invalid(
-      isItemId(spec.id)
-        ? `“${spec.id}” is the id of another item on this page (not a connection). Give the connection another id, or leave id out.`
-        : `“${spec.id}” can't name a connection: an id is letters, digits, “_”, “.”, and “-”, starting with a letter or digit.`,
-    );
-  }
-  return link;
+  return page.links.find(
+    (link) =>
+      link.kind === spec.kind &&
+      link.from === spec.from &&
+      link.to === spec.to &&
+      link.step === spec.step &&
+      link.fromColumn === spec.fromColumn &&
+      link.toColumn === spec.toColumn,
+  );
 }
 
 /** Draws or updates one connection; returns its result. */
@@ -180,9 +119,6 @@ function applyConnectionSpec(ctx: OpContext, page: Page, spec: AgentConnectionSp
   const existing = existingFor(page, spec);
   const label = spec.label?.trim();
   const text = spec.description?.trim();
-  if (spec.kind === "other" && (label === undefined || label.length === 0) && !existing?.label) {
-    throw invalid("An other connection needs a label: what travels along it, in a few words (“place-order job”). Or choose the kind that fits.");
-  }
   const author = ctx.agent.author;
   const before = existing ? JSON.stringify(existing) : null;
   if (existing && !saysConnection(existing, claim)) {

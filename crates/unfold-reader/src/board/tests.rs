@@ -326,13 +326,6 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
     };
     let open = |paths: &str| with_card(&format!(r#""open":{paths}"#));
     let deep = format!(r#"[["{LOAD_CALL}","{HELPER_CALL}","{FETCH}","{LOG}"]]"#);
-    let many = format!(
-        "[{}]",
-        (0..65)
-            .map(|index| format!(r#"["main.ts#run/call:f[{}]"]"#, index + 1))
-            .collect::<Vec<_>>()
-            .join(",")
-    );
     let cases = [
         (
             MINIMAL.replace(r#""title":"T""#, r#""extra":1,"title":"T""#),
@@ -381,7 +374,6 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
         ),
         (open(&deep), "/pages/0/cards/0/open/0", "must list 1 to 3 keys"),
         (open("[[]]"), "/pages/0/cards/0/open/0", "must list 1 to 3 keys"),
-        (open(&many), "/pages/0/cards/0/open", "at most 64 open paths"),
         (
             open(&format!(r#"[["{LOAD_CALL}"],["{LOAD_CALL}"]]"#)),
             "/pages/0/cards/0/open/1",
@@ -490,13 +482,6 @@ fn parsing_rejects_everything_outside_the_format_with_a_path() {
             with_page(r#""proposals":[{"author":"agent:a","id":"p","title":"T"}]"#),
             "/pages/0/proposals/0",
             "must have exactly one of `after` or `start`",
-        ),
-        (
-            with_page(&format!(
-                r#""proposals":[{{"after":"{LOG}","author":"agent:a","id":"p","title":"Two\nlines"}}]"#
-            )),
-            "/pages/0/proposals/0/title",
-            "must be one line",
         ),
         (
             with_page(&format!(
@@ -624,17 +609,6 @@ fn parsing_checks_frames_resources_connections_and_notes() {
         ),
         (
             with_page(&format!(
-                r#""frames":[{},{},{},{}]"#,
-                frame("a", r#"["b"]"#),
-                frame("b", r#"["c"]"#),
-                frame("c", r#"["d"]"#),
-                frame("d", r#"["run"]"#)
-            )),
-            "/pages/0/frames/3",
-            "frames nest at most 3 deep",
-        ),
-        (
-            with_page(&format!(
                 r#""resources":[{}]"#,
                 resource("q", "queue", r#","columns":[{"name":"id"}]"#)
             )),
@@ -692,20 +666,88 @@ fn parsing_checks_frames_resources_connections_and_notes() {
             "/pages/0/notes/0/attach",
             "refers to an unknown item `nope`",
         ),
-        (
-            with_page(&format!(
-                r#""notes":[{{"at":[0,0],"author":"agent:a","id":"n","text":"{}"}}]"#,
-                "x".repeat(401)
-            )),
-            "/pages/0/notes/0/text",
-            "at most 400 characters",
-        ),
     ];
     for (text, path, message) in cases {
         let (got_path, got_message) = invalid(&text);
         assert_eq!(got_path, path, "{text}\n{got_message}");
         assert!(got_message.contains(message), "{message:?} in {got_message:?}");
     }
+}
+
+/// `text`'s refusal for going past what the format holds, in words.
+fn limited(text: &str) -> String {
+    match parse(text) {
+        Err(BoardError::Limit { message }) => message,
+        other => panic!("expected a limit, got {other:?}"),
+    }
+}
+
+/// What the format holds is said in words that name the thing, as the window shows them to the
+/// person who typed it; lengths count characters, so 400 emoji are a note.
+#[test]
+fn limits_are_said_in_words() {
+    let note = |text: &str| {
+        with_page(&format!(
+            r#""notes":[{{"at":[0,0],"author":"person:a","id":"n","text":"{text}"}}]"#
+        ))
+    };
+    let proposal = |fields: &str| {
+        with_page(&format!(
+            r#""proposals":[{{"after":"{LOG}","author":"person:a","id":"p",{fields}}}]"#
+        ))
+    };
+    assert!(parse(&note(&"📦".repeat(400))).is_ok());
+    assert_eq!(
+        limited(&note(&"📦".repeat(401))),
+        "A note holds at most 400 characters; this one has 401."
+    );
+    assert_eq!(
+        limited(&proposal(&format!(r#""title":"{}""#, "x".repeat(121)))),
+        "A proposed step's title holds at most 120 characters; this one has 121."
+    );
+    // JSON escapes: a line break, and a C1 control character.
+    for title in [r"Two\nlines", r"Email\u0085them"] {
+        assert_eq!(
+            limited(&proposal(&format!(r#""title":"{title}""#))),
+            "A proposed step's title is one line, without tabs or other control characters."
+        );
+    }
+    assert_eq!(
+        limited(&proposal(&format!(
+            r#""reason":"{}","title":"T""#,
+            "x".repeat(401)
+        ))),
+        "A proposed step's reason holds at most 400 characters; this one has 401."
+    );
+    let proposals = (0..201)
+        .map(|index| format!(r#"{{"after":"{LOG}","author":"agent:a","id":"p{index}","title":"T"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        limited(&with_page(&format!(r#""proposals":[{proposals}]"#))),
+        "A page holds at most 200 proposed steps; this one has 201."
+    );
+    let open = (0..65)
+        .map(|index| format!(r#"["main.ts#run/call:f[{}]"]"#, index + 1))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        limited(&with_card(&format!(r#""open":[{open}]"#))),
+        "A card opens at most 64 calls in place; this one opens 65."
+    );
+    let frame = |id: &str, members: &str| {
+        format!(r#"{{"author":"agent:a","id":"{id}","look":"box","members":{members},"title":"{id}"}}"#)
+    };
+    assert_eq!(
+        limited(&with_page(&format!(
+            r#""frames":[{},{},{},{}]"#,
+            frame("a", r#"["b"]"#),
+            frame("b", r#"["c"]"#),
+            frame("c", r#"["d"]"#),
+            frame("d", r#"["run"]"#)
+        ))),
+        "Frames nest at most 3 deep (a zone, a box in it, and a box in that); the frame \"d\" is 4 deep."
+    );
 }
 
 /// `full_board`'s canonical text.

@@ -129,9 +129,9 @@ shows its signature and docstring, then the **drawn flow**: what the function do
   call drawn on a test or an exit are listed on it (`+ x.foo ?`).
 - **Builtin calls** (`len`, `JSON.parse`) are hidden. **Show all calls** in the top bar shows them on every card.
 - **Decisions** draw a diamond per test, with each branch as a lane. A test too long to draw whole ends in `…`; hover
-  it to read all of it. **Loops** are frames titled by their header;
-  **try** shows TRY with dashed "on error" arrows to its EXCEPT (or CATCH) sections, each titled by its clause;
-  exits read like `RETURN → End`.
+  it to read all of it. **Loops** are frames titled by their header, and a **with** block by WITH and what it
+  opens (`WITH open(path) as f`); **try** shows TRY with dashed "on error" arrows to its EXCEPT (or CATCH) sections,
+  each titled by its clause; exits say where they go, the last one too (`RETURN order → End`).
 - **`⋯ 2 lines`** on an arrow means code is left out there (assignments and other lines that call nothing). Click it
   to read those lines. It names a loop or branch that has nothing drawn inside (`⋯ 3 lines · for loop`).
 - **"never runs"**, dimmed, marks code nothing reaches, such as code after a `return`. **"may continue"**, dashed,
@@ -185,9 +185,10 @@ On the canvas:
 
 - **Add resource…** (right-click the canvas) adds a table, queue, cache, storage, outside service, or actor. A table
   takes columns with key marks, or the columns of a type (**From a type…**).
-- **Draw link…** (a card's, resource card's, or frame's menu) draws a labeled line to another item. **Kind ▸** on the
-  line makes it HTTP, Queue, Reads, Writes, Calls (where an unknown call goes at runtime), Relates, or Other; a relationship's columns and cardinality
-  are set in Selected.
+- **Draw link…** (a card's, resource card's, or frame's menu) draws a labeled line to another item. From a call's menu
+  in an expanded card, the line leaves from that call. **Kind ▸** on the line makes it HTTP, Queue, Reads, Writes, Calls
+  (where an unknown call goes at runtime: draw it from the unknown call), Relates, or Other; a relationship's columns
+  and cardinality are set in Selected.
 - Frames and notes are added by agents; you can rename, describe, move, collapse, and remove them.
 
 Everything you write is signed with your name, and against the code it describes.
@@ -239,7 +240,8 @@ The server answers only programs on this computer, never web pages. An agent wor
 - While it works, the top bar says "Claude is working…" and what it changed is outlined; when it finishes, its summary
   shows in a toast. Your view doesn't move unless it shows you something.
 - Every resource card and connection it draws cites the code it comes from, and Unfold refuses what it can't find
-  there. A call Unfold can't follow stays marked `?`. Its words carry the agent mark.
+  there. A call Unfold can't follow stays marked `?`. Its frames and notes carry its mark (`✦ Claude`), and Selected
+  says who wrote any description ("by ✦ Claude", "by you").
 - It writes `[[app]]` tables and settings in `unfold.toml` only when you ask, and adds a folder to your workspace only
   after you confirm it in Unfold.
 - It never edits code, deletes boards, removes projects, changes Settings, or replaces your words unless you asked.

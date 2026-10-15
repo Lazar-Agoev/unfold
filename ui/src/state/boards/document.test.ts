@@ -7,7 +7,6 @@ import {
   addPage,
   deletePage,
   findCombined,
-  isFreeId,
   isOpen,
   movePage,
   nextPageId,
@@ -22,7 +21,7 @@ import {
   updateCombined,
 } from "./document";
 import { setLinkLabel } from "./connections";
-import { addProposal, proposalReason, proposalTitle, removeProposal, updateProposal } from "./proposals";
+import { addProposal, removeProposal, updateProposal } from "./proposals";
 
 function onPage(recipe: (draft: Page) => void, start: Page = page("page-1")): Page {
   return produce(start, recipe);
@@ -56,16 +55,6 @@ describe("card, combined step, and connection ids", () => {
   });
 });
 
-describe("ids an agent names", () => {
-  it("are free when well formed and no item of the page has them", () => {
-    const start = page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] }]);
-    expect(isFreeId(start, "checks")).toBe(true);
-    expect(isFreeId(start, "a")).toBe(false);
-    expect(isFreeId(start, "-checks")).toBe(false);
-    expect(isFreeId(start, "x".repeat(101))).toBe(false);
-  });
-});
-
 describe("combined steps", () => {
   const start = page("page-1", [], { combined: [{ id: "g", title: "Checks", members: ["k1", "k2"], collapsed: false, author: "agent:claude", signature: "" }] });
 
@@ -94,7 +83,7 @@ describe("combined steps", () => {
 
 describe("an agent's words", () => {
   it("become the person's when the person edits them", () => {
-    const start = page("page-1", [{ id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0], description: { text: "Old.", author: "agent:claude", signature: "s" } }], {
+    const start = page("page-1", [{ id: "a", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0], description: { text: "Old.", author: "agent:claude", signature: "s" } }], {
       links: [{ id: "l", from: "a", to: "a", kind: "http", label: { text: "calls", author: "agent:claude", signature: "s" }, author: "agent:claude" }],
       names: [{ key: "k", text: "Check", author: "agent:claude", signature: "s" }],
     });
@@ -201,7 +190,7 @@ describe("proposed steps", () => {
       { id: "proposal", after: AFTER, title: "Email a confirmation", author: "agent:claude" },
       { id: "proposal-2", start: "key-create", title: "Check the cart", author: "agent:claude" },
     ]);
-    expect(isFreeId(next, "proposal")).toBe(false);
+    expect(uniqueId(next, "proposal")).toBe("proposal-3");
     next = onPage((draft) => {
       updateProposal(draft, "proposal", { reason: "Only the queued path emails one." }, "person:ada");
     }, next);
@@ -219,11 +208,14 @@ describe("proposed steps", () => {
     expect(onPage((draft) => { removeProposal(draft, "proposal"); removeProposal(draft, "proposal-2"); }, next).proposals).toBeUndefined();
   });
 
-  it("refuses blank, multi-line, and over-long words", () => {
-    expect(proposalTitle("  Email a confirmation ")).toBe("Email a confirmation");
-    expect(proposalTitle("two\nlines")).toBeNull();
-    expect(proposalTitle("x".repeat(121))).toBeNull();
-    expect(proposalReason("x".repeat(401))).toBeNull();
-    expect(proposalReason(" why ")).toBe("why");
+  it("trims new words and leaves the rest to the board's save, which counts characters as the file does", () => {
+    const start = onPage((draft) => {
+      addProposal(draft, { after: AFTER, title: "Email a confirmation", author: "agent:claude" });
+    });
+    const long = "😀".repeat(121);
+    const next = onPage((draft) => {
+      updateProposal(draft, "proposal", { title: `  ${long} `, reason: " why\u0085 " }, "person:ada");
+    }, start);
+    expect(next.proposals?.[0]).toMatchObject({ title: long, reason: "why\u0085", author: "person:ada" });
   });
 });

@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "reserve_first_free",
-    "signature": "def reserve_first_free(calendar, day)",
+    "signature": "(calendar, day)",
     "path": "booking/slots.py",
     "state": "current",
     "line": 6,
@@ -69,6 +69,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "booking/slots.py#reserve_first_free/for[0]/body/if[0]",
               "booking/slots.py#reserve_first_free/for[0]/body/if[1]"
@@ -101,6 +102,7 @@
                       },
                       "types": [],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "booking/slots.py#reserve_first_free/for[0]/body/if[0]/then/continue[0]"
                       ],
@@ -191,6 +193,7 @@
                       },
                       "types": [],
                       "fallsThrough": false,
+                      "group": false,
                       "combinable": [
                         "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/call:reserve",
                         "booking/slots.py#reserve_first_free/for[0]/body/if[1]/then/break[0]"
@@ -281,6 +284,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "booking/slots.py#reserve_first_free/for[0]/else/raise[0]"
             ],

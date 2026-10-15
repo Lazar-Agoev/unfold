@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { AgentEditSuccess, AgentFailure, AgentOp } from "@unfold/desktop/agent-api";
+import type { AgentConnectionSpec, AgentEditSuccess, AgentFailure, AgentOp } from "@unfold/desktop/agent-api";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../../../ipc/client";
@@ -21,8 +21,8 @@ const CREATE = "src/routes/orders.ts#createOrder";
 const WORKER = "entrance:worker/orders";
 /** createOrder's `ordersQueue.add(…)` call, a call its card draws. */
 const STEP = "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add";
-const ORDER = "src/types.ts#interface:Order";
-const CUSTOMER = "src/types.ts#interface:Customer";
+const ORDER = "src/types.ts#Order";
+const CUSTOMER = "src/types.ts#Customer";
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
 
 const cards: Card[] = [
@@ -48,7 +48,7 @@ const definitions: Readonly<Record<string, TypeDefinition>> = {
   [CUSTOMER]: { key: CUSTOMER, kind: "interface", name: "Customer", path: "src/types.ts", line: 4, language: "typescript", members: [field("id"), field("email")], inherited: [], uses: 1 },
 };
 
-const table = (id: string, type: string, extra: Partial<Resource> = {}): Resource => ({ id, kind: "table", name: id, type, anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }], at: [0, 600], author: "agent:claude", ...extra });
+const table = (id: string, type: string, extra: Partial<Resource> = {}): Resource => ({ id, kind: "table", name: id, type, anchors: [{ key: "src/db/repository.ts#OrderRepository" }], at: [0, 600], author: "agent:claude", ...extra });
 
 let engine: FakeEngine;
 let saves: number;
@@ -87,6 +87,14 @@ async function refusal(ops: AgentOp[]): Promise<AgentFailure> {
   }
   expect(store.getOpenBoard(REF)?.document).toBe(before);
   return result;
+}
+
+/** A connection the window passes to the save, which refuses it: its refusal is the answer. Returns the connection as the save was asked to draw it. */
+async function savesThenRefuses(connections: AgentConnectionSpec[]): Promise<Connection | undefined> {
+  const refused = await refusal([{ op: "connect", connections }]);
+  expect(refused).toEqual({ ok: false, ...refuseSave });
+  const asked = engine.callsOf("save_board").at(-1) as { readonly board: BoardDocument } | undefined;
+  return asked?.board.pages[0]?.links.at(-1);
 }
 
 beforeEach(() => {
@@ -151,7 +159,7 @@ describe("add_resources", () => {
             name: "orders",
             type: ORDER,
             columns: [{ name: "id", key: "primary" }],
-            anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }],
+            anchors: [{ key: "src/db/repository.ts#OrderRepository" }],
             description: "Placed orders, kept in memory.",
             near: "create-order",
           },
@@ -186,14 +194,14 @@ describe("add_resources", () => {
 
   it("updates the card of the same kind and name, keeps one asked as it is, and puts it in a frame", async () => {
     open({ resources: [table("orders", ORDER)], frames: [{ id: "data", title: "data", members: ["create-order"], look: "box", author: "agent:claude" } satisfies Frame] });
-    const kept = await edit([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: ORDER, anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }] }] }]);
+    const kept = await edit([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: ORDER, anchors: [{ key: "src/db/repository.ts#OrderRepository" }] }] }]);
     expect(kept.items).toMatchObject([{ id: "orders", status: "kept" }]);
     expect(saves).toBe(0);
     const moved = await edit([{ op: "add_resources", resources: [{ kind: "table", name: "orders", columns: [{ name: "id", key: "primary" }], type: ORDER, frame: "data" }] }]);
     expect(moved.items).toMatchObject([{ id: "orders", status: "updated", frame: "data" }]);
     expect(current().frames?.[0]?.members).toEqual(["create-order", "orders"]);
     // Anchors left out are kept.
-    expect(current().resources?.[0]?.anchors).toEqual([{ key: "src/db/repository.ts#class:OrderRepository" }]);
+    expect(current().resources?.[0]?.anchors).toEqual([{ key: "src/db/repository.ts#OrderRepository" }]);
   });
 
   it("refuses a type or columns on anything but a table, marks with types on a type-backed table, and a type that isn't there", async () => {
@@ -202,7 +210,7 @@ describe("add_resources", () => {
     expect((await refusal([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: ORDER, columns: [{ name: "id", type: "uuid" }] }] }])).message).toContain(
       "is backed by a type",
     );
-    const missing = await refusal([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: "src/types.ts#interface:Gone" }] }]);
+    const missing = await refusal([{ op: "add_resources", resources: [{ kind: "table", name: "orders", type: "src/types.ts#Gone" }] }]);
     expect(missing.message).toContain("has no type declaration or class with the key");
     expect((await refusal([{ op: "add_resources", resources: [{ kind: "queue", name: "  " }] }])).code).toBe("invalid_op");
   });
@@ -222,7 +230,7 @@ describe("add_resources", () => {
       code: "board_problem",
       message: 'page `page-1`, resource `orders`: Can\'t add the table "orders": the column "customer_id" doesn\'t appear in its anchors (OrderRepository). Cite where the column is defined, or leave it out.',
     };
-    const refused = await refusal([{ op: "add_resources", resources: [{ kind: "table", name: "orders", columns: [{ name: "customer_id" }], anchors: [{ key: "src/db/repository.ts#class:OrderRepository" }] }] }]);
+    const refused = await refusal([{ op: "add_resources", resources: [{ kind: "table", name: "orders", columns: [{ name: "customer_id" }], anchors: [{ key: "src/db/repository.ts#OrderRepository" }] }] }]);
     expect(refused).toEqual({ ok: false, ...refuseSave });
     expect(store.getOpenBoard(REF)?.history.past).toEqual([]);
   });
@@ -234,15 +242,15 @@ describe("connect", () => {
     const result = await edit([
       {
         op: "connect",
-        connections: [{ kind: "queue", from: "create-order", step: STEP, to: "worker", carries: "src/types.ts#interface:OrderJob", label: "place-order job", description: "Queued when the client asks.", anchors: [{ key: "src/queues/queues.ts#variable:ordersQueue" }] }],
+        connections: [{ kind: "queue", from: "create-order", step: STEP, to: "worker", carries: "src/types.ts#OrderJob", label: "place-order job", description: "Queued when the client asks.", anchors: [{ key: "src/queues/queues.ts#/call:Queue" }] }],
       },
     ]);
     expect(result.items).toEqual([
-      { kind: "link", id: "create-order-queue-worker", status: "created", from: "create-order", to: "worker", name: "place-order job", connection: "queue", step: STEP, channel: "orders", carries: "src/types.ts#interface:OrderJob" },
+      { kind: "link", id: "create-order-queue-worker", status: "created", from: "create-order", to: "worker", name: "place-order job", connection: "queue", step: STEP, channel: "orders", carries: "src/types.ts#OrderJob" },
     ]);
-    expect(current().links[0]).toMatchObject({ kind: "queue", author: "agent:claude", step: STEP, channel: "orders", anchors: [{ key: "src/queues/queues.ts#variable:ordersQueue" }], label: { text: "place-order job", author: "agent:claude" }, description: { text: "Queued when the client asks." } });
+    expect(current().links[0]).toMatchObject({ kind: "queue", author: "agent:claude", step: STEP, channel: "orders", anchors: [{ key: "src/queues/queues.ts#/call:Queue" }], label: { text: "place-order job", author: "agent:claude" }, description: { text: "Queued when the client asks." } });
     // Again, the same connection is found and kept.
-    const again = await edit([{ op: "connect", connections: [{ kind: "queue", from: "create-order", step: STEP, to: "worker", carries: "src/types.ts#interface:OrderJob", channel: "orders", anchors: [{ key: "src/queues/queues.ts#variable:ordersQueue" }] }] }]);
+    const again = await edit([{ op: "connect", connections: [{ kind: "queue", from: "create-order", step: STEP, to: "worker", carries: "src/types.ts#OrderJob", channel: "orders", anchors: [{ key: "src/queues/queues.ts#/call:Queue" }] }] }]);
     expect(again.items).toMatchObject([{ id: "create-order-queue-worker", status: "kept" }]);
   });
 
@@ -251,20 +259,25 @@ describe("connect", () => {
     const result = await edit([{ op: "connect", connections: [{ kind: "relates", from: "orders", to: "customers", fromColumn: "customerId", toColumn: "id", cardinality: "many-to-one" }] }]);
     expect(current().links[0]).toMatchObject({ kind: "relates", fromColumn: "customerId", toColumn: "id", cardinality: "many-to-one" });
     expect(result.items).toMatchObject([{ connection: "relates", status: "created" }]);
-    const refused = await refusal([{ op: "connect", connections: [{ kind: "relates", from: "orders", to: "customers", fromColumn: "customer_id", toColumn: "id" }] }]);
-    expect(refused.message).toBe("“customer_id” isn't a column of the table “orders”. Its columns: id, status, customerId.");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "relates", from: "create-order", to: "customers" }] }])).message).toContain("joins two tables");
+    // A column the table doesn't have is the save's to refuse, and its refusal is the answer.
+    refuseSave = { code: "board_problem", message: "Can't connect the table \"orders\" to the table \"customers\" (relates): \"customer_id\" isn't a column of the table \"orders\"." };
+    expect(await savesThenRefuses([{ kind: "relates", from: "orders", to: "customers", fromColumn: "customer_id", toColumn: "id" }])).toMatchObject({ fromColumn: "customer_id" });
   });
 
-  it("refuses an other connection without a label, a step that isn't a call its card draws, columns off a relationship, and ends that aren't there", async () => {
+  it("refuses a step its from card doesn't draw, and leaves the board's rules to the save: labels, steps that aren't calls, columns, and ends", async () => {
     open({ combined: [{ id: "checks", title: "Checks", members: [`${CREATE}/if[0]`], collapsed: false, author: "agent:claude", signature: "" }] });
-    expect((await refusal([{ op: "connect", connections: [{ kind: "other", from: "create-order", to: "worker" }] }])).message).toContain("needs a label");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: "key-elsewhere" }] }])).message).toContain("isn't a call of createOrder");
+    const elsewhere = await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: "key-elsewhere" }] }]);
+    expect(elsewhere).toMatchObject({ code: "invalid_op" });
+    expect(elsewhere.message).toContain("isn't drawn on createOrder");
+    expect(engine.callsOf("save_board")).toEqual([]);
+    refuseSave = { code: "board_invalid", message: "The board refuses it." };
+    expect(await savesThenRefuses([{ kind: "other", from: "create-order", to: "worker" }])).toMatchObject({ kind: "other" });
     // A part of the card is drawn, but isn't a call.
-    expect((await refusal([{ op: "connect", connections: [{ kind: "calls", from: "create-order", to: "worker", step: `${CREATE}/if[0]/then` }] }])).message).toContain("isn't a call of createOrder");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "writes", from: "create-order", to: "worker", cardinality: "one-to-one" }] }])).message).toContain("Columns and cardinality are for a relates");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "checks", to: "worker" }] }])).message).toContain("is a combined step");
-    expect((await refusal([{ op: "connect", connections: [{ kind: "http", from: "gone", to: "worker" }] }])).message).toContain("There is no card, resource card, or frame");
+    expect(await savesThenRefuses([{ kind: "calls", from: "create-order", to: "worker", step: `${CREATE}/if[0]/then` }])).toMatchObject({ step: `${CREATE}/if[0]/then` });
+    expect(await savesThenRefuses([{ kind: "writes", from: "create-order", to: "worker", cardinality: "one-to-one" }])).toMatchObject({ cardinality: "one-to-one" });
+    expect(await savesThenRefuses([{ kind: "http", from: "checks", to: "worker" }])).toMatchObject({ from: "checks" });
+    expect(await savesThenRefuses([{ kind: "http", from: "gone", to: "worker" }])).toMatchObject({ from: "gone" });
+    expect(await savesThenRefuses([{ kind: "http", from: "create-order", to: "worker", id: "worker" }])).toMatchObject({ id: "worker" });
   });
 
   it("refuses a connection that repeats a compiled call, from its step or from anywhere in the card without one", async () => {
@@ -350,7 +363,10 @@ describe("add_notes", () => {
     const result = await edit([{ op: "add_notes", notes: [{ id: "n", text: "Read createOrder first." }] }]);
     expect(result.items).toMatchObject([{ id: "n", status: "updated", attach: "create-order" }]);
     expect(current().notes?.[0]).toMatchObject({ text: "Read createOrder first.", at: [0, 80], attach: "create-order" });
-    expect((await refusal([{ op: "add_notes", notes: [{ text: " " }] }])).message).toContain("1 to 400 characters");
+    // Blank text is the save's to refuse.
+    refuseSave = { code: "board_invalid", message: "invalid board at /pages/0/notes/1/text: must not be empty" };
+    expect(await refusal([{ op: "add_notes", notes: [{ text: " " }] }])).toEqual({ ok: false, ...refuseSave });
+    refuseSave = null;
     open({ notes: [{ id: "n", text: "Mine.", at: [0, 80], author: "person:maya" }] });
     expect((await refusal([{ op: "add_notes", notes: [{ id: "n", text: "Theirs." }] }])).code).toBe("people_text");
   });

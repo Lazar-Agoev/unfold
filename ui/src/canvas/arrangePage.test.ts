@@ -5,7 +5,7 @@ import type { Arrow } from "./arrows";
 import { NOTE_GAP, framePadding, pageGeometry, type FramedPage } from "./frames/geometry";
 import { HEADER_PORT, arrange, type Point, type Rect } from "./layout";
 
-const card = (id: string, at: [number, number], entrance = false): Card => (entrance ? { id, ref: { entrance: `entrance:${id}` }, at } : { id, ref: { block: `src/a.ts#function:${id}` }, at });
+const card = (id: string, at: [number, number], entrance = false): Card => (entrance ? { id, ref: { entrance: `entrance:${id}` }, at } : { id, ref: { block: `src/a.ts#${id}` }, at });
 const frame = (id: string, members: string[], extra: Partial<Frame> = {}): Frame => ({ id, title: id, members, look: "box", author: "agent:claude", ...extra });
 
 function call(source: string, target: string, port: string, order = 0): Arrow {

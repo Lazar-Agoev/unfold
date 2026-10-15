@@ -84,7 +84,7 @@ function menu(flow: Flow, key: Key, wired = actions(), card: Card = CARD) {
 describe("a block's menu", () => {
   it("offers what the block's actions allow: a project call opens in place, combines with its body's steps, and takes a proposal after it", () => {
     open();
-    expect(labels(menu(drawn("01-place-order"), LOAD_CALL))).toEqual(["View code", "Open in place", "Name…", "Describe…", "Combine…", "Add proposed step after…"]);
+    expect(labels(menu(drawn("01-place-order"), LOAD_CALL))).toEqual(["View code", "Open in place", "Name…", "Describe…", "Combine…", "Add proposed step after…", "Draw link…"]);
   });
 
   it("offers a proposal at the start of a part, and nothing its actions don't allow", () => {
@@ -151,6 +151,14 @@ describe("a block's menu", () => {
     expect(useLayout.getState().selectedCollapsed).toBe(false);
     choose(menu(drawn("01-place-order"), WARNING), "Describe…");
     expect(store.getPageView(PAGE).selection).toEqual({ kind: "card", cardId: "place", key: null });
+  });
+
+  it("starts a link from an unknown call, which becomes the link's step, so Kind ▸ can make it a calls connection", () => {
+    const checkout: Card = { id: "checkout", ref: { block: "shop/checkout.py#checkout" }, at: [0, 0], view: "expanded" };
+    open({}, checkout);
+    const unknownCall = "shop/checkout.py#checkout/call:audit.record";
+    choose(menu(drawn("06-checkout"), unknownCall, actions(), checkout), "Draw link…");
+    expect(store.getPageView(PAGE).linking).toEqual({ from: "checkout", step: unknownCall, to: null });
   });
 
   it("opens a block's code", () => {

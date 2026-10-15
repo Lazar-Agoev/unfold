@@ -165,11 +165,20 @@ fn owned_text(value: &Value, path: &Path) -> Parsed<String> {
     nonblank(value, path).map(str::to_owned)
 }
 
-/// A string that isn't blank, of at most `max` characters, owned.
-fn limited_text(value: &Value, path: &Path, max: usize) -> Parsed<String> {
+/// Past what the format holds, in words ([`BoardError::Limit`]).
+pub(super) fn limit(message: String) -> BoardError {
+    BoardError::Limit { message }
+}
+
+/// A string that isn't blank, of at most `max` characters (Unicode scalar values), owned. `what`
+/// names it in a refusal: "A note".
+fn limited_text(value: &Value, path: &Path, max: usize, what: &str) -> Parsed<String> {
     let text = nonblank(value, path)?;
-    if text.chars().count() > max {
-        return Err(path.fail(format!("must be at most {max} characters")));
+    let count = text.chars().count();
+    if count > max {
+        return Err(limit(format!(
+            "{what} holds at most {max} characters; this one has {count}."
+        )));
     }
     Ok(text.to_owned())
 }
@@ -336,7 +345,10 @@ fn position(value: &Value, path: &Path) -> Parsed<[f64; 2]> {
 fn open(value: &Value, path: &Path) -> Parsed<Vec<Vec<Key>>> {
     let items = array(value, path)?;
     if items.len() > MAX_OPEN_PATHS {
-        return Err(path.fail(format!("must hold at most {MAX_OPEN_PATHS} open paths")));
+        return Err(limit(format!(
+            "A card opens at most {MAX_OPEN_PATHS} calls in place; this one opens {}.",
+            items.len()
+        )));
     }
     let mut paths: Vec<Vec<Key>> = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
@@ -743,7 +755,12 @@ fn note(value: &Value, path: &Path) -> Parsed<Note> {
     )?;
     Ok(Note {
         id: id(field(map, "id"), &path.join("id"))?,
-        text: limited_text(field(map, "text"), &path.join("text"), MAX_NOTE_CHARACTERS)?,
+        text: limited_text(
+            field(map, "text"),
+            &path.join("text"),
+            MAX_NOTE_CHARACTERS,
+            "A note",
+        )?,
         at: position(field(map, "at"), &path.join("at"))?,
         attach: optional(map, "attach", path, id)?,
         author: author(field(map, "author"), &path.join("author"))?,
@@ -767,17 +784,23 @@ fn proposal(value: &Value, path: &Path) -> Parsed<Proposal> {
         },
         _ => return Err(path.fail("must have exactly one of `after` or `start`")),
     };
-    let title_path = path.join("title");
-    let title = limited_text(field(map, "title"), &title_path, MAX_PROPOSAL_TITLE)?;
+    let title = limited_text(
+        field(map, "title"),
+        &path.join("title"),
+        MAX_PROPOSAL_TITLE,
+        "A proposed step's title",
+    )?;
     if title.chars().any(char::is_control) {
-        return Err(title_path.fail("must be one line, without control characters"));
+        return Err(limit(
+            "A proposed step's title is one line, without tabs or other control characters.".to_owned(),
+        ));
     }
     Ok(Proposal {
         id: proposal_id,
         place,
         title,
         reason: optional(map, "reason", path, |value, path| {
-            limited_text(value, path, MAX_PROPOSAL_REASON)
+            limited_text(value, path, MAX_PROPOSAL_REASON, "A proposed step's reason")
         })?,
         author: author(field(map, "author"), &path.join("author"))?,
     })
@@ -829,10 +852,11 @@ fn page(value: &Value, path: &Path) -> Parsed<Page> {
     page.resources = items(map, "resources", path, resource)?;
     page.links = items(map, "links", path, connection)?;
     page.notes = items(map, "notes", path, note)?;
-    if optional_array(map, "proposals", path)?.len() > MAX_PROPOSALS {
-        return Err(path
-            .join("proposals")
-            .fail(format!("must hold at most {MAX_PROPOSALS} proposed steps")));
+    let proposals = optional_array(map, "proposals", path)?.len();
+    if proposals > MAX_PROPOSALS {
+        return Err(limit(format!(
+            "A page holds at most {MAX_PROPOSALS} proposed steps; this one has {proposals}."
+        )));
     }
     page.proposals = items(map, "proposals", path, proposal)?;
 

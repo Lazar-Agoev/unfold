@@ -51,6 +51,11 @@ export function claimProblem(item: HealthItem): string {
   return CLAIM_TEXT[item.kind];
 }
 
+/** What a card's banner says about a problem of `kind`; Selected says the same of a card whose code is missing. */
+export function cardProblem(kind: HealthKind): string {
+  return BANNER_TEXT[kind];
+}
+
 const NO_ITEMS: readonly HealthItem[] = [];
 
 /** The health items about a card, the combined and proposed steps it draws (`view`), and the page's names for blocks it draws, on its page. */

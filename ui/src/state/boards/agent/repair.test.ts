@@ -14,8 +14,8 @@ const P = "p-orders0000";
 const ID = ".unfold/boards/orders.json";
 const REF = { project: P, id: ID };
 const CLAUDE = { author: "agent:claude", name: "Claude" } as const;
-const CARD = { id: "a", ref: { block: "src/a.ts#function:a" }, at: [0, 0] as [number, number] };
-const REPAIR = { page: "page-1", kind: "reconnect", from: "src/a.ts#function:a", to: "src/a.ts#function:b" };
+const CARD = { id: "a", ref: { block: 'src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]' }, at: [0, 0] as [number, number] };
+const REPAIR = { page: "page-1", kind: "reconnect", from: 'src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]', to: "src/server.ts#healthCheck" };
 
 let engine: FakeEngine;
 
@@ -25,7 +25,7 @@ beforeEach(() => {
   useShownBoardStore.setState({ board: null });
   engine = installFakeEngine({
     handlers: {
-      repair_board: (args: RepairBoardArgs) => boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/a.ts#function:b" } }])]), { revision: "r2" }),
+      repair_board: (args: RepairBoardArgs) => boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/server.ts#healthCheck" } }])]), { revision: "r2" }),
     },
   });
 });
@@ -40,7 +40,7 @@ describe("repairing a board for an agent", () => {
     store.adoptBoardState(boardState(P, ID, boardDocument([page("page-1", [CARD])])));
     const result = await repairForAgent({ requestId: 1, board: REF, page: "page-1", agent: CLAUDE, repair: REPAIR, items: ["a"] });
     expect(engine.callsOf("repair_board")).toEqual([{ project: P, id: ID, base: "r1", repair: REPAIR }]);
-    expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/a.ts#function:b" } }] }, board: { revision: "r2" } });
+    expect(result).toMatchObject({ ok: true, page: { id: "page-1", cards: [{ id: "a", ref: { block: "src/server.ts#healthCheck" } }] }, board: { revision: "r2" } });
     expect(store.canUndo(REF)).toBe(true);
     expect(renderHook(() => useWorkingItems({ board: REF, page: "page-1" })).result.current).toEqual(new Set(["a"]));
   });
@@ -63,11 +63,11 @@ describe("repairing a board for an agent", () => {
   it("removes a person's words only when the person asked, as remove_items does", async () => {
     const lazar = "person:lazar";
     const described = { ...CARD, description: { text: "Places it.", author: lazar, signature: "s" } };
-    const other = { id: "b", ref: { block: "src/b.ts#function:b" }, at: [400, 0] as [number, number], description: { text: "Bills.", author: "agent:claude", signature: "s" } };
+    const other = { id: "b", ref: { block: "src/services/payment.ts#PaymentProvider.charge" }, at: [400, 0] as [number, number], description: { text: "Bills.", author: "agent:claude", signature: "s" } };
     const document = boardDocument([
       page("page-1", [described, other], {
-        names: [{ key: "src/b.ts#function:b/if[0]", text: "Paid?", author: lazar, signature: "s" }],
-        combined: [{ id: "pay", title: "Pay", members: ["src/b.ts#function:b/return[0]"], collapsed: true, author: "agent:claude", signature: "s" }],
+        names: [{ key: "src/services/payment.ts#PaymentProvider.charge/if[0]", text: "Paid?", author: lazar, signature: "s" }],
+        combined: [{ id: "pay", title: "Pay", members: ["src/services/payment.ts#PaymentProvider.charge/call:order.items.reduce"], collapsed: true, author: "agent:claude", signature: "s" }],
         links: [{ id: "bills", from: "b", to: "a", kind: "calls", anchors: [], author: lazar }],
       }),
     ]);
@@ -78,11 +78,11 @@ describe("repairing a board for an agent", () => {
     expect(await repair({ kind: "remove", target: { card: "a" } })).toEqual({
       ok: false,
       code: "people_text",
-      message: "Can't change the description of src/a.ts#function:a: Lazar wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.",
+      message: "Can't change the description of src/routes/health.ts#/call:healthRouter.get(\"/live\")/callback[0]: Lazar wrote it. People's words are safe; pass replacePeopleText only when the person asked for that change.",
     });
     // What goes with an item counts: the connection a person drew to the agent's card.
     expect(await repair({ kind: "remove", target: { card: "b" } })).toMatchObject({ ok: false, code: "people_text", message: expect.stringMatching(/^Can't change the calls connection: Lazar wrote it\./) as string });
-    expect(await repair({ kind: "remove", target: { name: "src/b.ts#function:b/if[0]" } })).toMatchObject({ ok: false, code: "people_text", message: expect.stringMatching(/^Can't change the name “Paid\?”/) as string });
+    expect(await repair({ kind: "remove", target: { name: "src/services/payment.ts#PaymentProvider.charge/if[0]" } })).toMatchObject({ ok: false, code: "people_text", message: expect.stringMatching(/^Can't change the name “Paid\?”/) as string });
     expect(await repair({ kind: "remove_description", target: { card: "a" } })).toMatchObject({ ok: false, code: "people_text" });
     expect(engine.callsOf("repair_board")).toEqual([]);
 
@@ -104,7 +104,7 @@ describe("repairing a board for an agent", () => {
         repair_board: (args: RepairBoardArgs) =>
           new Promise((resolve) => {
             finish = () => {
-              resolve(boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/a.ts#function:b" } }])]), { revision: "r2" }));
+              resolve(boardState(args.project, args.id, boardDocument([page("page-1", [{ ...CARD, ref: { block: "src/server.ts#healthCheck" } }])]), { revision: "r2" }));
             };
           }),
       },
@@ -120,7 +120,7 @@ describe("repairing a board for an agent", () => {
     finish?.();
     expect(await result).toMatchObject({ ok: false, code: "page_changed" });
     const board = store.getOpenBoard(REF);
-    expect(board?.document.pages[0]?.cards[0]).toMatchObject({ ref: { block: "src/a.ts#function:a" }, at: [40, 0] });
+    expect(board?.document.pages[0]?.cards[0]).toMatchObject({ ref: { block: 'src/routes/health.ts#/call:healthRouter.get("/live")/callback[0]' }, at: [40, 0] });
     expect(board && store.isDirty(board)).toBe(true);
     expect(renderHook(() => useWorkingItems(target)).result.current).toEqual(new Set());
   });

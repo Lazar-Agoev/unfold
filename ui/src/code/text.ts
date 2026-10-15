@@ -54,6 +54,12 @@ export function authorOf(author: string): AuthorView {
   return { name: name.charAt(0).toUpperCase() + name.slice(1), agent: author.startsWith("agent:") };
 }
 
+/** The name of the agent that wrote a piece of text (`agent:claude` → Claude), for its mark; null for a person. */
+export function agentName(author: string): string | null {
+  const { name, agent } = authorOf(author);
+  return agent ? name : null;
+}
+
 /**
  * Who wrote a piece of text, as plain text: `person:lazar` → "Lazar", `agent:codex` → "Codex · agent",
  * so an agent never reads as a person. Where the agent mark can be drawn, draw it (`<Author>`).

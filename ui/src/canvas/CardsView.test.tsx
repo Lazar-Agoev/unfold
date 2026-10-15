@@ -131,7 +131,7 @@ function model(key: Key): CardView | undefined {
     [CHARGE]: header(CHARGE, "charge_card", "function", "function"),
     [SAVE]: header(SAVE, "save_order", "function", "function"),
     [API]: { type: "definition", flow: drawn("08-api") },
-    [CALLBACK]: { type: "definition", flow: { ...callback, header: { ...callback.header, key: CALLBACK, kind: "function", form: "lambda", label: "callback to ordersRouter.post", signature: "async (req, res) =>" } } },
+    [CALLBACK]: { type: "definition", flow: { ...callback, header: { ...callback.header, key: CALLBACK, kind: "function", form: "lambda", label: "callback to ordersRouter.post", signature: "async (req, res) =>", async: true } } },
     [CART]: header(CART, "Cart", "type", "interface", 12),
     [ITEM]: header(ITEM, "CartItem", "type", "interface", 6),
     [STATUS]: header(STATUS, "Status", "type", "type_alias", 20),
@@ -249,8 +249,17 @@ describe("definition cards", () => {
     expect(card.querySelector(".card-title")?.textContent).toBe("place_order");
     expect(card.querySelector(".card-location")?.textContent).toBe("shop/service.py:9");
     expect(card.querySelector(".card-description.open p")?.textContent).toBe("Charges the card,\nthen saves.");
-    expect(within(card).getByText("agent")).not.toBeNull();
+    // An agent wrote it: Selected says who; the card draws no mark.
+    expect(card.querySelector(".agent-mark")).toBeNull();
     expect(card.querySelector(".flow, .card-code")).toBeNull();
+  });
+
+  it("show the whole description, wrapped, when expanded too", async () => {
+    open([{ id: "place", ref: { block: PLACE }, at: [0, 0], view: "expanded", description: { text: "Charges the card,\nthen saves.", author: "person:maya", signature: "" } }]);
+    const { container } = renderBoard();
+    const card = await waitFor(() => present(cardElement(container, "place")?.querySelector(".flow") ? cardElement(container, "place") : null));
+    expect(card.querySelector(".card-description.open p")?.textContent).toBe("Charges the card,\nthen saves.");
+    expect(card.querySelector(".card-more")).toBeNull();
   });
 
   it("expand with their chevron, as a board edit: what they say from their code, then their drawn flow", async () => {
@@ -262,7 +271,9 @@ describe("definition cards", () => {
     });
     expect(store.getOpenBoard(REF)?.document.pages[0]?.cards[0]?.view).toBe("expanded");
     const card = await waitFor(() => present(cardElement(container, "place")?.querySelector(".flow") ? cardElement(container, "place") : null));
-    expect(card.querySelector(".card-signature")?.textContent).toBe("def place_order(order_id)");
+    // The title says the name; the signature row, what follows it.
+    expect(card.querySelector(".card-signature")?.textContent).toBe("(order_id)");
+    expect(card.querySelector(".card-tag")).toBeNull();
     expect(card.querySelector(".card-doc")?.textContent).toBe("From codeCharge an order and save it.");
     expect([...card.querySelectorAll(".flow-call-name")].map((name) => name.textContent)).toContain("load_order");
     act(() => {
@@ -289,6 +300,8 @@ describe("definition cards", () => {
     const callback = await waitFor(() => loaded(container, "callback"));
     expect(callback.querySelector(".card-glyph")?.textContent).toBe("λ");
     expect(callback.querySelector(".card-title")?.textContent).toBe("callback to ordersRouter.post");
+    // An async function's title says so; an inline function's signature row is its whole head.
+    expect(callback.querySelector(".card-header .card-tag")?.textContent).toBe("async");
     expect(callback.querySelector(".card-signature")?.textContent).toBe("async (req, res) =>");
   });
 
@@ -301,7 +314,7 @@ describe("definition cards", () => {
     const { container } = renderBoard();
     const card = await waitFor(() => present(cardElement(container, "place")?.querySelector(".flow") ? cardElement(container, "place") : null));
     expect(within(card).getByRole("status").textContent).toBe("Changed since the last compile");
-    expect(card.querySelector(".card-signature")?.textContent).toBe("def place_order(order_id)");
+    expect(card.querySelector(".card-signature")?.textContent).toBe("(order_id)");
     state = "doesNotParse";
     await act(async () => {
       await queryClient.invalidateQueries();
@@ -318,11 +331,13 @@ describe("definition cards", () => {
     });
   });
 
-  it("show a card whose key is gone as a missing card", async () => {
+  it("show a card whose key is gone as a missing card, leaving the words to its banner", async () => {
     open([{ id: "gone", ref: { block: "shop/gone.py#gone" }, at: [0, 0] }]);
     const { container } = renderBoard();
-    await screen.findByText("This reference is missing from the graph.");
-    expect(cardElement(container, "gone")?.classList.contains("missing")).toBe(true);
+    await waitFor(() => {
+      expect(cardElement(container, "gone")?.classList.contains("missing")).toBe(true);
+    });
+    expect(cardElement(container, "gone")?.querySelector(".card-note")).toBeNull();
   });
 });
 

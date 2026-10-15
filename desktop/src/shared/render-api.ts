@@ -44,6 +44,8 @@ export interface RenderJob {
   readonly page: AgentPage;
   /** The board's health, which the cards' review banners show; null when it isn't known. */
   readonly health: RenderHealth | null;
+  /** Whether cards draw builtin calls too: the Show all calls switch of the person's window. */
+  readonly showAllCalls: boolean;
   /** An image of one item (a card, or a frame, resource card, or note as drawn) instead of the page. */
   readonly item?: string;
 }

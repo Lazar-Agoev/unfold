@@ -58,7 +58,7 @@ const description = (text: string): Description => ({ text, author: "person:laza
 
 describe("definition cards", () => {
   it("size a compact card to its header between 240 and 560, with room for the chevron, the mark, and `</>`", () => {
-    const short = { mark: { text: "ƒ", word: false }, name: "a", location: "a.ts:1", chevron: true };
+    const short = { mark: { text: "ƒ", word: false }, name: "a", async: false, location: "a.ts:1", chevron: true };
     expect(compactCardWidth(short, measure)).toBe(COMPACT_MIN_WIDTH);
     expect(compactCardWidth({ ...short, name: "x".repeat(80) }, measure)).toBe(COMPACT_MAX_WIDTH);
     const method = { ...short, name: "StripeProvider.ChargeWithRetries", location: "services/payment.ts:13" };
@@ -70,12 +70,16 @@ describe("definition cards", () => {
   });
 
   it("read their header from the drawn flow: the page's name over the code name, and where it is", () => {
-    expect(headerText(place.header, true)).toEqual({ mark: { text: "ƒ", word: false }, name: "place_order", location: "shop/service.py:9", chevron: true });
+    expect(headerText(place.header, true)).toEqual({ mark: { text: "ƒ", word: false }, name: "place_order", async: false, location: "shop/service.py:9", chevron: true });
+    // An async function's title says so, and is wider for it.
+    const ts = drawn("02-place-order-ts").header;
+    expect(headerText(ts, true).async).toBe(true);
+    expect(compactCardWidth(headerText({ ...ts, name: "x".repeat(30) }, true), measure)).toBeGreaterThan(compactCardWidth(headerText({ ...ts, name: "x".repeat(30), async: false }, true), measure));
     expect(headerText({ ...place.header, name: "Place the order" }, false).name).toBe("Place the order");
     expect(headerText(cli.header, true).mark).toEqual({ text: "M", word: false });
   });
 
-  it("wrap the whole description, line by line; an expanded card shows one line", () => {
+  it("wrap the whole description, line by line; a type card shows one line", () => {
     expect(descriptionHeight(undefined, 300, measure)).toBe(0);
     const one = descriptionHeight(description("Places the order."), 300, measure);
     const two = descriptionHeight(description("Places the order.\nOr queues it."), 300, measure);
@@ -97,6 +101,9 @@ describe("definition cards", () => {
     const bare = expandedCardSize(plain, geometry, undefined, measure);
     expect(bare.height).toBe(44 + Math.ceil(geometry.height) + 1);
     expect(size.height - bare.height).toBe(17 + 1 + 3 + 17 + 18);
+    // Its description, all of it, wrapped in the card's width.
+    const described = (text: string) => expandedCardSize(place.header, geometry, description(text), measure).height;
+    expect(described("Places the order.\nOr queues it.") - described("Places the order.")).toBe(18);
   });
 
   it("are estimated before they are drawn: compact by their header, expanded by their laid-out flow", () => {
@@ -157,12 +164,12 @@ describe("type cards", () => {
   });
 
   it("size to their header and widest field, up to 560", () => {
-    const header = { mark: { text: "interface", word: true }, name: "Cart", location: "cart.ts:12", chevron: false };
+    const header = { mark: { text: "interface", word: true }, name: "Cart", async: false, location: "cart.ts:12", chevron: false };
     expect(typeCardWidth(header, fieldTexts(cart), measure)).toBeGreaterThanOrEqual(280);
     expect(typeCardWidth(header, [{ name: "x", type: "Record<string, ".repeat(20) }], measure)).toBe(TYPE_MAX_WIDTH);
     // The whole header fits (padding, border, kind, name, location, `</>`, and the gaps between them; a
     // type card has no chevron): the kind is measured as it is drawn, in 13px code.
-    const job = { mark: { text: "interface", word: true }, name: "OrderJobWithAVeryLongName", location: "types/order-jobs.ts:22", chevron: false };
+    const job = { mark: { text: "interface", word: true }, name: "OrderJobWithAVeryLongName", async: false, location: "types/order-jobs.ts:22", chevron: false };
     const parts = measure("interface", TYPE_KIND_FONT) + measure(job.name, TITLE_FONT) + measure(job.location, LOCATION_FONT);
     expect(typeCardWidth(job, [{ name: "order", type: "OrderDraft" }], measure)).toBe(Math.ceil(26 + parts + 3 * 8 + 30));
   });

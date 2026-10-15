@@ -96,6 +96,8 @@ export interface PageView {
 /** A link being drawn by hand (`startLink`). */
 interface Linking {
   readonly from: string;
+  /** The call it leaves from, when it starts at a call of the from card (it becomes the link's step). */
+  readonly step?: Key;
   readonly to: string | null;
 }
 

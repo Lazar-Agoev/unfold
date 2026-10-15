@@ -124,8 +124,9 @@ textarea.explain-input {
   background: var(--color-hover);
 }
 
+/* The chosen run: a selected row, as in Add's list. */
 .combine-step[aria-selected="true"] {
-  background: var(--color-accent-soft);
+  background: var(--color-selection);
   color: var(--color-accent-text);
 }
 

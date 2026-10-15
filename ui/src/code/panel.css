@@ -96,9 +96,6 @@ button.code-crumb:hover { background: var(--color-hover); color: var(--color-tex
   overflow: auto;
   padding: 10px 0 14px;
   font: 12px/20px var(--font-code);
-  font-feature-settings:
-    "calt" 0,
-    "liga" 0;
   color: var(--color-syntax-plain);
   user-select: text;
 }

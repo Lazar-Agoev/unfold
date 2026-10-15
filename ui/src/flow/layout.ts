@@ -21,7 +21,7 @@
  */
 
 import type { CallBox, Callback, CombinedStep, DrawnFlow, ExitStep, FlowFrame, GapTick, Key, Lane, LinkEnd, OtherCall, ProposedStep, RepoPath, Route, RouteKind, Sequence, Step, ThinRow } from "../ipc/generated";
-import { callMeta, combinedExits, combinedSummary, exitDestination, exitWord, frameWord, gapWords, hasMeta, headWords, listedCalls, listedWords, outcomeWords, sectionWords, type CallMeta, type CombinedExit } from "./words";
+import { callMeta, combinedExits, combinedSummary, exitDestination, exitWord, frameHeader, frameWord, gapWords, hasMeta, headWords, listedCalls, listedWords, outcomeWords, sectionWords, type CallMeta, type CombinedExit } from "./words";
 
 /** Measures the width of `text` in pixels for a CSS font shorthand. */
 export type Measure = (text: string, font: string) => number;
@@ -69,7 +69,7 @@ export type FlowPiece =
   | (PieceBase & { readonly kind: "callback"; readonly callback: Callback; readonly path: readonly Key[] })
   /** A thin row; `key` (its first call's) lists or folds it. Its lines are in `path`. */
   | (PieceBase & { readonly kind: "thin"; readonly row: ThinRow; readonly key: Key; readonly listed: boolean; readonly path: RepoPath })
-  /** An exit pill; `destination` is where it goes in words, absent when a wire shows it. A project call as its value is a chip opened by `path`. */
+  /** An exit pill; `destination` is where it goes in words (a yield's, absent). A project call as its value is a chip opened by `path`. */
   | (PieceBase & { readonly kind: "exit"; readonly exit: ExitStep; readonly destination: string | null; readonly path: readonly Key[] })
   /** A control block's frame. `path` is the open path for the chips in its title (its header calls). */
   | (PieceBase & { readonly kind: "frame"; readonly frame: FlowFrame; readonly look: FrameLook; readonly path: readonly Key[] })
@@ -299,7 +299,7 @@ function scopeOf(flow: DrawnFlow, path: readonly Key[], inset: boolean): Scope {
     if (route.to !== "end" || route.kind === "raise") {
       return false;
     }
-    // The last step's own return draws the wire into End, as its words would; one inside it keeps its words.
+    // The last step's own return also draws the wire into End (its pill still says `→ End`); one inside it doesn't.
     return route.kind !== "return" || (!inset && last?.kind === "exit" && route.from === last.id && route.through.length === 0);
   });
   return { flow, from, within, path, inset, toEnd: new Set(toEnd), lanes };
@@ -835,8 +835,7 @@ class Builder {
 
   /** An exit pill: its word, its value (text, or a project call as a chip), and where it goes in words. */
   private exit(exit: ExitStep, id: number, x: number, y: number, scope: Scope, dim: boolean): Placed {
-    const own = (scope.from.get(id) ?? []).filter((route) => !scope.toEnd.has(route));
-    const destination = exitDestination(own, exit.form, scope.inset, scope.lanes);
+    const destination = exitDestination(scope.from.get(id) ?? [], exit.form, scope.inset, scope.lanes);
     const value = exit.value;
     const chip = value?.kind === "call" && value.to.outcome === "project" ? value : null;
     let cx = x + 1.5 + 9 + this.caps(exitWord(exit.form), FONT.word, 9.5, 0.09);
@@ -888,8 +887,9 @@ class Builder {
     if (frame.name !== undefined) {
       cx += 8 + this.text(frame.name, FONT.name);
     }
-    if (withHeader && frame.header !== undefined) {
-      cx += 8 + this.text(frame.header, FONT.head);
+    const header = frameHeader(frame);
+    if (withHeader && header !== undefined) {
+      cx += 8 + this.text(header, FONT.head);
     }
     if (withHeader && chips) {
       cx = this.chips(frame.headerCalls, frame.headerUnknown, cx + 8, y + height / 2, 8);

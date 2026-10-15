@@ -40,6 +40,14 @@ function said(item: AgentItemResult, status = true): string {
   return [item.kind, item.id, ...(status ? [item.status] : [])].join(" ");
 }
 let saves: number;
+/** What the save refuses, as the reader would: null while it saves. */
+let refuseSave: { code: string; message: string } | null;
+
+/** The page as the last save was asked to write it. */
+function asked(): Page | undefined {
+  const args = engine.callsOf("save_board").at(-1) as { readonly board: BoardDocument } | undefined;
+  return args?.board.pages[0];
+}
 
 /** createOrder's golden card (it calls OrderService.place and slack.post), or a copy for another definition, named by its label. */
 function model(key: string): CardView {
@@ -94,12 +102,17 @@ beforeEach(() => {
   queryClient.setQueryData(engineKey("workspace", {}), workspaceView([projectRow(P, "orders")]));
   useShownBoardStore.setState({ board: null });
   saves = 0;
+  refuseSave = null;
   engine = installFakeEngine({
     handlers: {
       card: ({ key }) => model(key),
       relations: ({ key }) => noCalls(key),
       callers: ({ key }) => ({ project: P, key, total: 0, callers: [] }),
       save_board: (args) => {
+        if (refuseSave) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw refuseSave;
+        }
         saves += 1;
         return boardState(P, ID, boardDocument(structuredClone(args.board.pages) as BoardDocument["pages"], { title: args.board.title }), { revision: "r2" });
       },
@@ -204,9 +217,6 @@ describe("frame_cards", () => {
 
   it("refuses what breaks the frames' rules, saying why and what to do", async () => {
     open({ frames: [frame("a", ["b"]), frame("b", ["c"]), frame("c", ["create-order"]), frame("other", ["place"])], combined: [{ id: "checks", title: "Checks", members: [`${CREATE}/if[0]`], collapsed: false, author: "agent:claude", signature: "" }] });
-    const deep = await refusal([{ op: "frame_cards", frames: [{ title: "Too deep", members: ["slack"], parent: "c" }] }]);
-    expect(deep).toMatchObject({ code: "invalid_op" });
-    expect(deep.message).toContain("“Too deep” would be 4 frames deep, and frames nest at most 3 deep");
     const taken = await refusal([{ op: "frame_cards", frames: [{ title: "Mine", members: ["place"] }] }]);
     expect(taken.message).toContain("OrderService.place (id place) is already in the frame “other” (id other)");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: ["nope"] }] }])).message).toContain("There is no item with id “nope”");
@@ -215,7 +225,16 @@ describe("frame_cards", () => {
     expect((await refusal([{ op: "frame_cards", frames: [{ id: "c", title: "c", members: ["a"] }] }])).message).toContain("frames can't hold each other in a cycle");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: " ", members: ["slack"] }] }])).message).toContain("needs a title");
     expect((await refusal([{ op: "frame_cards", frames: [{ title: "X", members: [] }] }])).message).toContain("needs members");
-    expect((await refusal([{ op: "frame_cards", frames: [{ id: "slack", title: "X", members: ["slack"] }] }])).message).toContain("is the id of a card");
+  });
+
+  it("leaves how deep frames nest, and ids, to the board's save, whose refusal is the answer", async () => {
+    open({ frames: [frame("a", ["b"]), frame("b", ["c"]), frame("c", ["create-order"])] });
+    refuseSave = { code: "board_invalid", message: 'Frames nest at most 3 deep (a zone, a box in it, and a box in that); the frame "Too deep" is 4 deep.' };
+    expect(await refusal([{ op: "frame_cards", frames: [{ id: "deep", title: "Too deep", members: ["slack"], parent: "c" }] }])).toEqual({ ok: false, ...refuseSave });
+    expect(asked()?.frames?.find((item) => item.id === "c")?.members).toEqual(["create-order", "deep"]);
+    refuseSave = { code: "board_invalid", message: "invalid board at /pages/0/frames/3/id: duplicate id `slack`" };
+    expect(await refusal([{ op: "frame_cards", frames: [{ id: "slack", title: "X", members: ["place"] }] }])).toEqual({ ok: false, ...refuseSave });
+    expect(asked()?.frames?.map((item) => item.id)).toContain("slack");
   });
 
   it("won't change a person's title or description unless asked", async () => {

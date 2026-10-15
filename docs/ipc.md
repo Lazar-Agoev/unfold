@@ -166,7 +166,8 @@ is open. See [architecture](architecture.md) for where it sits among the process
 - **Results are text** under about 6,000 tokens, paged with a `next` cursor; a refusal is held to the same limit. A
   refusal says what failed and what to call instead. Every object in a tool's arguments is strict: an argument it
   doesn't take is refused, naming the ones it does, never dropped. The server checks arguments in the same wrapper
-  as every refusal.
+  as every refusal. It doesn't repeat the board's rules: how long a note or a proposed step's words may be is the
+  save's to check, and its refusal is the answer. It bounds only its own work, such as the calls an open path names.
 
 | Group | Tools |
 | --- | --- |

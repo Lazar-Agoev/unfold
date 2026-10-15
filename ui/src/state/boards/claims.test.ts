@@ -5,24 +5,24 @@ import { page } from "../../test/workspace";
 import { addConnection, claimOf, saysConnection, setConnectionClaim, setConnectionKind, setLinkDescription, setLinkLabel } from "./connections";
 import { moveItems, removeItems } from "./document";
 import { moveFrame } from "./frames";
-import { NOTE_MAX, addNote, noteLength, noteText, placeNote, setNoteText } from "./notes";
+import { addNote, placeNote, setNoteText } from "./notes";
 import { addResource, saysClaim, setResourceClaim, setResourceDescription } from "./resources";
 
 const cards: Card[] = [
-  { id: "create-order", ref: { block: "src/routes/orders.ts#function:createOrder" }, at: [0, 0] },
+  { id: "create-order", ref: { block: "src/routes/orders.ts#createOrder" }, at: [0, 0] },
   { id: "worker", ref: { entrance: "entrance:worker" }, at: [600, 0] },
 ];
 const base = (): Page => page("page-1", cards);
-const STEP = "src/routes/orders.ts#function:createOrder/if[0]/variable:job/call[0]";
+const STEP = "src/routes/orders.ts#createOrder/if[0]/then/call:ordersQueue.add";
 
 describe("resource cards", () => {
   it("are added with what they say, a table's type and columns only on a table", () => {
     const next = produce(base(), (draft) => {
-      addResource(draft, { kind: "table", name: "orders", type: "src/types.ts#interface:Order", columns: [{ name: "id", key: "primary" }], anchors: [{ key: "src/db.ts#class:Repo" }], at: [10.4, 20.6], author: "agent:claude" });
-      addResource(draft, { kind: "queue", name: "orders", type: "src/types.ts#interface:Order", columns: [{ name: "x" }], anchors: [], at: [0, 0], author: "agent:claude" });
+      addResource(draft, { kind: "table", name: "orders", type: "src/types.ts#Order", columns: [{ name: "id", key: "primary" }], anchors: [{ key: "src/db/repository.ts#OrderRepository" }], at: [10.4, 20.6], author: "agent:claude" });
+      addResource(draft, { kind: "queue", name: "orders", type: "src/types.ts#Order", columns: [{ name: "x" }], anchors: [], at: [0, 0], author: "agent:claude" });
     });
     expect(next.resources).toEqual([
-      { id: "orders", kind: "table", name: "orders", type: "src/types.ts#interface:Order", columns: [{ name: "id", key: "primary" }], anchors: [{ key: "src/db.ts#class:Repo" }], at: [10, 21], author: "agent:claude" },
+      { id: "orders", kind: "table", name: "orders", type: "src/types.ts#Order", columns: [{ name: "id", key: "primary" }], anchors: [{ key: "src/db/repository.ts#OrderRepository" }], at: [10, 21], author: "agent:claude" },
       { id: "orders-2", kind: "queue", name: "orders", anchors: [], at: [0, 0], author: "agent:claude" },
     ]);
   });
@@ -64,17 +64,25 @@ describe("resource cards", () => {
 });
 
 describe("connections", () => {
-  const queue = { kind: "queue", from: "create-order", to: "worker", step: STEP, channel: "orders", anchors: [{ key: "src/queues.ts#variable:ordersQueue" }] } as const;
+  const queue = { kind: "queue", from: "create-order", to: "worker", step: STEP, channel: "orders", anchors: [{ key: "src/queues/queues.ts#/call:Queue" }] } as const;
 
-  it("are links with a kind and an author; columns and cardinality only on a relationship", () => {
+  it("are links with a kind and an author, saying what they're given: columns off a relationship are the save's to refuse", () => {
     const next = produce(base(), (draft) => {
       addConnection(draft, { ...queue, author: "agent:claude" });
       addConnection(draft, { kind: "writes", from: "create-order", to: "worker", fromColumn: "a", cardinality: "one-to-one", anchors: [], author: "agent:claude" });
     });
     expect(next.links).toEqual([
-      { id: "create-order-queue-worker", from: "create-order", to: "worker", author: "agent:claude", kind: "queue", step: STEP, channel: "orders", anchors: [{ key: "src/queues.ts#variable:ordersQueue" }] },
-      { id: "create-order-writes-worker", from: "create-order", to: "worker", author: "agent:claude", kind: "writes" },
+      { id: "create-order-queue-worker", from: "create-order", to: "worker", author: "agent:claude", kind: "queue", step: STEP, channel: "orders", anchors: [{ key: "src/queues/queues.ts#/call:Queue" }] },
+      { id: "create-order-writes-worker", from: "create-order", to: "worker", author: "agent:claude", kind: "writes", fromColumn: "a", cardinality: "one-to-one" },
     ]);
+  });
+
+  it("lose a relationship's columns and cardinality with its kind", () => {
+    const related = produce(base(), (draft) => {
+      addConnection(draft, { kind: "relates", from: "create-order", to: "worker", fromColumn: "a", toColumn: "b", cardinality: "one-to-one", anchors: [], author: "person:maya" });
+      setConnectionKind(draft, "create-order-relates-worker", "other", "person:maya");
+    });
+    expect(related.links[0]).toEqual({ id: "create-order-relates-worker", from: "create-order", to: "worker", author: "person:maya", kind: "other" });
   });
 
   it("are rewritten only when what they say changes, which makes the writer the one who drew it", () => {
@@ -132,12 +140,15 @@ describe("connections", () => {
 });
 
 describe("notes", () => {
-  it("are plain text of 1 to 400 characters, counted as the file counts them", () => {
-    expect(noteText("  Read the worker next.  ")).toBe("Read the worker next.");
-    expect(noteText("   ")).toBeNull();
-    expect(noteText("x".repeat(NOTE_MAX + 1))).toBeNull();
-    expect(noteLength("😀".repeat(NOTE_MAX))).toBe(NOTE_MAX);
-    expect(noteText("😀".repeat(NOTE_MAX))).not.toBeNull();
+  it("are rewritten trimmed, however long: how long a note may be is the board's save's to check", () => {
+    const start = produce(base(), (draft) => {
+      addNote(draft, { text: "Read the worker next.", at: [0, 0], author: "agent:claude" });
+    });
+    const long = "x".repeat(401);
+    const next = produce(start, (draft) => {
+      setNoteText(draft, "note", `  ${long}  `, "person:maya");
+    });
+    expect(next.notes?.[0]).toMatchObject({ text: long, author: "person:maya" });
   });
 
   it("are rewritten by whoever edits them, and placed free or at an offset from what they're attached to", () => {

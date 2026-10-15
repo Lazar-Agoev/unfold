@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "route_message",
-    "signature": "def route_message(message, override)",
+    "signature": "(message, override)",
     "path": "mail/route.py",
     "state": "current",
     "line": 8,
@@ -108,6 +108,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "mail/route.py#route_message/ternary[0]/then/call:Routed"
             ],
@@ -158,6 +159,7 @@
             "state": "reached",
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "mail/route.py#route_message/ternary[0]/else/call:classify"
             ],
@@ -255,6 +257,7 @@
             },
             "types": [],
             "fallsThrough": false,
+            "group": false,
             "combinable": [
               "mail/route.py#route_message/comprehension[0]/body/call:label_for"
             ],

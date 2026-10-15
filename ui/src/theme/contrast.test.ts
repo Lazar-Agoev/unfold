@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import tokens from "./tokens.css?raw";
 
+/** Every stylesheet of the UI, as text. */
+const SHEETS = import.meta.glob<string>("../**/*.css", { query: "?raw", import: "default", eager: true });
+
 /** The `--color-*` values `:root` declares. */
 const COLORS = new Map([...tokens.matchAll(/--color-([\w-]+):\s*([^;]+);/g)].map((match) => [match[1] ?? "", (match[2] ?? "").trim()]));
 
@@ -90,5 +93,22 @@ describe("tokens", () => {
 
   it.each(opaque(MARK_PAIRS))("%s on %s shows at 3:1", (foreground, background) => {
     expect(contrast(color(foreground), color(background))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("holds every rule that sets a token's text on a token's ground to 4.5:1", () => {
+    const pairs = Object.entries(SHEETS).flatMap(([path, css]) =>
+      [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((rule) => {
+        const body = rule[2] ?? "";
+        const text = /(?:^|[;\s])color:\s*var\(--color-([\w-]+)\)/.exec(body)?.[1];
+        const ground = /background(?:-color)?:\s*var\(--color-([\w-]+)\)/.exec(body)?.[1];
+        return text !== undefined && ground !== undefined ? [{ rule: `${path} ${(rule[1] ?? "").trim()}`, text, ground }] : [];
+      }),
+    );
+    const weak = pairs
+      .filter(({ text, ground }) => HEX.test(color(text)) && HEX.test(color(ground)))
+      .map((pair) => ({ ...pair, ratio: contrast(color(pair.text), color(pair.ground)) }))
+      .filter(({ ratio }) => ratio < 4.5);
+    expect(pairs.length).toBeGreaterThan(0);
+    expect(weak).toEqual([]);
   });
 });

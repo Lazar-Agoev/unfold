@@ -4,10 +4,8 @@
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   white-space: nowrap;
 }
 
 .agent-mark .icon { flex-shrink: 0; }
-
-.agent-author { white-space: nowrap; }

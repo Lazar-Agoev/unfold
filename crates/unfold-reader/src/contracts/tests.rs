@@ -43,7 +43,8 @@ fn a_call_with_no_annotations_shows_them_missing_and_its_raise_caught() {
         &playground,
         "shop/service.py#place_order/try[0]/body/call:charge_card",
     );
-    assert_eq!(&*contract.text, "charge_card");
+    // The call as written, as Selected titles its arrow.
+    assert_eq!(&*contract.text, "charge_card(order[\"card\"], total)");
     assert_eq!(contract.callee.outcome, Outcome::Project);
     assert_eq!(contract.callee.key, Some(key("shop/payments.py#charge_card")));
     assert_eq!(contract.line, 19);

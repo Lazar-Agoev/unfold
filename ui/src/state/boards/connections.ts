@@ -37,10 +37,9 @@ export interface ConnectionClaim {
   readonly anchors: readonly Anchor[];
 }
 
-/** Writes a claim onto connection `link`, leaving out what it doesn't have (columns and cardinality only on `relates`). */
+/** Writes a claim onto connection `link`, leaving out what it doesn't have. */
 function writeClaim(link: Connection, claim: ConnectionClaim): void {
   const { kind, from, to, step, fromColumn, toColumn, cardinality, channel, carries, anchors } = claim;
-  const relates = kind === "relates";
   delete link.step;
   delete link.fromColumn;
   delete link.toColumn;
@@ -53,9 +52,9 @@ function writeClaim(link: Connection, claim: ConnectionClaim): void {
     from,
     to,
     ...(step !== undefined ? { step } : {}),
-    ...(relates && fromColumn !== undefined ? { fromColumn } : {}),
-    ...(relates && toColumn !== undefined ? { toColumn } : {}),
-    ...(relates && cardinality !== undefined ? { cardinality } : {}),
+    ...(fromColumn !== undefined ? { fromColumn } : {}),
+    ...(toColumn !== undefined ? { toColumn } : {}),
+    ...(cardinality !== undefined ? { cardinality } : {}),
     ...(channel !== undefined ? { channel } : {}),
     ...(carries !== undefined ? { carries } : {}),
     ...(anchors.length > 0 ? { anchors: anchors.map((anchor) => ({ ...anchor })) } : {}),
@@ -74,7 +73,7 @@ export function saysConnection(link: Connection, claim: ConnectionClaim): boolea
   return said(next) === said(link);
 }
 
-/** Draws a connection and returns its id: `id` when given (a free one, `isFreeId`), else one from its ends and kind. */
+/** Draws a connection and returns its id: `id` when given (the save refuses one the page has), else one from its ends and kind. */
 export function addConnection(page: Page, claim: ConnectionClaim & { readonly id?: string; readonly author: string }): string {
   const id = claim.id ?? uniqueId(page, `${claim.from}-${claim.kind}-${claim.to}`);
   const link: Connection = { id, from: claim.from, to: claim.to, kind: claim.kind, author: claim.author };
@@ -94,14 +93,15 @@ export function setConnectionClaim(page: Page, linkId: string, claim: Connection
 
 /**
  * Gives a connection another kind, which makes `author` the one who drew it. Its ends, step, channel,
- * carried type, and anchors stay; columns and cardinality only on `relates`.
+ * carried type, and anchors stay; a relationship's columns and cardinality go with its kind.
  */
 export function setConnectionKind(page: Page, linkId: string, kind: ConnectionKind, author: string): void {
   const link = page.links.find((item) => item.id === linkId);
   if (!link || link.kind === kind) {
     return;
   }
-  setConnectionClaim(page, linkId, { ...claimOf(link), kind }, author);
+  const { fromColumn: _fromColumn, toColumn: _toColumn, cardinality: _cardinality, ...said } = claimOf(link);
+  setConnectionClaim(page, linkId, { ...said, kind }, author);
 }
 
 /** What a connection says, as a claim to edit (its kind is the caller's to set). */

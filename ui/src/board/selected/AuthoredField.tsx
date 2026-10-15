@@ -1,7 +1,7 @@
 /**
  * Authored text in Selected: a description, a name, or a note in the authored color on its tint, edited
- * in place (the field grows with its lines), with who wrote it underneath ("Claude · agent" for an
- * agent). Every keystroke is a board edit, and makes the text yours; typing in one field merges into
+ * in place (the field grows with its lines), with who wrote it underneath ("by you", "by ✦ Claude").
+ * Every keystroke is a board edit, and makes the text yours; typing in one field merges into
  * one undo step.
  */
 
@@ -48,7 +48,7 @@ export function AuthoredField({ label, value, placeholder, focusKey, disabledRea
       />
       {value ? (
         <span className="authored-byline">
-          <Author author={value.author} />
+          by <Author author={value.author} />
         </span>
       ) : null}
       {disabledReason !== null ? <span className="authored-note">{disabledReason}</span> : null}

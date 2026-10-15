@@ -216,6 +216,17 @@ describe("Add proposed step…", () => {
     });
   });
 
+  it("leaves how long a title may be to the board: it sends what is typed, and shows what the save refuses", async () => {
+    refusal = "A proposed step's title holds at most 120 characters; this one has 121.";
+    const dialog = propose({ after: RETURN }, "return order");
+    const long = "📦".repeat(121);
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Title" }), { target: { value: ` ${long} ` } });
+    fireEvent.click(await ready(dialog, "Propose"));
+    expect(await within(dialog).findByText(refusal)).not.toBeNull();
+    expect(engine.callsOf("save_board").at(-1)).toMatchObject({ board: { pages: [{ proposals: [{ title: long }] }] } });
+    expect(shownPage().proposals).toBeUndefined();
+  });
+
   it("shows what the board refuses", async () => {
     refusal = "a proposal can't go after `x`";
     const dialog = propose({ after: RETURN }, "return order");

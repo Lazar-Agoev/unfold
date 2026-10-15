@@ -1,7 +1,8 @@
 /**
  * Selected for a proposed step: "PROPOSED STEP", its title (required, one line, edited in place) and
  * optional Why, who wrote them (editing either makes them yours; typing in one field merges into one
- * undo step), and Where it would go: after which block, or at the start of which body. A proposal has
+ * undo step), and Where it would go: after which block, or at the start of which body. The board's save
+ * is the only check of the words: while you type, what it refuses shows under them. A proposal has
  * no code of its own. What needs review about where it goes shows with Review (Reconnect to another
  * block, Accept, Remove). Copy link and Remove proposal close it; removing never edits code.
  */
@@ -12,17 +13,7 @@ import { ReviewButton } from "../../canvas/cards/ReviewBanner";
 import { Button } from "../../components";
 import type { Proposal } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import {
-  PROPOSAL_REASON_MAX,
-  PROPOSAL_TITLE_MAX,
-  editPage,
-  itemsFor,
-  proposalTitle,
-  removeProposal,
-  updateProposal,
-  useOpenBoard,
-  type PageTarget,
-} from "../../state/boards";
+import { editPage, itemsFor, removeProposal, updateProposal, useOpenBoard, type PageTarget } from "../../state/boards";
 import { usePageBlock } from "../../state/cards";
 import { RelationRow } from "./Relations";
 
@@ -55,6 +46,7 @@ function Where({ target, proposal }: { readonly target: PageTarget; readonly pro
 export function SelectedProposal({ target, proposal }: { readonly target: PageTarget; readonly proposal: Proposal }) {
   const author = useAuthor();
   const health = useOpenBoard(target.board, (board) => board.health);
+  const saveError = useOpenBoard(target.board, (board) => board.saveError) ?? null;
   const issues = itemsFor(health, target.page, { proposal: proposal.id });
   const { project } = target.board;
   // What's typed shows while typing (a blank title isn't saved); leaving a field shows what is saved.
@@ -62,7 +54,9 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
   const [reason, setReason] = useState<string | null>(null);
   const whyId = useId();
   const shownTitle = title ?? proposal.title;
-  const blank = proposalTitle(shownTitle) === null;
+  const blank = shownTitle.trim().length === 0;
+  // Every keystroke is an edit, so a save that fails while you type refuses what you typed.
+  const refused = title !== null || reason !== null ? saveError : null;
   return (
     <>
       <div className="selected-identity">
@@ -75,13 +69,12 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
           aria-label="Proposed step title"
           aria-invalid={blank}
           value={shownTitle}
-          maxLength={PROPOSAL_TITLE_MAX}
           placeholder="What it would do…"
           disabled={author === null}
           onChange={(event) => {
             const text = event.target.value;
             setTitle(text);
-            if (author !== null && proposalTitle(text) !== null) {
+            if (author !== null && text.trim().length > 0) {
               reword(target, proposal.id, { title: text }, author, "title");
             }
           }}
@@ -91,7 +84,7 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
         />
         {blank ? <p className="selected-byline proposal-error">A proposed step needs a title.</p> : null}
         <p className="selected-byline">
-          <Author author={proposal.author} />
+          by <Author author={proposal.author} />
         </p>
       </div>
       <div className="proposal-why">
@@ -103,7 +96,6 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
           className="proposal-why-input"
           value={reason ?? proposal.reason ?? ""}
           placeholder="Why it's wanted (optional)…"
-          maxLength={PROPOSAL_REASON_MAX}
           rows={1}
           spellCheck
           disabled={author === null}
@@ -118,6 +110,7 @@ export function SelectedProposal({ target, proposal }: { readonly target: PageTa
             setReason(null);
           }}
         />
+        {refused !== null ? <p className="selected-byline proposal-error">{refused}</p> : null}
       </div>
       <Where target={target} proposal={proposal} />
       {issues.length > 0 ? (

@@ -112,6 +112,8 @@ function useFontEpoch(): number {
 export const CODE_FONT = '12px "JetBrains Mono Variable", ui-monospace, monospace';
 export const TITLE_FONT = '600 13px "JetBrains Mono Variable", ui-monospace, monospace';
 export const LOCATION_FONT = '11px "JetBrains Mono Variable", ui-monospace, monospace';
+/** A header's tag after the name (`ASYNC`, cards.css `.card-tag`), in small caps. */
+export const TAG_FONT = '700 9px "Inter Variable", system-ui, sans-serif';
 /** What an expanded card says from its code (cards.css): the signature, the doc, and the imports and what runs when it is defined. */
 export const SIGNATURE_FONT = '11.5px "JetBrains Mono Variable", ui-monospace, monospace';
 export const DOC_FONT = '12.5px "Inter Variable", system-ui, sans-serif';
@@ -124,7 +126,7 @@ export const START_ON_FONT = '12px "JetBrains Mono Variable", ui-monospace, mono
 export const TYPE_KIND_FONT = '13px "JetBrains Mono Variable", ui-monospace, monospace';
 /** A description's text (cards.css). */
 export const DESCRIPTION_FONT = '12px "Inter Variable", system-ui, sans-serif';
-/** A collapsed frame's title, and the agent mark's word beside it (frames.css). */
+/** A collapsed frame's title, and the agent mark's name beside it (frames.css). */
 export const FRAME_TITLE_FONT = '600 13px "Inter Variable", system-ui, sans-serif';
 export const MARK_FONT = '11px "Inter Variable", system-ui, sans-serif';
 /** A connection's chip (connections.css): its kind's word, its words, and the code it names. */

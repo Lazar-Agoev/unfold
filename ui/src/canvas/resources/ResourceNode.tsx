@@ -15,7 +15,7 @@ import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } f
 import { Fragment, memo, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { AgentMark, copyLink } from "../../agent";
 import { TypeText } from "../../code/TypeText";
-import { authorOf } from "../../code/text";
+import { agentName, authorOf } from "../../code/text";
 import { useContextMenu } from "../../components";
 import { Icon } from "../../icons";
 import { clickItem, describeResource, findPage, findResource, removeItem, select, startLink, useOpenBoard, usePageView, type PageTarget } from "../../state/boards";
@@ -122,7 +122,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data }: NodeProps<R
   const updateNodeInternals = useUpdateNodeInternals();
   const handles = useMemo(() => new Set(relates), [relates]);
   const width = useMemo(
-    () => (resource ? resourceCardWidth({ word: RESOURCE_WORDS[resource.kind], name: resource.name, agent: resource.author.startsWith("agent:"), columns }, measure) : 0),
+    () => (resource ? resourceCardWidth({ word: RESOURCE_WORDS[resource.kind], name: resource.name, agent: agentName(resource.author), columns }, measure) : 0),
     [resource, columns, measure],
   );
   const handlesKey = relates.join("\u0000");

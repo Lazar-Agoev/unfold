@@ -164,7 +164,7 @@ export const FrameNode = memo(function FrameNode({ id, data }: NodeProps<FrameNo
       <article
         className={`board-card frame-node look-${frame.look}${selected ? " selected" : ""}`}
         data-frame-id={id}
-        style={{ width: frameNodeWidth(frame.title, writer.agent, measure) }}
+        style={{ width: frameNodeWidth(frame.title, writer.agent ? writer.name : null, measure) }}
         aria-label={`Frame ${frame.title}, collapsed`}
         onContextMenu={handlers.onContextMenu}
       >

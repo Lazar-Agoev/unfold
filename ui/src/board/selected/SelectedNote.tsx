@@ -3,14 +3,14 @@
  * what it is attached to (selecting it) or that it is free, and Remove note. Notes aren't signed and
  * have no health. The file holds a note's text trimmed, so while you type the field shows what you
  * typed (a space before the next word, a line break) and saves it trimmed; leaving it shows the saved
- * text.
+ * text. The board's save is the only check of the text: while you type, what it refuses shows under it.
  */
 
 import { useState } from "react";
 import { Button } from "../../components";
 import type { Note } from "../../ipc/generated";
 import { useAuthor } from "../../state/author";
-import { NOTE_MAX, editNote, findPage, noteLength, removeItem, useOpenBoard, type PageTarget } from "../../state/boards";
+import { editNote, findPage, removeItem, useOpenBoard, type PageTarget } from "../../state/boards";
 import { AuthoredField } from "./AuthoredField";
 import { useCardNames } from "../../state/cards";
 import { itemName, selectItem } from "./ClaimRows";
@@ -22,6 +22,7 @@ export function SelectedNote({ target, note }: { readonly target: PageTarget; re
   const author = useAuthor();
   const names = useCardNames(target);
   const page = useOpenBoard(target.board, (board) => findPage(board.document, target.page));
+  const saveError = useOpenBoard(target.board, (board) => board.saveError) ?? null;
   const [draft, setDraft] = useState<string | null>(null);
   if (!page) {
     return null;
@@ -58,7 +59,8 @@ export function SelectedNote({ target, note }: { readonly target: PageTarget; re
         placeholder="What a reader would otherwise miss…"
         focusKey={NOTE_FIELD}
         disabledReason={author === null ? "Loading who you are…" : null}
-        status={<span className="authored-note">{`${noteLength(text)} of ${NOTE_MAX} characters`}</span>}
+        // Every keystroke is an edit, so a save that fails while you type refuses what you typed.
+        status={draft !== null && saveError !== null ? <span className="authored-note">{saveError}</span> : null}
         onChange={(typed) => {
           if (author !== null) {
             setDraft(typed);

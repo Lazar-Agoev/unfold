@@ -16,7 +16,7 @@ import { CodeButton } from "../code/CodeButton";
 import type { CallBox, Key, OtherCall, RepoPath, ThinRow } from "../ipc/generated";
 import { Icon } from "../icons";
 import { callbackText, insetPlace, thinCount, type CallRow, type FlowGeometry, type FlowPiece, type FlowWire, type Point, type Rect } from "./layout";
-import { callMeta, combinedSummary, exitWord, frameWord, gapWords, hasMeta, listedCalls, outcomeWords, sectionWords } from "./words";
+import { callMeta, combinedSummary, exitWord, frameHeader, frameWord, gapWords, hasMeta, listedCalls, outcomeWords, sectionWords } from "./words";
 import "./flow.css";
 
 /** What can be selected in a flow: a block, or a combined or proposed step (by its page id). */
@@ -386,13 +386,14 @@ function ExitPiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { k
 function FramePiece({ piece, handlers }: { readonly piece: Extract<FlowPiece, { kind: "frame" }>; readonly handlers: Handlers }) {
   const { frame, look } = piece;
   const cases = frame.form === "switch" || frame.form === "match";
+  const header = frameHeader(frame);
   return (
     <div className={classes("flow-frame", look, piece.dim && "dim", isBlock(handlers.selected, frame.key) && "selected")} style={place(piece.rect)} data-key={frame.key} {...selectable(handlers, { kind: "block", key: frame.key })}>
       {look === "try" ? null : (
         <div className={classes("flow-frame-title", frame.headerCalls.length + frame.headerUnknown.length > 0 && !cases && "with-chips")}>
           <span className="flow-frame-word">{frameWord(frame.form)}</span>
           {frame.name !== undefined ? <span className="flow-name">{frame.name}</span> : null}
-          {!cases && frame.header !== undefined ? <span className="flow-frame-header">{frame.header}</span> : null}
+          {!cases && header !== undefined ? <span className="flow-frame-header">{header}</span> : null}
           {!cases ? <Chips boxes={frame.headerCalls} unknown={frame.headerUnknown} path={piece.path} handlers={handlers} /> : null}
           {frame.binds !== undefined ? <span className="flow-binds">→ {frame.binds}</span> : null}
         </div>

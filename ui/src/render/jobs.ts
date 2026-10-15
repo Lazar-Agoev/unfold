@@ -1,8 +1,8 @@
 /**
  * What the render window is asked to draw: the main process's `render_page` (a page, handed whole)
  * and `render_frame` (the camera to capture it with), and the answers (`render_ready`). Each page is
- * adopted as a read-only board session, so the canvas and the cards draw it exactly as the board view
- * would, and nothing of it is ever saved.
+ * adopted as a read-only board session, with Show all calls as the person's window has it, so the
+ * canvas and the cards draw it exactly as the board view would, and nothing of it is ever saved.
  */
 
 import type { RenderAnswer, RenderFrame, RenderJob } from "@unfold/desktop/render-api";
@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { onShellEvent, windowCommand } from "../ipc";
 import type { BoardState, Health, Page } from "../ipc/generated";
 import { adoptBoardState, forgetBoard, setCamera } from "../state/boards/store";
+import { setShowAllCalls } from "../state/showAllCalls";
 import type { Camera } from "../state/boards";
 
 interface RenderState {
@@ -59,12 +60,13 @@ export function jobState(job: RenderJob): BoardState {
   };
 }
 
-/** Takes a job: the page before it is forgotten, and this one adopted read-only, with the measuring camera. */
+/** Takes a job: the page before it is forgotten, and this one adopted read-only, with the measuring camera and the person's Show all calls. */
 function receiveJob(job: RenderJob): void {
   const previous = useRenderJob.getState().job;
   if (previous) {
     forgetBoard(previous.board);
   }
+  setShowAllCalls(job.showAllCalls);
   const board = adoptBoardState(jobState(job), { readOnly: true });
   const page = job.page as unknown as Page;
   setCamera({ board, page: page.id }, measureCamera(page, window.innerWidth, window.innerHeight));

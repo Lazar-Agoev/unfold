@@ -36,7 +36,7 @@ fn a_contract_names_what_is_sent_returned_and_raised() {
     let charge = contract(&harness, CHARGE);
     assert_eq!(charge["call"], CHARGE);
     assert_eq!(charge["line"], 27);
-    assert_eq!(charge["text"], "chargePayment");
+    assert_eq!(charge["text"], "chargePayment(cart, req.user)");
     assert_eq!(charge["callee"]["key"], "ts/src/payments.ts#chargePayment");
     let sends = charge["sends"].as_array().expect("sends");
     assert_eq!(sends[0]["argument"]["text"], "cart");

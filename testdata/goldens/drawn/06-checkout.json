@@ -4,7 +4,7 @@
     "kind": "function",
     "form": "function",
     "label": "checkout",
-    "signature": "def checkout(order)",
+    "signature": "(order)",
     "path": "shop/checkout.py",
     "state": "current",
     "line": 13,

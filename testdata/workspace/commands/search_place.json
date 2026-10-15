@@ -23,7 +23,7 @@
         "project": "<project>",
         "key": "entrance:server/place-an-order",
         "name": "Place an order",
-        "qualifiedName": "Server POST /orders",
+        "qualifiedName": "Server · POST /orders",
         "path": "",
         "kind": "entrance",
         "line": 15,

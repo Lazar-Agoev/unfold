@@ -93,6 +93,23 @@ describe("FlowView", () => {
     expect(pill(geometry)).toBeGreaterThan(pill(plain));
   });
 
+  it("says a with block's keyword once: its frame word, then its header without the keyword", () => {
+    // Its header as written: `with mailbox_lock(account)`.
+    const { geometry, container } = show("03-sync-inbox");
+    const title = container.querySelector(".flow-frame.with .flow-frame-title");
+    expect(title?.querySelector(".flow-frame-word")?.textContent).toBe("With");
+    expect(title?.querySelector(".flow-frame-header")?.textContent).toBe("mailbox_lock(account)");
+    // The layout measures the same words.
+    const flow = structuredClone(drawn("03-sync-inbox"));
+    const frame = flow.steps.steps.find((step) => step.kind === "with");
+    if (frame?.kind !== "with") {
+      throw new Error("03-sync-inbox draws no with block");
+    }
+    frame.header = "mailbox_lock(account)";
+    const width = (laid: typeof geometry) => laid.pieces.find((piece) => piece.kind === "frame" && piece.look === "with")?.rect.width;
+    expect(width(geometry)).toBe(width(layoutFlow(flow, { measure })));
+  });
+
   it("draws place_order's pieces at their rects, with a wire per drawn route", () => {
     const { geometry, container } = show("01-place-order");
     const root = container.querySelector<HTMLElement>(".flow");

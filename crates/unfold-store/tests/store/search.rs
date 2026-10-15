@@ -79,7 +79,8 @@ fn finds_definitions_apps_entrances_and_files_by_substring() {
     assert_eq!(&*candidate.item_kind, "function");
     let entrance = &reader.search("refund", CandidateKind::Entrance, &[], 5).unwrap()[0];
     assert_eq!(&*entrance.name, "Refund an order");
-    assert_eq!(&*entrance.qualified_name, "Shop POST /orders/{order_id}/refund");
+    // Its app and what starts it, as Add shows them.
+    assert_eq!(&*entrance.qualified_name, "Shop · POST /orders/{order_id}/refund");
     assert_eq!(&*entrance.path, "");
     assert_eq!(&*entrance.item_kind, "entrance");
 }

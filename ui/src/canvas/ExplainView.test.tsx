@@ -12,6 +12,7 @@ import { installFakeEngine, type FakeEngine } from "../test/engine";
 import { boardDocument, boardState, page, projectRow, workspaceView } from "../test/workspace";
 import { BoardView } from "../board/BoardView";
 import { callPort } from "./arrows";
+import { kindEntries } from "./connections/linkMenu";
 
 const P = "p-shop000000";
 const ID = ".unfold/boards/b.json";
@@ -146,7 +147,7 @@ describe("a block's menu on the canvas", () => {
     const call = await waitFor(() => present(loaded(container, "place").querySelector<HTMLElement>(`.flow-call[data-key="${LOAD_CALL}"]`)));
     fireEvent.contextMenu(call);
     const menu = await screen.findByRole("menu", { name: "Block actions" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["View code", "Open in place", "Name…", "Describe…", "Combine…", "Add proposed step after…"]);
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["View code", "Open in place", "Name…", "Describe…", "Combine…", "Add proposed step after…", "Draw link…"]);
     act(() => {
       within(menu).getByRole("menuitem", { name: "Combine…" }).click();
     });
@@ -235,6 +236,24 @@ describe("drawing a link", () => {
       store.undo(REF);
     });
     expect(shownPage().links).toEqual([]);
+  });
+
+  it("starts from a call's Draw link…, leaving from that call (its step), so Kind ▸ offers Calls", async () => {
+    open([PLACE_CARD, SAVE_CARD]);
+    const { container } = renderBoard();
+    fireEvent.contextMenu(await waitFor(() => present(loaded(container, "place").querySelector<HTMLElement>(`.flow-call[data-key="${LOAD_CALL}"]`))));
+    act(() => {
+      within(screen.getByRole("menu", { name: "Block actions" })).getByRole("menuitem", { name: "Draw link…" }).click();
+    });
+    expect(store.getPageView(PAGE).linking).toEqual({ from: "place", step: LOAD_CALL, to: null });
+    fireEvent.click(loaded(container, "save"));
+    const dialog = await screen.findByRole("dialog", { name: "Draw link" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Label" }), { target: { value: "loads it" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Draw" }));
+    await waitFor(() => {
+      expect(shownPage().links).toEqual([{ id: "place-other-save", from: "place", to: "save", kind: "other", step: LOAD_CALL, author: "person:maya", label: { text: "loads it", author: "person:maya", signature: "" } }]);
+    });
+    expect(kindEntries(PAGE, "place-other-save", "person:maya").map((entry) => entry.id)).toContain("kind-calls");
   });
 
   it("lets go on Escape, and selects nothing while it waits", async () => {

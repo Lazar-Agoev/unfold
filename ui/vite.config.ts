@@ -30,7 +30,7 @@ export default defineConfig({
     // Component tests opt into a DOM with a `// @vitest-environment jsdom` comment.
     environment: "node",
     setupFiles: ["src/test/setup.ts"],
-    // The token contrast test reads tokens.css as text; other CSS stays stubbed out in tests.
-    css: { include: [/tokens\.css/] },
+    // Tests that read a stylesheet as text (`?raw`, the theme's tests) get it; CSS a component imports stays stubbed out.
+    css: { include: [/\.css\?raw$/] },
   },
 });

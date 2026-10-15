@@ -1,7 +1,8 @@
 /**
  * A link being drawn by hand (`startLink`): the hint over the canvas while the person picks where it
- * ends (Escape lets go), then the label an `other` connection says what it is with. Drawing it saves at
- * once as one undo step and selects it; what the board refuses comes back as a message.
+ * ends (Escape lets go), then the label an `other` connection says what it is with. A link drawn from a
+ * call leaves from it (its step). Drawing it saves at once as one undo step and selects it; what the
+ * board refuses comes back as a message.
  */
 
 import { useEffect } from "react";
@@ -40,7 +41,7 @@ export function LinkDrawing({ target }: { readonly target: PageTarget }) {
   if (!linking) {
     return null;
   }
-  const { from, to } = linking;
+  const { from, step, to } = linking;
   return (
     <>
       {to === null ? (
@@ -61,16 +62,16 @@ export function LinkDrawing({ target }: { readonly target: PageTarget }) {
         }}
         onSubmit={(label) => {
           cancelLink(target);
-          if (to === null || author === null) {
-            return;
+          if (to !== null && author !== null) {
+            void drawLink(target, { from, ...(step !== undefined ? { step } : {}), to, label: label.trim(), author }).then((outcome) => {
+              if (outcome.ok) {
+                select(target, { kind: "link", linkId: outcome.value });
+              } else {
+                showToast({ title: "Couldn't draw the link", body: outcome.message, tone: "danger" });
+              }
+            });
           }
-          void drawLink(target, { from, to, label: label.trim(), author }).then((outcome) => {
-            if (outcome.ok) {
-              select(target, { kind: "link", linkId: outcome.value });
-            } else {
-              showToast({ title: "Couldn't draw the link", body: outcome.message, tone: "danger" });
-            }
-          });
+          return null;
         }}
       />
     </>

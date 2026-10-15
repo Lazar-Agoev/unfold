@@ -130,7 +130,7 @@ describe("ConfirmDialog", () => {
 
 describe("PromptDialog", () => {
   it("validates before submitting and reports the problem on the field", () => {
-    const onSubmit = vi.fn();
+    const onSubmit = vi.fn(() => null);
     render(
       <PromptDialog
         open
@@ -157,5 +157,24 @@ describe("PromptDialog", () => {
       fireEvent.submit(form);
     }
     expect(onSubmit).toHaveBeenCalledWith("Order placement 2");
+  });
+
+  it("shows why what it submitted was refused on the field, and stays open", async () => {
+    render(
+      <PromptDialog
+        open
+        title="New folder"
+        label="Name"
+        confirmLabel="Move"
+        placement="window"
+        onSubmit={() => Promise.resolve("A folder named “Checkout” is already there.")}
+        onCancel={vi.fn()}
+      />,
+    );
+    const field = screen.getByRole("textbox", { name: "Name" });
+    fireEvent.change(field, { target: { value: "Checkout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    expect(await screen.findByText("A folder named “Checkout” is already there.")).toBeTruthy();
+    expect(field.getAttribute("aria-invalid")).toBe("true");
   });
 });

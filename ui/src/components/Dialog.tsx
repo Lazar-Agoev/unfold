@@ -213,7 +213,11 @@ export interface PromptDialogProps {
   /** Returns a message when the value can't be used; the confirm button stays enabled. */
   readonly validate?: (value: string) => string | null;
   readonly placement: "window" | "canvas";
-  readonly onSubmit: (value: string) => void;
+  /**
+   * Uses the value: null when that's done, or a promise of why it was refused (null when it wasn't),
+   * which shows on the field with the dialog still open.
+   */
+  readonly onSubmit: (value: string) => Promise<string | null> | null;
   readonly onCancel: () => void;
 }
 
@@ -223,13 +227,14 @@ interface PromptBodyProps {
   readonly label: string;
   readonly defaultValue: string;
   readonly validate: ((value: string) => string | null) | undefined;
-  readonly onSubmit: (value: string) => void;
+  readonly onSubmit: (value: string) => Promise<string | null> | null;
 }
 
 /** The prompt's form. It mounts each time the dialog opens, so every opening starts fresh. */
 function PromptBody({ formId, field, label, defaultValue, validate, onSubmit }: PromptBodyProps) {
   const [value, setValue] = useState(defaultValue);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     field.current?.select();
   }, [field]);
@@ -238,8 +243,16 @@ function PromptBody({ formId, field, label, defaultValue, validate, onSubmit }: 
     event.preventDefault();
     const problem = validate?.(value) ?? null;
     setError(problem);
-    if (problem === null) {
-      onSubmit(value);
+    if (problem !== null || busy) {
+      return;
+    }
+    const refusal = onSubmit(value);
+    if (refusal !== null) {
+      setBusy(true);
+      void refusal.then((message) => {
+        setError(message);
+        setBusy(false);
+      });
     }
   };
 

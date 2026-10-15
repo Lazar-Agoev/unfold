@@ -30,17 +30,8 @@ export {
 export { CONNECTION_KINDS, CONNECTION_WORDS } from "./connections";
 export { addResourceCard, combineSteps, drawLink, proposeStep, setLinkKind, setRelationship, type RelationshipChange } from "./explain";
 export { cancelLink, clickItem, startLink } from "./linking";
-export { NOTE_MAX, findNote, noteLength, placeNote } from "./notes";
-export {
-  PROPOSAL_REASON_MAX,
-  PROPOSAL_TITLE_MAX,
-  findProposal,
-  proposalReason,
-  proposalTitle,
-  removeProposal,
-  updateProposal,
-  type ProposalPlace,
-} from "./proposals";
+export { findNote, placeNote } from "./notes";
+export { findProposal, removeProposal, updateProposal, type ProposalPlace } from "./proposals";
 export { findResource } from "./resources";
 export {
   addCard,
@@ -55,7 +46,7 @@ export {
   setCardView,
   toggleOpen,
 } from "./document";
-export { MAX_FRAME_DEPTH, findFrame, frameItems, frameOf, moveFrame } from "./frames";
+export { findFrame, frameItems, frameOf, moveFrame } from "./frames";
 export { installAgentChannel, setAgentChannelReady } from "./agent/channel";
 export { useWorkingAgents, useWorkingItems, workingText } from "./agent/working";
 export { installBoardEvents } from "./events";

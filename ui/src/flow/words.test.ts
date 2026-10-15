@@ -32,10 +32,16 @@ describe("sectionWords", () => {
   });
 
   it("titles an except* handler with its star, however it is spaced", () => {
-    const handler = laneOf("01-place-order", "except");
+    const handler = { ...laneOf("01-place-order", "except"), group: true };
     for (const text of ["except* PaymentDeclined as error", "except *PaymentDeclined as error"]) {
       expect(sectionWords(withClause(handler, text), false)).toEqual({ title: "Except*", clause: "PaymentDeclined as error", note: null });
     }
+  });
+
+  it("knows an except* handler by its lane, never by its clause's text", () => {
+    const handler = laneOf("01-place-order", "except");
+    expect(handler.group).toBe(false);
+    expect(sectionWords(withClause(handler, "except *PaymentDeclined as error"), false).title).toBe("Except");
   });
 });
 

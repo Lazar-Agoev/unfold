@@ -53,11 +53,11 @@ flow. Nothing else decides what is drawn.
 
 | Part | Carries |
 | --- | --- |
-| Header | Key, kind, form, label, the page's name, signature, the doc as a description from code, path and line, its file's `state` (`current`, `changed` since the last compile, or `doesNotParse`), `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
+| Header | Key, kind, form, label, the page's name, signature (the head after the name: `(order_id)`; an inline function's whole head), the doc as a description from code, path and line, its file's `state` (`current`, `changed` since the last compile, or `doesNotParse`), `async`, generator, what runs when it is defined (decorators, class bases, Python defaults), imports, and its overlay actions |
 | Steps | In the order they run: call boxes, thin rows, decision/loop/try/with frames whose parts are lanes, exits, combined steps, proposed steps. Each has an id and a route state |
 | Call box | Key, written callee, the page's name, form (`call`/`new`), where it goes, `binds`, AWAIT, SOMETIMES, role, the call it feeds, the library and unknown calls written inside it, its callbacks (each with the property it is written as and its signature), its inset when opened, its actions |
 | Frame | Key, form, the page's name, its header as written, the boxes written in the header and its unknown calls outside them (`headerUnknown`), `binds`, its lanes, its actions |
-| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written, the boxes written in it, and its unknown calls outside them), the classes a handler catches, `fallsThrough`, its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
+| Lane | Key, form, the label the code panel's path uses (`case "refund"`, `except PaymentDeclined as error`), its lines, its `test` (text as written, the boxes written in it, and its unknown calls outside them), the classes a handler catches, `fallsThrough`, `group` (an `except*` handler), its combinable steps, its body. An `except` or `catch` lane's test is its clause, keyword included (`except errors()`) |
 | Exit | Form, the call that is its value or its value as written (`RETURN mark_failed`, `RETURN order`), a `break`/`continue` target |
 | Combined step | The page's id, title, members, collapsed, the blocks it `holds` while collapsed, its lines, counts of conditions, loops, library and unknown calls, and its project calls with their targets (arrows leave a collapsed step from its box) |
 | Gap tick | On the route into a step, or after a body's last step: how many lines, which lines, and the hidden control blocks that start in it |
@@ -142,7 +142,8 @@ read from the tree alone, in the compiled tree's order), so the server turns an 
 (`try[0]/except[0]`, `call:slack.post`) into a key by lookup, never by joining or splitting key text. Marks: `▸` a project call, `□` another box, `·` a thin row, `?` an unknown call, `+` the calls listed inside a call, `⊞`/`⊟` a
 collapsed or open combined step, `⋯` a gap tick, `↳` a callback (`↳ callback onSuccess () =>`: the property it is written as, then its
 signature), `+ PROPOSED` a proposal, `· never runs` and
-`· truncated` for route states (a truncated definition's on its first line). A handler's line is its clause, then
+`· truncated` for route states (a truncated definition's on its first line). A `with` block's line is `WITH` and its
+header after the keyword (`WITH open(path) as f`). A handler's line is its clause, then
 the clause's project calls and unknown calls: `ON ERROR → except errors() · ▸ errors`. An exit says where it goes, after a
 `finally →` for each `finally` it passes: `End`, `the caller`, the handler that catches it (`RAISE ValueError →
 except ValueError`), `after the loop`, `next`, or `finally` when a `finally` that always exits ends it. From [ts-orders.flows.txt](../testdata/goldens/ts-orders.flows.txt), keys
@@ -224,7 +225,8 @@ blocks; every other state shows whole files with nothing marked.
 [contracts/](../crates/unfold-reader/src/contracts/mod.rs) shows written facts only: a type is what the code wrote, a
 pairing is what the engine proved, and a missing annotation shows missing.
 
-- **A call's contract**, by its block key: what it sends (each argument beside the parameter it fills, or why it
+- **A call's contract**, by its block key: the call as written, on one line (`charge_card(order["card"], total)`;
+  just its callee when the caller's file changed since the compile), what it sends (each argument beside the parameter it fills, or why it
   fills none; unfilled parameters only when the pairings prove them), what returns (the written return type, or the
   class a construction makes) and where the value lands (`binds`, an exit, an outer call, or nowhere), and what the
   callee raises, with the caller's enclosing handler that catches each. A TypeScript `catch` or a bare `except`
@@ -257,8 +259,13 @@ compiled arrows.
 | `frames`, `resources`, `notes` | Boxes around items; tables, queues, caches, storage, outside services, and actors; short plain text |
 
 Ids are unique together within a page; page ids are unique within the board. Text records its author
-(`person:<username>` or `agent:<name>`). Parsing is strict and serialization deterministic. Files that break the
-format fail to parse like any invalid file.
+(`person:<username>` or `agent:<name>`). A note holds at most 400 characters, a proposed step's title one line of at
+most 120 and its reason at most 400; frames nest at most three deep; a folder's name is 1 to 64 characters. Lengths
+count characters (Unicode scalar values). Parsing is strict and serialization deterministic. Files that break the
+format fail to parse like any invalid file, with the JSON pointer of what is wrong; going past a limit is said in words
+that name the thing instead (`BoardError::Limit`: "A note holds at most 400 characters; this one has 412."). These
+rules are checked here only: the window, its dialogs, and the MCP server leave them to the save and the folder
+commands, and show what those refuse.
 
 ### Files
 
